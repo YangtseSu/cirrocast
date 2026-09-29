@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Formatting truth table for src/model/units.rs: one case per line, tab separated.
+#
+#   quantity	value	unit spec	expected
+#
+# `value` is canonical metric/SI (temp_c, wind_kmh, pressure_hpa, distance_km, precip_mm).
+# `unit spec` is either a whole system (metric, us, uk) or one unit token (c, f, kmh, mph, mps,
+# knots, hpa, inhg, mmhg, km, mi, mm, in), which is applied as an override on top of metric.
+# `expected` is exactly the string the formatter returns, including the unit symbol.
+
+temp	23	metric	23°C
+temp	23	us	73°F
+temp	23	uk	23°C
+temp	0	metric	0°C
+temp	0	us	32°F
+temp	0	uk	0°C
+temp	-0.4	metric	0°C
+temp	-0.4	us	31°F
+temp	-0.4	uk	0°C
+temp	-0.6	metric	-1°C
+temp	-0.6	us	31°F
+temp	-0.6	uk	-1°C
+temp	0.4	metric	0°C
+temp	0.4	us	33°F
+temp	-0	metric	0°C
+temp	-0	us	32°F
+temp	-0.5	metric	-1°C
+temp	0.5	metric	1°C
+temp	2.5	metric	3°C
+temp	-2.5	metric	-3°C
+temp	-0.3	us	31°F
+temp	-0.2	us	32°F
+temp	-0.1	us	32°F
+temp	0.1	us	32°F
+temp	0.2	us	32°F
+temp	0.3	us	33°F
+temp	37.5	metric	38°C
+temp	37.5	us	100°F
+
+wind	0	metric	0.0 km/h
+wind	5.4	metric	5.4 km/h
+wind	5.4	us	3.4 mph
+wind	5.4	uk	3.4 mph
+wind	8.3	metric	8.3 km/h
+wind	9.3	us	5.8 mph
+wind	9.94	metric	9.9 km/h
+wind	9.95	metric	10 km/h
+wind	9.96	metric	10 km/h
+wind	10	metric	10 km/h
+wind	12	metric	12 km/h
+wind	34.5	metric	35 km/h
+wind	100	us	62 mph
+wind	16.09344	us	10 mph
+wind	36	mps	10 m/s
+wind	18.52	mps	5.1 m/s
+wind	37.04	knots	20 kn
+wind	18.52	knots	10 kn
+
+pressure	990.5	metric	991 hPa
+pressure	1000	metric	1000 hPa
+pressure	1013.25	metric	1013 hPa
+pressure	1013.25	uk	1013 hPa
+pressure	1013.25	us	29.92 inHg
+pressure	1013.25	inhg	29.92 inHg
+pressure	1000	inhg	29.53 inHg
+pressure	1013.25	mmhg	760 mmHg
+pressure	1000	mmhg	750 mmHg
+
+distance	1.609344	mi	1.0 mi
+distance	4.2	metric	4.2 km
+distance	4.2	us	2.6 mi
+distance	4.2	uk	2.6 mi
+distance	9.94	metric	9.9 km
+distance	9.95	metric	10 km
+distance	10	metric	10 km
+distance	14	metric	14 km
+distance	16.09344	mi	10 mi
+
+visibility	0.04	metric	0.0 km
+visibility	0.05	metric	0.1 km
+visibility	1.5	metric	1.5 km
+visibility	1.5	us	0.9 mi
+visibility	1.5	uk	0.9 mi
+visibility	8	metric	8.0 km
+visibility	8	us	5.0 mi
+visibility	8	uk	5.0 mi
+visibility	20	metric	20 km
+visibility	20	us	12 mi
+visibility	20	uk	12 mi
+
+precip	-0	metric	0.0 mm
+precip	0	metric	0.0 mm
+precip	0	us	0.00 in
+precip	0.04	metric	0.0 mm
+precip	0.05	metric	0.1 mm
+precip	0.1	us	0.00 in
+precip	0.2	metric	0.2 mm
+precip	0.2	uk	0.2 mm
+precip	0.2	us	0.01 in
+precip	0.5	us	0.02 in
+precip	1	metric	1.0 mm
+precip	12	metric	12.0 mm
+precip	12	us	0.47 in
+precip	25.4	us	1.00 in
