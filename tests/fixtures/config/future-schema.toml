@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# A document written by a future release: this build must refuse it instead of guessing.
+schema_version = 99
+
+[defaults]
+days = 3

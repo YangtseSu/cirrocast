@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# The canonical document `cirrocast config set defaults.days 5` produces from the built-in
+# defaults: `set` serialises the whole typed configuration, so the file always has this shape.
+
+schema_version = 1
+
+[defaults]
+provider = "open-meteo"
+format = "art-table"
+units = "metric"
+days = 5
+language = "auto"
+
+[location]
+default = ""
+
+[units]
+
+[network]
+timeout_secs = 15
+retries = 3
+proxy = ""
+
+[cache]
+enabled = true
+weather_ttl_secs = 600
+ip_ttl_secs = 86400
+geocode_ttl_secs = 2592000
+
+[render]
+color = "auto"
+width = 0
+
+[providers.metar]
+station = ""
+
+[providers.qweather]
+host = ""
