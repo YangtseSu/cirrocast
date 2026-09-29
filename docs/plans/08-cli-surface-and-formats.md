@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 08 — CLI surface and formats
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 06, 07
 Touches: src/cli.rs, src/main.rs, src/error.rs, src/render/{mod,one_line,plain,json}.rs, Cargo.toml, README.md,
 tests/cli_flags.rs, tests/render_one_line.rs, tests/render_json.rs, tests/snapshots/, tests/fixtures/report/
@@ -16,10 +16,10 @@ Make the CLI the final documented contract — full flag matrix with its conflic
 tokens, `plain`, versioned JSON), shell completions and the man page, all from the same clap definitions.
 
 ## Deliverables
-- [ ] `src/cli.rs`: `struct Cli` (clap derive) carrying the whole flag matrix, `enum Command { Config, Key,
+- ⬜ `src/cli.rs`: `struct Cli` (clap derive) carrying the whole flag matrix, `enum Command { Config, Key,
       Provider, Cache, Location, Completion, Man }` and the positional `[LOCATION]`; subcommand *shapes* live
       here, their logic stays with the owning step (02/04/05/10/11).
-- [ ] Flags with their env attributes: `-p/--provider <ID[,ID...]>` (`CIRROCAST_PROVIDER`), `-f/--format
+- ⬜ Flags with their env attributes: `-p/--provider <ID[,ID...]>` (`CIRROCAST_PROVIDER`), `-f/--format
       <art-table|one-line|plain|json|dumb>`, `-d/--days <0..=14>` (`CIRROCAST_DAYS`), `-u/--units
       <metric|us|uk>` (`CIRROCAST_UNITS`), `--lang <BCP-47|auto>` (`CIRROCAST_LANG`), `--lat/--lon <DEG>`,
       `--ip`, `--station <ICAO>`, `--no-cache`, `--refresh`, `--offline`, `--timeout <SECS>`
@@ -27,26 +27,26 @@ tokens, `plain`, versioned JSON), shell completions and the man page, all from t
       `--bin-name` (completion/man only). `-p open-meteo,smhi` parses to an ordered `Vec<ProviderId>` via
       `ProviderId::from_str`; unknown or duplicated ids are `Error::Usage` (exit 2); `auto` expands to
       `open-meteo,smhi`, plus `metar` appended when `--station` is given.
-- [ ] Conflict rules — clap `requires`/`conflicts_with` where static, `validate(&Cli) -> Result<()>` where
+- ⬜ Conflict rules — clap `requires`/`conflicts_with` where static, `validate(&Cli) -> Result<()>` where
       provider-dependent: `--lat` requires `--lon` and vice versa; `--lat/--lon`, `--ip`, `--station` and
       `LOCATION` are mutually exclusive; `--offline` conflicts with `--refresh` and with `--no-cache` (nothing
       could be served); `-q` conflicts with `-v`; `--station` is valid only when the chain starts with `metar`
       or is `auto`, else `error: --station requires --provider metar (or auto)`, exit 2.
-- [ ] `--days` clamping against the primary provider's `Capabilities::max_days`, printing exactly one
+- ⬜ `--days` clamping against the primary provider's `Capabilities::max_days`, printing exactly one
       `warning: <provider> supports at most <n> days; --days <m> clamped to <n>` on stderr (silenced by `-q`,
       never an error); `--days 0` means current conditions only.
-- [ ] Precedence from the parse source, not from guesses: `Cli::command().get_matches()` then
+- ⬜ Precedence from the parse source, not from guesses: `Cli::command().get_matches()` then
       `matches.value_source("<id>")` classifies each setting as `CommandLine`, `EnvVariable` or `DefaultValue`,
       merged flag > env > config > builtin (config never overrides an env value). The precedence table and the
       exit-code table are replicated verbatim in the `--help` epilog (`after_long_help`).
-- [ ] `src/error.rs`: `Error::exit_code(&self) -> i32` — 0 success, 1 generic, 2 usage, 3 network/upstream,
+- ⬜ `src/error.rs`: `Error::exit_code(&self) -> i32` — 0 success, 1 generic, 2 usage, 3 network/upstream,
       4 config/state, 5 location not found, 6 missing/invalid key; `main` prints `error: <msg>` plus the cause
       chain under `-v`, never panics, `--help`/`--version` exit 0, clap usage errors stay 2.
-- [ ] `src/render/one_line.rs`: `struct OneLineRenderer` and `fn expand(template: &str, report: &Report,
+- ⬜ `src/render/one_line.rs`: `struct OneLineRenderer` and `fn expand(template: &str, report: &Report,
       ctx: &RenderContext<'_>) -> Result<String>` over a `&'static [(char, Token)]` table implementing every
       token in the table below; `%m` renders the literal `n/a` in this step and until the moon-phase roadmap
       item exists.
-- [ ] `src/render/one_line.rs` escapes: `%%` → `%`; `\n`, `\t`, `\\` unescaped before expansion;
+- ⬜ `src/render/one_line.rs` escapes: `%%` → `%`; `\n`, `\t`, `\\` unescaped before expansion;
       `%{<text>}` emits `<text>` verbatim without token expansion (`\}` escapes a closing brace); unknown `%X`
       emits `%X` literally and logs one `-v` warning with its position; a trailing lone `%` is literal; an empty
       or whitespace-only template is `Error::Usage` (exit 2). Presets via `--format one-line --template
@@ -54,29 +54,29 @@ tokens, `plain`, versioned JSON), shell completions and the man page, all from t
       `full` = `%l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z`, `uv` = `%l: UV %u (%U)`,
       `sun` = `%l: sunrise %S sunset %s (%z %Z)`; no `--template` means `default`; an unknown `@name` prints the
       preset list and exits 2; the list also appears in `--help`.
-- [ ] `src/render/plain.rs`: box-free, ANSI-free, greppable output reusing the one-line value formatters (no
+- ⬜ `src/render/plain.rs`: box-free, ANSI-free, greppable output reusing the one-line value formatters (no
       second conversion path): `location: <name> (<lat>, <lon>) <tz>`, `updated: <ISO local time> <offset>`,
       `current: <condition> <temp> (feels <feels>) wind <speed> <dir> humidity <h>% precip <p>mm pressure
       <p>hPa visibility <v>km`, then one `day <YYYY-MM-DD>: morning <…> | noon <…> | evening <…> | night <…>`
       line per day and finally `attribution: <provider> <url>`.
-- [ ] `src/render/json.rs`: `serde_json` renderer emitting the schema below with `schema_version: 1`, keys
+- ⬜ `src/render/json.rs`: `serde_json` renderer emitting the schema below with `schema_version: 1`, keys
       always present (`null` for missing values, never omitted), `days` ascending from location-local today,
       ISO-8601 timestamps with the location offset, and canonical metric numeric suffixes (`_c`, `_kmh`, `_mm`,
       `_hpa`, `_km`, `_pct`), plus the stability promise documented in the module doc comment and the README:
       within `schema_version 1` changes are additive only (new keys may appear, existing keys keep
       name/type/unit), a breaking change bumps `schema_version` with a `CHANGELOG.md` entry, consumers must
       ignore unknown keys, and `--units` has no effect on JSON (noted under `-v`).
-- [ ] `cirrocast completion <bash|zsh|fish|elvish|powershell>` via `clap_complete::generate` and
+- ⬜ `cirrocast completion <bash|zsh|fish|elvish|powershell>` via `clap_complete::generate` and
       `cirrocast man` via `clap_mangen::Man::new(cmd).render(&mut out)`, both to stdout, both generated from the
       same `Cli::command()`, `--bin-name` defaulting to `cirrocast`; `Cargo.toml` gains only
       `clap_complete = "4"` and `clap_mangen = "0.3"` — `serde_json` and `ureq` already arrive with step 05, so
       this step adds no HTTP/JSON dependency.
-- [ ] `README.md`: a `## Usage` section with the flag table, both epilog tables, the token list (`%m` note), the presets and the completion/man one-liners.
-- [ ] `tests/cli_flags.rs`: `assert_cmd` matrix over every flag (short and long), every conflict rule (exit 2
+- ⬜ `README.md`: a `## Usage` section with the flag table, both epilog tables, the token list (`%m` note), the presets and the completion/man one-liners.
+- ⬜ `tests/cli_flags.rs`: `assert_cmd` matrix over every flag (short and long), every conflict rule (exit 2
       **and** the exact stderr fragment), the one-time `--days` warning with and without `-q`, the precedence
       tiers (flag/env/config/builtin), the exit-code table 0/1/2/3/4/5/6 via `tests/fixtures/cli/*.json` stubs,
       and the completions smoke test.
-- [ ] `tests/render_one_line.rs` token-by-token unit tests (both unit systems, `%%`/unknown/`%{...}`/trailing-`%`
+- ⬜ `tests/render_one_line.rs` token-by-token unit tests (both unit systems, `%%`/unknown/`%{...}`/trailing-`%`
       escapes, every preset) and `tests/render_json.rs` (hand-reviewed `insta` snapshot, key-set completeness,
       byte-identity of `-u us` vs `-u metric`).
 
@@ -149,12 +149,12 @@ cirrocast man | head -3                                  # roff starting with .T
 ```
 
 ## Exit criteria
-- [ ] `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test` / `reuse lint` all clean
-- [ ] `--help` prints the flag matrix and both tables; every conflict rule exits 2 with its documented message; `--days` clamps once
-- [ ] `one-line` renders every token (including `%%` and `%{...}`), all five presets and both unit systems, `%m` = `n/a`
-- [ ] `json` snapshot matches, carries `schema_version: 1`, and is byte-identical under `-u metric` and `-u us`
-- [ ] `completion bash|zsh|fish|elvish|powershell` and `man` produce non-empty output and exit 0
-- [ ] README `## Usage` documents flags, precedence, exit codes, tokens and presets
+- ⬜ `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test` / `reuse lint` all clean
+- ⬜ `--help` prints the flag matrix and both tables; every conflict rule exits 2 with its documented message; `--days` clamps once
+- ⬜ `one-line` renders every token (including `%%` and `%{...}`), all five presets and both unit systems, `%m` = `n/a`
+- ⬜ `json` snapshot matches, carries `schema_version: 1`, and is byte-identical under `-u metric` and `-u us`
+- ⬜ `completion bash|zsh|fish|elvish|powershell` and `man` produce non-empty output and exit 0
+- ⬜ README `## Usage` documents flags, precedence, exit codes, tokens and presets
 
 ## Risks
 - clap/env precedence bugs hide easily: mitigated by driving the merge from `value_source` and one test per tier

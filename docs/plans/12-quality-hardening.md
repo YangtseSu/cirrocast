@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 12 — Quality hardening
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 08 (cli-surface-and-formats), 09 (localization), 10 (additional-providers)
 Touches: `src/**/*.rs` (error text and logging only), `src/http.rs` (network guard), `src/config/mod.rs`
 (validation), `src/cli.rs` (help text), `deny.toml` (new), `.github/workflows/ci.yml` (new),
@@ -23,49 +23,49 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
 
 ## Deliverables
 
-- [ ] Error-message audit across every module (`error.rs`, `cli.rs`, `config/`, `geo/`, `http.rs`, `cache.rs`,
+- ⬜ Error-message audit across every module (`error.rs`, `cli.rs`, `config/`, `geo/`, `http.rs`, `cache.rs`,
   `provider/*`): every message names the offending value plus the accepted forms or the next command — missing
   key → `cirrocast key set openweathermap` and `CIRROCAST_OPENWEATHERMAP_KEY`; unknown provider/format/units/
   language → the accepted values; bad `--days` → the `0..=14` range and the provider's `max_days`; `keys.toml`
   wrong mode → `chmod 600 <path>`; config error → the key path; unknown location → `cirrocast location search
   <q>`; offline miss → provider, location, "rerun without `--offline`".
-- [ ] `tests/exit_codes.rs`: one deterministic scenario per binding exit code — 0 (`--version`), 2 (`--days 99`,
+- ⬜ `tests/exit_codes.rs`: one deterministic scenario per binding exit code — 0 (`--version`), 2 (`--days 99`,
   `--format yaml`, `--station 12`), 4 (unreadable config, `keys.toml` at 0644), 6 (`--provider qweather`, no key,
   scratch config dir), 3 (`--refresh` with `CIRROCAST_FORBID_NETWORK=1`), 5 (unknown ICAO, stub stationinfo
   response). Asserts the code and that stderr names the offending value, never a full sentence.
-- [ ] `--verbose` review: `-v` prints one indented `caused by:` line per error source; `-vv` adds the request URL
+- ⬜ `--verbose` review: `-v` prints one indented `caused by:` line per error source; `-vv` adds the request URL
   (secrets redacted), HTTP status, retry attempt and cache decision; `--quiet` mutes warnings, never errors; no
   log line ever contains a key or a `keys.toml` body.
-- [ ] `--offline` correctness: with the guard on, `--offline` constructs no request at all; a warm cache renders
+- ⬜ `--offline` correctness: with the guard on, `--offline` constructs no request at all; a warm cache renders
   identically to a run without the flag; a cold cache fails with exit 3 plus the rerun hint; `--no-cache
   --offline` and `--refresh --offline` are usage errors naming both flags; `cache stat` separates
   expired-but-present from valid entries.
-- [ ] `cirrocast config validate` returns 0 on the shipped template and 4 with the key path for: unknown keys,
+- ⬜ `cirrocast config validate` returns 0 on the shipped template and 4 with the key path for: unknown keys,
   unknown enum values, a non-ICAO `[providers.metar] station`, `render.width` below the minimum,
   zero/negative timeouts and TTLs, a `location.default` that fails the location grammar, and
   `cache.enabled = false` combined with `--offline`; the precedence rule `[units] <key> > defaults.units` is
   stated in the message when an override conflicts.
-- [ ] Help-text review: `--help`/`--version` read no config, XDG or cache state; a `CONFIG PRECEDENCE` block
+- ⬜ Help-text review: `--help`/`--version` read no config, XDG or cache state; a `CONFIG PRECEDENCE` block
   states CLI flag > `CIRROCAST_*` env var > `config.toml` > built-in default; an `EXIT CODES` block lists all
   seven codes with triggers; the man page renders from the same `cli.rs` text.
-- [ ] Startup gate recheck: `hyperfine --warmup 10 --runs 50 'target/release/cirrocast --version'` under 50 ms,
+- ⬜ Startup gate recheck: `hyperfine --warmup 10 --runs 50 'target/release/cirrocast --version'` under 50 ms,
   and `strace -f -e trace=network target/release/cirrocast --version` with no `socket(` (enforced budgets with
   CI thresholds are step 22).
-- [ ] `deny.toml` + `cargo deny check` green: `[licenses]` allow-list (MIT, Apache-2.0, ISC, BSD-2-Clause,
+- ⬜ `deny.toml` + `cargo deny check` green: `[licenses]` allow-list (MIT, Apache-2.0, ISC, BSD-2-Clause,
   BSD-3-Clause, Zlib, Unicode-3.0, CDLA-Permissive-2.0, CC0-1.0, MPL-2.0, each with a one-line justification),
   deny list for licences that cannot combine with GPL-3.0-or-later (`GPL-2.0-only`, pre-3.0 `OpenSSL`,
   `SSPL-1.0`, `BUSL-1.1`, `Elastic-2.0`, `Commons-Clause`, `JSON`, `BSD-4-Clause`), `[bans]` denying duplicate
   versions and wildcard dependencies, `[sources]` restricted to crates.io, and `[advisories]` ignore entries
   each carrying a reason and a review date.
-- [ ] Dependency licence audit: enumerate every crate with `cargo metadata --all-features` and commit the
+- ⬜ Dependency licence audit: enumerate every crate with `cargo metadata --all-features` and commit the
   name/version/licence/GPL-3.0-or-later verdict table into this file's Design notes in the same commit as
   `deny.toml`; expected exceptions needing an allow-list entry are `Unicode-3.0` (through `idna`/`url`) and
   `CDLA-Permissive-2.0` (through `webpki-roots`); an incompatible dependency is a blocker with a chosen
   replacement, never a silent allow-list. `cargo audit` runs beside `cargo deny` since the sources disagree.
-- [ ] MSRV at 1.85: `cargo +1.85.0 build --all-targets --locked` and `cargo +1.85.0 test --locked` pass locally
+- ⬜ MSRV at 1.85: `cargo +1.85.0 build --all-targets --locked` and `cargo +1.85.0 test --locked` pass locally
   and in a dedicated CI job; `cargo msrv verify` (cargo-msrv, optional) confirms the declared `rust-version`;
   `rust-toolchain.toml` keeps pinning `stable` for development, the `+1.85.0` override wins in the job.
-- [ ] `reuse lint` reaches 0 problems and stays there. The tree currently reports 1 invalid SPDX expression and
+- ⬜ `reuse lint` reaches 0 problems and stays there. The tree currently reports 1 invalid SPDX expression and
   1 file with no licensing information: `AGENTS.md` demonstrates a header with prose on the same line, so REUSE
   parses the prose as part of the licence expression (the value must sit alone on its line, or the example must
   be wrapped in `REUSE-IgnoreStart`/`REUSE-IgnoreEnd`), and `src/main.rs` needs its header. Fixture licensing
@@ -73,24 +73,24 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   public-domain `LicenseRef` for NOAA data) — so no blanket `tests/fixtures/**` override may remain. Windows
   checkout decision (Design notes): replace the `LICENSES/GPL-3.0-or-later.txt` symlink with a real copy of
   `LICENSE` and gate the pair with `cmp -s LICENSE LICENSES/GPL-3.0-or-later.txt` in CI.
-- [ ] `tests/no_network.rs`: the `CIRROCAST_FORBID_NETWORK=1` guard is enforced in `src/http.rs` before DNS and
+- ⬜ `tests/no_network.rs`: the `CIRROCAST_FORBID_NETWORK=1` guard is enforced in `src/http.rs` before DNS and
   connect; the test proves the guard intercepts (a cold-cache request to a real upstream exits 3 with the guard
   message) and, on Linux, reruns the CLI under `unshare -rn` to prove no external DNS is required.
-- [ ] Decoder robustness: new malformed fixtures plus a sweep over every upstream JSON decoder (open-meteo, the
+- ⬜ Decoder robustness: new malformed fixtures plus a sweep over every upstream JSON decoder (open-meteo, the
   six key-requiring providers, metar, geocoding, IP location, config) feeding a truncation sweep at every byte
   offset, empty/`{}`/`[]`/`null` bodies, wrong types (`"temp": "abc"`) and single-byte mutations — each input
   yields `Error::Upstream`/`Error::Config` with a cause chain and never panics, hangs or allocates unboundedly
   (payload cap enforced in `http.rs`).
-- [ ] Render-path audit: `src/render/**` and `src/model/**` import nothing from `http`, `provider` or `cache`,
+- ⬜ Render-path audit: `src/render/**` and `src/model/**` import nothing from `http`, `provider` or `cache`,
   enforced by a CI grep gate (`! grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model`), with
   `cargo tree` confirming only `serde`/`serde_json`/`chrono`/locale data beyond std.
-- [ ] XDG audit: no write outside `$XDG_{CONFIG,CACHE,DATA}_HOME/cirrocast` (verified by running with all three
+- ⬜ XDG audit: no write outside `$XDG_{CONFIG,CACHE,DATA}_HOME/cirrocast` (verified by running with all three
   pointed at a temporary tree and diffing it), `XDG_CONFIG_DIRS` honoured for reads, and `--offline`/`--no-cache`
   creating no cache directory.
-- [ ] Secret-handling audit: keys never land in `config.toml`, `key list` masks values, `keys.toml` is written
+- ⬜ Secret-handling audit: keys never land in `config.toml`, `key list` masks values, `keys.toml` is written
   0600 and refused when wider, and a test greps captured `-vv` stderr for the fake key it exported and finds
   nothing.
-- [ ] `.github/workflows/ci.yml`: jobs `fmt`, `clippy --all-targets -- -D warnings`, `test` (matrix
+- ⬜ `.github/workflows/ci.yml`: jobs `fmt`, `clippy --all-targets -- -D warnings`, `test` (matrix
   ubuntu-latest + macos-latest × stable + 1.85.0, `CIRROCAST_FORBID_NETWORK=1`, `--locked`), `reuse`
   (`fsfe/reuse-action`), `deny` (`EmbarkStudios/cargo-deny-action`), `audit` (`rustsec/audit-check`), plus the
   layer and `cmp` gates; every third-party action pinned to a commit SHA, `concurrency` cancelling superseded
@@ -146,10 +146,10 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
-- [ ] `cargo deny check` and `cargo audit` green, `cargo +1.85.0 build --all-targets --locked` green, and the
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
+- ⬜ `cargo deny check` and `cargo audit` green, `cargo +1.85.0 build --all-targets --locked` green, and the
   dependency licence verdict table filled in with no unresolved GPL-3.0-or-later incompatibility.
-- [ ] `CIRROCAST_FORBID_NETWORK=1 cargo test` passes, the guard test shows a blocked request exiting 3 with the
+- ⬜ `CIRROCAST_FORBID_NETWORK=1 cargo test` passes, the guard test shows a blocked request exiting 3 with the
   guard message, and `hyperfine` reports `--version` under 50 ms with no socket opened.
 
 ## Risks

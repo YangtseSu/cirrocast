@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 20 — wttr-compatible local service
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 08 (CLI surface and formats), 10 (provider chain), 14 (v1 acceptance)
 Touches: `src/serve/{mod,request,response,query,token,help}.rs`, `src/cli.rs`, `src/lib.rs`,
 `src/error.rs`, `Cargo.toml`, `AGENTS.md`, `docs/wttr-compat.md`, `tests/serve_compat.rs`,
@@ -23,40 +23,40 @@ request on stderr.
 
 ## Deliverables
 
-- [ ] `Cargo.toml`: add `ctrlc = { version = "3.5", features = ["termination"] }` (MIT OR Apache-2.0);
+- ⬜ `Cargo.toml`: add `ctrlc = { version = "3.5", features = ["termination"] }` (MIT OR Apache-2.0);
       no other new dependency — the HTTP layer is hand-written on `std::net`.
-- [ ] `src/cli.rs` + `src/serve/mod.rs`: `cirrocast serve --bind <ADDR:PORT> [--allow-remote]
+- ⬜ `src/cli.rs` + `src/serve/mod.rs`: `cirrocast serve --bind <ADDR:PORT> [--allow-remote]
       [--token-env <VAR>]`; default bind `127.0.0.1:8642`; `serve` rejects a non-loopback `--bind`
       without `--allow-remote` and rejects `--allow-remote` without `--token-env` (`Error::Config`,
       exit 4) before it binds anything.
-- [ ] `src/serve/request.rs`: hand-rolled HTTP/1.1 request parser — `GET`/`HEAD` only (405 with
+- ⬜ `src/serve/request.rs`: hand-rolled HTTP/1.1 request parser — `GET`/`HEAD` only (405 with
       `Allow: GET, HEAD` otherwise), request line ≤ 2048 B, header block ≤ 8192 B, ≤ 64 header
       lines, no request bodies, `HTTP/1.0` accepted and always answered with `Connection: close`,
       malformed bytes → 400, oversize → 431.
-- [ ] `src/serve/response.rs`: response writer — status line, `Content-Type: text/plain;
+- ⬜ `src/serve/response.rs`: response writer — status line, `Content-Type: text/plain;
       charset=utf-8`, `Content-Length`, `Cache-Control`, `Connection`, `Allow`, and the
       informational `X-Cirrocast-Format` / `X-Cirrocast-Ignored` headers; `HEAD` sends headers with
       an empty body.
-- [ ] `src/serve/query.rs`: query string → internal invocation: `%`-decoding, `+` → space,
+- ⬜ `src/serve/query.rs`: query string → internal invocation: `%`-decoding, `+` → space,
       location path decoding, the letter-option cluster (`m u M 0 1 2 3 A d F n q Q T`), the long
       options `format= lang= period=`, unknown option → 400 listing the supported set.
-- [ ] `src/serve/token.rs`: bearer check (`Authorization: Bearer <t>` or `?token=<t>`), constant-time
+- ⬜ `src/serve/token.rs`: bearer check (`Authorization: Bearer <t>` or `?token=<t>`), constant-time
       byte comparison, `--token-env` read once at startup, empty/missing variable refused.
-- [ ] `src/serve/help.rs`: the `/?` and `/:help` page, generated from the same option table the
+- ⬜ `src/serve/help.rs`: the `/?` and `/:help` page, generated from the same option table the
       parser consults, so page and parser cannot drift.
-- [ ] `src/serve/mod.rs`: bounded worker-thread pool (default `min(available_parallelism, 4)`), accept
+- ⬜ `src/serve/mod.rs`: bounded worker-thread pool (default `min(available_parallelism, 4)`), accept
       backlog 32, excess connections answered 503 then closed, 5 s header-read timeout, 10 s
       whole-request timeout, `SIGINT`/`SIGTERM` → stop accepting, drain ≤ 5 s, exit 0; one access-log
       line per request on stderr (`-q` silences it), `-v` adds cache hit/miss and upstream time.
-- [ ] `tests/serve_compat.rs`: spawns the real server on port 0 in-process (ephemeral port read back
+- ⬜ `tests/serve_compat.rs`: spawns the real server on port 0 in-process (ephemeral port read back
       from `local_addr()`), requests it with `ureq`, and asserts byte-identity against the equivalent
       CLI render call for the frozen-clock/`StubTransport` fixture path.
-- [ ] `docs/wttr-compat.md`: the option table enumerated from wttr.in's own current documentation
+- ⬜ `docs/wttr-compat.md`: the option table enumerated from wttr.in's own current documentation
       (`wttr.in/:help` and its repository README) and re-authored in our own words, the mapping onto
       our flags, and the deliberate non-port list with per-item reasons.
-- [ ] `AGENTS.md`: amend the non-goal "no daemon or server mode" to "no background daemon; `serve` is
+- ⬜ `AGENTS.md`: amend the non-goal "no daemon or server mode" to "no background daemon; `serve` is
       a foreground, loopback-by-default compatibility service".
-- [ ] `REUSE.toml`: annotation for every new non-commentable file (the `tests/fixtures/serve/` HTTP
+- ⬜ `REUSE.toml`: annotation for every new non-commentable file (the `tests/fixtures/serve/` HTTP
       request/response transcripts).
 
 ## Design notes
@@ -147,16 +147,16 @@ non-loopback invocations exit 4 without opening a socket.
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] The smoke block above runs as written; the `diff` is empty and `curl -si` shows
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ The smoke block above runs as written; the `diff` is empty and `curl -si` shows
       `Content-Type: text/plain; charset=utf-8` and a `Cache-Control` whose `max-age` equals the
       remaining cache TTL.
-- [ ] `tests/serve_compat.rs` proves byte-identity for `?T`, `?m0T`, `?format=3`, `?lang=zh`,
+- ⬜ `tests/serve_compat.rs` proves byte-identity for `?T`, `?m0T`, `?format=3`, `?lang=zh`,
       `?n`, `?q`, `?Q` and rejects a remote bind without a token.
-- [ ] `kill -TERM` on the running service leaves exit code 0 and closes the listening socket within
+- ⬜ `kill -TERM` on the running service leaves exit code 0 and closes the listening socket within
       5 s.
-- [ ] `docs/wttr-compat.md` lists every served option, its mapping, and the non-port list with reasons.
-- [ ] No unsupported option is accepted silently: it is 400, or a no-op declared in
+- ⬜ `docs/wttr-compat.md` lists every served option, its mapping, and the non-port list with reasons.
+- ⬜ No unsupported option is accepted silently: it is 400, or a no-op declared in
       `X-Cirrocast-Ignored` and in the option table.
 
 ## Risks

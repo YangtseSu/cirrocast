@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 01 — project scaffold
 
-Status: done
+Status: ✅ done
 Depends on: —
 Touches: `Cargo.toml`, `rust-toolchain.toml`, `.gitignore`, `LICENSE`, `LICENSES/`, `REUSE.toml`,
 `README.md`, `AGENTS.md`, `src/{main,lib,cli,error,paths}.rs`, `src/provider/mod.rs`, `tests/cli.rs`,
@@ -21,26 +21,26 @@ to install the binary and get useful, non-placeholder answers (`--version`, `pro
 
 ## Deliverables
 
-- [x] `Cargo.toml`: package metadata (`cirrocast`, edition 2024, MSRV 1.85), `license = "GPL-3.0-or-later"`,
+- ✅ `Cargo.toml`: package metadata (`cirrocast`, edition 2024, MSRV 1.85), `license = "GPL-3.0-or-later"`,
       deps `clap` (derive/env/wrap_help), `etcetera`, `thiserror`; dev-deps `assert_cmd`, `predicates`,
       `tempfile`; `unsafe_code = "forbid"`, clippy `all = deny`, `pedantic = warn`.
-- [x] `rust-toolchain.toml` (stable + rustfmt + clippy), `.gitignore`, SPDX-tagged `LICENSE` (GPL-3.0-or-later
+- ✅ `rust-toolchain.toml` (stable + rustfmt + clippy), `.gitignore`, SPDX-tagged `LICENSE` (GPL-3.0-or-later
       full text) with `LICENSES/GPL-3.0-or-later.txt` as the REUSE-visible link, `REUSE.toml` for
       `Cargo.lock` and `tests/fixtures/**`.
-- [x] `src/lib.rs` + `src/main.rs`: library target for testability; `main` parses argv, dispatches, prints
+- ✅ `src/lib.rs` + `src/main.rs`: library target for testability; `main` parses argv, dispatches, prints
       `error: …` on stderr and returns the mapped exit code.
-- [x] `src/error.rs`: `Error` enum (`Usage`, `Network`, `Upstream`, `Config`, `LocationNotFound`,
+- ✅ `src/error.rs`: `Error` enum (`Usage`, `Network`, `Upstream`, `Config`, `LocationNotFound`,
       `MissingKey`, `Other` for the generic exit code), `Result` alias, `exit_code()` (1 generic / 2 usage /
       3 network+upstream / 4 config / 5 location / 6 missing key) with unit tests.
-- [x] `src/paths.rs`: `Paths` resolved through `etcetera` honouring `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`,
+- ✅ `src/paths.rs`: `Paths` resolved through `etcetera` honouring `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`,
       `XDG_DATA_HOME` with the documented fallbacks; no side effects.
-- [x] `src/provider/mod.rs`: `ProviderId` (8 backends), `LocationKinds`, `ProviderMeta`, `metadata()`,
+- ✅ `src/provider/mod.rs`: `ProviderId` (8 backends), `LocationKinds`, `ProviderMeta`, `metadata()`,
       `all()`, `FromStr` — data only, marked as declared-from-docs.
-- [x] `src/cli.rs`: `cirrocast config path`, `cirrocast provider list|info <ID>`; global `-v/--verbose`
+- ✅ `src/cli.rs`: `cirrocast config path`, `cirrocast provider list|info <ID>`; global `-v/--verbose`
       (count) and `-q/--quiet`; no weather flags yet.
-- [x] `tests/cli.rs`: version/help/exit-code/provider-table/XDG-override integration tests.
-- [x] `docs/plans/README.md` (contract + step index) and this file with progress markers.
-- [x] `AGENTS.md` (repo operating manual: rules, commands, plan workflow, recipes) and `README.md`
+- ✅ `tests/cli.rs`: version/help/exit-code/provider-table/XDG-override integration tests.
+- ✅ `docs/plans/README.md` (contract + step index) and this file with progress markers.
+- ✅ `AGENTS.md` (repo operating manual: rules, commands, plan workflow, recipes) and `README.md`
       (what/why, status, usage, backend matrix, licence).
 
 ## Design notes
@@ -86,12 +86,12 @@ XDG_CONFIG_HOME=/tmp/cc cargo run -q -- config path   # /tmp/cc/cirrocast
 
 ## Exit criteria
 
-- [x] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [x] `cirrocast provider list` prints all eight backends with key requirements, from the registry.
-- [x] `cirrocast config path` follows `XDG_CONFIG_HOME`.
-- [x] Exit codes observable: `provider info nope` → 2; `--help` → 0.
-- [x] Repository initialised with git, private GitHub remote configured, first commit pushed.
-- [x] No `unwrap`/`expect`/`panic!` outside tests; no placeholder output anywhere.
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ✅ `cirrocast provider list` prints all eight backends with key requirements, from the registry.
+- ✅ `cirrocast config path` follows `XDG_CONFIG_HOME`.
+- ✅ Exit codes observable: `provider info nope` → 2; `--help` → 0.
+- ✅ Repository initialised with git, private GitHub remote configured, first commit pushed.
+- ✅ No `unwrap`/`expect`/`panic!` outside tests; no placeholder output anywhere.
 
 ## Risks
 

@@ -13,13 +13,13 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 ## How these plans are used
 
 * One file per step: `NN-kebab-case-title.md`, ordered by execution.
-* A step is worked on alone, top to bottom. Every task checkbox in a step is one committable unit.
-* Progress is tracked **inside each step file**:
-  * a `Status:` header line — `not-started | in-progress | blocked | done`
-  * `- [ ]` / `- [x]` task checkboxes
+* A step is worked on alone, top to bottom. Every `- ⬜` item in a step is one committable unit.
+* Progress is tracked with emoji, **inside each step file**:
+  * a `Status:` header line — one of `⬜ not-started`, `🚧 in-progress`, `⛔ blocked`, `✅ done`
+  * `- ⬜` (open) / `- ✅` (done) markers on every task in `## Deliverables` and `## Exit criteria`
   * a `## Progress log` section, appended (never rewritten) with `YYYY-MM-DD — note`
-* When a step is finished, its `Status:` becomes `done` and the matching row in the table below is
-  updated in the same commit. Never mark a step done while any checkbox in it is open.
+* When a step is finished, its `Status:` becomes `✅ done` and the matching row in the table below is
+  updated in the same commit. Never mark a step done while any `- ⬜` item is still open.
 * A step file is a living document: if the design changes, the doc changes in the same commit as the
   code. Docs are not written once and abandoned.
 
@@ -37,30 +37,30 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 
 | # | Phase | Step | Status | Depends on |
 |---|-------|------|--------|------------|
-| 01 | A | [project-scaffold](01-project-scaffold.md) | done | — |
-| 02 | A | [config-and-state](02-config-and-state.md) | not-started | 01 |
-| 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | not-started | 01, 02 |
-| 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | not-started | 02, 03 |
-| 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | not-started | 02, 03, 04 |
-| 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | not-started | 03, 04, 05 |
-| 07 | B | [art-table-renderer](07-art-table-renderer.md) | not-started | 03, 06 |
-| 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | not-started | 06, 07 |
-| 09 | B | [localization](09-localization.md) | not-started | 03, 07 |
-| 10 | B | [additional-providers](10-additional-providers.md) | not-started | 05, 06, 08 |
-| 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | not-started | 05, 10 |
-| 12 | C | [quality-hardening](12-quality-hardening.md) | not-started | 08, 09, 10 |
-| 13 | C | [packaging-and-release](13-packaging-and-release.md) | not-started | 08, 12 |
-| 14 | C | [v1-acceptance](14-v1-acceptance.md) | not-started | all of A–C |
-| 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | not-started | 10, 12 |
-| 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | not-started | 03, 08 |
-| 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | not-started | 03, 08 |
-| 18 | D | [offline-city-database](18-offline-city-database.md) | not-started | 04, 05 |
-| 19 | D | [more-providers](19-more-providers.md) | not-started | 10, 15, 16 |
-| 20 | E | [wttr-compat-service](20-wttr-compat-service.md) | not-started | 08, 10, 14 |
-| 21 | E | [multi-location-and-templates](21-multi-location-and-templates.md) | not-started | 08, 14 |
-| 22 | E | [perf-and-resource-budget](22-perf-and-resource-budget.md) | not-started | 12, 21 |
-| 23 | E | [docs-and-guides](23-docs-and-guides.md) | not-started | 14, 21 |
-| 24 | E | [ecosystem-integration](24-ecosystem-integration.md) | not-started | 13, 20, 21 |
+| 01 | A | [project-scaffold](01-project-scaffold.md) | ✅ done | — |
+| 02 | A | [config-and-state](02-config-and-state.md) | ⬜ not-started | 01 |
+| 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | ⬜ not-started | 01, 02 |
+| 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | ⬜ not-started | 02, 03 |
+| 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ⬜ not-started | 02, 03, 04 |
+| 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ⬜ not-started | 03, 04, 05 |
+| 07 | B | [art-table-renderer](07-art-table-renderer.md) | ⬜ not-started | 03, 06 |
+| 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ⬜ not-started | 06, 07 |
+| 09 | B | [localization](09-localization.md) | ⬜ not-started | 03, 07 |
+| 10 | B | [additional-providers](10-additional-providers.md) | ⬜ not-started | 05, 06, 08 |
+| 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | ⬜ not-started | 05, 10 |
+| 12 | C | [quality-hardening](12-quality-hardening.md) | ⬜ not-started | 08, 09, 10 |
+| 13 | C | [packaging-and-release](13-packaging-and-release.md) | ⬜ not-started | 08, 12 |
+| 14 | C | [v1-acceptance](14-v1-acceptance.md) | ⬜ not-started | all of A–C |
+| 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | ⬜ not-started | 10, 12 |
+| 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ⬜ not-started | 03, 08 |
+| 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ⬜ not-started | 03, 08 |
+| 18 | D | [offline-city-database](18-offline-city-database.md) | ⬜ not-started | 04, 05 |
+| 19 | D | [more-providers](19-more-providers.md) | ⬜ not-started | 10, 15, 16 |
+| 20 | E | [wttr-compat-service](20-wttr-compat-service.md) | ⬜ not-started | 08, 10, 14 |
+| 21 | E | [multi-location-and-templates](21-multi-location-and-templates.md) | ⬜ not-started | 08, 14 |
+| 22 | E | [perf-and-resource-budget](22-perf-and-resource-budget.md) | ⬜ not-started | 12, 21 |
+| 23 | E | [docs-and-guides](23-docs-and-guides.md) | ⬜ not-started | 14, 21 |
+| 24 | E | [ecosystem-integration](24-ecosystem-integration.md) | ⬜ not-started | 13, 20, 21 |
 
 **v1.0.0 = "basically formed"** (steps 01–14) means, end to end and demonstrated in step 14: eight
 backends selectable (three keyless), BYOK keys never touching `config.toml`, city-name, coordinate
@@ -318,7 +318,7 @@ provider order) and the chosen location is echoed in the header, never silently 
 ```markdown
 # Step NN — Title
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 0X
 Touches: src/..., tests/..., docs/...
 
@@ -326,7 +326,7 @@ Touches: src/..., tests/..., docs/...
 One paragraph: the observable capability added by this step.
 
 ## Deliverables
-- [ ] concrete task, with file paths and the API/behaviour it introduces
+- ⬜ concrete task, with file paths and the API/behaviour it introduces
 
 ## Design notes
 Decisions, rejected alternatives, dependency justifications.
@@ -338,8 +338,8 @@ Explicitly deferred items and the step that will pick them up.
 Exact commands and the observable result that proves the step works (smoke run, not only tests).
 
 ## Exit criteria
-- [ ] `cargo fmt --check` / `cargo clippy -- -D warnings` / `cargo test` clean
-- [ ] step-specific observable outcome
+- ⬜ `cargo fmt --check` / `cargo clippy -- -D warnings` / `cargo test` clean
+- ⬜ step-specific observable outcome
 
 ## Risks
 Known unknowns and mitigations.

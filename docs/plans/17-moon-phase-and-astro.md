@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 17 — moon phase and astronomy
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 03, 08
 Touches: `src/astro/{mod,moon,sun,julian}.rs`, `src/render/art.rs`, `src/render/{art_table,plain,
 one_line,json}.rs`, `src/cli.rs`, `src/i18n.rs`, `locales/{en-US,zh-CN}/main.ftl`, `tests/astro.rs`,
@@ -22,11 +22,11 @@ and `%M` (phase name) tokens, in a `--moon` view for `art-table`/`plain`, and as
 
 ## Deliverables
 
-- [ ] `src/astro/julian.rs`: Julian Day from a civil date/time (Meeus, *Astronomical Algorithms*,
+- ⬜ `src/astro/julian.rs`: Julian Day from a civil date/time (Meeus, *Astronomical Algorithms*,
       ch. 7) and `jd -> DateTime<Utc>` conversion; ΔT applied as a single documented function
       (Espenak–Meeus polynomial fits, 1900–2150) so all solar/lunar math runs in TT and all output
       is UTC.
-- [ ] `src/astro/moon.rs`: geocentric ecliptic longitude and latitude of the Moon (Meeus ch. 47/48,
+- ⬜ `src/astro/moon.rs`: geocentric ecliptic longitude and latitude of the Moon (Meeus ch. 47/48,
       truncated ELP-2000/82 series — the same term set prototyped below), `synodic_phase(jd)`
       returning the synodic elongation `E ∈ [0,360)` (`0` = new, `90` = first quarter, `180` = full),
       `illuminated_fraction(jd) = (1 − cos E)/2`, `MoonPhase::{New, WaxingCrescent, FirstQuarter,
@@ -36,34 +36,34 @@ and `%M` (phase name) tokens, in a `--moon` view for `art-table`/`plain`, and as
       `moonrise_moonset(date, lat, lon, tz) -> (Option<DateTime<FixedOffset>>,
       Option<DateTime<FixedOffset>>)` using the standard h₀ = +0.125° (lunar parallax, refraction,
       semi-diameter) with Meeus' interpolation over three hour angles.
-- [ ] `src/astro/sun.rs`: apparent solar longitude and declination (Meeus ch. 25),
+- ⬜ `src/astro/sun.rs`: apparent solar longitude and declination (Meeus ch. 25),
       `sunrise_sunset(date, lat, lon, tz)` with h₀ = −0.833°, and `daylight_secs(...)`; returns
       `None` for a rise/set that does not occur on that day and sets `polar: Some(PolarDay)` /
       `polar: Some(PolarNight)` instead of clamping to 00:00.
-- [ ] `src/astro/mod.rs`: `Astro { moon: Moon { phase, illuminated_fraction, age_days, moonrise,
+- ⬜ `src/astro/mod.rs`: `Astro { moon: Moon { phase, illuminated_fraction, age_days, moonrise,
       moonset, next: Vec<(MoonPhase, DateTime<FixedOffset>)> }, sun: Option<Sun { sunrise, sunset,
       daylight_secs, polar: Option<Polar> }>, computed_at }`; a `sun {}` block is produced only when
       the report lacks provider sunrise/sunset (fallback), otherwise the provider values are used
       and `sun.source = "provider"` is recorded.
-- [ ] **No network in this module**: `src/astro/**` must not reference `crate::http`, `crate::cache`
+- ⬜ **No network in this module**: `src/astro/**` must not reference `crate::http`, `crate::cache`
       or `ureq`; enforced by the exit-criteria grep and by the module taking no `Env` parameter.
-- [ ] `src/render/art.rs`: an authored 8-entry moon art table keyed by `MoonPhase::art_key()`
+- ⬜ `src/render/art.rs`: an authored 8-entry moon art table keyed by `MoonPhase::art_key()`
       (`moon/new`, `moon/waxing-crescent`, …) built from `█ ▓ ▒ ░` and `◐ ◑`-class block glyphs, plus
       a 2-cell ASCII fallback used when `TERM=dumb`/`--format dumb`; re-authored here, never copied
       from wego or wttr.in.
-- [ ] `one-line`: `%m` expands to the moon art glyph, `%M` to the localised phase name; both are
+- ⬜ `one-line`: `%m` expands to the moon art glyph, `%M` to the localised phase name; both are
       empty-string safe and documented in the token table (`%A` = alerts, `%q` = AQI, `%m`/`%M` =
       moon, so no token is claimed twice across steps 15–17).
-- [ ] `--moon` view for `art-table` (a 4-line block under the table) and `plain` (a `moon:`/`sun:`
+- ⬜ `--moon` view for `art-table` (a 4-line block under the table) and `plain` (a `moon:`/`sun:`
       key block), `--format moon` for a standalone view; `json` gains
       `"astro": { "moon": {"phase","phase_key","illuminated_fraction","age_days","moonrise",
       "moonset","next":[{"phase","at"}]}, "sun": {"sunrise","sunset","daylight_secs","polar",
       "source"} }` (additive to `schema_version` 2, no bump).
-- [ ] `src/i18n.rs` + catalogs: phase names (`moon-phase-{new,waxing-crescent,first-quarter,
+- ⬜ `src/i18n.rs` + catalogs: phase names (`moon-phase-{new,waxing-crescent,first-quarter,
       waxing-gibbous,full,waning-gibbous,last-quarter,waning-crescent}`), `astro-moonrise`,
       `astro-moonset`, `astro-sunrise`, `astro-sunset`, `astro-daylight`, `astro-polar-day`,
       `astro-polar-night`, `astro-no-rise`, `astro-illumination`, `astro-age-days`.
-- [ ] Tests (`tests/astro.rs`, fixed instants, no clock access — `RenderContext::now` is injected):
+- ⬜ Tests (`tests/astro.rs`, fixed instants, no clock access — `RenderContext::now` is injected):
       the eight 2026 phase instants below (name **and** illuminated fraction), the two Meeus book
       instants below, a DST-transition day, polar day and polar night at Longyearbyen, and a leap
       day; plus a `no_network` test that runs the whole module with a poisoned `Env`-style stub
@@ -144,12 +144,12 @@ cargo run -q -- --moon -p met-no --lat 59.91 --lon 10.75 -v
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] The eight moon fixtures and the two Meeus book instants pass within ±0.5 pp / ±2 minutes.
-- [ ] `grep -rn 'ureq\|crate::http\|crate::cache' src/astro/` is empty (no network path exists).
-- [ ] Longyearbyen polar day/night and the New York DST day render without `NaN`, `inf`, `0` or an
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ The eight moon fixtures and the two Meeus book instants pass within ±0.5 pp / ±2 minutes.
+- ⬜ `grep -rn 'ureq\|crate::http\|crate::cache' src/astro/` is empty (no network path exists).
+- ⬜ Longyearbyen polar day/night and the New York DST day render without `NaN`, `inf`, `0` or an
   impossible clock time; the polar labels are localised in both catalogs.
-- [ ] `%m`/`%M` documented in the token table next to `%A`/`%q`, and `--moon` works from cache offline.
+- ⬜ `%m`/`%M` documented in the token table next to `%A`/`%q`, and `--moon` works from cache offline.
 
 ## Risks
 

@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 24 — ecosystem integration and packaging
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 13 (packaging and release), 20 (wttr-compatible service), 21 (multi-location and templates)
 Touches: `src/status.rs`, `src/cli.rs`, `contrib/statusbar/*`, `flake.nix`, `flake.lock`, `Cargo.toml`,
 `packaging/homebrew/cirrocast.rb`, `.github/workflows/{ci.yml,release.yml}`, `tests/status_contract.rs`,
@@ -23,77 +23,77 @@ the GPL-3.0-or-later text shipped in every package.
 
 ## Deliverables
 
-- [ ] `src/status.rs` + `src/cli.rs`: `cirrocast status [--format <TEMPLATE>] [--location <SPEC>]
+- ⬜ `src/status.rs` + `src/cli.rs`: `cirrocast status [--format <TEMPLATE>] [--location <SPEC>]
       [--max-age <SECS>] [--offline] [--placeholder <TEXT>] [--color never|always]`; `--template` is
       accepted as a synonym of `--format` here; the global `-f/--format <NAME>` enum does not apply to
       `status` (documented in `--help` and `docs/formats.md`).
-- [ ] `src/status.rs` output contract: exactly one line plus `\n` (a template newline becomes a space, the
+- ⬜ `src/status.rs` output contract: exactly one line plus `\n` (a template newline becomes a space, the
       line is trimmed); colour off unless `--color always`; default template `%c %t`; placeholder `n/a`,
       overridable by `--placeholder` or `[status] placeholder`; `--max-age` defaults to
       `[cache] weather_ttl_secs` (600) and serves a younger entry without revalidating while an older one
       takes the normal fetch path; `--offline` never opens a socket and serves a stale entry.
-- [ ] `src/status.rs` exit-code contract: `0` for success **and** for every transient or data failure
+- ⬜ `src/status.rs` exit-code contract: `0` for success **and** for every transient or data failure
       (`Error::Network`, `Upstream`, `LocationNotFound`, `MissingKey` — placeholder on stdout, one
       `error: …` line on stderr); `2` for usage (bad template, unknown flag); `4` for config
       (unreadable config, no location configured). "Never exits non-zero because the network was
       unavailable" is the promise status bars rely on.
-- [ ] `src/status.rs` privacy rule: `status` never performs the public-IP lookup; with no location
+- ⬜ `src/status.rs` privacy rule: `status` never performs the public-IP lookup; with no location
       argument, `[location] default` or `--location` must supply one, otherwise exit 4 telling the
       user to set it.
-- [ ] `contrib/statusbar/`: runnable examples, each with the SPDX header in its own comment syntax —
+- ⬜ `contrib/statusbar/`: runnable examples, each with the SPDX header in its own comment syntax —
       `waybar.jsonc` (custom module, `interval` 900), `polybar.ini` (`[module/weather]`), `i3blocks.conf`
       (`interval=900`), `tmux.conf` (`status-interval 900` + `#(…)`), `starship.toml`
       (`[custom.weather]`), and `bash-prompt.sh` / `zsh-prompt.zsh` (both cache the rendered line under
       `$XDG_RUNTIME_DIR/cirrocast/status` and only re-render when it is older than the interval).
-- [ ] `contrib/statusbar/verify.sh` + `tests/fixtures/cache/weather/open-meteo-39.90-116.40-3-<date>.json`:
+- ⬜ `contrib/statusbar/verify.sh` + `tests/fixtures/cache/weather/open-meteo-39.90-116.40-3-<date>.json`:
       builds a temp `XDG_CACHE_HOME` from the fixture, runs every example's command with `--offline`, and
       asserts exit 0 plus exactly one line each — no network, so it runs in CI.
-- [ ] `tests/status_contract.rs`: single-line guarantee with a template containing `\n`; colour default vs
+- ⬜ `tests/status_contract.rs`: single-line guarantee with a template containing `\n`; colour default vs
       `--color always`; placeholder + exit 0 under an injected upstream failure and an offline cache miss;
       `--max-age` freshness; exit 2 for an unknown token; exit 4 with no location configured.
-- [ ] `docs/ecosystem.md`: installation and usage per platform (Arch/AUR, Nix, Homebrew, `.deb`, `.rpm`,
+- ⬜ `docs/ecosystem.md`: installation and usage per platform (Arch/AUR, Nix, Homebrew, `.deb`, `.rpm`,
       musl tarball, macOS/Windows archives), the status-bar contract, the contrib snippets explained,
       and the **Output contracts** section (JSON schema + version policy, `one-line` token stability,
       `plain` field-order stability, breaking-change policy).
-- [ ] Output contracts enforced: `tests/plain_order.rs` snapshot of the field order; `docs/formats.md`
+- ⬜ Output contracts enforced: `tests/plain_order.rs` snapshot of the field order; `docs/formats.md`
       freezing token meanings; `docs/schema/json-v2.json` current with `json-v1.json` retained
       read-only (step 23); `CHANGELOG.md` `### Breaking` template. A breaking output change requires a
       minor bump, one release of dual emission where feasible, and an entry naming the old and new
       shape.
-- [ ] `flake.nix`: `rustPlatform.buildRustPackage` with `cargoLock.lockFile = ./Cargo.lock`,
+- ⬜ `flake.nix`: `rustPlatform.buildRustPackage` with `cargoLock.lockFile = ./Cargo.lock`,
       `nativeBuildInputs = [ installShellFiles ]`, installing binary, `man/cirrocast.1`, the three
       completion files and `LICENSE` into `$out/share/licenses/cirrocast/`;
       `meta = { license = lib.licenses.gpl3Plus; mainProgram = "cirrocast"; }`; `devShells.default`
       with rustc/cargo/rustfmt/clippy/reuse/cargo-deny/hyperfine/cargo-bloat/cargo-deb/
       cargo-generate-rpm/lychee; committed `flake.lock` (REUSE annotation — JSON holds no header).
-- [ ] `Cargo.toml`: `[package.metadata.deb]` and `[package.metadata.generate-rpm]` asset lists (binary,
+- ⬜ `Cargo.toml`: `[package.metadata.deb]` and `[package.metadata.generate-rpm]` asset lists (binary,
       man page, bash/zsh/fish completions, licence text), `section = "utils"`, `depends = "$auto"`, no
       library dependency beyond glibc (rustls, not OpenSSL).
-- [ ] `packaging/homebrew/cirrocast.rb`: formula for the `yangtse/homebrew-tap` tap —
+- ⬜ `packaging/homebrew/cirrocast.rb`: formula for the `yangtse/homebrew-tap` tap —
       `license "GPL-3.0-or-later"`, `bin.install "cirrocast"`, `man1.install "man/cirrocast.1"`,
       `generate_completions_from_executable(bin/"cirrocast", "completion", base_name: "cirrocast")`,
       `pkgshare.install "LICENSE"`, `sha256` per release asset, `brew install yangtse/tap/cirrocast`.
-- [ ] Static musl build: `x86_64-unknown-linux-musl` in CI (`musl-tools`), archived with man page,
+- ⬜ Static musl build: `x86_64-unknown-linux-musl` in CI (`musl-tools`), archived with man page,
       completions and `LICENSE`, verified by `file` ("statically linked"), `ldd` ("not a dynamic
       executable") and an offline fixture-backed run in a scratch directory; its ≤ 6 MB budget (separate
       from step 22's 5 MB glibc budget) is recorded in `docs/performance.md`.
-- [ ] Release-archive verification for macOS (`aarch64-apple-darwin`, `x86_64-apple-darwin`) and Windows
+- ⬜ Release-archive verification for macOS (`aarch64-apple-darwin`, `x86_64-apple-darwin`) and Windows
       (`x86_64-pc-windows-msvc`): a `release.yml` step unpacks the archive, asserts `LICENSE` is present,
       runs `--version`, `--help` and an offline fixture-cache run. The macOS archives are unsigned and
       un-notarised and the Windows binary unsigned, with the user-visible consequence (Gatekeeper /
       SmartScreen prompt) documented.
-- [ ] `.github/workflows/ci.yml`: job `ecosystem` (`cachix/install-nix-action@v31`, `nix build -L
+- ⬜ `.github/workflows/ci.yml`: job `ecosystem` (`cachix/install-nix-action@v31`, `nix build -L
       .#default`, `./result/bin/cirrocast --version`); job `packages` (`cargo install cargo-deb
       cargo-generate-rpm --locked`, `dpkg-deb --info/--contents`, `dpkg-deb -x` into a temp root then
       run `--version`, `rpm -qip`/`rpm -qpl`, extraction via `rpm2cpio | cpio -idm` then run
       `--version`); job `statusbar` (`contrib/statusbar/verify.sh`).
-- [ ] Declined, with reasons in `docs/ecosystem.md`: **container images** (the only long-running mode is
+- ⬜ Declined, with reasons in `docs/ecosystem.md`: **container images** (the only long-running mode is
       the loopback-by-default `serve`, whose security model assumes a host; an image invites
       `--allow-remote` exposure and adds a pipeline plus GPL source-offer surface), **Snap** (confinement
       blocks `$XDG_CACHE_HOME` writes and the `serve` bind; Ubuntu-only), **Flatpak** (desktop sandbox,
       portal restrictions, no desktop integration to gain), **editor plugins** (third parties shell out to
       the CLI), **MSI/Chocolatey/Scoop** (deferred: the Windows archive plus a `PATH` step suffices).
-- [ ] `README.md` + `docs/formats.md` + `docs/providers.md`: pointer to `docs/ecosystem.md`, the status
+- ⬜ `README.md` + `docs/formats.md` + `docs/providers.md`: pointer to `docs/ecosystem.md`, the status
       snippet, and the output-contract summary linked from the formats doc.
 
 ## Design notes
@@ -144,19 +144,19 @@ as statically linked.
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] `status` contract covered by `tests/status_contract.rs`: single line, colour default, placeholder with
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ `status` contract covered by `tests/status_contract.rs`: single line, colour default, placeholder with
       exit 0, `--max-age` freshness, exit 2 and exit 4 cases.
-- [ ] Six status-bar examples plus two prompt snippets exist, run as written, and pass
+- ⬜ Six status-bar examples plus two prompt snippets exist, run as written, and pass
       `contrib/statusbar/verify.sh` against the committed fixture cache.
-- [ ] `nix build -L .#default` succeeds from a clean checkout with the committed `flake.lock`; CI `ecosystem` green.
-- [ ] `cargo deb`/`cargo generate-rpm` packages contain binary, man page, completions and the licence text;
+- ⬜ `nix build -L .#default` succeeds from a clean checkout with the committed `flake.lock`; CI `ecosystem` green.
+- ⬜ `cargo deb`/`cargo generate-rpm` packages contain binary, man page, completions and the licence text;
       the CI `packages` job extracts and runs both.
-- [ ] The musl build is static per `file`/`ldd`, runs offline from the fixture cache, and its size is
+- ⬜ The musl build is static per `file`/`ldd`, runs offline from the fixture cache, and its size is
       recorded against the 6 MB budget.
-- [ ] macOS and Windows archives are unpacked and exercised by `release.yml`; a missing `LICENSE` or a
+- ⬜ macOS and Windows archives are unpacked and exercised by `release.yml`; a missing `LICENSE` or a
       failed `--version` fails the release.
-- [ ] `docs/ecosystem.md` documents every install path, the licence location per package, the output contracts,
+- ⬜ `docs/ecosystem.md` documents every install path, the licence location per package, the output contracts,
       the breaking-change policy and the declined options.
 
 ## Risks

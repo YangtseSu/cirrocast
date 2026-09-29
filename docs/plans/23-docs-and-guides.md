@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 23 — documentation set and repo hygiene
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 14 (v1 acceptance), 21 (multi-location and templates)
 Touches: `docs/{getting-started,configuration,providers,formats,location,i18n,troubleshooting,
 architecture}.md`, `docs/reference/{help-long.txt,flags.txt}`, `docs/schema/{json-v1.json,
@@ -25,70 +25,70 @@ issue templates, security policy) and a link checker keeps them honest.
 
 ## Deliverables
 
-- [ ] `docs/getting-started.md`: install (packages from step 24), first run, `--help` tour, config
+- ⬜ `docs/getting-started.md`: install (packages from step 24), first run, `--help` tour, config
       init, the three keyless backends, setting a key for one keyed backend, offline mode.
-- [ ] `docs/configuration.md`: every config key with type, default, example and effect; the two new
+- ⬜ `docs/configuration.md`: every config key with type, default, example and effect; the two new
       tables (`[locations]`, `[templates]`); the precedence table (CLI flag > env var > project
       config? — no: `CIRROCAST_*` env > `$XDG_CONFIG_HOME` user config > `XDG_CONFIG_DIRS` system
       config > built-in default, with keys resolved separately per the key store rules).
-- [ ] `docs/providers.md`: per provider — auth (env var name, key store, keyless), documented rate
+- ⬜ `docs/providers.md`: per provider — auth (env var name, key store, keyless), documented rate
       limits and what we do on 429/5xx, coverage and `max_days`, attribution requirement, accuracy
       caveats, and the WMO-mapping note.
-- [ ] `docs/formats.md`: every format (`art-table`, `one-line`, `full`, `minimal`, `plain`, `json`,
+- ⬜ `docs/formats.md`: every format (`art-table`, `one-line`, `full`, `minimal`, `plain`, `json`,
       `dumb`) with a real captured example block, the full `%` token table (identical to
       `template::TOKENS`), width/precision syntax, escape rules, and the unknown-token policy per
       context.
-- [ ] `docs/location.md`: fuzzy vs `:exact` vs `~osm` vs `@lat,lon` vs alias vs `--ip` vs `--station`
+- ⬜ `docs/location.md`: fuzzy vs `:exact` vs `~osm` vs `@lat,lon` vs alias vs `--ip` vs `--station`
       syntax, and the deterministic ranking rules (population, then exact-name, then provider order)
       with a worked ambiguous example.
-- [ ] `docs/i18n.md`: how to add a language (copy `locales/en-US/main.ftl`, translate every key, run
+- ⬜ `docs/i18n.md`: how to add a language (copy `locales/en-US/main.ftl`, translate every key, run
       `cargo test i18n`), what the completeness test covers (every WMO condition key), `lang = "auto"`
       negotiation, and the rule that no translated string may be constructed by concatenation.
-- [ ] `docs/troubleshooting.md`: network/TLS/proxy failures, missing or unreadable keys (including the
+- ⬜ `docs/troubleshooting.md`: network/TLS/proxy failures, missing or unreadable keys (including the
       `0600` refusal and `key list` masking), cache corruption and how to clear it, provider rate
       limits, wrong city, absent alerts, offline mode, and how to produce a bug report
       (`-vv` output with secrets redacted).
-- [ ] `docs/architecture.md`: module map, request data flow as a mermaid diagram (argv → cli → geo →
+- ⬜ `docs/architecture.md`: module map, request data flow as a mermaid diagram (argv → cli → geo →
       provider → cache → model → render → stdout), the `serve` thread model, on-disk state, and the
       invariants (metric-SI storage, single conversion point, cache unit-independence).
-- [ ] `docs/wttr-compat.md` and `docs/performance.md` reviewed against the binary (they are authored in
+- ⬜ `docs/wttr-compat.md` and `docs/performance.md` reviewed against the binary (they are authored in
       steps 20 and 22) and linked from `README.md` and the man page.
-- [ ] Man page: `man/cirrocast.1` generated from the clap definitions (step 08), reviewed line by line
+- ⬜ Man page: `man/cirrocast.1` generated from the clap definitions (step 08), reviewed line by line
       against `--help`; `man --warn --local-file man/cirrocast.1 > /dev/null` is silent; the page gains
       EXIT STATUS (0–6), ENVIRONMENT (`CIRROCAST_*`, `NO_COLOR`, `CLICOLOR_FORCE`, `XDG_*`,
       `HTTPS_PROXY`) and SEE ALSO (`cirrocast(1)`, the docs directory).
-- [ ] `docs/reference/help-long.txt` + `tests/help_snapshot.rs`: the long `--help` output is the
+- ⬜ `docs/reference/help-long.txt` + `tests/help_snapshot.rs`: the long `--help` output is the
       canonical flag reference, compared byte-for-byte with the snapshot and regenerated only by
       `cargo test -- --ignored regenerate_help` when a flag change is intended.
-- [ ] `docs/reference/flags.txt` (one long flag per line, sorted) + `tests/docs_flags.rs`: set
+- ⬜ `docs/reference/flags.txt` (one long flag per line, sorted) + `tests/docs_flags.rs`: set
       equality between the file and the flags parsed out of `--help`, plus "every `` `--flag` `` token
       that appears in `docs/**/*.md` and `README.md` is in `--help`", and a duplicate/sort check.
-- [ ] `docs/schema/json-v1.json` (frozen: the single-location object with `"schema_version": 1` that
+- ⬜ `docs/schema/json-v1.json` (frozen: the single-location object with `"schema_version": 1` that
       v1.0.0 printed) and `docs/schema/json-v2.json` (current: `oneOf` a report object and an array of
       at least two report objects, `"schema_version": 2`), both Draft 2020-12 with `$defs` shared by
       `$ref`.
-- [ ] `tests/json_schema.rs`: dev-dependency `jsonschema = { version = "0.58", default-features =
+- ⬜ `tests/json_schema.rs`: dev-dependency `jsonschema = { version = "0.58", default-features =
       false }`; validates (a) the committed v1 fixture `tests/fixtures/json/v1-detroit.json` against
       `json-v1.json` and (b) live, fixture-backed output for one, two and three locations against
       `json-v2.json`, including a failed-slot error object.
-- [ ] `CONTRIBUTING.md`: build/test commands, the plan-driven workflow pointer, add-a-provider and
+- ⬜ `CONTRIBUTING.md`: build/test commands, the plan-driven workflow pointer, add-a-provider and
       add-a-language recipes (mirroring `AGENTS.md`), the REUSE requirement with the exact header
       lines, Conventional Commits rules, and the review expectations (snapshots reviewed by eye,
       no network in tests).
-- [ ] `.github/ISSUE_TEMPLATE/{bug,feature,provider-request}.yml` + `config.yml`: GitHub issue forms
+- ⬜ `.github/ISSUE_TEMPLATE/{bug,feature,provider-request}.yml` + `config.yml`: GitHub issue forms
       asking for version, platform, provider, config (redacted), and `-vv` output for bugs; the
       provider-request form asks for auth model, coverage, licence and attribution so a new backend
       can be judged from the issue alone.
-- [ ] `SECURITY.md`: the no-telemetry promise, key handling (env/`keys.toml` 0600/keyring, never
+- ⬜ `SECURITY.md`: the no-telemetry promise, key handling (env/`keys.toml` 0600/keyring, never
       logged), report of a vulnerability by private advisory to the maintainer address, scope
       (binary, packaging, the `serve` surface), and "no bug bounty".
-- [ ] `README.md` refresh: what/why, one real ASCII screenshot per format from
+- ⬜ `README.md` refresh: what/why, one real ASCII screenshot per format from
       `docs/screenshots/*.txt` (captured from real runs, `script -q -c 'cirrocast Beijing' /dev/null`),
       the provider matrix, install paths for step 24, links to every doc, licence.
-- [ ] `.github/workflows/ci.yml` + `lychee.toml`: `docs` job running the snapshot test, the flag
+- ⬜ `.github/workflows/ci.yml` + `lychee.toml`: `docs` job running the snapshot test, the flag
       reconciliation test, the schema test, `man --warn`, and `lycheeverse/lychee-action@v2` with
       `--cache --max-cache-age 1d` over `*.md` plus a checked-in ignore list for known-hostile hosts.
-- [ ] `REUSE.toml`: annotations for `docs/reference/*.txt`, `docs/screenshots/*.txt`,
+- ⬜ `REUSE.toml`: annotations for `docs/reference/*.txt`, `docs/screenshots/*.txt`,
       `docs/schema/*.json`, `tests/fixtures/json/*.json`, `perf/baseline.json`, `lychee.toml` if it
       cannot carry a comment.
 
@@ -148,18 +148,18 @@ link check reports 0 broken links.
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] All ten `docs/*.md` files exist, are linked from `README.md`, and contain no placeholder text.
-- [ ] `tests/docs_flags.rs` fails when a flag is added/removed without touching `docs/reference/flags.txt`
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ All ten `docs/*.md` files exist, are linked from `README.md`, and contain no placeholder text.
+- ⬜ `tests/docs_flags.rs` fails when a flag is added/removed without touching `docs/reference/flags.txt`
       (proven once by hand, reverted) and when a doc mentions a flag the binary does not have.
-- [ ] Every documented config key, format and token exists in the binary; every existing one is
+- ⬜ Every documented config key, format and token exists in the binary; every existing one is
       documented (checked by the flags test for flags and by `tests/templates.rs` for tokens).
-- [ ] `docs/schema/json-v1.json` and `json-v2.json` validate the committed and the live outputs
+- ⬜ `docs/schema/json-v1.json` and `json-v2.json` validate the committed and the live outputs
       respectively; the schema test parses the CLI output, not a hand-written sample.
-- [ ] Man page reviewed line by line, `man --warn` silent, EXIT STATUS/ENVIRONMENT/SEE ALSO present.
-- [ ] `CONTRIBUTING.md`, `SECURITY.md`, three issue forms and the CI `docs` job committed; link check
+- ⬜ Man page reviewed line by line, `man --warn` silent, EXIT STATUS/ENVIRONMENT/SEE ALSO present.
+- ⬜ `CONTRIBUTING.md`, `SECURITY.md`, three issue forms and the CI `docs` job committed; link check
       green; `README.md` shows real captured ASCII screenshots and the provider matrix.
-- [ ] `reuse lint` covers every new artifact (`.txt`, `.json`, `.yml`), via headers where the format
+- ⬜ `reuse lint` covers every new artifact (`.txt`, `.json`, `.yml`), via headers where the format
       supports comments and `REUSE.toml` annotations where it does not.
 
 ## Risks

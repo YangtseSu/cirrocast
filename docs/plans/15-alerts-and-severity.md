@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 15 — alerts and severity
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 10, 12
 Touches: `src/alerts/{mod,nws,meteoalarm,qweather}.rs`, `src/provider/mod.rs`, `src/cli.rs`,
 `src/config/mod.rs`, `src/cache.rs`, `src/render/{mod,art_table,one_line,plain,json,color}.rs`,
@@ -23,68 +23,68 @@ never printed, duplicates coming from two sources are collapsed, and a provider 
 
 ## Deliverables
 
-- [ ] `src/alerts/mod.rs`: `Alert { id, source, event, severity: Severity, urgency: Urgency,
+- ⬜ `src/alerts/mod.rs`: `Alert { id, source, event, severity: Severity, urgency: Urgency,
       certainty: Certainty, onset: Option<DateTime<FixedOffset>>, expires: Option<..>, areas:
       Vec<String>, headline, description: Option<String>, instruction: Option<String>, sender:
       Option<String> }`; enums with CAP v1.2 value sets — `Severity::{Unknown,Minor,Moderate,Severe,
       Extreme}`, `Urgency::{Unknown,Past,Future,Expected,Immediate}`,
       `Certainty::{Unknown,Unobserved,Possible,Unlikely,Likely,Observed}`; `Ord` on `Severity` for
       ordering; `AlertSource::{Nws,MeteoAlarm,QWeather,VisualCrossing}`.
-- [ ] `src/alerts/mod.rs`: CAP v1.2 **subset** actually parsed, listed here so it cannot drift:
+- ⬜ `src/alerts/mod.rs`: CAP v1.2 **subset** actually parsed, listed here so it cannot drift:
       alert level `identifier` (`id`), `sender`, `sent`, `status`, `msgType`, `scope`, `references`;
       info level `language`, `category`, `event`, `responseType`, `urgency`, `severity`, `certainty`,
       `effective`, `onset`, `expires`, `senderName`, `headline`, `description`, `instruction`, `web`,
       `contact`, `parameter`, `eventCode`; area level `areaDesc`, `polygon`, `circle`, `geocode`,
       `altitude`, `ceiling`. Multi-`info` alerts: pick the `language` matching the requested locale,
       else the first; areas from every `info` block, de-duplicated.
-- [ ] `src/alerts/nws.rs`: `https://api.weather.gov/alerts/active?point=<lat>,<lon>` (keyless, US
+- ⬜ `src/alerts/nws.rs`: `https://api.weather.gov/alerts/active?point=<lat>,<lon>` (keyless, US
       only, `Accept: application/geo+json`), maps `features[].properties` (`id`, `event`, `severity`,
       `urgency`, `certainty`, `onset`, `expires`, `ends`, `areaDesc`, `headline`, `description`,
       `instruction`, `senderName`, `status`, `messageType`); mandatory descriptive `User-Agent`
       `cirrocast/<version> (+https://github.com/yangtse/cirrocast; yangtsesu@gmail.com)`.
-- [ ] `src/alerts/meteoalarm.rs`: `https://api.meteoalarm.org/edr/v1/collections/warnings/locations/
+- ⬜ `src/alerts/meteoalarm.rs`: `https://api.meteoalarm.org/edr/v1/collections/warnings/locations/
       {COUNTRY}?datetime=<sent-interval>&active=<active-interval>&language=en-GB`, `Authorization:
       Bearer $CIRROCAST_METEOALARM_KEY` (optional BYOK; missing key ⇒ this source is skipped with a
       `--verbose` note, never an error). Country = ISO 3166-1 alpha-2 from the resolved location
       (Open-Meteo geocoding `country_code`); features are bbox-only, so the point is tested against
       the feature polygon (`properties.alertId`, `countryCode`, `hubLink` → CAP XML/JSON payload).
-- [ ] `src/alerts/qweather.rs`: `https://devapi.qweather.com/weatheralert/v7/alert/now?
+- ⬜ `src/alerts/qweather.rs`: `https://devapi.qweather.com/weatheralert/v7/alert/now?
       location=<lon>,<lat>&key=<KEY>` on the configured `[providers.qweather] host`, reusing the
       existing `CIRROCAST_QWEATHER_KEY`; maps `warning[].{id,sender,pubTime,title,startTime,endTime,
       status,severity,urgency,certainty,typeName,text,related,color}` (`color.code` → severity when
       `severity` is absent, `typeName` → `event`).
-- [ ] `src/provider/mod.rs`: add `alerts: bool` to `ProviderMeta` and to `Capabilities`; rows:
+- ⬜ `src/provider/mod.rs`: add `alerts: bool` to `ProviderMeta` and to `Capabilities`; rows:
       `nws`-backed sources are *not* providers — `open-meteo` `false`, `smhi` `false`, `metar`
       `false`, `qweather` `true`, others `false` (see Out of scope), and a new
       `ProviderMeta.alert_sources: &'static [AlertSource]` so `provider info` can print
       "alerts: NWS, MeteoAlarm" for any location on the chain.
-- [ ] `src/cli.rs`: `--alerts` (auto-on when the selected chain offers alerts **and** config
+- ⬜ `src/cli.rs`: `--alerts` (auto-on when the selected chain offers alerts **and** config
       `[alerts] enabled = true`), `--no-alerts`, `--severity <minor|moderate|severe|extreme>` filter,
       `--format alerts`; precedence documented in `--help`.
-- [ ] `src/config/mod.rs`: `[alerts] enabled = true`, `severity_threshold = "minor"`,
+- ⬜ `src/config/mod.rs`: `[alerts] enabled = true`, `severity_threshold = "minor"`,
       `cache_ttl_secs = 300`; absent keys keep these defaults, so no `schema_version` bump of the
       config file is needed (documented in `config show`).
-- [ ] `src/cache.rs`: `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json`, TTL 300 s, honouring
+- ⬜ `src/cache.rs`: `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json`, TTL 300 s, honouring
       `--no-cache` / `--refresh` / `--offline` (offline replays the last cached set, expired or not,
       with a `--verbose` staleness note).
-- [ ] `src/render/`: severity-coloured banner above `art-table` (one line per alert, strongest
+- ⬜ `src/render/`: severity-coloured banner above `art-table` (one line per alert, strongest
       first: `⚠ Tornado Warning — Extreme · until 18:30 CDT · Take shelter now`), full listing for
       `--format alerts`, `plain` degrades the banner to a prefix-less line, `json` gains
       `"alerts": [{id, source, event, severity, urgency, certainty, onset, expires, areas,
       headline, description, instruction, sender}]` and `schema_version` 2; `one-line` gains `%A`
       (strongest alert's event, empty when none).
-- [ ] Severity ordering and collapsing: sort `Extreme > Severe > Moderate > Minor > Unknown`;
+- ⬜ Severity ordering and collapsing: sort `Extreme > Severe > Moderate > Minor > Unknown`;
       dedup by `id`, then by `(event, onset, areas)` across sources; drop everything whose
       `coalesce(ends, expires) <= ctx.now`; cap the banner at 3 lines with `… N more`.
-- [ ] `src/i18n.rs` + `locales/{en-US,zh-CN}/main.ftl`: `alert-severity-{unknown,minor,moderate,
+- ⬜ `src/i18n.rs` + `locales/{en-US,zh-CN}/main.ftl`: `alert-severity-{unknown,minor,moderate,
       severe,extreme}`, `alert-urgency-*`, `alert-certainty-*`, `alert-banner-line`,
       `alert-more-count`, `alert-none`, `alert-source-{nws,meteoalarm,qweather}`.
-- [ ] Tests (`tests/alerts.rs` + fixtures): US tornado warning (NWS GeoJSON), EU heat warning
+- ⬜ Tests (`tests/alerts.rs` + fixtures): US tornado warning (NWS GeoJSON), EU heat warning
       (MeteoAlarm CAP XML), CN rainstorm warning (QWeather JSON); dedup of the same NWS id seen
       twice and of an `(event, onset)` collision across NWS/MeteoAlarm; severity ordering;
       expiry filtering against a frozen `RenderContext::now`; empty result; malformed CAP
       (truncated XML, `info` without `event`); `%A` empty when there are no alerts.
-- [ ] Docs: `docs/plans/README.md` (JSON `schema_version` 2 note, `alerts` capability meaning,
+- ⬜ Docs: `docs/plans/README.md` (JSON `schema_version` 2 note, `alerts` capability meaning,
       CAP-subset pointer), `CHANGELOG.md`, `provider info` row text, `REUSE.toml` annotation for
       the recorded fixtures (the fixtures stay GPL-3.0-or-later — they are hand-trimmed
       public-domain/CC0-derivable CAP payloads, see `tests/fixtures/alerts/README.md`).
@@ -151,15 +151,15 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] All fixtures are recorded files; no test performs a network call (`tests/alerts.rs` passes
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ All fixtures are recorded files; no test performs a network call (`tests/alerts.rs` passes
       with the loopback blocked).
-- [ ] Banner, `--format alerts`, `%A` and `json.alerts` show the same alert set for the same
+- ⬜ Banner, `--format alerts`, `%A` and `json.alerts` show the same alert set for the same
       location and cache entry.
-- [ ] An alert whose `coalesce(ends, expires)` is in the past never appears in any format.
-- [ ] `--alerts` with a chain that offers no alerts exits 2 with the exact message
+- ⬜ An alert whose `coalesce(ends, expires)` is in the past never appears in any format.
+- ⬜ `--alerts` with a chain that offers no alerts exits 2 with the exact message
       `error: none of the selected providers offers alerts`.
-- [ ] `provider info qweather` prints its alert source; `provider info smhi` prints `alerts: none`.
+- ⬜ `provider info qweather` prints its alert source; `provider info smhi` prints `alerts: none`.
 
 ## Risks
 

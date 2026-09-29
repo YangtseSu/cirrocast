@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 21 — multi-location runs, templates and aliases
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 08 (CLI surface and formats), 14 (v1 acceptance)
 Touches: `src/cli.rs`, `src/config/mod.rs`, `src/geo/mod.rs`, `src/template.rs`, `src/parallel.rs`,
 `src/render/{one_line,json,art_table,plain}.rs`, `src/error.rs`, `src/lib.rs`,
@@ -24,52 +24,52 @@ step 20, and `[locations]` aliases make `cirrocast @home` work.
 
 ## Deliverables
 
-- [ ] `src/cli.rs`: positional `[LOCATION]...` (was `[LOCATION]`); `--lat/--lon`, `--ip` and
+- ⬜ `src/cli.rs`: positional `[LOCATION]...` (was `[LOCATION]`); `--lat/--lon`, `--ip` and
       `--station` refuse to combine with more than one positional (`Error::Usage`, exit 2);
       `--format` gains `full` and `minimal` (one-line presets); new `--template <STRING>` and
       `--template-file <PATH>` (`-` reads stdin), both refused together with `--format json|plain|
       art-table|dumb` and with each other.
-- [ ] `src/parallel.rs`: `par_map_ordered<T, U>(items: &[T], workers: usize, f: impl Fn(usize, &T)
+- ⬜ `src/parallel.rs`: `par_map_ordered<T, U>(items: &[T], workers: usize, f: impl Fn(usize, &T)
       -> Result<U> + Sync) -> Vec<Result<U>>` built on `std::thread::scope`, an `AtomicUsize` work
       counter and slot-indexed result writes; `workers = min(len, min(4, available_parallelism()))`.
       No channel-based unordered collection: the output order is the input order by construction.
-- [ ] Multi-location reporting in `src/lib.rs`: per-location `Result<Report>`, a failed slot renders
+- ⬜ Multi-location reporting in `src/lib.rs`: per-location `Result<Report>`, a failed slot renders
       the placeholder line `error: <query>: <message>` on stdout (one line, no colour, occupying the
       slot) while the full `error: …` line goes to stderr; the process exit code is the numerically
       largest `Error::exit_code()` among the failures (documented rule, tested with 3/5 and 5/6 pairs).
-- [ ] `src/render/json.rs`: above one location the top level is an array of report objects, each with
+- ⬜ `src/render/json.rs`: above one location the top level is an array of report objects, each with
       `"schema_version": 2`; the single-location document stays a plain object with
       `"schema_version": 2`; a failed slot becomes
       `{"schema_version": 2, "query": "<as typed>", "error": {"code": <exit code>, "message": "…"}}`.
       `docs/schema/json-v2.json` (step 23) admits both shapes.
-- [ ] `src/render/art_table.rs`: combined summary layout for 2–4 locations — one header line per
+- ⬜ `src/render/art_table.rs`: combined summary layout for 2–4 locations — one header line per
       location, then that location's current condition plus today's high/low in a compact grid, one
       blank line between blocks, never wider than the resolved width; 5+ locations fall back to the
       per-location full tables and log `note: art-table summary layout is limited to 4 locations` to
       stderr once (silenced by `-q`).
-- [ ] `src/template.rs`: token table shared by `one-line`, the `full`/`minimal` presets, the
+- ⬜ `src/template.rs`: token table shared by `one-line`, the `full`/`minimal` presets, the
       wttr.in compat surface and `status` (step 24): `%c %C %x %t %f %H %L %w %h %p %P %e %u %m %M %v
       %l %d %D %T %Z %z %S %s %A %q`, with `TOKENS: &[TokenSpec]` exported so tests and the compat
       help page enumerate the same list.
-- [ ] `src/template.rs`: width specifiers `%[-][0][<width>][.<prec>]X` (right-aligned unless `-`,
+- ⬜ `src/template.rs`: width specifiers `%[-][0][<width>][.<prec>]X` (right-aligned unless `-`,
       zero-pad for numeric tokens, precision truncates text from the right and rounds numbers),
       escapes `%%` → literal `%`, `%{…}` → the braced content as a token when it is exactly one known
       letter and verbatim otherwise, trailing lone `%` literal.
-- [ ] `src/template.rs` + `src/serve/query.rs` (step 20): unknown-token policy — `Error::Usage`
+- ⬜ `src/template.rs` + `src/serve/query.rs` (step 20): unknown-token policy — `Error::Usage`
       (exit 2) for `--template`, `--template-file` and `[templates]` presets; literal passthrough for
       a wttr.in compat request. The asymmetry is deliberate and stated in `docs/wttr-compat.md`.
-- [ ] `src/config/mod.rs`: `[locations]` (`home = "@39.9,116.4"`) and `[templates]`
+- ⬜ `src/config/mod.rs`: `[locations]` (`home = "@39.9,116.4"`) and `[templates]`
       (`compact = "%c%t"`) tables; `schema_version` 1 → 2 with a migration arm that stamps the new
       version (absent tables mean defaults) and a migration test from a v1 file.
-- [ ] `src/geo/mod.rs`: `@NAME` resolution order — parse as coordinates when the text after `@` has
+- ⬜ `src/geo/mod.rs`: `@NAME` resolution order — parse as coordinates when the text after `@` has
       exactly one comma and both sides are `f64` with lat ∈ [-90, 90] and lon ∈ [-180, 180], otherwise
       alias lookup; alias values may be any location spec (§ alias-to-alias chains), expanded with a
       visited set and depth cap 8; a cycle or depth exhaustion → `Error::Config` naming the chain; an
       unknown alias → `Error::Usage` suggesting up to 3 configured names within edit distance 2.
-- [ ] `docs/plans/README.md`: contract updates — variadic location, the `full`/`minimal` formats, the
+- ⬜ `docs/plans/README.md`: contract updates — variadic location, the `full`/`minimal` formats, the
       template/exit-code rules, the `json` array rule, and the two new config tables.
-- [ ] `README.md` + `AGENTS.md`: usage examples for multi-location and templates; the aliases recipe.
-- [ ] Tests: `tests/templates.rs` walks `TOKENS` (every token renders against a fixture report,
+- ⬜ `README.md` + `AGENTS.md`: usage examples for multi-location and templates; the aliases recipe.
+- ⬜ Tests: `tests/templates.rs` walks `TOKENS` (every token renders against a fixture report,
       snapshot per token, width/precision table, escape cases, unknown-token policy both ways);
       `tests/aliases.rs` (expansion, nesting, cycle, coordinate-vs-alias disambiguation, suggestion
       list); `tests/multi_location.rs` (ordering under injected per-location delays, partial failure
@@ -141,17 +141,17 @@ wall clock clearly below the sum of three sequential fetches.
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] Every token in `TOKENS` has a rendering test; the count in the test equals the table length
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ Every token in `TOKENS` has a rendering test; the count in the test equals the table length
       (a new token without a test fails the build).
-- [ ] Ordering is proven deterministic with injected delays (test asserts argv order for 8 locations
+- ⬜ Ordering is proven deterministic with injected delays (test asserts argv order for 8 locations
       with descending delays).
-- [ ] Partial failure: exit code 5 for one location miss, 6 for one missing key, 6 when both occur;
+- ⬜ Partial failure: exit code 5 for one location miss, 6 for one missing key, 6 when both occur;
       every other location still printed.
-- [ ] JSON: single location is an object, two locations an array of length 2, a failed slot is an
+- ⬜ JSON: single location is an object, two locations an array of length 2, a failed slot is an
       error object with the exit code.
-- [ ] Alias cycle `home → work → home` fails with `Error::Config` and the chain in the message.
-- [ ] `docs/plans/README.md` contract updated in the same commit as the code.
+- ⬜ Alias cycle `home → work → home` fails with `Error::Config` and the chain in the message.
+- ⬜ `docs/plans/README.md` contract updated in the same commit as the code.
 
 ## Risks
 

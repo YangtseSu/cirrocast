@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 19 — more providers
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 10, 15, 16
 Touches: `src/provider/{mod,met_no,visualcrossing,open_meteo_archive,open_meteo_marine}.rs`,
 `src/provider/open_meteo.rs`, `src/model/{mod,condition.rs}`, `src/render/{art_table,plain,json}.rs`,
@@ -24,19 +24,19 @@ every new source, and scraped HTML sites stay explicitly refused.
 
 ## Deliverables
 
-- [ ] `src/provider/mod.rs`: `ProviderId::{MetNo, VisualCrossing, OpenMeteoArchive, OpenMeteoMarine}`
+- ⬜ `src/provider/mod.rs`: `ProviderId::{MetNo, VisualCrossing, OpenMeteoArchive, OpenMeteoMarine}`
       (+ `as_str`/`FromStr`/`all()`/metadata rows, after `open-meteo`, before the BYOK block);
       `ProviderMeta`/`Capabilities` gain `history_days: u16` (0 = no archive; `max_days: 0` already
       means "no forecast horizon") and `marine: bool`.
-- [ ] `src/provider/met_no.rs`: `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=<lat>
+- ⬜ `src/provider/met_no.rs`: `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=<lat>
       &lon=<lon>` (coordinates truncated to 4 decimals, optional `&altitude=`), keyless, global, **9
       days** hourly; parses `properties.meta.{updated_at,units}` and `properties.timeseries[].data`
       (`instant.details.*`, `next_1_hours`, `next_6_hours`, `next_12_hours`); day-part aggregation
       (step 03 contract) uses `next_1_hours` for the first 24 h and `next_6_hours` beyond.
-- [ ] `src/http.rs` + `src/cache.rs`: `Expires`/`Last-Modified` driven caching — store both headers
+- ⬜ `src/http.rs` + `src/cache.rs`: `Expires`/`Last-Modified` driven caching — store both headers
       per entry, re-request only after `Expires`, send `If-Modified-Since: <last-modified>` and treat
       `304` as a cache hit (required by the MET Terms of Service for `met-no`).
-- [ ] `src/provider/met_no.rs` **symbol_code → WMO table, written out** (suffixes `_day`, `_night`,
+- ⬜ `src/provider/met_no.rs` **symbol_code → WMO table, written out** (suffixes `_day`, `_night`,
       `_polartwilight` stripped before lookup; unknown code ⇒ WMO 3 + one `--verbose` line naming
       it): `clearsky`→0, `fair`→1, `partlycloudy`→2, `cloudy`→3, `fog`→45, `lightrainshowers`→80,
       `rainshowers`→81, `heavyrainshowers`→82, `lightrain`→61, `rain`→63, `heavyrain`→65,
@@ -46,7 +46,7 @@ every new source, and scraped HTML sites stay explicitly refused.
       gains **68/69** ("light/heavy rain and snow", i.e. sleet), which the step-03 subset
       (Open-Meteo's list) lacks — art, `condition-68`, `condition-69`, i18n and the classification
       helpers change in the same commit.
-- [ ] `src/provider/visualcrossing.rs`: `https://weather.visualcrossing.com/
+- ⬜ `src/provider/visualcrossing.rs`: `https://weather.visualcrossing.com/
       VisualCrossingWebServices/rest/services/timeline/<lat>,<lon>/next<days>days?unitGroup=metric&
       include=current,days,hours&key=<KEY>` — BYOK `CIRROCAST_VISUALCROSSING_KEY`, **15 days**,
       global; `icon` → WMO (`clear-day/clear-night`→0, `partly-cloudy-day/night`→2, `cloudy`→3,
@@ -55,13 +55,13 @@ every new source, and scraped HTML sites stay explicitly refused.
       `alerts[]` feeds step 15's layer as `AlertSource::VisualCrossing` (`event`, `headline`,
       `description`, `onset`, `expires`, `severity`, `certainty`, `urgency`); `next<days>days` falls
       back to explicit `date1/date2` if the server rejects the keyword.
-- [ ] `src/provider/open_meteo_archive.rs`: `https://archive-api.open-meteo.com/v1/archive?
+- ⬜ `src/provider/open_meteo_archive.rs`: `https://archive-api.open-meteo.com/v1/archive?
       latitude=&longitude=&start_date=<YYYY-MM-DD>&end_date=<YYYY-MM-DD>&daily=…&hourly=…&
       timezone=auto` — keyless, ERA5/ERA5-Land/IFS from **1940-01-01**, `history_days = 30000`,
       `Capabilities { current: false, hourly: true, daily: true, alerts: false, max_days: 0,
       history_days: 30000 }`; a date inside ERA5's ~5-day latency window falls through to
       `open-meteo` with `past_days`.
-- [ ] `src/provider/open_meteo_marine.rs`: `https://marine-api.open-meteo.com/v1/marine?
+- ⬜ `src/provider/open_meteo_marine.rs`: `https://marine-api.open-meteo.com/v1/marine?
       latitude=&longitude=&current=wave_height,wave_direction,wave_period,swell_wave_height,
       sea_surface_temperature&daily=wave_height_max,wave_period_max,wave_direction_dominant&
       cell_selection=sea&timezone=auto` — keyless, **8 forecast days**, coastal; carried as
@@ -70,19 +70,19 @@ every new source, and scraped HTML sites stay explicitly refused.
       named under `--verbose`; `src/cli.rs` gains `--date <YYYY-MM-DD>` and `--history <N>d` (both
       need a chain entry with `history_days > 0`, else usage error), `--marine` and `--days` clamped
       per provider against `max_days` with the warn-once behaviour.
-- [ ] `auto` chain `open-meteo,met-no,smhi` (+`metar` with `--station`): update the selection
+- ⬜ `auto` chain `open-meteo,met-no,smhi` (+`metar` with `--station`): update the selection
       paragraph, provider list and CLI block of `docs/plans/README.md`, the README backend matrix
       (key/env var, coverage, days, alerts, attribution per row) and `src/config/keys.rs` with
       `CIRROCAST_METEOALARM_KEY` and `CIRROCAST_VISUALCROSSING_KEY`; `provider info` rows for the new
       ids and the re-checked old ones gain coverage, days, key env var, alert sources, rate limit and
       the exact attribution string each backend requires.
-- [ ] Fixtures + tests: recorded `met-no` compact JSON (Oslo plus a `polartwilight` symbol),
+- ⬜ Fixtures + tests: recorded `met-no` compact JSON (Oslo plus a `polartwilight` symbol),
       `visualcrossing` timeline JSON with an alert object, archive JSON for a fixed date and marine
       JSON for a coastal point; a symbol-table test over all 46 met.no base codes including the
       `lightssleetshowersandthunder` double-`s` spelling; a `304` cache test; `--date 1940-01-01` and
       a date inside the ERA5 latency window; a land point for `--marine`; the capability gates
       (`--days` on a history-only entry, `--history` on a forecast-only entry) both exit 2.
-- [ ] Re-verify every `ProviderMeta` limit against the live docs (endpoint alive, `max_days`,
+- ⬜ Re-verify every `ProviderMeta` limit against the live docs (endpoint alive, `max_days`,
       `history_days`, key requirement, coverage) and record each correction in the Progress log; the
       refusal note for HTML-only sources (e.g. gismeteo) and `wttr.in` as a data source lands in
       `README.md` and `provider info`.
@@ -144,14 +144,14 @@ cargo run -q -- -p open-meteo-marine --lat 54.54 --lon 10.23; echo $?   # exit 2
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] All 46 met.no base symbols and their `_day`/`_night`/`_polartwilight` variants map to the WMO
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ All 46 met.no base symbols and their `_day`/`_night`/`_polartwilight` variants map to the WMO
       codes above, including the double-`s` spellings, and `Expires`/`If-Modified-Since` caching
       demonstrably avoids a second body transfer (304 fixture).
-- [ ] `auto` resolves to `open-meteo,met-no,smhi`, every entry answers for a Stockholm point, and
+- ⬜ `auto` resolves to `open-meteo,met-no,smhi`, every entry answers for a Stockholm point, and
       `--station ESSA` prepends `metar`; the README matrix, the `docs/plans/README.md` contract text
       and `keys.rs` list all twelve ids and both new env vars, with no stale capacity claim left.
-- [ ] Every registry row is re-verified against live docs with corrections in the Progress log.
+- ⬜ Every registry row is re-verified against live docs with corrections in the Progress log.
 
 ## Risks
 

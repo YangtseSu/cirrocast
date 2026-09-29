@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 22 — performance and resource budget
 
-Status: not-started
+Status: ⬜ not-started
 Depends on: 12 (quality hardening and CI), 21 (multi-location and templates)
 Touches: `scripts/bench/{run.sh,cold.sh,compare.py,ci.sh}`, `perf/baseline.json`,
 `.github/workflows/ci.yml`, `Cargo.toml`, `src/render/{mod,art_table,one_line,plain}.rs`,
@@ -24,52 +24,52 @@ evidence — keeping the decision, recording why.
 
 ## Deliverables
 
-- [ ] `Cargo.toml`: `[profile.release] strip = "symbols"`, `lto = "thin"`, `codegen-units = 1`,
+- ⬜ `Cargo.toml`: `[profile.release] strip = "symbols"`, `lto = "thin"`, `codegen-units = 1`,
       `panic = "abort"`; new `offline-city-db` **default** feature gating the step 18 table, so
       `cargo build --release --no-default-features` yields the reduced build (same CLI, city search
       via the network geocoder only). Feature inventory documented in `docs/performance.md`.
-- [ ] `scripts/bench/run.sh`: `cargo build --release --locked`, then hyperfine
+- ⬜ `scripts/bench/run.sh`: `cargo build --release --locked`, then hyperfine
       (`hyperfine --warmup 5 --runs 30 -N`) over `--version`, `--help`,
       `--offline Beijing -f plain` and a warm-cache `Beijing -f plain`, with `XDG_CACHE_HOME`,
       `XDG_CONFIG_HOME` and `TZ` pinned to a temp tree seeded from `tests/fixtures/`; RSS via
       `/usr/bin/time -v` (`Maximum resident set size`), binary size via `stat -c %s`, `--help` lines
       via `wc -l`; everything written to `target/bench/raw.json`.
-- [ ] `scripts/bench/cold.sh`: manual cold-run harness — empty cache dir, `--refresh`, three timed
+- ⬜ `scripts/bench/cold.sh`: manual cold-run harness — empty cache dir, `--refresh`, three timed
       runs, prints median; run by hand on the documented reference machine and link, never in CI
       (a network number cannot be gated).
-- [ ] `scripts/bench/compare.py`: Python 3 (stdlib only) reader of `perf/baseline.json` and
+- ⬜ `scripts/bench/compare.py`: Python 3 (stdlib only) reader of `perf/baseline.json` and
       `target/bench/raw.json`; prints a metric-by-metric table with budget, baseline and delta; exits
       1 when a gated median exceeds `baseline × 1.20` or a hard budget.
-- [ ] `perf/baseline.json`: `{"schema": 1, "recorded": "YYYY-MM-DD", "commit": …, "machine": {…},
+- ⬜ `perf/baseline.json`: `{"schema": 1, "recorded": "YYYY-MM-DD", "commit": …, "machine": {…},
       "metrics": {…}}` with medians for every gated metric plus the cold-run figure and its conditions.
-- [ ] `.github/workflows/ci.yml`: new `perf` job (release build, `scripts/bench/run.sh`,
+- ⬜ `.github/workflows/ci.yml`: new `perf` job (release build, `scripts/bench/run.sh`,
       `scripts/bench/compare.py`, `cargo bloat --release --crates -n 20` and
       `cargo llvm-lines --release | head -n 20` uploaded as artifacts). Runner pinned to the same
       image class as the baseline was recorded on; the job is allowed to re-record only via an explicit
       `workflow_dispatch` input.
-- [ ] `docs/performance.md`: machine specification (`lscpu` summary, kernel, rustc/cargo/hyperfine
+- ⬜ `docs/performance.md`: machine specification (`lscpu` summary, kernel, rustc/cargo/hyperfine
       versions, commit), methodology (commands, cache priming, RSS and size measurement, why the cold
       run is not gated), the budget table with the measured numbers, the dependency-weight audit, and
       the async/TUI re-evaluation with evidence.
-- [ ] `src/render/{mod,art_table,one_line,plain}.rs`: `fmt::Write` rendering into one pre-sized
+- ⬜ `src/render/{mod,art_table,one_line,plain}.rs`: `fmt::Write` rendering into one pre-sized
       `String` (`with_capacity(4096)`), no per-cell `format!`, no intermediate `Vec<String>` of lines
       or per-line `String`; colour codes written as escapes into the same buffer; `Renderer::render`
       keeps its signature.
-- [ ] `src/model/mod.rs` + `src/cli.rs`: `LocalTimes` computed once per report (`chrono_tz` lookup,
+- ⬜ `src/model/mod.rs` + `src/cli.rs`: `LocalTimes` computed once per report (`chrono_tz` lookup,
       day-part `DateTime<FixedOffset>`, preformatted clock strings), carried in `RenderContext`;
       renderers and the template engine stop converting per field.
-- [ ] `src/geo/offline.rs`: lazy table decode (header first, `OnceLock` per shard) when step 18
+- ⬜ `src/geo/offline.rs`: lazy table decode (header first, `OnceLock` per shard) when step 18
       measured an eager startup decode; `--version`/`--help` and any run that never performs a city
       lookup must not touch the table at all (asserted by a test that removes the data file and runs
       `--version`).
-- [ ] Dependency-weight audit in `docs/performance.md`: the top contributors from `cargo bloat
+- ⬜ Dependency-weight audit in `docs/performance.md`: the top contributors from `cargo bloat
       --crates` with sizes, and a decision per heavy crate — `chrono-tz` (accepted: timezone-correct
       day parts are a contract requirement), `rustls`/`ring` or `aws-lc-rs` (accepted: TLS is not
       optional), `clap_builder` (accepted; `wrap_help` reviewed), `serde_json` (accepted),
       `flate2` (accepted, feature-reviewed), `idna`/`url` (accepted via `ureq`), plus the gate list
       (`keyring`, `offline-city-db`, `ureq` compression features, `clap` `wrap_help`) and the measured
       delta of turning each off.
-- [ ] `tests/cli.rs`: `--help` line count < 200 and `--help` exit 0 asserted deterministically.
+- ⬜ `tests/cli.rs`: `--help` line count < 200 and `--help` exit 0 asserted deterministically.
 
 ## Design notes
 
@@ -137,16 +137,16 @@ into `docs/performance.md`.
 
 ## Exit criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- [ ] Budget table in `docs/performance.md` filled with real numbers from the reference machine:
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ⬜ Budget table in `docs/performance.md` filled with real numbers from the reference machine:
       `--version` < 20 ms, cached run < 60 ms, cold run < 1.5 s (with link), RSS < 15 MB, binary < 5 MB,
       `--help` < 200 lines.
-- [ ] `perf/baseline.json` committed and consumed by the CI `perf` job; the artificial-regression proof
+- ⬜ `perf/baseline.json` committed and consumed by the CI `perf` job; the artificial-regression proof
       is recorded in the doc and in the progress log.
-- [ ] `cargo bloat`/`cargo llvm-lines` top contributors named with sizes, every heavy crate accepted or
+- ⬜ `cargo bloat`/`cargo llvm-lines` top contributors named with sizes, every heavy crate accepted or
       gated with a one-line reason.
-- [ ] The `offline-city-db`-less build compiles, passes `cargo test`, and its size delta is recorded.
-- [ ] Re-evaluation of no-async/no-TUI recorded with the measured evidence, decision unchanged.
+- ⬜ The `offline-city-db`-less build compiles, passes `cargo test`, and its size delta is recorded.
+- ⬜ Re-evaluation of no-async/no-TUI recorded with the measured evidence, decision unchanged.
 
 ## Risks
 

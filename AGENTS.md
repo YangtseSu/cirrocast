@@ -97,15 +97,18 @@ A change is not done until: `cargo fmt --check`, `cargo clippy --all-targets -- 
 
 ## Plan-driven workflow
 
-1. Pick the lowest-numbered step in `docs/plans/README.md` with `Status: not-started` (or continue an
-   `in-progress` one). Steps are executed in order; do not start a step whose dependencies are open.
-2. Work item by item through that step's `## Deliverables` checkboxes. One deliverable = one commit.
-3. In the same commit as the code, update the step file: tick the checkbox, append a dated line to
-   `## Progress log`. Never rewrite history in the log.
-4. When every checkbox and every `## Exit criteria` item is satisfied, set `Status: done` and update
-   the step table in `docs/plans/README.md`. Do not mark a step done with open checkboxes.
+1. Pick the lowest-numbered step in `docs/plans/README.md` with `Status: ⬜ not-started` (or continue a
+   `🚧 in-progress` one). Steps are executed in order; do not start a step whose dependencies are open.
+2. Work item by item through that step's `## Deliverables`. One deliverable = one commit.
+3. In the same commit as the code, update the step file: flip the item to `- ✅` and append a dated
+   line to `## Progress log`. Never rewrite history in the log.
+4. When every item and every `## Exit criteria` item is `- ✅`, set `Status: ✅ done` and update the
+   step table in `docs/plans/README.md`. Do not mark a step done while any `- ⬜` item remains.
 5. If reality diverges from the plan, fix the plan in the same commit and say why in the log line.
    Interfaces change → `docs/plans/README.md` first.
+
+Progress markers are emoji (`⬜ not-started` / `🚧 in-progress` / `⛔ blocked` / `✅ done`, tasks
+`- ⬜` / `- ✅`) so that scanning a step file shows its state at a glance.
 
 ## Recipes
 
