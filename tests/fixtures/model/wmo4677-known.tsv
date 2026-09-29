@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The described WMO 4677 codes, tab separated:
+#
+#   code	i18n key	english	precip	fog	thunder	art	rank
+#
+# Every row is asserted against `Condition` in tests/model_condition.rs. The description and the
+# severity rank are re-authored in this repository (see src/model/condition.rs); this file is the
+# independent copy the tests compare against, so a table edit that forgets the doc shows up here.
+
+0	cond.0	Clear sky	false	false	false	clear	1
+1	cond.1	Mainly clear	false	false	false	mainly-clear	1
+2	cond.2	Partly cloudy	false	false	false	partly-cloudy	2
+3	cond.3	Overcast	false	false	false	overcast	3
+45	cond.45	Fog	false	true	false	fog	4
+48	cond.48	Depositing rime fog	false	true	false	rime-fog	5
+51	cond.51	Light drizzle	true	false	false	drizzle-light	6
+53	cond.53	Moderate drizzle	true	false	false	drizzle	7
+55	cond.55	Dense drizzle	true	false	false	drizzle-dense	8
+56	cond.56	Light freezing drizzle	true	false	false	freezing-drizzle-light	9
+57	cond.57	Dense freezing drizzle	true	false	false	freezing-drizzle-dense	10
+61	cond.61	Slight rain	true	false	false	rain-light	11
+63	cond.63	Moderate rain	true	false	false	rain	12
+65	cond.65	Heavy rain	true	false	false	rain-heavy	13
+66	cond.66	Light freezing rain	true	false	false	freezing-rain-light	14
+67	cond.67	Heavy freezing rain	true	false	false	freezing-rain-heavy	15
+71	cond.71	Slight snow fall	true	false	false	snow-light	16
+73	cond.73	Moderate snow fall	true	false	false	snow	17
+75	cond.75	Heavy snow fall	true	false	false	snow-heavy	18
+77	cond.77	Snow grains	true	false	false	snow-grains	19
+80	cond.80	Slight rain showers	true	false	false	showers-rain-light	20
+81	cond.81	Moderate rain showers	true	false	false	showers-rain	21
+82	cond.82	Violent rain showers	true	false	false	showers-rain-violent	22
+85	cond.85	Slight snow showers	true	false	false	showers-snow-light	23
+86	cond.86	Heavy snow showers	true	false	false	showers-snow-heavy	24
+95	cond.95	Thunderstorm	true	false	true	thunderstorm	25
+96	cond.96	Thunderstorm with slight hail	true	false	true	thunderstorm-hail-light	26
+97	cond.97	Heavy thunderstorm	true	false	true	thunderstorm-heavy	27
+99	cond.99	Thunderstorm with heavy hail	true	false	true	thunderstorm-hail-heavy	28

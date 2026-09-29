@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# WMO 4677 codes `cirrocast` deliberately does not describe: they must stay visible as unknown
+# rather than be clamped to a neighbour. One decimal code per line; the whole `0..=255` range is
+# additionally swept in tests/model_condition.rs.
+
+4
+20
+46
+52
+64
+70
+78
+87
+90
+100
+200
+255
