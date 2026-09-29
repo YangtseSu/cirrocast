@@ -39,7 +39,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 |---|-------|------|--------|------------|
 | 01 | A | [project-scaffold](01-project-scaffold.md) | ✅ done | — |
 | 02 | A | [config-and-state](02-config-and-state.md) | ✅ done | 01 |
-| 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | ⬜ not-started | 01, 02 |
+| 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | ✅ done | 01, 02 |
 | 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | ⬜ not-started | 02, 03 |
 | 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ⬜ not-started | 02, 03, 04 |
 | 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ⬜ not-started | 03, 04, 05 |
