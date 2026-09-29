@@ -1,0 +1,349 @@
+<!--
+SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+# cirrocast — implementation plans
+
+Master index and architecture contract for the build-out of `cirrocast`, a terminal weather
+client (a rewrite and replacement for `wego`, taking `wttr.in` as the output reference).
+
+Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and humans working in this repo.
+
+## How these plans are used
+
+* One file per step: `NN-kebab-case-title.md`, ordered by execution.
+* A step is worked on alone, top to bottom. Every task checkbox in a step is one committable unit.
+* Progress is tracked **inside each step file**:
+  * a `Status:` header line — `not-started | in-progress | blocked | done`
+  * `- [ ]` / `- [x]` task checkboxes
+  * a `## Progress log` section, appended (never rewritten) with `YYYY-MM-DD — note`
+* When a step is finished, its `Status:` becomes `done` and the matching row in the table below is
+  updated in the same commit. Never mark a step done while any checkbox in it is open.
+* A step file is a living document: if the design changes, the doc changes in the same commit as the
+  code. Docs are not written once and abandoned.
+
+## Phases and milestones
+
+| Phase | Steps | Milestone |
+|---|---|---|
+| A — Foundation | 01–06 | real end-to-end run: `cirrocast Beijing -f plain` prints live data from a keyless backend |
+| B — Output parity | 07–11 | wttr.in-style `art-table` plus `one-line`/`plain`/`json`, en-US + zh-CN, all v1 backends |
+| C — Quality and release | 12–14 | **v1.0.0 = "basically formed"**, packaged and reproducible |
+| D — Parity and reach | 15–19 | v1.1–v1.2: alerts, air quality, moon/astro, offline city database, extra providers |
+| E — Integration and ecosystem | 20–24 | v2.0: wttr.in-compatible local service, multi-location, perf budgets, docs, ecosystem packages |
+
+## Step files
+
+| # | Phase | Step | Status | Depends on |
+|---|-------|------|--------|------------|
+| 01 | A | [project-scaffold](01-project-scaffold.md) | done | — |
+| 02 | A | [config-and-state](02-config-and-state.md) | not-started | 01 |
+| 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | not-started | 01, 02 |
+| 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | not-started | 02, 03 |
+| 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | not-started | 02, 03, 04 |
+| 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | not-started | 03, 04, 05 |
+| 07 | B | [art-table-renderer](07-art-table-renderer.md) | not-started | 03, 06 |
+| 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | not-started | 06, 07 |
+| 09 | B | [localization](09-localization.md) | not-started | 03, 07 |
+| 10 | B | [additional-providers](10-additional-providers.md) | not-started | 05, 06, 08 |
+| 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | not-started | 05, 10 |
+| 12 | C | [quality-hardening](12-quality-hardening.md) | not-started | 08, 09, 10 |
+| 13 | C | [packaging-and-release](13-packaging-and-release.md) | not-started | 08, 12 |
+| 14 | C | [v1-acceptance](14-v1-acceptance.md) | not-started | all of A–C |
+| 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | not-started | 10, 12 |
+| 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | not-started | 03, 08 |
+| 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | not-started | 03, 08 |
+| 18 | D | [offline-city-database](18-offline-city-database.md) | not-started | 04, 05 |
+| 19 | D | [more-providers](19-more-providers.md) | not-started | 10, 15, 16 |
+| 20 | E | [wttr-compat-service](20-wttr-compat-service.md) | not-started | 08, 10, 14 |
+| 21 | E | [multi-location-and-templates](21-multi-location-and-templates.md) | not-started | 08, 14 |
+| 22 | E | [perf-and-resource-budget](22-perf-and-resource-budget.md) | not-started | 12, 21 |
+| 23 | E | [docs-and-guides](23-docs-and-guides.md) | not-started | 14, 21 |
+| 24 | E | [ecosystem-integration](24-ecosystem-integration.md) | not-started | 13, 20, 21 |
+
+**v1.0.0 = "basically formed"** (steps 01–14) means, end to end and demonstrated in step 14: eight
+backends selectable (three keyless), BYOK keys never touching `config.toml`, city-name, coordinate
+and IP location resolution, four text output formats with the wttr.in-style `art-table` as default,
+metric/us/uk units with per-quantity overrides, en-US + zh-CN output, XDG-compliant config, cache and
+data directories, and a packaged, REUSE-compliant, CI-clean release. Everything in phases D and E is
+*planned work with a plan file*, not a roadmap wish and not a stub in `src/`.
+
+## Requirement traceability
+
+| Original requirement | Steps that deliver it |
+|---|---|
+| 1. Rust with `clap` and friends | 01 (toolchain, dependencies, lint gates) |
+| 2. Multiple backends, keyless first | 06 (open-meteo), 10 (owm, weatherapi, wwo, pirateweather, qweather, smhi), 11 (metar), 19 (met.no, visualcrossing, open-meteo archive/marine) |
+| 3. BYOK for key-requiring backends | 02 (key store + `key` subcommands), 10 (consumption, `MissingKey`), 12 (secret-handling audit) |
+| 4. All wttr.in outputs | 07 (`art-table`, `dumb`), 08 (`one-line` templates, `plain`, `json`, completions, man), 17 (astro/moon tokens), 20 (wttr.in-compatible local service incl. the `?` option table), 21 (multi-location output) |
+| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation) |
+| 6. IP → city | 05 (ipwho.is + ipapi.co, opt-in, cached, privacy documented) |
+| 7. Own CLI design, no wego copying | 01 + `AGENTS.md` (no-copy rule), 08 (documented flag matrix and precedence) |
+| 8. Selectable units and output language | 03 (unit system + formatting), 09 (Fluent i18n, en-US + zh-CN) |
+| 9. Standard XDG directories | 02 (`etcetera`-based config/cache/data), 12 (XDG audit) |
+| 10. Project name | 01 / `AGENTS.md` — `cirrocast`; verified free on crates.io, AUR, Arch, npm, PyPI and GitHub |
+
+## Definition of "basically formed" (v1.0.0 gate, checked in step 14)
+
+1. `cirrocast` with no arguments prints weather for the configured default location or the IP-derived
+   location, in the default `art-table` format, in under a second on a warm cache.
+2. Every backend in the v1 matrix can be selected with `--provider` and either works keyless or fails
+   with the exact `cirrocast key set <id>` instruction.
+3. `--format art-table|one-line|plain|json|dumb`, `--units metric|us|uk`, `--lang`, `--days`,
+   `--lat/--lon`, `--ip`, `--station`, the cache-control flags and `--color`/`--width` all behave as
+   documented in `--help` and in this file.
+4. The `config`/`key`/`provider`/`cache`/`location` subcommands are functional, not decorative.
+5. `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `reuse lint`, `cargo deny` and CI
+   are green; a clean Arch machine can install from the PKGBUILD and run it.
+6. No placeholder code, no dead flags, no undocumented exit codes.
+
+## Architecture contract
+
+Everything below is binding for all steps. Changing it means changing this file first.
+
+### Module map
+
+```
+src/
+  main.rs            thin entry: parse argv, dispatch, map Error -> exit code
+  cli.rs             clap definitions, location argument parsing, subcommand dispatch
+  error.rs           Error enum (thiserror), Result alias, exit-code mapping
+  paths.rs           XDG resolution (config/cache/data dirs) via etcetera
+  config/
+    mod.rs           Config struct, load/merge/save, schema_version migration hooks
+    keys.rs          BYOK key store (env, keys.toml @0600, optional keyring), masking
+  model/
+    mod.rs           Location, Current, DayPart, DayForecast, Report, Attribution
+    condition.rs     canonical WMO 4677 code type + classification helpers
+    units.rs         UnitSystem + conversion + formatting (single conversion point)
+  geo/
+    mod.rs           Geocoder trait, IpLocator trait, LocationSpec
+    open_meteo.rs    Open-Meteo geocoding (no key)
+    nominatim.rs     OSM Nominatim fallback (`~query`), 1 req/s + mandatory cache
+    ip.rs            ipwho.is primary, ipapi.co fallback
+  http.rs            shared HTTP client: timeouts, UA, retries/backoff, proxy, error taxonomy
+  cache.rs           on-disk cache: keys, TTLs, atomic writes, offline mode
+  provider/
+    mod.rs           Provider trait, ProviderId, registry metadata, selection + fallback chain
+    open_meteo.rs    Open-Meteo (keyless, default)
+    openweathermap.rs / weatherapi.rs / worldweatheronline.rs
+    pirateweather.rs / qweather.rs / smhi.rs
+    metar.rs         aviationweather.gov METAR/TAF (keyless, station based)
+  render/
+    mod.rs           Renderer trait, RenderContext, terminal capability detection
+    art_table.rs     wttr.in-style day-part column table
+    one_line.rs      template output (`%c`, `%t`, ... wttr.in-compatible tokens)
+    plain.rs         box-free, pipe friendly
+    json.rs          stable JSON schema
+    art.rs           canonical condition -> unicode art blocks (day/night)
+    color.rs         256-color palette, NO_COLOR / CLICOLOR_FORCE handling
+  i18n.rs            Fluent bundle loading, locale negotiation, embedded .ftl catalogs
+locales/             en-US/main.ftl, zh-CN/main.ftl, ...
+tests/               integration tests (CLI level), fixtures/ = recorded API responses
+```
+
+### Canonical data model (binding)
+
+* **Condition = WMO 4677 code** (`u8`, 0..=99) wrapped in a newtype with `is_precipitation()`,
+  `is_thunder()`, `art_key()`, `i18n_key()`. Every provider maps its native codes to WMO; the
+  original code is kept in `Attribution`/`raw` for debugging only. Rendering and text never branch
+  on provider-specific codes.
+* All numeric fields are stored in **canonical metric/SI** (`temp_c`, `wind_kmh`, `precip_mm`,
+  `pressure_hpa`, `visibility_km`). Providers request metric from upstream wherever the API allows
+  it; **the render layer is the only place that converts units**. Cache entries are therefore
+  unit-independent.
+* `Report { location, current: Option<Current>, days: Vec<DayForecast>, attribution }`.
+  `days` is ordered oldest → newest and always starts at the location-local today.
+* Day parts are exactly `Morning | Noon | Evening | Night` (wttr.in's four rows), each aggregated
+  from hourly data by the provider module using the location timezone, never by the renderer.
+* Time is `chrono` with `chrono_tz::Tz` for the location; all artifacts carry the location offset.
+
+### Provider contract (binding)
+
+```rust
+pub struct Capabilities {
+    pub current: bool, pub hourly: bool, pub daily: bool, pub alerts: bool,
+    pub max_days: u8, pub requires_key: bool, pub key_env: Option<&'static str>,
+    pub location_kinds: LocationKinds, // City | Station | LatLon
+}
+
+pub trait Provider {
+    fn id(&self) -> ProviderId;
+    fn capabilities(&self) -> Capabilities;
+    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env) -> Result<Report>;
+}
+```
+
+* `fetch(&self)` takes `&self` (no interior mutability), is **synchronous** — the project does not
+  use an async runtime; `ureq` is the HTTP stack. Do not add `tokio`/`reqwest` without updating this
+  contract and stating why in the step doc.
+* `req: FetchRequest { days, hourly_resolution }`; `env: Env` gives access to the shared HTTP client,
+  cache and config. Providers never open sockets or read files directly.
+* Adding a provider = one file + one `ProviderId` variant + one registry row + fixtures + a
+  `provider list`/`provider info` update. No CLI flag is added per provider.
+* Selection: `--provider a,b,c` is an explicit ordered chain; bare default comes from config
+  (`defaults.provider`), whose built-in value is `open-meteo`. `auto` expands to the keyless chain
+  `open-meteo,smhi` (plus `metar` only when a station is given). A failure in a chain falls through
+  to the next entry only when the error is transport/upstream (`Error::Upstream`/`Network`), never
+  when it is a usage, key or location error.
+
+### Rendering contract (binding)
+
+```rust
+pub struct RenderContext<'a> {  // built once in main, passed by reference
+    pub units: UnitSystem, pub lang: LanguageId, pub color: ColorMode, pub width: usize,
+    pub term: TermCaps, pub now: DateTime<FixedOffset>, pub tz: chrono_tz::Tz, pub i18n: &'a I18n,
+}
+pub trait Renderer { fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String>; }
+```
+
+* Formats: `art-table` (default, wttr.in's classic four-row coloured columns), `one-line`
+  (wttr.in-compatible `%` tokens), `plain`, `json`. `dumb` (pure ASCII, `TERM=dumb`) is part of
+  step 07.
+* Width handling: `--width` > `COLUMNS` > terminal size via `rustix::termios::tcgetwinsize` > 80
+  (`rustix` is introduced by step 07; the crate forbids `unsafe`, so a raw `ioctl` is not an option).
+  Below 60 columns the table degrades to a stacked layout; the renderer never emits lines wider than
+  the resolved width.
+* Colour: honour `NO_COLOR` (presence disables), `CLICOLOR_FORCE`, `--color auto|always|never`,
+  and non-tty stdout ⇒ no colour. Palette is re-authored 256-colour (temperature ramp, wind, rain),
+  not copied from wego.
+* Art blocks and translated condition strings are **re-authored** in this repo. Copying wego or
+  wttr.in source, data files or art is forbidden (see AGENTS.md).
+
+### Config and state (binding)
+
+`$XDG_CONFIG_HOME/cirrocast/` (`~/.config/cirrocast/`), `$XDG_CACHE_HOME/cirrocast/`,
+`$XDG_DATA_HOME/cirrocast/`; resolved with `etcetera` so `XDG_CONFIG_DIRS` is respected for reads.
+
+```toml
+schema_version = 1
+[defaults]  provider = "open-meteo"  format = "art-table"  units = "metric"  days = 3  language = "auto"
+[location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"
+[units]     temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
+[network]   timeout_secs = 15  retries = 3  proxy = ""
+[cache]     enabled = true  weather_ttl_secs = 600  ip_ttl_secs = 86400  geocode_ttl_secs = 2592000
+[render]    color = "auto"  width = 0
+[providers.metar]    station = ""
+[providers.qweather] host = ""
+```
+
+* API keys are **never** written to `config.toml`. Precedence (first hit wins):
+  `CIRROCAST_<PROVIDER>_KEY` env var → `keys.toml` in the config dir with mode `0600`
+  (`cirrocast key set/rm/list`) → OS keyring, only if the `keyring` feature is enabled (step 10+).
+* A `keys.toml` with any group/other permission bits is refused with `Error::Config`, not silently used.
+* Cache layout: `geocode/<sha256(query)>.json`, `ip/<service>.json`,
+  `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json`; writes are `tmp` + `rename`.
+* `--no-cache`, `--refresh`, `--offline` (cache-only, never touches the network), `cache stat`,
+  `cache clean`.
+
+### Error handling and exit codes (binding)
+
+`Error` (thiserror) variants map to stable exit codes: `0` success, `1` generic, `2` clap usage,
+`3` network/upstream, `4` config/state, `5` location not found, `6` missing/invalid API key.
+`main.rs` prints `error: <msg>` to stderr plus `--verbose` cause chains, and never panics on
+user-triggered conditions. `unwrap`/`expect`/`panic!`/indexing that can fail are not allowed outside
+tests; `unsafe` is denied by lint.
+
+### CLI surface (binding, own design — not wego's)
+
+```
+cirrocast [OPTIONS] [LOCATION]
+  -p, --provider <ID[,ID...]>   open-meteo | openweathermap | weatherapi | worldweatheronline
+                                | pirateweather | qweather | smhi | metar | auto
+  -f, --format <NAME>           art-table | one-line | plain | json | dumb
+  -d, --days <N>                0..=14 (clamped per provider, warned once)
+  -u, --units <metric|us|uk>
+      --lang <TAG>              BCP-47, or "auto"
+      --lat <DEG> --lon <DEG>
+      --ip                      locate from the public IP
+      --station <ICAO>          METAR station
+      --no-cache / --refresh / --offline
+      --timeout <SECS>
+      --color <auto|always|never>
+      --width <COLS>
+  -q, --quiet   -v, --verbose (repeatable)
+  -h, --help    -V, --version
+
+cirrocast config   <path|init|show|get|set|edit|validate>
+cirrocast key      <set|rm|list>
+cirrocast provider <list|info>
+cirrocast cache    <stat|clean>
+cirrocast location <search>
+cirrocast completion <shell>    cirrocast man
+```
+
+Location argument syntax: bare `Beijing` = fuzzy search; `:Beijing` = exact name match; `~Tsinghua` =
+OpenStreetMap/Nominatim; `@39.9,116.4` = coordinates; empty = config `location.default`, else public
+IP. Ambiguous fuzzy matches are resolved by deterministic ranking (population, then exact-name, then
+provider order) and the chosen location is echoed in the header, never silently guessed twice.
+
+### Licensing and REUSE (binding)
+
+* Project licence: **GPL-3.0-or-later**. The full text lives at `./LICENSE` (so GitHub detects it)
+  and is exposed to REUSE through the sibling link `LICENSES/GPL-3.0-or-later.txt`.
+* The repository is [REUSE](https://reuse.software/) compliant: every file carries SPDX
+  file-copyright and licence tags, either in a comment header (native comment syntax of the file) or,
+  for files that cannot hold comments (`Cargo.lock`, `tests/fixtures/**/*.json`, binary fixtures), as a
+  `[[annotations]]` entry in `REUSE.toml`.
+  <!-- REUSE-IgnoreStart -->
+  The header form is:
+
+  ```
+  SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+  SPDX-License-Identifier: GPL-3.0-or-later
+  ```
+
+  <!-- REUSE-IgnoreEnd -->
+* `reuse lint` must pass and is part of every step's exit criteria and of CI. Never add a file
+  without licensing information; when a new non-commentable file type appears, extend `REUSE.toml`.
+* Copied third-party material (art, data, fixtures) keeps its upstream licence and must be listed in
+  `REUSE.toml` with its own `SPDX-License-Identifier` — never relicensed silently to GPL.
+* `Cargo.toml` declares `license = "GPL-3.0-or-later"`; no `MIT OR Apache-2.0` relicensing of the
+  project itself. Dependencies keep their own licences (`cargo deny` review in step 12).
+
+### Conventions
+
+* Rust 2024, MSRV 1.85, no async runtime, `ureq` + `rustls`, `serde` for all wire formats.
+* New dependencies require a one-line justification in the step doc's design notes; prefer std +
+  already-present crates. `cargo deny`/`cargo audit` are introduced in step 12.
+* Every provider and renderer ships tests against **recorded fixtures** (`tests/fixtures/`). No test
+  may hit the live network; live smoke tests are `#[ignore]`d and run manually.
+* Public modules keep doc comments; every step's exit criteria include `cargo fmt --check`,
+  `cargo clippy -- -D warnings`, `cargo test`, and a manual smoke run of the changed surface.
+* English is used for all code, comments, docs, commit messages and branch names.
+
+### Step file template
+
+```markdown
+# Step NN — Title
+
+Status: not-started
+Depends on: 0X
+Touches: src/..., tests/..., docs/...
+
+## Goal
+One paragraph: the observable capability added by this step.
+
+## Deliverables
+- [ ] concrete task, with file paths and the API/behaviour it introduces
+
+## Design notes
+Decisions, rejected alternatives, dependency justifications.
+
+## Out of scope
+Explicitly deferred items and the step that will pick them up.
+
+## Verification
+Exact commands and the observable result that proves the step works (smoke run, not only tests).
+
+## Exit criteria
+- [ ] `cargo fmt --check` / `cargo clippy -- -D warnings` / `cargo test` clean
+- [ ] step-specific observable outcome
+
+## Risks
+Known unknowns and mitigations.
+
+## Progress log
+- YYYY-MM-DD — entry
+```
