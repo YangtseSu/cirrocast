@@ -93,16 +93,17 @@ fn provider_info_rejects_an_unknown_id_as_a_usage_error() {
 }
 
 #[test]
-fn config_path_prints_the_xdg_config_directory() {
+fn config_path_prints_the_xdg_config_file() {
     let config_home = tempfile::tempdir().expect("tempdir");
 
     cirrocast()
         .env("XDG_CONFIG_HOME", config_home.path())
+        .env("XDG_CONFIG_DIRS", config_home.path().join("system"))
         .args(["config", "path"])
         .assert()
         .success()
         .stdout(predicate::eq(format!(
             "{}\n",
-            config_home.path().join("cirrocast").display()
+            config_home.path().join("cirrocast/config.toml").display()
         )));
 }
