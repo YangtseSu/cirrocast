@@ -20,10 +20,10 @@ cirrocast — Beijing, China (39.9042, 116.4074)
 
 ## Status
 
-Early scaffold (step 01 of 14 in [`docs/plans/`](docs/plans/README.md)) — the CLI skeleton, XDG path
-resolution and the provider registry are in place. Weather fetching starts at step 06
-(`docs/plans/06-open-meteo-provider.md`); the wttr.in-style renderer at step 07. See the plan index
-for live per-step progress.
+Early scaffold (steps 01–02 of 14 in [`docs/plans/`](docs/plans/README.md)) — the CLI skeleton, XDG
+path resolution, the provider registry, the typed configuration with its `config`/`key` subcommands
+are in place. Weather fetching starts at step 06 (`docs/plans/06-open-meteo-provider.md`); the
+wttr.in-style renderer at step 07. See the plan index for live per-step progress.
 
 ## Install
 
@@ -82,13 +82,84 @@ Declared capabilities only — each row is re-verified against the provider's li
 step 10 (`docs/plans/10-additional-providers.md`) and corrected there if wrong. `cirrocast provider
 list` / `provider info <ID>` prints the same data from the binary itself.
 
-Keys are BYOK: never stored in `config.toml`, read from `CIRROCAST_<PROVIDER>_KEY` or from
-`keys.toml` (mode `0600`) managed by `cirrocast key set|rm|list`.
+Keys are BYOK and stored outside `config.toml`, in `keys.toml` (mode `0600`) or in the provider's
+environment variable — see [Configuration § API keys](#api-keys).
 
 ## Configuration
 
-`$XDG_CONFIG_HOME/cirrocast/config.toml` (default `~/.config/cirrocast/config.toml`), cache in
-`$XDG_CACHE_HOME/cirrocast/`, data in `$XDG_DATA_HOME/cirrocast/`. Full schema: `docs/plans/README.md`.
+Everything lives under the XDG directories: the configuration document in
+`$XDG_CONFIG_HOME/cirrocast/config.toml` (default `~/.config/cirrocast/config.toml`), API keys in
+`$XDG_CONFIG_HOME/cirrocast/keys.toml`, the cache in `$XDG_CACHE_HOME/cirrocast/` and data in
+`$XDG_DATA_HOME/cirrocast/`. When no user file exists, `$XDG_CONFIG_DIRS` (default `/etc/xdg`) is
+searched for a system wide one. `cirrocast config path` prints the user file — the one `init`/`set`
+write and the first one read — and `config validate` reports the file that was actually read.
+
+| Key | Default | Values |
+|---|---|---|
+| `defaults.provider` | `open-meteo` | provider id, comma separated chain, or `auto` |
+| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb` |
+| `defaults.units` | `metric` | `metric`, `us`, `uk` |
+| `defaults.days` | `3` | `0..=14`, clamped per provider |
+| `defaults.language` | `auto` | `auto` or a BCP-47 tag such as `zh-CN` |
+| `location.default` | empty | `Beijing`, `:Beijing`, `@39.9,116.4`, `~Tsinghua` |
+| `units.temp` | unset | `c`, `f` |
+| `units.wind` | unset | `kmh`, `mph`, `mps`, `knots` |
+| `units.pressure` | unset | `hpa`, `inhg`, `mmhg` |
+| `units.distance` | unset | `km`, `mi` |
+| `units.precip` | unset | `mm`, `in` |
+| `network.timeout_secs` | `15` | `1..=300` |
+| `network.retries` | `3` | `0..=10` |
+| `network.proxy` | empty | `scheme://host[:port]` or `host:port`; empty = direct |
+| `cache.enabled` | `true` | `true`, `false` |
+| `cache.weather_ttl_secs` | `600` | `> 0` (10 minutes) |
+| `cache.ip_ttl_secs` | `86400` | `> 0` (24 hours) |
+| `cache.geocode_ttl_secs` | `2592000` | `> 0` (30 days) |
+| `render.color` | `auto` | `auto`, `always`, `never` |
+| `render.width` | `0` | `0` (detect from the terminal) or `40..=500` |
+| `providers.metar.station` | empty | ICAO identifier, e.g. `ZBAA` |
+| `providers.qweather.host` | empty | your QWeather API host |
+
+The `[units]` overrides are per quantity and optional: an absent (or empty) key follows
+`defaults.units`, so switching that one value to `us` moves every quantity that was not pinned.
+
+Precedence, highest first: **command line flag → `CIRROCAST_*` environment variable → `config.toml`
+→ built-in default**. The variables are `CIRROCAST_PROVIDER`, `CIRROCAST_FORMAT`,
+`CIRROCAST_UNITS`, `CIRROCAST_DAYS`, `CIRROCAST_LANG`, `CIRROCAST_LOCATION` and
+`CIRROCAST_TIMEOUT`; API keys use their own `CIRROCAST_<PROVIDER>_KEY` namespace (below).
+`cirrocast config get <KEY>` prints the effective value, environment override included.
+
+```bash
+cirrocast config path                              # where the file lives (creates nothing)
+cirrocast config init [--force]                    # annotated default document
+cirrocast config get defaults.days                 # 3
+cirrocast config set defaults.days 5 && cirrocast config show
+cirrocast config validate                          # ok: ~/.config/cirrocast/config.toml
+cirrocast config edit                              # $VISUAL/$EDITOR, re-validated afterwards
+```
+
+`config set` rewrites the whole document in canonical form, so hand-written comments do not survive
+it; `config init --force` writes the fully annotated document back. The file is `0644` — it is meant
+to be pasted into bug reports — unknown keys from a newer release are ignored, and a
+`schema_version` above the supported one is refused instead of guessed.
+
+### API keys
+
+Provider keys are BYOK and never enter `config.toml` (which is world readable, shown by `config show`
+and hand edited). First hit wins: `CIRROCAST_<PROVIDER>_KEY` (provider id upper-cased, `-` → `_`,
+e.g. `CIRROCAST_OPENWEATHERMAP_KEY`) → `keys.toml` in the configuration directory → the OS keyring
+(feature-gated, later release).
+
+```bash
+printf %s "$CIRROCAST_OPENWEATHERMAP_KEY" | cirrocast key set openweathermap
+cirrocast key list        # openweathermap  sk-t…56  (file)
+cirrocast key rm openweathermap
+```
+
+`key set` reads the secret from stdin only — never from the command line, where the process list and
+the shell history would see it — prompting on the terminal with echo disabled when stdin is a
+terminal. The stored file is mode `0600`; a file that group or other can read is refused with the
+`chmod 600` fix instead of being used. `key list` prints masked values only, and `keys.*` is not a
+configuration namespace: `config set keys.openweathermap …` fails as an unknown key.
 
 ## Licence
 

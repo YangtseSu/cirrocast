@@ -38,7 +38,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | # | Phase | Step | Status | Depends on |
 |---|-------|------|--------|------------|
 | 01 | A | [project-scaffold](01-project-scaffold.md) | ✅ done | — |
-| 02 | A | [config-and-state](02-config-and-state.md) | ⬜ not-started | 01 |
+| 02 | A | [config-and-state](02-config-and-state.md) | ✅ done | 01 |
 | 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | ⬜ not-started | 01, 02 |
 | 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | ⬜ not-started | 02, 03 |
 | 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ⬜ not-started | 02, 03, 04 |
@@ -220,7 +220,8 @@ pub trait Renderer { fn render(&self, report: &Report, ctx: &RenderContext<'_>) 
 schema_version = 1
 [defaults]  provider = "open-meteo"  format = "art-table"  units = "metric"  days = 3  language = "auto"
 [location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"
-[units]     temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
+[units]     # per-quantity overrides; an absent (or empty) key follows defaults.units
+            # temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
 [network]   timeout_secs = 15  retries = 3  proxy = ""
 [cache]     enabled = true  weather_ttl_secs = 600  ip_ttl_secs = 86400  geocode_ttl_secs = 2592000
 [render]    color = "auto"  width = 0
@@ -228,6 +229,9 @@ schema_version = 1
 [providers.qweather] host = ""
 ```
 
+* These keys are addressed as dotted paths (`cirrocast config get defaults.days`). The ones that
+  also exist as command line flags carry a `CIRROCAST_*` override — `PROVIDER`, `FORMAT`, `UNITS`,
+  `DAYS`, `LANG`, `LOCATION`, `TIMEOUT` — and `config get` prints the environment value when set.
 * API keys are **never** written to `config.toml`. Precedence (first hit wins):
   `CIRROCAST_<PROVIDER>_KEY` env var → `keys.toml` in the config dir with mode `0600`
   (`cirrocast key set/rm/list`) → OS keyring, only if the `keyring` feature is enabled (step 10+).
