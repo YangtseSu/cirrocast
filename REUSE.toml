@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+version = 1
+
+SPDX-PackageName = "cirrocast"
+SPDX-PackageSupplier = "Yangtse Su <yangtsesu@gmail.com>"
+SPDX-PackageDownloadLocation = "https://github.com/YangtseSu/cirrocast"
+
+# Generated lockfile: cargo owns the content, so licensing info cannot live in a header.
+[[annotations]]
+path = "Cargo.lock"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Recorded upstream API responses used as test fixtures: JSON has no comment syntax.
+[[annotations]]
+path = "tests/fixtures/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
