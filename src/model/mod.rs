@@ -82,8 +82,12 @@ pub struct Current {
     pub observed_at: DateTime<FixedOffset>,
     /// Air temperature in °C.
     pub temp_c: f32,
-    /// Apparent temperature in °C.
-    pub feels_like_c: f32,
+    /// Apparent temperature in °C, when the provider reports one.
+    ///
+    /// Optional for the same reason the day parts' is: a backend that has no apparent temperature
+    /// (SMHI publishes none) leaves it `None` and the renderers omit it rather than inventing a
+    /// number by copying the air temperature.
+    pub feels_like_c: Option<f32>,
     /// Relative humidity in percent.
     pub humidity_pct: u8,
     /// Precipitation in the last hour, in mm.

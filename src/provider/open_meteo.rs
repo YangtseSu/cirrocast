@@ -29,17 +29,17 @@
 
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Timelike, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use chrono_tz::Tz;
 use serde::Deserialize;
 
+use super::dayparts::{HourSample, aggregate_day};
 use super::{Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json};
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
 use crate::model::{
-    Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location, LocationSource,
-    Report, resolve_local,
+    Attribution, Condition, Current, DayForecast, Location, LocationSource, Report, resolve_local,
 };
 
 /// The provider id, as the registry and every error message spell it.
@@ -271,35 +271,6 @@ pub struct DailyBlock {
     pub sunset: Vec<Option<String>>,
 }
 
-/// One usable hourly sample.
-///
-/// An hour whose temperature, apparent temperature, precipitation, wind speed or weather code is
-/// `null` is **dropped** while decoding rather than filled with a zero: a missing reading must not
-/// become a plausible-looking 0 °C. The optional fields keep their own nullness.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HourSample {
-    /// The instant, in the location's zone.
-    pub at: DateTime<Tz>,
-    /// Air temperature in °C.
-    pub temp_c: f32,
-    /// Apparent temperature in °C.
-    pub feels_like_c: f32,
-    /// Precipitation in mm.
-    pub precip_mm: f32,
-    /// Precipitation probability in percent.
-    pub precip_prob_pct: Option<u8>,
-    /// The condition at this hour.
-    pub weather: Condition,
-    /// Wind speed in km/h.
-    pub wind_kmh: f32,
-    /// Direction the wind blows from, in degrees.
-    pub wind_dir_deg: Option<u16>,
-    /// Relative humidity in percent.
-    pub humidity_pct: Option<u8>,
-    /// Horizontal visibility in km.
-    pub visibility_km: Option<f32>,
-}
-
 // ---------------------------------------------------------------------------------------------
 // Response → canonical model
 // ---------------------------------------------------------------------------------------------
@@ -342,7 +313,7 @@ fn report(
         })?;
         for text in daily.time.iter().take(usize::from(days)) {
             let date = parse_date(text)?;
-            forecasts.push(aggregate_day(&hours, daily, date, tz)?);
+            forecasts.push(daily_forecast(&hours, daily, date, tz)?);
         }
         if forecasts.is_empty() {
             return Err(Error::Upstream {
@@ -384,7 +355,10 @@ fn current_of(block: &CurrentBlock, tz: Tz) -> Result<Current> {
     Ok(Current {
         observed_at,
         temp_c: require(block.temperature_2m, "current.temperature_2m")?,
-        feels_like_c: require(block.apparent_temperature, "current.apparent_temperature")?,
+        feels_like_c: Some(require(
+            block.apparent_temperature,
+            "current.apparent_temperature",
+        )?),
         humidity_pct: percent(require(
             block.relative_humidity_2m,
             "current.relative_humidity_2m",
@@ -451,7 +425,7 @@ fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
         samples.push(HourSample {
             at: instant,
             temp_c,
-            feels_like_c,
+            feels_like_c: Some(feels_like_c),
             precip_mm,
             precip_prob_pct: (*at(
                 &block.precipitation_probability,
@@ -473,11 +447,9 @@ fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
     Ok(samples)
 }
 
-/// Aggregates one local calendar day of hourly samples into the canonical four parts.
-///
-/// Pure and network-free: the fixtures and the unit tests feed it directly, and the written rules
-/// are the module documentation's numbered list.
-pub fn aggregate_day(
+/// Aggregates one daily entry of the response: the daily extremes and sun times come from the
+/// `daily` block, the four parts from [`dayparts::aggregate_day`].
+fn daily_forecast(
     hours: &[HourSample],
     daily: &DailyBlock,
     date: NaiveDate,
@@ -511,111 +483,9 @@ pub fn aggregate_day(
         other => other,
     };
 
-    Ok(DayForecast {
-        date,
-        parts: [
-            aggregate_part(DayPartKind::Morning, hours, date, tz)?,
-            aggregate_part(DayPartKind::Noon, hours, date, tz)?,
-            aggregate_part(DayPartKind::Evening, hours, date, tz)?,
-            aggregate_part(DayPartKind::Night, hours, date, tz)?,
-        ],
-        temp_min_c,
-        temp_max_c,
-        sunrise,
-        sunset,
-    })
-}
-
-/// Aggregates one part of `date`, per the module's written rules.
-fn aggregate_part(
-    kind: DayPartKind,
-    hours: &[HourSample],
-    date: NaiveDate,
-    tz: Tz,
-) -> Result<DayPart> {
-    let part: Vec<&HourSample> = hours
-        .iter()
-        .filter(|sample| {
-            let local = sample.at.with_timezone(&tz);
-            let hour = local.hour();
-            local.date_naive() == date
-                && hour >= u32::from(kind.hours().start)
-                && hour < u32::from(kind.hours().end)
-        })
-        .collect();
-
-    let Some(first) = part.first() else {
-        return Err(Error::Upstream {
-            provider: PROVIDER.to_owned(),
-            status: None,
-            message: format!(
-                "no hourly data for {date} {} ({tz})",
-                kind.label().to_lowercase()
-            ),
-        });
-    };
-
-    // Closest to the part's midpoint, ties taking the earlier hour; the instant breaks a tie
-    // between two samples of the same local hour.
-    let representative = part.iter().copied().fold(*first, |best, sample| {
-        if proximity(sample, kind) < proximity(best, kind) {
-            sample
-        } else {
-            best
-        }
-    });
-
-    let precip_mm = part.iter().map(|sample| sample.precip_mm).sum();
-    let precip_prob_pct = part
-        .iter()
-        .filter_map(|sample| sample.precip_prob_pct)
-        .max();
-
-    Ok(DayPart {
-        kind,
-        temp_c: representative.temp_c,
-        feels_like_c: Some(representative.feels_like_c),
-        precip_mm,
-        precip_prob_pct,
-        weather: dominant_condition(&part).unwrap_or(representative.weather),
-        wind_kmh: representative.wind_kmh,
-        wind_dir_deg: representative.wind_dir_deg,
-        humidity_pct: representative.humidity_pct,
-        visibility_km: representative.visibility_km,
-    })
-}
-
-/// The sort key that decides which sample represents a part.
-fn proximity(sample: &HourSample, kind: DayPartKind) -> (i16, i16, DateTime<Tz>) {
-    let hour = i16::try_from(sample.at.hour()).unwrap_or_default();
-    let midpoint = i16::from(kind.midpoint_hour());
-    ((hour - midpoint).abs(), hour, sample.at)
-}
-
-/// The part's condition: highest severity rank, then the higher hour count, then the earlier hour,
-/// and `None` when every code in the part is undescribed.
-fn dominant_condition(part: &[&HourSample]) -> Option<Condition> {
-    let mut groups: Vec<(Condition, usize, DateTime<Tz>)> = Vec::new();
-    for sample in part {
-        match groups
-            .iter_mut()
-            .find(|(code, _, _)| *code == sample.weather)
-        {
-            Some((_, count, _)) => *count += 1,
-            None => groups.push((sample.weather, 1, sample.at)),
-        }
-    }
-    groups
-        .into_iter()
-        .filter(|(code, _, _)| code.is_known())
-        .max_by(|a, b| {
-            a.0.severity_rank()
-                .cmp(&b.0.severity_rank())
-                .then_with(|| a.1.cmp(&b.1))
-                // The earlier instant wins, so it has to compare as the larger value.
-                .then_with(|| b.2.cmp(&a.2))
-        })
-        .map(|(code, _, _)| code)
+    aggregate_day(
+        hours, date, tz, PROVIDER, temp_min_c, temp_max_c, sunrise, sunset,
+    )
 }
 
 /// One sunrise/sunset value: absent (`null`), or a local time in `tz`.
@@ -727,9 +597,10 @@ mod tests {
 
     use super::{
         BASE, CURRENT_VARIABLES, DAILY_VARIABLES, DailyBlock, DayForecast, HOURLY_VARIABLES,
-        HourSample, HourlyBlock, aggregate_day, forecast_request, hourly_samples, requested_days,
+        HourlyBlock, forecast_request, hourly_samples, requested_days,
     };
     use crate::model::{Condition, DayPartKind, Location, LocationSource, resolve_local};
+    use crate::provider::dayparts::HourSample;
 
     fn berlin() -> chrono_tz::Tz {
         chrono_tz::Tz::Europe__Berlin
@@ -743,7 +614,7 @@ mod tests {
         HourSample {
             at: resolve_local(berlin(), naive(text)).expect("a local time"),
             temp_c,
-            feels_like_c: temp_c - 1.0,
+            feels_like_c: Some(temp_c - 1.0),
             precip_mm: 0.0,
             precip_prob_pct: None,
             weather: Condition::from_u8(code),
@@ -778,7 +649,7 @@ mod tests {
         hours: &[HourSample],
         daily: &DailyBlock,
     ) -> super::Result<DayForecast> {
-        aggregate_day(
+        super::daily_forecast(
             hours,
             daily,
             chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").expect("a date"),

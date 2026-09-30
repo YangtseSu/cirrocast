@@ -397,7 +397,7 @@ impl Snapshot {
             snapshot.condition = Some(current.weather);
             snapshot.is_day = current.is_day;
             snapshot.temp_c = Some(current.temp_c);
-            snapshot.feels_like_c = Some(current.feels_like_c);
+            snapshot.feels_like_c = current.feels_like_c;
             snapshot.wind_kmh = Some(current.wind_kmh);
             snapshot.wind_dir_deg = Some(current.wind_dir_deg);
             snapshot.humidity_pct = Some(current.humidity_pct);

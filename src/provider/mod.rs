@@ -21,6 +21,7 @@
 //! so far ([`open_meteo`]); the registry rows for the others carry `implemented: false` and are
 //! reached only after step 10 adds their modules.
 
+pub mod dayparts;
 pub mod open_meteo;
 
 use std::fmt;

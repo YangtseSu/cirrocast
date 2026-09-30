@@ -152,8 +152,8 @@ struct CurrentJson<'a> {
     condition: ConditionJson<'a>,
     /// Air temperature in °C.
     temp_c: f32,
-    /// Apparent temperature in °C.
-    feels_like_c: f32,
+    /// Apparent temperature in °C; `null` when the provider does not report one.
+    feels_like_c: Option<f32>,
     /// Relative humidity in percent (0–100).
     humidity_pct: u8,
     /// Precipitation in the last hour, in mm.
@@ -442,7 +442,7 @@ mod tests {
         Current {
             observed_at: moment(12, 15),
             temp_c: 21.5,
-            feels_like_c: 22.0,
+            feels_like_c: Some(22.0),
             humidity_pct: 52,
             precip_mm: 0.0,
             weather: Condition::from_u8(1),

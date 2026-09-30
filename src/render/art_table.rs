@@ -184,7 +184,7 @@ fn current_block(
     let condition = ctx.i18n.condition(current.weather);
     let temp = temp_metric(
         current.temp_c,
-        Some(current.feels_like_c),
+        current.feels_like_c,
         ctx.units,
         METRICS_W,
         charset,
@@ -832,7 +832,7 @@ mod tests {
         Current {
             observed_at: moment(12, 15),
             temp_c: 22.4,
-            feels_like_c: 23.6,
+            feels_like_c: Some(23.6),
             humidity_pct: 56,
             precip_mm: 0.0,
             weather: Condition::from_u8(code),

@@ -116,13 +116,19 @@ fn record_key(label: &str) -> String {
 fn current_line(current: &Current, ctx: &RenderContext<'_>) -> String {
     let units = ctx.units;
     let mut text = format!(
-        "{} {} {} ({} {})",
+        "{} {} {}",
         record_key(&ctx.i18n.text(&keys::LABEL_CURRENT)),
         ctx.i18n.condition(current.weather),
         format_temp(current.temp_c, units.temp),
-        ctx.i18n.text(&keys::LABEL_FEELS),
-        format_temp(current.feels_like_c, units.temp),
     );
+    if let Some(feels_like) = current.feels_like_c {
+        let _ = write!(
+            text,
+            " ({} {})",
+            ctx.i18n.text(&keys::LABEL_FEELS),
+            format_temp(feels_like, units.temp),
+        );
+    }
     let _ = write!(
         text,
         " {} {} {} {} {} {} {} {} {}",
@@ -246,7 +252,7 @@ mod tests {
         Current {
             observed_at: moment(12, 15),
             temp_c: 31.0,
-            feels_like_c: 36.0,
+            feels_like_c: Some(36.0),
             humidity_pct: 66,
             precip_mm: 0.0,
             weather: Condition::from_u8(2),
