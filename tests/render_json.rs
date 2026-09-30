@@ -15,11 +15,16 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 
 use cirrocast::config::UnitOverrides;
-use cirrocast::i18n::{I18n, LanguageId};
+use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::Report;
 use cirrocast::model::units::UnitSystem;
 use cirrocast::render::json::{Json, SCHEMA_VERSION};
 use cirrocast::render::{ColorMode, RenderContext, Renderer, TermCaps};
+
+/// The English catalog, loaded the way the CLI loads an unconfigured run.
+fn english() -> I18n {
+    I18n::load(&LanguageRequest::Auto, |_| None)
+}
 
 /// Every key path the schema documents, in `serde_json`'s own spelling (`[]` = array element).
 const EXPECTED_KEYS: [&str; 89] = [
@@ -121,7 +126,7 @@ fn report() -> Report {
 
 /// Renders `report` in `units`, at the fixture's own observation time.
 fn render(report: &Report, units: UnitSystem) -> String {
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     let ctx = RenderContext {
         units: units
             .resolve(&UnitOverrides::default())
@@ -131,7 +136,7 @@ fn render(report: &Report, units: UnitSystem) -> String {
         term: TermCaps::default(),
         now: common::fixture_now(report),
         tz: report.location.tz,
-        lang: LanguageId::EN_US,
+        lang: i18n.lang(),
         i18n: &i18n,
     };
     Json.render(report, &ctx)

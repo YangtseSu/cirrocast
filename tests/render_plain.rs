@@ -15,11 +15,16 @@ use chrono::{TimeZone as _, Utc};
 
 use cirrocast::cache::CacheMode;
 use cirrocast::config::UnitOverrides;
-use cirrocast::i18n::{I18n, LanguageId};
+use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::units::UnitSystem;
 use cirrocast::model::{LocationSource, Report};
 use cirrocast::render::{ColorMode, RenderContext, Renderer, TermCaps, plain::Plain};
 use common::{ProviderRun, fixture_location};
+
+/// The English catalog, loaded the way the CLI loads an unconfigured run.
+fn english() -> I18n {
+    I18n::load(&LanguageRequest::Auto, |_| None)
+}
 
 /// A report for one fixture, through the real provider.
 fn report() -> Report {
@@ -34,7 +39,7 @@ fn report() -> Report {
 
 /// Renders `report` in `units` at the context width the renderer ignores.
 fn render(report: &Report, units: UnitSystem) -> String {
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     let ctx = RenderContext {
         units: units
             .resolve(&UnitOverrides::default())
@@ -42,7 +47,7 @@ fn render(report: &Report, units: UnitSystem) -> String {
         color: ColorMode::Never,
         width: 80,
         term: TermCaps::default(),
-        lang: LanguageId::EN_US,
+        lang: i18n.lang(),
         i18n: &i18n,
         now: Utc
             .with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
@@ -65,7 +70,7 @@ fn the_metric_output_is_exactly_these_lines() {
 location: Beijing, Beijing (39.90, 116.41) Asia/Shanghai
 updated: 2026-09-30T19:30:00+08:00
 current: Clear sky 18°C (feels 13°C) wind 13km/h NW humidity 11% precip 0.0mm pressure 1021hPa visibility 17km
-day 2026-07-15: morning Clear sky 29°C 0.0mm (0%) wind 2.5km/h N | noon Clear sky 35°C 0.0mm (0%) wind 4.7km/h SW | evening Overcast 30°C 0.0mm (0%) wind 13km/h SW | night Overcast 26°C 0.0mm (0%) wind 6.0km/h SW
+day 2026-07-15: Morning Clear sky 29°C 0.0mm (0%) wind 2.5km/h N | Noon Clear sky 35°C 0.0mm (0%) wind 4.7km/h SW | Evening Overcast 30°C 0.0mm (0%) wind 13km/h SW | Night Overcast 26°C 0.0mm (0%) wind 6.0km/h SW
 Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
 Data: Open-Meteo.com (CC BY 4.0)
 attribution: open-meteo https://api.open-meteo.com/v1/forecast"
@@ -148,7 +153,7 @@ fn an_osm_location_prints_the_odbld_line() {
 #[test]
 fn the_width_does_not_change_the_output() {
     let report = report();
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     let context = |width| RenderContext {
         units: UnitSystem::Metric
             .resolve(&UnitOverrides::default())
@@ -156,7 +161,7 @@ fn the_width_does_not_change_the_output() {
         color: ColorMode::Never,
         width,
         term: TermCaps::default(),
-        lang: LanguageId::EN_US,
+        lang: i18n.lang(),
         i18n: &i18n,
         now: Utc
             .with_ymd_and_hms(2026, 7, 15, 12, 0, 0)

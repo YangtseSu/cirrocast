@@ -27,7 +27,7 @@ use crate::geo::{
     osm_ambiguity_note, rank, resolve,
 };
 use crate::http::{HttpClient, UreqTransport};
-use crate::i18n::{I18n, LanguageId};
+use crate::i18n::{I18n, LanguageRequest};
 use crate::model::Location;
 use crate::model::units::{ResolvedUnits, UnitSystem};
 use crate::paths::Paths;
@@ -764,7 +764,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     {
         eprintln!("{warning}");
     }
-    let setup = RenderSetup::resolve(query, &config, &settings, cli.verbose)?;
+    let setup = RenderSetup::resolve(query, &config, &settings, cli.verbose, cli.quiet)?;
     if cli.verbose > 0 {
         sources.note(&settings);
         render_notes(&setup);
@@ -810,7 +810,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         term: setup.term,
         now: now.with_timezone(&report.location.tz).fixed_offset(),
         tz: report.location.tz,
-        lang: setup.lang,
+        lang: setup.i18n.lang(),
         i18n: &setup.i18n,
     };
     // `one-line` is one line by contract, so the credits the licences require cannot travel in the
@@ -820,7 +820,10 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
             eprintln!("{credit}");
         }
         if let Some(licence) = licence_line(&report.attribution.provider) {
-            eprintln!("{} {licence}", setup.i18n.text("label-data"));
+            eprintln!(
+                "{} {licence}",
+                setup.i18n.text(&crate::i18n::keys::LABEL_DATA)
+            );
         }
     }
     print_line(format_args!("{}", setup.renderer.render(&report, &ctx)?))?;
@@ -905,9 +908,7 @@ struct RenderSetup {
     format: Format,
     /// The units the report is converted into.
     units: ResolvedUnits,
-    /// The language the report is rendered in.
-    lang: LanguageId,
-    /// The message catalog behind every label.
+    /// The language the report is rendered in, and the catalog behind every label.
     i18n: I18n,
     /// The layout width and where it came from.
     width: crate::render::Width,
@@ -920,13 +921,15 @@ struct RenderSetup {
 impl RenderSetup {
     /// Resolves the settings for one run.
     ///
-    /// `verbose` is what decides whether the template's unknown tokens are reported: the renderer
-    /// itself never sees a verbosity flag, so [`crate::render::one_line::warnings`] is read here.
+    /// `verbose` is what decides whether the template's unknown tokens are reported, and `quiet`
+    /// whether a language fallback is announced: the renderer itself never sees either flag, so
+    /// [`crate::render::one_line::warnings`] and [`I18n::warnings`] are read here.
     fn resolve(
         query: &QueryArgs,
         config: &Config,
         settings: &Settings,
         verbose: u8,
+        quiet: bool,
     ) -> Result<Self> {
         let format = match query.format {
             Some(format) => format,
@@ -948,8 +951,16 @@ impl RenderSetup {
             );
         }
         let units = UnitSystem::from_str(&settings.units)?.resolve(&config.units)?;
-        let lang = LanguageId::from_setting(&settings.lang)?;
-        let i18n = I18n::new(lang);
+        // An unsupported language is a warning, not a usage error: the forecast is still what the
+        // user asked for, so the run falls back to English and says so (unless `-q`).
+        let i18n = I18n::load(&LanguageRequest::parse(&settings.lang), |name| {
+            std::env::var(name).ok()
+        });
+        if !quiet {
+            for warning in i18n.warnings() {
+                eprintln!("{warning}");
+            }
+        }
         let width = resolve_width(
             query
                 .width
@@ -969,7 +980,6 @@ impl RenderSetup {
             renderer,
             format,
             units,
-            lang,
             i18n,
             width,
             color,
@@ -1004,7 +1014,14 @@ fn render_notes(setup: &RenderSetup) {
         },
         caps.is_tty
     );
-    eprintln!("language: {}", setup.lang.tag());
+    eprintln!("{}", setup.i18n.report());
+    // A message a catalog lacks is a bug in this crate, not a user error: it renders its key and is
+    // reported here, where `-v` asked for exactly this kind of detail.
+    for note in setup.i18n.notes() {
+        if matches!(note, crate::i18n::Note::MissingKey(_)) {
+            eprintln!("{}", note.text());
+        }
+    }
     if format == Format::Dumb {
         eprintln!("note: `--format dumb` draws the ASCII table without colour");
     } else if caps.charset() == Charset::Ascii {

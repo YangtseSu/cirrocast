@@ -27,6 +27,8 @@
 //! `Option` is written as `null` (no `skip_serializing_if`), which is what keeps the two rules
 //! above true by construction rather than by review.
 
+use std::borrow::Cow;
+
 use serde::Serialize;
 
 use super::{RenderContext, Renderer};
@@ -302,7 +304,7 @@ struct ConditionJson<'a> {
     /// WMO 4677 code, `0..=99`.
     code: u8,
     /// The condition text, in the report's language.
-    text: &'a str,
+    text: Cow<'a, str>,
 }
 
 impl<'a> ConditionJson<'a> {
@@ -372,7 +374,7 @@ mod tests {
 
     use super::{Json, SCHEMA_VERSION, endpoint};
     use crate::config::UnitOverrides;
-    use crate::i18n::{I18n, LanguageId};
+    use crate::i18n::{I18n, LanguageId, LanguageRequest};
     use crate::model::units::UnitSystem;
     use crate::model::{
         Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
@@ -380,6 +382,10 @@ mod tests {
     };
     use crate::render::{ColorMode, RenderContext, Renderer, TermCaps};
 
+    /// The English catalog, loaded the way the CLI loads an unconfigured run.
+    fn english() -> I18n {
+        I18n::load(&LanguageRequest::Auto, |_| None)
+    }
     fn moment(hour: u32, minute: u32) -> chrono::DateTime<FixedOffset> {
         FixedOffset::east_opt(8 * 3600)
             .expect("a valid offset")
@@ -452,7 +458,7 @@ mod tests {
     }
 
     fn document(report: &Report) -> Value {
-        let i18n = I18n::new(LanguageId::EN_US);
+        let i18n = english();
         let ctx = RenderContext {
             units: UnitSystem::Metric
                 .resolve(&UnitOverrides::default())

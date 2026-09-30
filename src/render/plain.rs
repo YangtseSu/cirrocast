@@ -10,11 +10,15 @@
 //! location: Beijing, Beijing, China (39.90, 116.41) Asia/Shanghai
 //! updated: 2026-09-30T12:15:00+08:00
 //! current: Partly cloudy 31°C (feels 36°C) wind 12km/h SE humidity 66% precip 0.0mm pressure 1004hPa visibility 10km
-//! day 2026-09-30: morning Partly cloudy 29°C 0.0mm (10%) wind 8km/h S | noon Overcast 33°C 0.2mm (25%) wind 15km/h SE | …
+//! day 2026-09-30: Morning Partly cloudy 29°C 0.0mm (10%) wind 8km/h S | …
 //! Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
 //! Data: Open-Meteo.com (CC BY 4.0)
 //! attribution: open-meteo https://api.open-meteo.com/v1/forecast
 //! ```
+//!
+//! The record keys — `location`, `updated`, `current`, `day`, `attribution` — are catalog labels
+//! rather than literals, so a translated run reads `地点: 北京…`; the line shape, including the
+//! colon, is the format's contract.
 //!
 //! Every value goes through [`crate::model::units`], and the formatters are the ones the
 //! `one-line` tokens use ([`super::one_line`]), so the two formats cannot drift into two
@@ -32,9 +36,9 @@ use std::fmt::Write as _;
 use super::{RenderContext, Renderer};
 use crate::error::Result;
 use crate::geo::{attribution_line, location_line};
+use crate::i18n::keys;
 use crate::model::units::{
-    UnitStyle, compass_16, format_precip, format_pressure, format_temp, format_visibility,
-    format_wind,
+    UnitStyle, format_precip, format_pressure, format_temp, format_visibility, format_wind,
 };
 use crate::model::{Current, DayForecast, DayPart, Report};
 use crate::provider::licence_line;
@@ -45,10 +49,14 @@ pub struct Plain;
 
 impl Renderer for Plain {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
-        let mut lines = vec![format!("location: {}", location_line(&report.location))];
+        let mut lines = vec![format!(
+            "{} {}",
+            record_key(&ctx.i18n.text(&keys::LABEL_LOCATION)),
+            location_line(&report.location)
+        )];
 
         if let Some(current) = &report.current {
-            lines.push(updated_line(current));
+            lines.push(updated_line(current, ctx));
             lines.push(current_line(current, ctx));
         }
         for day in &report.days {
@@ -59,10 +67,11 @@ impl Renderer for Plain {
             lines.push(credit.to_owned());
         }
         if let Some(licence) = licence_line(&report.attribution.provider) {
-            lines.push(format!("{} {licence}", ctx.i18n.text("label-data")));
+            lines.push(format!("{} {licence}", ctx.i18n.text(&keys::LABEL_DATA)));
         }
         lines.push(format!(
-            "attribution: {} {}",
+            "{} {} {}",
+            record_key(&ctx.i18n.text(&keys::LABEL_ATTRIBUTION)),
             report.attribution.provider,
             endpoint(&report.attribution.url)
         ));
@@ -72,37 +81,72 @@ impl Renderer for Plain {
 }
 
 /// When the current conditions were observed, at the location's own offset.
-fn updated_line(current: &Current) -> String {
+fn updated_line(current: &Current, ctx: &RenderContext<'_>) -> String {
     format!(
-        "updated: {}",
+        "{} {}",
+        record_key(&ctx.i18n.text(&keys::LABEL_UPDATED)),
         current
             .observed_at
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
     )
 }
 
+/// A record key: the catalog's label in the shape the format documents — lower case, no spaces.
+///
+/// English labels are already spelled that way (`location`), so the key a script greps for does not
+/// change; a language whose label contains spaces or capitals gets the same stable shape instead of
+/// a second format.
+fn record_key(label: &str) -> String {
+    let mut key: String = label
+        .chars()
+        .map(|character| {
+            if character.is_whitespace() {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    key.make_ascii_lowercase();
+    key.push(':');
+    key
+}
+
 /// The current conditions: one line, the parts the provider has no value for omitted.
 fn current_line(current: &Current, ctx: &RenderContext<'_>) -> String {
     let units = ctx.units;
     let mut text = format!(
-        "current: {} {} (feels {})",
+        "{} {} {} ({} {})",
+        record_key(&ctx.i18n.text(&keys::LABEL_CURRENT)),
         ctx.i18n.condition(current.weather),
         format_temp(current.temp_c, units.temp),
+        ctx.i18n.text(&keys::LABEL_FEELS),
         format_temp(current.feels_like_c, units.temp),
     );
     let _ = write!(
         text,
-        " wind {} {} humidity {}% precip {} pressure {}",
+        " {} {} {} {} {} {} {} {} {}",
+        ctx.i18n.text(&keys::LABEL_WIND),
         format_wind(current.wind_kmh, units.wind, UnitStyle::Compact),
-        compass_16(current.wind_dir_deg),
-        current.humidity_pct,
+        ctx.i18n.direction(current.wind_dir_deg),
+        ctx.i18n.text(&keys::LABEL_HUMIDITY),
+        ctx.i18n.format(
+            &keys::FORMAT_HUMIDITY,
+            &[(
+                "value",
+                fluent_bundle::FluentValue::from(current.humidity_pct.to_string())
+            )]
+        ),
+        ctx.i18n.text(&keys::LABEL_PRECIP),
         format_precip(current.precip_mm, units.precip, UnitStyle::Compact),
+        ctx.i18n.text(&keys::LABEL_PRESSURE),
         format_pressure(current.pressure_hpa, units.pressure, UnitStyle::Compact),
     );
     if let Some(visibility) = current.visibility_km {
         let _ = write!(
             text,
-            " visibility {}",
+            " {} {}",
+            ctx.i18n.text(&keys::LABEL_VISIBILITY),
             format_visibility(visibility, units.distance, UnitStyle::Compact)
         );
     }
@@ -116,7 +160,12 @@ fn day_line(day: &DayForecast, ctx: &RenderContext<'_>) -> String {
         .iter()
         .map(|part| part_summary(part, ctx))
         .collect();
-    format!("day {}: {}", day.date, parts.join(" | "))
+    format!(
+        "{} {}: {}",
+        ctx.i18n.text(&keys::LABEL_DAY),
+        day.date,
+        parts.join(" | ")
+    )
 }
 
 /// One part of a day: label, condition, temperature, precipitation and wind.
@@ -124,7 +173,7 @@ fn part_summary(part: &DayPart, ctx: &RenderContext<'_>) -> String {
     let units = ctx.units;
     let mut text = format!(
         "{} {} {} {}",
-        ctx.i18n.part(part.kind).to_lowercase(),
+        ctx.i18n.day_part(part.kind),
         ctx.i18n.condition(part.weather),
         format_temp(part.temp_c, units.temp),
         format_precip(part.precip_mm, units.precip, UnitStyle::Compact),
@@ -134,11 +183,12 @@ fn part_summary(part: &DayPart, ctx: &RenderContext<'_>) -> String {
     }
     let _ = write!(
         text,
-        " wind {}",
+        " {} {}",
+        ctx.i18n.text(&keys::LABEL_WIND),
         format_wind(part.wind_kmh, units.wind, UnitStyle::Compact)
     );
     if let Some(direction) = part.wind_dir_deg {
-        let _ = write!(text, " {}", compass_16(direction));
+        let _ = write!(text, " {}", ctx.i18n.direction(direction));
     }
     text
 }
@@ -157,7 +207,7 @@ mod tests {
     use chrono_tz::Tz;
 
     use super::Plain;
-    use crate::i18n::{I18n, LanguageId};
+    use crate::i18n::{I18n, LanguageId, LanguageRequest};
     use crate::model::units::UnitSystem;
     use crate::model::{
         Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
@@ -165,6 +215,10 @@ mod tests {
     };
     use crate::render::{ColorMode, RenderContext, Renderer, TermCaps};
 
+    /// The English catalog, loaded the way the CLI loads an unconfigured run.
+    fn english() -> I18n {
+        I18n::load(&LanguageRequest::Auto, |_| None)
+    }
     fn moment(hour: u32, minute: u32) -> chrono::DateTime<FixedOffset> {
         FixedOffset::east_opt(8 * 3600)
             .expect("a valid offset")
@@ -280,7 +334,7 @@ mod tests {
     }
 
     fn render(report: &Report, units: UnitSystem, width: usize) -> String {
-        let i18n = I18n::new(LanguageId::EN_US);
+        let i18n = english();
         Plain
             .render(report, &context(&i18n, units, width))
             .expect("plain always renders")
@@ -295,7 +349,7 @@ mod tests {
 location: Beijing, Beijing, China (39.90, 116.41) Asia/Shanghai
 updated: 2026-09-30T12:15:00+08:00
 current: Partly cloudy 31°C (feels 36°C) wind 12km/h SE humidity 66% precip 0.0mm pressure 1004hPa visibility 10km
-day 2026-09-30: morning Partly cloudy 29°C 0.0mm (10%) wind 8.0km/h S | noon Overcast 33°C 0.2mm (25%) wind 15km/h SE | evening Slight rain 30°C 1.1mm (60%) wind 12km/h E | night Clear sky 27°C 0.0mm (5%) wind 6.0km/h N
+day 2026-09-30: Morning Partly cloudy 29°C 0.0mm (10%) wind 8.0km/h S | Noon Overcast 33°C 0.2mm (25%) wind 15km/h SE | Evening Slight rain 30°C 1.1mm (60%) wind 12km/h E | Night Clear sky 27°C 0.0mm (5%) wind 6.0km/h N
 Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
 Data: Open-Meteo.com (CC BY 4.0)
 attribution: open-meteo https://api.open-meteo.com/v1/forecast"
@@ -322,7 +376,7 @@ attribution: open-meteo https://api.open-meteo.com/v1/forecast"
         assert!(us.contains("wind 7.5mph SE"), "{us}");
         assert!(us.contains("pressure 29.65inHg"), "{us}");
         assert!(us.contains("visibility 6.2mi"), "{us}");
-        assert!(us.contains("morning Partly cloudy 84°F"), "{us}");
+        assert!(us.contains("Morning Partly cloudy 84°F"), "{us}");
 
         let uk = render(&report, UnitSystem::Uk, 200);
         assert!(
@@ -409,7 +463,7 @@ attribution: open-meteo https://api.open-meteo.com/v1/forecast"
         let text = render(&report, UnitSystem::Metric, 200);
         assert!(!text.contains("visibility"), "{text}");
         assert!(
-            text.contains("morning Partly cloudy 29°C 0.0mm wind 8.0km/h |"),
+            text.contains("Morning Partly cloudy 29°C 0.0mm wind 8.0km/h |"),
             "{text}"
         );
     }

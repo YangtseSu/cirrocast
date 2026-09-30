@@ -265,10 +265,11 @@ fn a_coordinate_query_renders_a_report_from_the_cache() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("day 2026-07-15: morning") && stdout.contains(" | noon "),
+        stdout.contains("day 2026-07-15: Morning") && stdout.contains(" | Noon "),
         "{stdout}"
     );
-    for label in ["morning", "noon", "evening", "night"] {
+    // The four part labels are catalog words now, so they are spelled as the catalog spells them.
+    for label in ["Morning", "Noon", "Evening", "Night"] {
         assert!(stdout.contains(label), "`{label}` missing from:\n{stdout}");
     }
     assert!(

@@ -60,8 +60,9 @@ use super::color::{self, FG_DEFAULT, paint};
 use super::{Charset, ColorDepth, RenderContext, Renderer};
 use crate::error::Result;
 use crate::geo::{attribution_line, place};
+use crate::i18n::keys;
 use crate::model::units::{
-    ResolvedUnits, UnitStyle, compass_16, format_precip, format_pressure, format_temp_signed,
+    ResolvedUnits, UnitStyle, format_precip, format_pressure, format_temp_signed,
     format_visibility, format_wind,
 };
 use crate::model::{Current, DayForecast, DayPart, DayPartKind, LocationSource, Report};
@@ -157,7 +158,7 @@ impl Renderer for ArtTable {
 /// coordinate pair — repeating `39.90, 116.41 (39.90, 116.41)` would say nothing.
 fn header(report: &Report, ctx: &RenderContext<'_>) -> String {
     let location = &report.location;
-    let mut text = format!("{} {}", ctx.i18n.text("label-report"), place(location));
+    let mut text = format!("{} {}", ctx.i18n.text(&keys::LABEL_REPORT), place(location));
     if location.source != LocationSource::Coordinates {
         let _ = write!(text, " ({:.2}, {:.2})", location.lat, location.lon);
     }
@@ -191,13 +192,13 @@ fn current_block(
     let wind = wind_metric(
         current.wind_kmh,
         Some(current.wind_dir_deg),
-        ctx.units,
+        ctx,
         charset,
         METRICS_W,
     );
 
     vec![
-        open_line(art0, &paint(condition, fg, depth), fg, depth),
+        open_line(art0, &paint(&condition, fg, depth), fg, depth),
         open_line(
             art1,
             &paint(&temp, color::temp_fg(current.temp_c), depth),
@@ -322,7 +323,7 @@ fn day_lines(
     metrics_w: usize,
     depth: ColorDepth,
 ) -> Vec<String> {
-    let mut lines = vec![ctx.i18n.date_short(day.date, ctx.now.date_naive())];
+    let mut lines = vec![ctx.i18n.format_day_heading(day.date, ctx.now.date_naive())];
     for part in &day.parts {
         lines.extend(part_block(part, ctx, charset, metrics_w, depth));
     }
@@ -343,7 +344,7 @@ fn part_block(
     let [art0, art1, art2, art3] = block.map_or(art::NO_BLOCK, |block| block.lines(charset));
     let fg = block.map_or(FG_DEFAULT, |block| color::art_fg(block.style));
 
-    let label = ctx.i18n.part(part.kind);
+    let label = ctx.i18n.day_part(part.kind);
     let temp = temp_metric(
         part.temp_c,
         part.feels_like_c,
@@ -351,17 +352,11 @@ fn part_block(
         metrics_w,
         charset,
     );
-    let wind = wind_metric(
-        part.wind_kmh,
-        part.wind_dir_deg,
-        ctx.units,
-        charset,
-        metrics_w,
-    );
+    let wind = wind_metric(part.wind_kmh, part.wind_dir_deg, ctx, charset, metrics_w);
     let tail = part_tail(part, ctx.units, true);
 
     [
-        cell_line(art0, label, FG_DEFAULT, fg, metrics_w, charset, depth),
+        cell_line(art0, &label, FG_DEFAULT, fg, metrics_w, charset, depth),
         cell_line(
             art1,
             &temp,
@@ -438,7 +433,7 @@ fn stacked(
     let mut lines = Vec::new();
     for day in days {
         lines.push(String::new());
-        lines.push(ctx.i18n.date_short(day.date, ctx.now.date_naive()));
+        lines.push(ctx.i18n.format_day_heading(day.date, ctx.now.date_naive()));
         for part in &day.parts {
             lines.push(stacked_part(part, ctx, charset, depth));
         }
@@ -457,7 +452,7 @@ fn stacked_part(
     let key = weather_key(part.weather.art_key(), daytime);
     let fg = art::art(key).map_or(FG_DEFAULT, |block| color::art_fg(block.style));
     let glyph = pad_columns(art::one_line_art(key), GLYPH_W);
-    let label = pad_columns(ctx.i18n.part(part.kind), LABEL_W);
+    let label = pad_columns(&ctx.i18n.day_part(part.kind), LABEL_W);
     let separator = format!(" {} ", vertical(charset));
 
     // The degradation ladder of a narrow terminal. Apparent temperature, cardinal direction (the
@@ -478,13 +473,7 @@ fn stacked_part(
             METRICS_W,
             charset,
         );
-        let wind = wind_text(
-            part.wind_kmh,
-            part.wind_dir_deg,
-            ctx.units,
-            charset,
-            cardinal,
-        );
+        let wind = wind_text(part.wind_kmh, part.wind_dir_deg, ctx, charset, cardinal);
         let tail = part_tail(part, ctx.units, humidity);
 
         let mut text = format!("  {label}");
@@ -581,7 +570,7 @@ fn credits(report: &Report, ctx: &RenderContext<'_>) -> Vec<String> {
         lines.push(location.to_owned());
     }
     if let Some(licence) = licence_line(&report.attribution.provider) {
-        lines.push(format!("{} {licence}", ctx.i18n.text("label-data")));
+        lines.push(format!("{} {licence}", ctx.i18n.text(&keys::LABEL_DATA)));
     }
     lines
 }
@@ -752,16 +741,16 @@ fn temp_metric(
 fn wind_metric(
     kmh: f32,
     dir_deg: Option<u16>,
-    units: ResolvedUnits,
+    ctx: &RenderContext<'_>,
     charset: Charset,
     metrics_w: usize,
 ) -> String {
-    let speed = format_wind(kmh, units.wind, UnitStyle::Compact);
-    let full = wind_text(kmh, dir_deg, units, charset, true);
+    let speed = format_wind(kmh, ctx.units.wind, UnitStyle::Compact);
+    let full = wind_text(kmh, dir_deg, ctx, charset, true);
     if display_width(&full) <= metrics_w {
         return full;
     }
-    let short = wind_text(kmh, dir_deg, units, charset, false);
+    let short = wind_text(kmh, dir_deg, ctx, charset, false);
     if display_width(&short) <= metrics_w {
         return short;
     }
@@ -769,19 +758,23 @@ fn wind_metric(
 }
 
 /// `↗ 12km/h NE`, or `↗ 12km/h` when the caller has no room for the cardinal direction.
+///
+/// The arrow comes from [`art::wind_arrow`] and follows the character set, while the point's name
+/// comes from the catalog: a dumb terminal draws an ASCII arrow where a UTF-8 one draws a glyph, and
+/// a Chinese run reads `东北风` where an English one reads `NE`.
 fn wind_text(
     kmh: f32,
     dir_deg: Option<u16>,
-    units: ResolvedUnits,
+    ctx: &RenderContext<'_>,
     charset: Charset,
     with_cardinal: bool,
 ) -> String {
-    let speed = format_wind(kmh, units.wind, UnitStyle::Compact);
+    let speed = format_wind(kmh, ctx.units.wind, UnitStyle::Compact);
     match dir_deg {
         Some(dir) => {
             let arrow = art::wind_arrow(dir, charset);
             if with_cardinal {
-                format!("{arrow} {speed} {}", compass_16(dir))
+                format!("{arrow} {speed} {}", ctx.i18n.direction(dir))
             } else {
                 format!("{arrow} {speed}")
             }
@@ -800,7 +793,7 @@ mod tests {
 
     use super::{ArtTable, CELL_W, METRICS_W, display_width, fit};
     use crate::config::UnitOverrides;
-    use crate::i18n::{I18n, LanguageId};
+    use crate::i18n::{I18n, LanguageId, LanguageRequest};
     use crate::model::units::UnitSystem;
     use crate::model::{
         Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
@@ -808,6 +801,10 @@ mod tests {
     };
     use crate::render::{Charset, ColorDepth, ColorMode, RenderContext, Renderer, TermCaps};
 
+    /// The English catalog, loaded the way the CLI loads an unconfigured run.
+    fn english() -> I18n {
+        I18n::load(&LanguageRequest::Auto, |_| None)
+    }
     fn moment(hour: u32, minute: u32) -> chrono::DateTime<FixedOffset> {
         FixedOffset::east_opt(8 * 3600)
             .expect("a valid offset")
@@ -914,7 +911,7 @@ mod tests {
     }
 
     fn render(report: &Report, width: usize, charset: Charset) -> String {
-        let i18n = I18n::new(LanguageId::EN_US);
+        let i18n = english();
         let ctx = context(&i18n, width);
         ArtTable::new(charset)
             .render(report, &ctx)
@@ -1130,7 +1127,7 @@ mod tests {
     #[test]
     fn colour_reaches_the_line_and_mono_does_not() {
         let report = report(Some(current(true, 2)), Vec::new());
-        let i18n = I18n::new(LanguageId::EN_US);
+        let i18n = english();
         let mut ctx = context(&i18n, 80);
         ctx.color = ColorMode::Always;
         ctx.term = TermCaps::read(

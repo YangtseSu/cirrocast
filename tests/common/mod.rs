@@ -79,14 +79,24 @@ impl Sandbox {
     }
 
     /// A `cirrocast` invocation wired to the sandbox and to a clean environment.
+    ///
+    /// The locale variables are cleared and `LC_ALL` is pinned to `C.UTF-8`: the ambient locale is
+    /// what `--lang auto` negotiates from, so inheriting the developer's would make the output
+    /// language depend on whose machine ran the test. `C.UTF-8` names no language — the run stays
+    /// English — while still telling the renderer the terminal can draw UTF-8. A test that wants a
+    /// locale sets `LANG`/`LC_ALL` itself, after this helper.
     pub fn cirrocast(&self) -> Command {
         let mut command = Command::cargo_bin("cirrocast").expect("the binary is built by cargo");
         command
             .env("XDG_CONFIG_HOME", self.home.path().join("config"))
             .env("XDG_CONFIG_DIRS", self.home.path().join("system"))
             .env("XDG_CACHE_HOME", self.home.path().join("cache"))
-            .env("XDG_DATA_HOME", self.home.path().join("data"));
+            .env("XDG_DATA_HOME", self.home.path().join("data"))
+            .env("LC_ALL", "C.UTF-8");
         for name in OVERRIDE_VARS {
+            command.env_remove(name);
+        }
+        for name in ["LANG", "LC_MESSAGES", "LC_CTYPE", "CIRROCAST_LANG"] {
             command.env_remove(name);
         }
         command

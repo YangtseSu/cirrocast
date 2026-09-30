@@ -17,13 +17,18 @@ use std::time::Duration;
 
 use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
 use cirrocast::config::UnitOverrides;
-use cirrocast::i18n::{I18n, LanguageId};
+use cirrocast::i18n::{I18n, LanguageId, LanguageRequest};
 use cirrocast::model::Report;
 use cirrocast::model::condition::Condition;
 use cirrocast::model::units::UnitSystem;
 use cirrocast::paths::Paths;
 use cirrocast::render::art::{art, night_variant, one_line_art};
 use cirrocast::render::{ColorMode, Format, RenderContext, TermCaps, renderer_for};
+
+/// The English catalog, loaded the way the CLI loads an unconfigured run.
+fn english() -> I18n {
+    I18n::load(&LanguageRequest::Auto, |_| None)
+}
 
 /// One rendered configuration.
 #[derive(Clone, Copy)]
@@ -61,7 +66,7 @@ fn capable_terminal() -> TermCaps {
 /// Renders a case through the same entry point the CLI uses.
 fn render(case: Case) -> String {
     let report = common::fixture_report(case.file);
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     let caps = capable_terminal();
     let ctx = RenderContext {
         units: case

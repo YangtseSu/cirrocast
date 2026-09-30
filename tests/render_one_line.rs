@@ -13,11 +13,16 @@
 mod common;
 
 use cirrocast::config::UnitOverrides;
-use cirrocast::i18n::{I18n, LanguageId};
+use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::Report;
 use cirrocast::model::units::UnitSystem;
 use cirrocast::render::one_line::{self, OneLine, PRESETS, expand, warnings};
 use cirrocast::render::{ColorMode, RenderContext, Renderer, TermCaps};
+
+/// The English catalog, loaded the way the CLI loads an unconfigured run.
+fn english() -> I18n {
+    I18n::load(&LanguageRequest::Auto, |_| None)
+}
 
 /// The fixture every case renders.
 fn report() -> Report {
@@ -52,7 +57,7 @@ fn context<'a>(
         term: caps,
         now: common::fixture_now(report),
         tz: report.location.tz,
-        lang: LanguageId::EN_US,
+        lang: i18n.lang(),
         i18n,
     }
 }
@@ -60,7 +65,7 @@ fn context<'a>(
 /// Expands `template` over the fixture, at a capable terminal.
 fn line(template: &str) -> String {
     let report = report();
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     expand(
         template,
         &report,
@@ -72,7 +77,7 @@ fn line(template: &str) -> String {
 /// The rendered `one-line` output for a template and a unit system.
 fn rendered(template: &str, units: UnitSystem) -> String {
     let report = report();
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     OneLine::new(one_line::resolve_template(Some(template)).expect("a template"))
         .render(&report, &context(&report, units, capable(), &i18n))
         .expect("the renderer renders")
@@ -112,7 +117,7 @@ fn every_token_renders_the_documented_value() {
 fn the_night_variant_and_the_ascii_charset_follow_the_terminal() {
     // The night fixture is the same place after dark: the sky art switches to its night sibling.
     let night = common::fixture_report("beijing-night.json");
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     let ctx = context(&night, UnitSystem::Metric, capable(), &i18n);
     assert_eq!(expand("%c", &night, &ctx).expect("expands"), "*o*");
 
@@ -182,7 +187,7 @@ fn an_unknown_token_is_reported_once_per_occurrence() {
 #[test]
 fn an_empty_template_is_a_usage_error() {
     let report = report();
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     let ctx = context(&report, UnitSystem::Metric, capable(), &i18n);
     for template in ["", "   ", "\t"] {
         let error = expand(template, &report, &ctx).expect_err("never empty");

@@ -11,7 +11,7 @@
 //!
 //! | token | output | token | output |
 //! |---|---|---|---|
-//! | `%c` | condition art, day/night aware | `%d` `%D` | ISO date / `Wed 30 Sep` |
+//! | `%c` | condition art, day/night aware | `%d` `%D` | ISO date / `Wed, Sep 30` |
 //! | `%C` | condition text | `%Z` `%z` | time zone name / `+0800` |
 //! | `%t` `%f` | temp / feels-like | `%u` `%U` | UV `5` / `5 (moderate)` |
 //! | `%w` | wind `↗ 12km/h NE` | `%S` `%s` | sunrise / sunset `06:05` |
@@ -38,9 +38,10 @@ use chrono::{DateTime, FixedOffset, Timelike as _};
 
 use super::{RenderContext, Renderer};
 use crate::error::{Error, Result};
+use crate::i18n::{DateStyle, keys};
 use crate::model::units::{
-    UnitStyle, compass_16, fmt_int, format_precip, format_pressure, format_temp_signed,
-    format_visibility, format_wind,
+    UnitStyle, fmt_int, format_precip, format_pressure, format_temp_signed, format_visibility,
+    format_wind,
 };
 use crate::model::{Condition, DayForecast, Location, Report};
 use crate::render::art;
@@ -154,7 +155,7 @@ pub enum Token {
     UvBand,
     /// `%d` — the date, ISO 8601.
     Date,
-    /// `%D` — the date, `Wed 30 Sep`.
+    /// `%D` — the date, `Wed, Sep 30`.
     DateLong,
     /// `%Z` — the time zone name.
     TzName,
@@ -448,64 +449,83 @@ fn hour_part(now: DateTime<FixedOffset>) -> crate::model::DayPartKind {
 fn value(token: Token, snapshot: &Snapshot, report: &Report, ctx: &RenderContext<'_>) -> String {
     let units = ctx.units;
     match token {
-        Token::ConditionArt => snapshot.condition.map_or_else(n_a, |condition| {
-            let key = condition.art_key();
-            let key = if snapshot.is_day {
-                key
-            } else {
-                art::night_variant(key)
-            };
-            art::one_line_art(key).to_owned()
-        }),
-        Token::ConditionText => snapshot
-            .condition
-            .map_or_else(n_a, |condition| ctx.i18n.condition(condition).to_owned()),
+        Token::ConditionArt => snapshot.condition.map_or_else(
+            || n_a(ctx),
+            |condition| {
+                let key = condition.art_key();
+                let key = if snapshot.is_day {
+                    key
+                } else {
+                    art::night_variant(key)
+                };
+                art::one_line_art(key).to_owned()
+            },
+        ),
+        Token::ConditionText => snapshot.condition.map_or_else(
+            || n_a(ctx),
+            |condition| ctx.i18n.condition(condition).into_owned(),
+        ),
         Token::Temp => snapshot
             .temp_c
-            .map_or_else(n_a, |temp| format_temp_signed(temp, units.temp)),
+            .map_or_else(|| n_a(ctx), |temp| format_temp_signed(temp, units.temp)),
         Token::FeelsLike => snapshot
             .feels_like_c
-            .map_or_else(n_a, |temp| format_temp_signed(temp, units.temp)),
+            .map_or_else(|| n_a(ctx), |temp| format_temp_signed(temp, units.temp)),
         Token::Wind => match (snapshot.wind_kmh, snapshot.wind_dir_deg) {
             (Some(kmh), Some(deg)) => format!(
                 "{} {} {}",
                 art::wind_arrow(deg, ctx.term.charset()),
                 format_wind(kmh, units.wind, UnitStyle::Compact),
-                compass_16(deg)
+                ctx.i18n.direction(deg)
             ),
-            _ => n_a(),
+            _ => n_a(ctx),
         },
         Token::Humidity => snapshot
             .humidity_pct
-            .map_or_else(n_a, |humidity| format!("{humidity}%")),
-        Token::Precip => snapshot.precip_mm.map_or_else(n_a, |mm| {
-            format_precip(mm, units.precip, UnitStyle::Compact)
-        }),
-        Token::Pressure => snapshot.pressure_hpa.map_or_else(n_a, |hpa| {
-            format_pressure(hpa, units.pressure, UnitStyle::Compact)
-        }),
-        Token::Visibility => snapshot.visibility_km.map_or_else(n_a, |km| {
-            format_visibility(km, units.distance, UnitStyle::Compact)
-        }),
-        Token::Uv => snapshot.uv_index.map_or_else(n_a, fmt_int),
-        Token::UvBand => snapshot.uv_index.map_or_else(n_a, |uv| {
-            format!("{} ({})", fmt_int(uv), ctx.i18n.uv_band(uv))
-        }),
-        Token::Date => ctx.now.format("%Y-%m-%d").to_string(),
-        Token::DateLong => ctx.now.format("%a %d %b").to_string(),
+            .map_or_else(|| n_a(ctx), |humidity| format!("{humidity}%")),
+        Token::Precip => snapshot.precip_mm.map_or_else(
+            || n_a(ctx),
+            |mm| format_precip(mm, units.precip, UnitStyle::Compact),
+        ),
+        Token::Pressure => snapshot.pressure_hpa.map_or_else(
+            || n_a(ctx),
+            |hpa| format_pressure(hpa, units.pressure, UnitStyle::Compact),
+        ),
+        Token::Visibility => snapshot.visibility_km.map_or_else(
+            || n_a(ctx),
+            |km| format_visibility(km, units.distance, UnitStyle::Compact),
+        ),
+        Token::Uv => snapshot.uv_index.map_or_else(|| n_a(ctx), fmt_int),
+        Token::UvBand => snapshot.uv_index.map_or_else(
+            || n_a(ctx),
+            |uv| {
+                let band = ctx.i18n.uv_band(uv).into_owned();
+                ctx.i18n
+                    .format(
+                        &keys::FORMAT_UV,
+                        &[
+                            ("value", fluent_bundle::FluentValue::from(fmt_int(uv))),
+                            ("band", fluent_bundle::FluentValue::from(band)),
+                        ],
+                    )
+                    .into_owned()
+            },
+        ),
+        Token::Date => ctx.i18n.format_date(ctx.now.date_naive(), DateStyle::Iso),
+        Token::DateLong => ctx.i18n.format_date(ctx.now.date_naive(), DateStyle::Short),
         Token::TzName => ctx.tz.name().to_owned(),
         Token::TzOffset => ctx.now.format("%z").to_string(),
-        Token::Sunrise => snapshot.sunrise.map_or_else(n_a, clock_time),
-        Token::Sunset => snapshot.sunset.map_or_else(n_a, clock_time),
+        Token::Sunrise => snapshot.sunrise.map_or_else(|| n_a(ctx), clock_time),
+        Token::Sunset => snapshot.sunset.map_or_else(|| n_a(ctx), clock_time),
         Token::Location => report.location.name.clone(),
         Token::Coordinates => coordinates(&report.location),
-        Token::Moon => n_a(),
+        Token::Moon => ctx.i18n.text(&keys::MOON_NA).into_owned(),
     }
 }
 
-/// The literal `n/a` a token prints when its value is unknown.
-fn n_a() -> String {
-    "n/a".to_owned()
+/// The `n/a` a token prints when its value is unknown, in the report's language.
+fn n_a(ctx: &RenderContext<'_>) -> String {
+    ctx.i18n.text(&keys::NA).into_owned()
 }
 
 /// `HH:MM` at the instant's own offset.

@@ -19,10 +19,15 @@ mod common;
 use unicode_width::UnicodeWidthStr;
 
 use cirrocast::config::UnitOverrides;
-use cirrocast::i18n::{I18n, LanguageId};
+use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::Report;
 use cirrocast::model::units::UnitSystem;
 use cirrocast::render::{ColorMode, Format, RenderContext, TermCaps, renderer_for};
+
+/// The English catalog, loaded the way the CLI loads an unconfigured run.
+fn english() -> I18n {
+    I18n::load(&LanguageRequest::Auto, |_| None)
+}
 
 /// The narrowest width the CLI resolves; everything below is raised to it.
 const MIN_WIDTH: usize = 20;
@@ -35,7 +40,7 @@ const WIDE_FROM: usize = 74;
 
 /// Renders `report` at `width` with `format`, in the charset a UTF-8 terminal gets.
 fn render_in(report: &Report, width: usize, format: Format) -> String {
-    let i18n = I18n::new(LanguageId::EN_US);
+    let i18n = english();
     let caps = TermCaps::read(
         |name| match name {
             "TERM" => Some("xterm-256color".to_owned()),
@@ -53,7 +58,7 @@ fn render_in(report: &Report, width: usize, format: Format) -> String {
         term: caps,
         now: common::fixture_now(report),
         tz: report.location.tz,
-        lang: LanguageId::EN_US,
+        lang: i18n.lang(),
         i18n: &i18n,
     };
     renderer_for(format, &caps, None)
