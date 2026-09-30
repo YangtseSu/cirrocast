@@ -40,7 +40,7 @@ registry re-verification of that step needs a written record of what was checked
 | `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | implemented |
 | `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | step 11 |
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | implemented |
-| `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | step 10 |
+| `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | implemented |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | step 10 |
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | step 10 |
 | `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (`24h`/`72h`/`168h`) | v7: 30 days daily; successor v1: 10 days | step 10 |
@@ -382,6 +382,15 @@ by name or brand logo as the source of the data." Commercial use is allowed on F
 one key serves one application. Caching: "current conditions data — maximum 60 minutes; forecast data —
 maximum 24 hours". A mandatory end-user disclaimer applies to anything shown to users, quoted in full
 in the terms (<https://www.weatherapi.com/terms.aspx>).
+
+**Implemented 2026-10-01** (`src/provider/weatherapi.rs`). One call per fetch; `lang=en` is pinned
+(our Fluent catalogs own the wording); `tz_id` repairs a provisional zone, so coordinates work where
+`openweathermap` refuses them; the daily extremes and sun times come from the response's own `day`
+and `astro` blocks (the 12-hour clock strings are joined to the day's local date); `uv` fills the
+model's UV field; and the full 53-code table is unit-tested. Credit line:
+`WeatherAPI.com (free-tier attribution) — https://www.weatherapi.com/`. The free tier's 3-day
+horizon is the registry's `max_days`; a `403` keeps the `Upstream` taxonomy (exit 3) because it
+carries quota and plan refusals, while a `401` becomes exit 6.
 
 **Client notes.** Condition codes are **53 codes over 1000–1282** (not 1000–1087); the canonical list is
 <https://www.weatherapi.com/docs/weather_conditions.json>, which the vendor explicitly blesses for

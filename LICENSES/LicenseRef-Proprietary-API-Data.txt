@@ -1,0 +1,19 @@
+Recorded proprietary API data, used as test fixtures
+====================================================
+
+The payload files under the paths annotated with this identifier in REUSE.toml are verbatim
+responses from commercial weather APIs, recorded once by the project's maintainers and reduced to
+the fields the tests read. The API key of the recording was removed or replaced by `REDACTED`.
+
+They are not covered by this repository's GPL-3.0-or-later licence: the data remains the property
+of the respective provider, and the files exist only as offline test fixtures (no test opens a
+network connection, and nothing here is redistributed as a product).
+
+  * WeatherAPI.com — <https://www.weatherapi.com/terms.aspx>
+  * World Weather Online — <https://www.worldweatheronline.com/weather-api/api/api-t-and-c.aspx>
+  * Pirate Weather — <https://pirate-weather.apiable.io/terms>
+  * QWeather — <https://www.qweather.com/en/terms/developers-eula>
+
+The corresponding client code (`src/provider/*.rs`) talks to the live services under the terms of
+the account that owns the API key; see `docs/providers.md` for the obligations each provider's
+licence imposes on the rendered output.

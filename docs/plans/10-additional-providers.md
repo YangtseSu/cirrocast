@@ -57,7 +57,7 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       `docs/providers.md`). Traps pinned there: `rain`/`snow` are absent rather than zero and the key differs
       between endpoints (`rain.1h` vs `rain.3h`), `main.temp_min/max` are not daily extremes, and `511`/`616`
       carry snow icons upstream.
-- ⬜ `weatherapi.rs`: `GET https://api.weatherapi.com/v1/forecast.json` with `key`, `q` (`lat,lon` or name),
+- ✅ `weatherapi.rs` (landed 2026-10-01): `GET https://api.weatherapi.com/v1/forecast.json` with `key`, `q` (`lat,lon` or name),
       `days` and `lang=en` (pinned: provider-side translation is deliberately unused, our Fluent catalogs own the
       wording); auth `key` from `CIRROCAST_WEATHERAPI_KEY`; free tier **100,000 calls/month** with a 3-day
       forecast (1,000,000 was wrong; paid plans get 14 days), `Limited` air quality, 1 call per fetch. Mapping:
@@ -272,3 +272,11 @@ cirrocast provider list && cirrocast provider info smhi
   provisional zone is refused before any request (the payload carries only a UTC offset), a partial
   location-local today is skipped, and a missing `deg` (calm wind) becomes 0. Live smoke: `-p openweathermap
   Beijing` printed real data with `Data: OpenWeather (ODbL 1.0) — https://openweathermap.org/`.
+- 2026-10-01 — WeatherAPI landed (`src/provider/weatherapi.rs`, `tests/provider_weatherapi.rs`, recorded
+  forecast and 401 fixtures under `tests/fixtures/weatherapi/`, custom `LicenseRef-Proprietary-API-Data`
+  annotation plus a `LICENSES/` notice file for the commercial vendors). One call per fetch cached under
+  `weather/weatherapi-…`; `lang=en` pinned; `tz_id` repairs a provisional zone (so coordinates work); the
+  daily extremes and sun times come from the response's `day`/`astro` blocks (12-hour clock strings joined to
+  the day's local date); `uv` fills the model's UV field; the condition table covers all 53 published codes
+  with a unit test. A 403 keeps the `Upstream` taxonomy because it carries quota/plan refusals (the 401 → exit
+  6 split is the shared helper's). Live smoke printed real data with the free-tier credit line.

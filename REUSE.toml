@@ -70,6 +70,20 @@ precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# Recorded proprietary API payloads (WeatherAPI.com, World Weather Online, Pirate Weather,
+# QWeather): the data stays the provider's property, so the fixtures carry a custom licence
+# reference rather than GPL or an open-data identifier. See the notice file for the terms links.
+[[annotations]]
+path = [
+    "tests/fixtures/weatherapi/**",
+    "tests/fixtures/wwo/**",
+    "tests/fixtures/pirateweather/**",
+    "tests/fixtures/qweather/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "WeatherAPI.com, World Weather Online, Pirate Weather and QWeather (recorded API responses)"
+SPDX-License-Identifier = "LicenseRef-Proprietary-API-Data"
+
 # Recorded OpenWeatherMap responses: the data is ODbL 1.0 (attribution required, share-alike only
 # for an adapted database), and the fixtures keep the upstream licence rather than being relicensed.
 # The API key the recording used is replaced by `REDACTED`.
