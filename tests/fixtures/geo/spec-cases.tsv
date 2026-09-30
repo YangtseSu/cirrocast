@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Location argument parse table: one case per line, tab separated.
+#
+#   column 1  the argument, with `\s` for a space, `\t` for a tab, `\\` for a backslash;
+#             the token `<none>` means "no argument at all" (argv had no location)
+#   column 2  `default`, `fuzzy:<text>`, `exact:<text>`, `osm:<text>`, `latlon:<lat>:<lon>`
+#             or `error:<fragment>` — the fragment must appear in the usage message
+#
+# `tests/geo_spec.rs` drives `LocationSpec::parse_arg` with these rows.
+<none>	default
+\s	default
+\s\s\s	default
+Beijing	fuzzy:Beijing
+\sBeijing\s	fuzzy:Beijing
+Beijing, CN	fuzzy:Beijing, CN
+New York	fuzzy:New York
+Beijing, Mars	fuzzy:Beijing, Mars
+B	error:too short
+:Beijing	exact:Beijing
+:\sBeijing	exact:Beijing
+:\sBeijing\s	exact:Beijing
+:	error:need a value
+\s:\s	error:need a value
+:B	error:too short
+~Tsinghua	osm:Tsinghua
+~\sTsinghua\s	osm:Tsinghua
+~A	osm:A
+~	error:need a value
+\s~\s	error:need a value
+@39.9042,116.4074	latlon:39.9042:116.4074
+@39.9042,-116.4074	latlon:39.9042:-116.4074
+@90,180	latlon:90:180
+@-90,-180	latlon:-90:-180
+@39.9\s,\s116.4	latlon:39.9:116.4
+@39.9	error:expected @<lat>,<lon>
+@39.9,116.4,5	error:expected @<lat>,<lon>
+@,116.4	error:expected @<lat>,<lon>
+@39.9,	error:expected @<lat>,<lon>
+@a,116.4	error:expected @<lat>,<lon>
+@39.9,116.4junk	error:expected @<lat>,<lon>
+@39.9 116.4	error:expected @<lat>,<lon>
+@NaN,116.4	error:expected @<lat>,<lon>
+@inf,116.4	error:expected @<lat>,<lon>
+@91,0	error:latitude 91 is out of range -90..=90
+@-90.1,0	error:latitude -90.1 is out of range -90..=90
+@0,181	error:longitude 181 is out of range -180..=180
+@0,-180.5	error:longitude -180.5 is out of range -180..=180
+@\s39.9042\s,\s116.4074\s	latlon:39.9042:116.4074
+Beijing,CN	fuzzy:Beijing,CN
+@0,0	latlon:0:0
