@@ -24,6 +24,7 @@
 pub mod dayparts;
 pub mod open_meteo;
 pub mod openweathermap;
+pub mod pirateweather;
 pub mod smhi;
 pub mod weatherapi;
 pub mod worldweatheronline;
@@ -195,9 +196,9 @@ impl ProviderId {
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "Dark Sky shaped responses; free tier 10 000 calls/month",
                 verified: "2026-09-30",
-                implemented: false,
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some("Pirate Weather — https://pirateweather.net/"),
             },
             Self::QWeather => ProviderMeta {
                 id: *self,
@@ -602,6 +603,7 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
     match id {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
+        ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::Smhi => Ok(Box::new(smhi::Smhi)),
         ProviderId::WeatherApi => Ok(Box::new(weatherapi::WeatherApi)),
         ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),

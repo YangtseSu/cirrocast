@@ -85,7 +85,7 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       string (`"700"`). Limits: `max_days: 5`, `hourly: false`, `requires_key: true`, `location_kinds: LatLon`.
       Obligations: free-tier credit is mandatory ("Weather Data by WorldWeatherOnline.com"), the terms add a
       mandatory end-user disclaimer, and caching caps are 60 min (current) / 24 h (forecast).
-- ⬜ `pirateweather.rs`: `GET https://api.pirateweather.net/forecast/<key>/<lat>,<lon>` with
+- ✅ `pirateweather.rs` (landed 2026-10-01): `GET https://api.pirateweather.net/forecast/<key>/<lat>,<lon>` with
       `units=si&exclude=minutely,alerts&lang=en` (Dark-Sky-compatible payload; the key is a **path** segment and
       is masked in logs). **Corrected 2026-09-30**: there is no `tz` parameter (localise with the response's
       `timezone` name and `offset` hours); the free tier is 10,000 calls/month ($2/month → 20,000) with a
@@ -288,3 +288,12 @@ cirrocast provider list && cirrocast provider info smhi
   Two quirks pinned by tests and recorded in `docs/providers.md`: `observation_time` is the **UTC** wall clock
   (the docs say local; two recordings at known instants show UTC), and a provisional zone is refused before any
   request because the payload carries no zone. A day whose slots do not cover all four parts is skipped.
+- 2026-10-01 — Pirate Weather landed (`src/provider/pirateweather.rs`, `tests/provider_pirateweather.rs`,
+  recorded response and 401 fixtures under `tests/fixtures/pirateweather/`). One call per fetch with
+  `units=si&exclude=minutely,alerts&lang=en&extend=hourly` (the extend is required for the 7-day horizon:
+  without it the hourly block covers 48 h and days 3–7 would have no samples); the key is a path segment and
+  is redacted everywhere; `timezone` repairs a provisional zone; `-999` and absent fields become `None`; the
+  icon table covers the default set plus `hail` and refines the precipitation families by the provider's own
+  mm/h bands. Deviations from the plan's sketch: `precipAccumulation` (centimetres) is **not** consumed — the
+  parts sum the hourly liquid-equivalent intensities, so the scaling trap never applies — and `is_day` prefers
+  an explicit `-day`/`-night` icon, falling back to the local civil day. Live smoke printed real data.

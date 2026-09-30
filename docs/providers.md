@@ -42,7 +42,7 @@ registry re-verification of that step needs a written record of what was checked
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | implemented |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | implemented |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | implemented |
-| `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | step 10 |
+| `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | implemented |
 | `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (`24h`/`72h`/`168h`) | v7: 30 days daily; successor v1: 10 days | step 10 |
 
 ### Obligations that reach the rendered output
@@ -523,6 +523,17 @@ Assistant constant, not a licence term. The terms do carry a warranty disclaimer
 for life or property critical applications") and a $100 liability cap. The service sends
 `Cache-Control: max-age=900, must-revalidate` (<https://pirate-weather.apiable.io/terms>,
 <https://docs.pirateweather.net/en/latest/DataSources/>).
+
+**Implemented 2026-10-01** (`src/provider/pirateweather.rs`). One call per fetch with
+`units=si&exclude=minutely,alerts&lang=en&extend=hourly`; the key is a path segment and is redacted
+everywhere; `timezone` repairs a provisional zone; `-999` and absent fields become `None`; the icon
+table covers the default set plus `hail` and refines rain/snow/sleet by the provider's own mm/h
+bands (0.4 / 2.5, a three-way collapse of its four bands). Two decisions worth recording:
+`precipAccumulation` (centimetres under `si`) is **not** consumed — the day parts sum the hourly
+liquid-equivalent intensities, so the scaling trap never applies — and `is_day` prefers an explicit
+`-day`/`-night` icon, falling back to the local civil day for the icons without a variant. Credit
+line: `Pirate Weather — https://pirateweather.net/` (the terms mandate no attribution; the line
+names the service and its home page rather than inventing a mandated string).
 
 **Client notes.** Do not send `tz`; localise with `timezone` + `offset * 3600`. `flags.sources` is a
 candidate list, not per-value provenance (`sourceIDX` with `version=2` is). `-999` appears in place of
