@@ -21,18 +21,20 @@ cirrocast — Beijing, China (39.9042, 116.4074)
 ```
 $ cirrocast Beijing --format plain
 Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
-Now: 31°C (feels 36°C), Partly cloudy, wind 12 km/h SE, humidity 66%, pressure 1004 hPa, visibility 10 km, 0.0 mm
-2026-07-15  min 25°C  max 35°C  sunrise 04:58  sunset 19:42
-  Morning  29°C  Clear sky     precip 0.0 mm (0%)   wind 2.5 km/h N
-  Noon     35°C  Clear sky     precip 0.0 mm (0%)   wind 4.7 km/h SW
-  Evening  30°C  Overcast      precip 0.0 mm (0%)   wind 13 km/h SW
-  Night    26°C  Overcast      precip 0.0 mm (0%)   wind 6.0 km/h SW
+Now: 19°C (feels 12°C), Overcast, wind 20 km/h NW, humidity 12%, pressure 1020 hPa, visibility 17 km, 0.0 mm
+2026-09-30  min 15°C  max 20°C  sunrise 06:09  sunset 17:59
+  Morning  17°C  Overcast        precip 0.0 mm (0%)   wind 18 km/h NW
+  Noon     20°C  Overcast        precip 0.0 mm (0%)   wind 19 km/h NW
+  Evening  17°C  Partly cloudy   precip 0.0 mm (10%)   wind 10 km/h NW
+  Night    18°C  Partly cloudy   precip 0.0 mm (14%)   wind 17 km/h N
+… two more days, same four lines each …
+Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
 Data: Open-Meteo.com (CC BY 4.0)
 ```
 
-The `plain` shape above is the recorded-response run from the test suite
-(`tests/fixtures/open_meteo/forecast_beijing_2026-07-15.json`), so the numbers are the weather of that
-day, not of today.
+That is a real run — `cirrocast Beijing --format plain` on 2026-09-30, 12:45 local — with the day
+lines of the later days elided. When the name is ambiguous, a `note: … 10 candidates …` line goes to
+stderr, so stdout stays pipeable; `-q` silences it, and `:Beijing` demands an exact name.
 
 ## Status
 

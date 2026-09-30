@@ -92,44 +92,49 @@ including a 02:00 that does not exist in `Europe/Berlin`), `…/forecast_lisbon_
 envelope is step 05's `tests/fixtures/http/open_meteo_error_invalid_param.json`; a duplicate file
 under `open_meteo/` would be the same bytes twice.
 
-Provenance, stated exactly: direct TLS to `api.open-meteo.com`, `historical-forecast-api.open-meteo.com`
-and `archive-api.open-meteo.com` times out from the recording network (the TLS client hello is sent,
-then nothing — the same failure step 05 hit with `ipwho.is`), so each body was fetched through the
-`r.jina.ai` text proxy with only its header block stripped, byte-for-byte otherwise unchanged. The four
-dates are in the past, so the **Historical Forecast API** served them: same parameter names, same
-response schema, same variables as the forecast endpoint the provider calls. Sizes: 5.9 kB each.
+Provenance, stated exactly: the four dates are in the past, so
+`historical-forecast-api.open-meteo.com/v1/forecast` served them — same parameter names, response
+schema and variables as the forecast endpoint the provider calls — fetched directly over TLS with the
+provider's own parameter list and stored byte for byte. (The first recording went through the
+`r.jina.ai` text proxy, because the development machine was behind a proxy whose datacenter egress
+`api.open-meteo.com` silently drops after the TLS client hello. Re-fetching directly once the proxy was
+off produced bodies identical except for the nondeterministic `generationtime_ms` and the live
+`current` block, so the fixtures were replaced by the direct recordings.) Sizes: 5.9 kB each.
 
-Manual smoke run — the fetch half could not be exercised from this network, so the run below is the
-CLI over a cache entry seeded with the recorded Beijing response (no socket, `--offline`), which
-exercises everything except the transport itself:
+Manual smoke run — the live path, on 2026-09-30 with `COLUMNS=120`, all commands exit 0:
 
 ```sh
-tmp=$(mktemp -d); export XDG_CONFIG_HOME=$tmp/config XDG_CACHE_HOME=$tmp/cache XDG_DATA_HOME=$tmp/data
-# seeded: $XDG_CACHE_HOME/cirrocast/weather/open-meteo-39.90-116.41-3-2026-09-30.json (the fixture body)
-COLUMNS=120 cargo run -q -- '@39.9042,116.4074' --format plain --offline
-# 39.9042, 116.4074 Asia/Shanghai
-# Now: 18°C (feels 12°C), Overcast, wind 19 km/h NW, humidity 14%, pressure 1021 hPa, visibility 17 km, 0.0 mm
-# 2026-07-15  min 25°C  max 35°C  sunrise 04:58  sunset 19:42
-#   Morning  29°C  Clear sky       precip 0.0 mm (0%)   wind 2.5 km/h N
-#   Noon     35°C  Clear sky       precip 0.0 mm (0%)   wind 4.7 km/h SW
-#   Evening  30°C  Overcast        precip 0.0 mm (0%)   wind 13 km/h SW
-#   Night    26°C  Overcast        precip 0.0 mm (0%)   wind 6.0 km/h SW
-# 2026-07-16 …                                          # two more days, same four-part shape
-# Data: Open-Meteo.com (CC BY 4.0)                      # exit 0
-cargo run -q -- '@39.9042,116.4074' --format plain --offline --days 0
-# header, Now line, Data line only                      # exit 0
+tmp=$(mktemp -d); export XDG_CONFIG_HOME=$tmp/config XDG_CONFIG_DIRS=$tmp/system \
+  XDG_CACHE_HOME=$tmp/cache XDG_DATA_HOME=$tmp/data COLUMNS=120
+cargo run -q -- Beijing --format plain
+# stderr: note: 10 candidates for `Beijing`; using Beijing, Beijing Municipality, China (population 18960744) — pass `:Beijing` to require an exact name match
+# Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
+# Now: 19°C (feels 12°C), Overcast, wind 20 km/h NW, humidity 12%, pressure 1020 hPa, visibility 17 km, 0.0 mm
+# 2026-09-30  min 15°C  max 20°C  sunrise 06:09  sunset 17:59
+#   Morning  17°C  Overcast        precip 0.0 mm (0%)   wind 18 km/h NW
+#   Noon     20°C  Overcast        precip 0.0 mm (0%)   wind 19 km/h NW
+#   Evening  17°C  Partly cloudy   precip 0.0 mm (10%)   wind 10 km/h NW
+#   Night    18°C  Partly cloudy   precip 0.0 mm (14%)   wind 17 km/h N
+# 2026-10-01 … 2026-10-02 …                               # two more days, same four-part shape
+# Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
+# Data: Open-Meteo.com (CC BY 4.0)
+cargo run -q -- Beijing --format plain --offline    # byte-identical body, served from weather/open-meteo-39.91-116.40-3-2026-09-30.json (`diff` clean)
+cargo run -q -- cache stat                          # weather 1 entry 6.5 kB; geocode 1 entry 3.5 kB
+cargo run -q -- Beijing --format plain --refresh    # refetches, same shape
+cargo run -q -- Beijing --days 0 --format plain     # header, Now line and Data line only
+cargo run -q -- Beijing --days 0 --format plain -q  # no ambiguity note on stderr
+cargo run -q -- '@39.9042,116.4074' --format plain  # 39.9042, 116.4074 Asia/Shanghai — the provider's zone, not the provisional UTC
+cargo run -q -- Longyearbyen --days 1 --format plain  # 78.22, 15.65 Arctic/Longyearbyen; sunrise/sunset present today (07:25/18:05)
 cargo run -q -- -p open-meteo,does-not-exist '@39.9042,116.4074' --format plain; echo $?
 # error: unknown provider `does-not-exist`; known providers: …   (exit 2)
 cargo run -q -- -p smhi '@39.9042,116.4074' --format plain; echo $?
 # error: provider `smhi` is not implemented yet                 (exit 2)
 ```
 
-The live path was attempted as well, and fails at this network rather than in the code: the geocoding
-half resolves (the geocoding host is reachable), then the forecast request reports
-`network error: GET https://api.open-meteo.com/v1/forecast?… failed after 3 attempts: timeout while
-connecting` and exits 3. The first run on an unblocked network has to confirm the live body; the wire
-contract, the decoding, the aggregation and the rendered shape are pinned by the recorded responses and
-the seeded-cache run above.
+`CIRROCAST_LIVE_TESTS=1 cargo test --test live -- --ignored --nocapture` runs both live smoke tests
+(Open-Meteo for Beijing, and the geocoder plus forecast for a resolved name) and passed on
+2026-09-30; the polar-winter `sunrise: None` case stays fixture-only, because Longyearbyen still has a
+sunrise on the recording date.
 
 ## Exit criteria
 
@@ -141,13 +146,11 @@ the seeded-cache run above.
 - ✅ `cargo test` clean (`tests/provider_open_meteo.rs`, `tests/render_plain.rs`, all unit tests).
 - ✅ `reuse lint` clean, with the Open-Meteo fixtures annotated `CC-BY-4.0` and `LICENSES/CC-BY-4.0.txt`
       present.
-- ✅ The smoke run reproduces the shown shape — location header, one `Now:` line, one date line with
-      min/max/sunrise/sunset, four part lines per day, the attribution line, and the `--offline` rerun
-      printing the same body from `weather/open-meteo-39.90-116.41-3-2026-09-30.json` — over a seeded
-      cache entry, because the live fetch cannot reach `api.open-meteo.com` from this network (see
-      Verification: the TLS handshake times out, exit code 3). The live body stays unverified until a
-      run on an unblocked network; every other half of the path is covered by the recorded-response
-      tests.
+- ✅ The smoke run reproduces the shape live — location header, one `Now:` line, one date line with
+      min/max/sunrise/sunset, four part lines per day, the credits — and the `--offline` rerun prints a
+      byte-identical body from `weather/open-meteo-39.91-116.40-3-2026-09-30.json` without touching the
+      network (`diff` clean, `cache stat` showing the entry). The two `#[ignore]`d live tests pass as
+      well.
 
 ## Risks
 
@@ -162,11 +165,10 @@ the seeded-cache run above.
 - Sunrise/sunset absence in polar regions is real behaviour, but Open-Meteo expresses it as
   `00:00`/`00:00` rather than `null` on the recorded days; both forms become `None`, and a renderer that
   assumed the fields exist would print `00:00`, which the fixture test prevents.
-- `api.open-meteo.com` is unreachable from the development network used for this step (TLS handshake
-  timeout; the geocoding host is reachable), so the live fetch, `--refresh` on a live body and the
-  upstream's current schema were not observed here. The recorded fixtures, the request assertions and
-  the seeded-cache smoke run cover everything else; a live run on an unblocked network is the first
-  thing to do if a decoding error ever appears.
+- `api.open-meteo.com` silently drops a connection whose TLS client hello arrives from the proxy this
+  development machine used (its egress is a datacenter address); with the proxy off the live path works
+  and was verified on 2026-09-30. Worth knowing when a recording or a live run fails: the failure is
+  `timeout while connecting` after three attempts, exit code 3, with the geocoding host still answering.
 - The plain renderer clips at the resolved width, and step 06 resolves that width from `[render] width`
   → `COLUMNS` → 80 (no tty probing yet). A wide `Now:` line therefore loses its tail on a narrow
   terminal until step 07 adds `--width` and the terminal query.
@@ -204,3 +206,13 @@ the seeded-cache run above.
   executed and observed. The live fetch could not be exercised from this network (`timeout while
   connecting`, exit 3) — recorded under Verification and Risks, and the one thing left for a machine
   with access to `api.open-meteo.com`.
+- 2026-09-30 — the blocking was the proxy, not the service: with it off, the live path works. Re-ran
+  everything that was previously only fixture-backed and corrected the record above: `cargo run -q --
+  Beijing --format plain` prints a real report (exit 0), the `--offline` rerun is byte-identical from
+  the cache, `--refresh`, `--days 0`, `-q`, `@lat,lon` (zone correction shown) and `Longyearbyen` all
+  behave as documented, and `CIRROCAST_LIVE_TESTS=1 cargo test --test live -- --ignored` passes both
+  live tests. Because direct TLS to Open-Meteo now works, the four fixtures were re-recorded straight
+  from `historical-forecast-api.open-meteo.com` (bodies identical apart from `generationtime_ms` and the
+  live `current` block, so only the `current`-dependent assertions changed: 18.5 °C, humidity 12,
+  visibility 17.24 km); `REUSE.toml` and the Verification section above now state that provenance, and
+  the `r.jina.ai` relay is gone from the story.
