@@ -807,6 +807,15 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         // bug report can name the upstream call without a packet capture.
         let credit = licence_line(&report.attribution.provider).unwrap_or("no credit line");
         eprintln!("attribution: {credit} ({})", report.attribution.url);
+        if report.days.is_empty() {
+            // A backend with `daily == false` (or one that answered with observations only) still
+            // renders: `art-table` falls back to the current-conditions block and the record
+            // formats keep their keys, but the user should know why no day section is there.
+            eprintln!(
+                "note: {} reports no forecast days; rendering current conditions only",
+                report.attribution.provider
+            );
+        }
     }
 
     let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();

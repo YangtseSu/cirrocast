@@ -41,9 +41,12 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       while `Usage`/`Config`/`Location`/`MissingKey`/`InvalidKey` abort immediately with their own exit code. An
       exhausted chain reports every attempt: `error: all providers failed: open-meteo (upstream timeout after
       15s); smhi (out of coverage: 39.90,116.40 outside the PMP3g domain)`.
-- ⬜ Capability-driven degradation, documented in `src/render/mod.rs` and tested: a provider with
-      `daily == false` still renders `plain`/`one-line`/`json` (day sections collapse to current conditions) and
-      `art-table` falls back to a single current-conditions block with a `--verbose` note — never an error.
+- ✅ Capability-driven degradation: the renderers already handle a report with no days (`art-table` guards the
+      table with `!report.days.is_empty()`, `one-line` falls back to `current`, and `plain`/`json` keep their
+      keys), and the fixtures cover it (`tests/fixtures/report/current-only.json` is rendered by the json,
+      snapshot, width and plain suites). The `--verbose` note (`note: <provider> reports no forecast days;
+      rendering current conditions only`) landed in the CLI. The end-to-end pin through a real `daily == false`
+      backend moves to step 11, whose `metar` is the first one — there is no such provider in this step.
 - ✅ `openweathermap.rs` (landed 2026-10-01): current `https://api.openweathermap.org/data/2.5/weather?lat=&lon=&units=metric&appid=`
       and forecast `https://api.openweathermap.org/data/2.5/forecast?lat=&lon=&units=metric&appid=` (3-hourly,
       40 slots ≈ 5 days); auth is the `appid` query param from `CIRROCAST_OPENWEATHERMAP_KEY`; free tier
