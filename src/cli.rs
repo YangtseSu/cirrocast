@@ -450,10 +450,15 @@ fn run_cache(command: &CacheCommand, cli: &Cli) -> Result<()> {
             };
             let cache = Cache::open(&paths, mode, Arc::new(SystemClock), cli.verbose);
             let report = cache.clean(*all)?;
-            if *all {
-                println!("removed {} entries", report.removed);
+            let noun = if report.removed == 1 {
+                "entry"
             } else {
-                println!("removed {} expired entries", report.removed);
+                "entries"
+            };
+            if *all {
+                println!("removed {} {noun}", report.removed);
+            } else {
+                println!("removed {} expired {noun}", report.removed);
             }
         }
     }
