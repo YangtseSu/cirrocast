@@ -23,11 +23,14 @@
 
 pub mod dayparts;
 pub mod open_meteo;
+pub mod smhi;
 
 use std::fmt;
 use std::str::FromStr;
 use std::time::Duration;
 
+use chrono::{DateTime, NaiveDate, Utc};
+use chrono_tz::Tz;
 use serde::de::DeserializeOwned;
 
 use crate::cache::{Cache, CacheKey};
@@ -219,9 +222,9 @@ impl ProviderId {
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "keyless, Nordics and adjacent seas; SNOW1gv1 steps widen to 6 h/12 h beyond day 3",
                 verified: "2026-09-30",
-                implemented: false,
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some("SMHI (CC BY 4.0 SE)"),
             },
             Self::Metar => ProviderMeta {
                 id: *self,
@@ -544,6 +547,30 @@ fn rejected_key(error: Error, provider: ProviderId) -> Error {
     }
 }
 
+/// The number of forecast days to ask for: `0` stays `0` (current conditions only), everything
+/// else is capped at what the backend serves, with one warning when the cap bites.
+pub(crate) fn requested_days(requested: u8, max_days: u8, provider: &str, quiet: bool) -> u8 {
+    if requested == 0 {
+        return 0;
+    }
+    let days = requested.min(max_days);
+    if days != requested && !quiet {
+        eprintln!(
+            "warning: {provider} serves at most {max_days} days; showing {days} of the {requested} requested"
+        );
+    }
+    days
+}
+
+/// The location's current calendar date, from the injected clock.
+///
+/// This is part of a weather cache key, so the entry a run reads is always keyed by the day it was
+/// fetched for: a rollover misses by key rather than by luck with a TTL.
+pub(crate) fn local_today(env: &Env<'_>, tz: Tz) -> NaiveDate {
+    let now: DateTime<Utc> = env.cache.clock().now().into();
+    now.with_timezone(&tz).date_naive()
+}
+
 /// One weather backend.
 ///
 /// Implementations are synchronous and stateless (`&self`, no interior mutability), so a provider
@@ -567,6 +594,7 @@ pub trait Provider {
 pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
     match id {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
+        ProviderId::Smhi => Ok(Box::new(smhi::Smhi)),
         other => Err(Error::Usage(format!(
             "provider `{other}` is not implemented yet"
         ))),
@@ -874,11 +902,11 @@ mod tests {
     fn auto_expands_to_the_implemented_keyless_chain() {
         assert_eq!(
             select("auto").expect("auto expands"),
-            vec![ProviderId::OpenMeteo]
+            vec![ProviderId::OpenMeteo, ProviderId::Smhi]
         );
         assert_eq!(
             select("AUTO").expect("the spelling is case insensitive"),
-            vec![ProviderId::OpenMeteo]
+            vec![ProviderId::OpenMeteo, ProviderId::Smhi]
         );
     }
 
@@ -898,12 +926,12 @@ mod tests {
                 .contains("unknown provider `does-not-exist`")
         );
 
-        let planned = select("smhi").expect_err("smhi has no backend yet");
+        let planned = select("qweather").expect_err("qweather has no backend yet");
         assert_eq!(planned.exit_code(), 2);
         assert!(
             planned
                 .to_string()
-                .contains("provider `smhi` is not implemented yet")
+                .contains("provider `qweather` is not implemented yet")
         );
     }
 

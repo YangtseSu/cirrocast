@@ -178,6 +178,12 @@ pub fn provider_fixture(file: &str) -> StubReply {
         .expect("the fixture is readable")
 }
 
+/// The recorded response body of `tests/fixtures/<directory>/<file>` as a `200` reply.
+pub fn fixture_reply(directory: &str, file: &str) -> StubReply {
+    StubReply::json_file(fixture_path(&format!("{directory}/{file}")))
+        .expect("the fixture is readable")
+}
+
 /// `tests/fixtures/<name>`, absolute.
 pub fn fixture_path(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -216,6 +222,7 @@ pub fn fixture_location(name: &str) -> Location {
         ),
         "berlin" => ("Berlin", 52.52, 13.405, Tz::Europe__Berlin, None),
         "lisbon" => ("Lisbon", 38.7223, -9.1393, Tz::Europe__Lisbon, None),
+        "stockholm" => ("Stockholm", 59.33, 18.06, Tz::Europe__Stockholm, None),
         other => panic!("no fixture for {other}"),
     };
     Location {
@@ -308,6 +315,20 @@ impl ProviderRun {
     /// Fetches from Open-Meteo through the scripted transport.
     pub fn fetch(&self, loc: &Location, days: u8) -> cirrocast::error::Result<Report> {
         OpenMeteo.fetch(
+            loc,
+            &FetchRequest::new(days, HourlyResolution::Hourly),
+            &self.env(),
+        )
+    }
+
+    /// Fetches from any provider through the scripted transport.
+    pub fn fetch_with(
+        &self,
+        provider: &dyn Provider,
+        loc: &Location,
+        days: u8,
+    ) -> cirrocast::error::Result<Report> {
+        provider.fetch(
             loc,
             &FetchRequest::new(days, HourlyResolution::Hourly),
             &self.env(),

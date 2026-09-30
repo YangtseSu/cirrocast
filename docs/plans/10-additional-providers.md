@@ -121,17 +121,24 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       `max_days: 7`, `requires_key: true`, `location_kinds: City|LatLon`; responses are gzip-compressed
       (transport default — send `Accept-Encoding: gzip`; there is no `gzip=y` parameter). Obligation: name
       QWeather + `https://www.qweather.com` wherever data is shown.
-- ⬜ `smhi.rs`: **Corrected 2026-09-30 — the endpoint changed.** `GET
+- ✅ `smhi.rs` (landed 2026-10-01, see the corrections below): `GET
       https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/<lon>/lat/<lat>/data.json`
       (the old `category=pmp3g/version/2/geopoint/lat/…` path was decommissioned 2026-03-31 and returns 404; note
       `lon` before `lat`, and docs moved to `opendata.smhi.se/metfcst/snow1gv1`). Keyless, no auth, open data
       under **CC BY 4.0 SE** (name SMHI as the source; "Källa: SMHI" is the conventional rendering, not SMHI's
       own wording); no published quota, so the cache does the throttling, and SMHI's fair-use rules forbid
-      re-fetching the same data or mass-downloading. Outside the valid-area polygon (Nordics and adjacent seas,
-      roughly lon −18…44, lat 50…75) the service returns **HTTP 404 with an empty body** (the docs claim 400),
-      which MUST surface as `Error::Upstream` (so `auto` falls through) and never as a hard failure or a silently
-      empty report.
-- ⬜ `smhi.rs` full `Wsymb2` (1–27) → WMO: `1`→0 clear, `2`→1 nearly clear, `3`→2 variable cloudiness, `4`→2
+      re-fetching the same data or mass-downloading. The `parameters=` filter is deliberately not sent (its
+      separator handling is literal-comma only, `%2C` silently drops all but the first parameter, and the
+      unfiltered answer for a point is a few kilobytes). Outside the valid-area polygon (Nordics and adjacent
+      seas, roughly lon −18…44, lat 50…75) the service returns **HTTP 404 with an empty body** (the docs claim
+      400), which surfaces as `Error::Upstream("out of coverage: 39.90,116.40 is outside the SMHI valid area")`
+      so `auto` falls through; an HTML error body is named as such instead of being pasted into the message.
+      Two limitations, both recorded in `docs/providers.md`: the series starts at the current hour, so a
+      location-local today whose night hours are already past cannot fill four `DayPart`s and is skipped (the
+      backend emits the first fully covered days, usually starting tomorrow), and the payload carries no time
+      zone or daylight flag, so a provisional (UTC) location is refused with a usage error and `is_day` comes
+      from the local civil day until step 17 computes real sun times.
+- ✅ `smhi.rs` full `Wsymb2` (1–27) → WMO: `1`→0 clear, `2`→1 nearly clear, `3`→2 variable cloudiness, `4`→2
       halfclear, `5`→3 cloudy, `6`→3 overcast, `7`→45 fog, `8`→80 light rain showers, `9`→81 moderate rain
       showers, `10`→82 heavy rain showers, `11`→95 thunderstorm, `12`→66 light sleet showers, `13`→67 moderate
       sleet showers, `14`→67 heavy sleet showers, `15`→85 light snow showers, `16`→85 moderate snow showers,
@@ -142,7 +149,7 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       the table stands (SMHI's public symbol page numbers 1–27 with 5 absent), but the parameter is now
       `symbol_code` inside `timeSeries[].data` and arrives as an integer; the code→name mapping comes from that
       symbol page because the canonical table is client-rendered and unreachable (see `docs/providers.md`).
-- ⬜ `smhi.rs` parsing: **Corrected 2026-09-30 for the SNOW1gv1 shape.** `timeSeries[].data` is a JSON object
+- ✅ `smhi.rs` parsing: **Corrected 2026-09-30 for the SNOW1gv1 shape.** `timeSeries[].data` is a JSON object
       keyed by parameter name (`air_temperature`, `wind_speed`, `wind_from_direction`, `symbol_code`,
       `precipitation_amount_mean_deterministic`, `precipitation_amount_mean`, `visibility_in_air`,
       `cloud_area_fraction`, …) and must be read by key, never by index or order; the `parameters=` filter needs
@@ -248,3 +255,11 @@ cirrocast provider list && cirrocast provider info smhi
   and the three geocoders migrated to the new signatures in the same commit; `tests/provider_http.rs` covers
   401/403/429/5xx/malformed-body/offline/cache-hit/redaction. Naming and the 401-vs-403 split deviate from the
   text above and are recorded there.
+- 2026-10-01 — SMHI backend landed (`src/provider/smhi.rs`, `tests/provider_smhi.rs`, recorded fixtures under
+  `tests/fixtures/smhi/`, REUSE annotations for the CC BY 4.0 SE payloads). The day-part aggregation moved to
+  `provider::dayparts` so SMHI and Open-Meteo share it, `Current.feels_like_c` became optional (SMHI publishes
+  no apparent temperature), the registry row turned `implemented: true` with the `SMHI (CC BY 4.0 SE)` credit
+  line, and `auto` now expands to `open-meteo,smhi`. Live smoke: `-p smhi Stockholm` printed real data with the
+  credit, an out-of-coverage point exited 3 with `out of coverage: …`, and an in-coverage coordinate exited 2
+  with the place-name hint. Deviations recorded in the deliverable above and in `docs/providers.md`: a partial
+  location-local today is skipped, and a provisional zone is refused rather than aggregated in UTC.

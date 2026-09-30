@@ -327,8 +327,10 @@ pub fn from_coordinates(lat: f64, lon: f64) -> Location {
 ///
 /// Coordinates have no lookup at all, and a Nominatim result only carries a zone when the OSM
 /// object is tagged with one, so both fall back to UTC until the forecast response supplies a real
-/// zone (step 06).
-fn provisional_zone(location: &Location) -> bool {
+/// zone (step 06). A backend whose response carries no zone at all (`smhi`) must refuse such a
+/// location instead of aggregating in UTC.
+#[must_use]
+pub fn provisional_zone(location: &Location) -> bool {
     matches!(
         location.source,
         LocationSource::Coordinates | LocationSource::Osm

@@ -300,13 +300,14 @@ fn an_unknown_provider_is_a_usage_error() {
 #[test]
 fn a_planned_provider_is_a_usage_error() {
     let sandbox = common::Sandbox::new();
+    // `qweather` has no backend yet, so this is decided before any request is sent.
     sandbox
         .cirrocast()
-        .args(["-p", "smhi", "@39.9,116.4"])
+        .args(["-p", "qweather", "@39.9,116.4"])
         .assert()
         .code(2)
         .stderr(predicate::str::contains(
-            "provider `smhi` is not implemented yet",
+            "provider `qweather` is not implemented yet",
         ));
 }
 

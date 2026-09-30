@@ -1,0 +1,420 @@
+{
+  "createdTime": "2026-10-01T00:00:00Z",
+  "referenceTime": "2026-10-01T00:00:00Z",
+  "geometry": {
+    "type": "Point",
+    "coordinates": [
+      18.0,
+      59.0
+    ]
+  },
+  "timeSeries": [
+    {
+      "time": "2026-09-30T22:00:00Z",
+      "data": {
+        "air_temperature": 10.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-09-30T21:00:00Z"
+    },
+    {
+      "time": "2026-09-30T23:00:00Z",
+      "data": {
+        "air_temperature": 10.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-09-30T22:00:00Z"
+    },
+    {
+      "time": "2026-10-01T00:00:00Z",
+      "data": {
+        "air_temperature": 11.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-09-30T23:00:00Z"
+    },
+    {
+      "time": "2026-10-01T01:00:00Z",
+      "data": {
+        "air_temperature": 11.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 9999.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T00:00:00Z"
+    },
+    {
+      "time": "2026-10-01T02:00:00Z",
+      "data": {
+        "air_temperature": 12.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T01:00:00Z"
+    },
+    {
+      "time": "2026-10-01T03:00:00Z",
+      "data": {
+        "air_temperature": 9999.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T02:00:00Z"
+    },
+    {
+      "time": "2026-10-01T04:00:00Z",
+      "data": {
+        "air_temperature": 13.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 9999.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T03:00:00Z"
+    },
+    {
+      "time": "2026-10-01T05:00:00Z",
+      "data": {
+        "air_temperature": 13.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 9999.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T04:00:00Z"
+    },
+    {
+      "time": "2026-10-01T06:00:00Z",
+      "data": {
+        "air_temperature": 14.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 9999.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T05:00:00Z"
+    },
+    {
+      "time": "2026-10-01T07:00:00Z",
+      "data": {
+        "air_temperature": 14.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 9999.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T06:00:00Z"
+    },
+    {
+      "time": "2026-10-01T08:00:00Z",
+      "data": {
+        "air_temperature": 15.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 9999.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T07:00:00Z"
+    },
+    {
+      "time": "2026-10-01T09:00:00Z",
+      "data": {
+        "air_temperature": 15.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 9999.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T08:00:00Z"
+    },
+    {
+      "time": "2026-10-01T10:00:00Z",
+      "data": {
+        "air_temperature": 16.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      }
+    },
+    {
+      "time": "2026-10-01T11:00:00Z",
+      "data": {
+        "air_temperature": 16.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T10:00:00Z"
+    },
+    {
+      "time": "2026-10-01T12:00:00Z",
+      "data": {
+        "air_temperature": 17.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T11:00:00Z"
+    },
+    {
+      "time": "2026-10-01T13:00:00Z",
+      "data": {
+        "air_temperature": 17.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T12:00:00Z"
+    },
+    {
+      "time": "2026-10-01T14:00:00Z",
+      "data": {
+        "air_temperature": 18.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T13:00:00Z"
+    },
+    {
+      "time": "2026-10-01T15:00:00Z",
+      "data": {
+        "air_temperature": 18.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T14:00:00Z"
+    },
+    {
+      "time": "2026-10-01T16:00:00Z",
+      "data": {
+        "air_temperature": 19.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 18.0,
+        "precipitation_amount_mean_deterministic": 0.5,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T15:00:00Z"
+    },
+    {
+      "time": "2026-10-01T17:00:00Z",
+      "data": {
+        "air_temperature": 19.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T16:00:00Z"
+    },
+    {
+      "time": "2026-10-01T18:00:00Z",
+      "data": {
+        "air_temperature": 20.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T17:00:00Z"
+    },
+    {
+      "time": "2026-10-01T19:00:00Z",
+      "data": {
+        "air_temperature": 20.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T18:00:00Z"
+    },
+    {
+      "time": "2026-10-01T20:00:00Z",
+      "data": {
+        "air_temperature": 21.0,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T19:00:00Z"
+    },
+    {
+      "time": "2026-10-01T21:00:00Z",
+      "data": {
+        "air_temperature": 21.5,
+        "wind_from_direction": 180.0,
+        "wind_speed": 3.0,
+        "wind_speed_of_gust": 6.0,
+        "relative_humidity": 70.0,
+        "air_pressure_at_mean_sea_level": 1013.0,
+        "visibility_in_air": 20.0,
+        "symbol_code": 1.0,
+        "precipitation_amount_mean_deterministic": 0.0,
+        "probability_of_precipitation": 5.0,
+        "cloud_area_fraction": 3.0
+      },
+      "intervalParametersStartTime": "2026-10-01T20:00:00Z"
+    }
+  ]
+}

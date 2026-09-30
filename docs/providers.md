@@ -37,7 +37,7 @@ registry re-verification of that step needs a written record of what was checked
 | id | Key | Free tier (verified 2026-09-30) | Coverage | Granularity | Horizon | Status |
 |---|---|---|---|---|---|---|
 | `open-meteo` | none | 10 000 calls/day, 5 000/hour, 600/minute; non-commercial | global | hourly | 16 days | implemented (step 06) |
-| `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | step 10 |
+| `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | implemented |
 | `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | step 11 |
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | step 10 |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | step 10 |
@@ -202,10 +202,28 @@ SMHI's own wording, only the conventional rendering of that requirement
 (<https://www.smhi.se/data/om-smhis-data/villkor-for-anvandning>).
 
 **Client notes.** Read `data` by key, never by index or order; the `parameters` filter needs **literal
-commas** (`%2C` silently returns only the first parameter); map `9999` (and `precipitation_frozen_part:
--9`) to `None`; precipitation accumulates over the interval, so divide by the interval width for a rate;
-`cloud_area_fraction` is oktas; `symbol_code` arrives as an integer; surface the grid-snapped
-coordinates rather than echoing the request.
+commas** (`%2C` silently returns only the first parameter) — the backend therefore sends no filter at
+all; map `9999` (and `precipitation_frozen_part: -9`) to `None`; precipitation accumulates over the
+interval, so divide by the interval width for a rate; `cloud_area_fraction` is oktas; `symbol_code`
+arrives as an integer; the grid-snapped `geometry.coordinates` are surfaced in the `-v` raw summary
+rather than replacing the requested coordinates.
+
+**Implemented 2026-10-01** (`src/provider/smhi.rs`, `max_days: 10`, credit line `SMHI (CC BY 4.0 SE)`).
+Two limitations come from the payload, not from the client, and both are deliberate:
+
+* **The series starts at the current hour**, so the location-local today is complete only when the
+  fetch happens before 06:00 local (its night hours are already past). A `DayPart` cannot represent
+  "no data", so the backend emits the first days whose four parts are all covered — usually starting
+  tomorrow — instead of inventing values for windows SMHI never served. The current-conditions block
+  still answers "what is it like now".
+* **The payload carries no time zone and no daylight flag.** A location whose zone is still the
+  provisional `UTC` (raw coordinates, an untagged OSM place) is refused with a usage error naming the
+  fix rather than being aggregated in the wrong zone; `is_day` is derived from the local civil day
+  (06:00–18:00) until step 17 computes real sun times. Note the ordering: the request goes out before
+  that check, so an out-of-coverage point still fails as `Upstream` and lets a chain fall through.
+
+Out-of-coverage answers (HTTP 404 with an HTML body; the docs claim 400) become
+`upstream: out of coverage: 39.90,116.40 is outside the SMHI valid area`.
 
 **Unverified.** The canonical `Wsymb2` table text (client-rendered docs); an English symbol table (none
 published); gzip/`Cache-Control`/`ETag` headers (no header inspection available); a published numeric

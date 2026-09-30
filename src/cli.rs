@@ -1693,7 +1693,7 @@ mod tests {
     fn the_auto_chain_gains_metar_only_for_a_station() {
         assert_eq!(
             provider_chain(&settings("auto"), None).expect("auto expands"),
-            vec![ProviderId::OpenMeteo]
+            vec![ProviderId::OpenMeteo, ProviderId::Smhi]
         );
         let error = provider_chain(&settings("auto"), Some("ZBAA"))
             .expect_err("metar is not implemented yet");

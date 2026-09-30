@@ -29,12 +29,15 @@
 
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use chrono_tz::Tz;
 use serde::Deserialize;
 
 use super::dayparts::{HourSample, aggregate_day};
-use super::{Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json};
+use super::{
+    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
+    requested_days,
+};
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
@@ -75,7 +78,7 @@ impl Provider for OpenMeteo {
 
     fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         let max_days = self.capabilities().max_days;
-        let days = requested_days(req.days, max_days, env.quiet);
+        let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         let local_today = local_today(env, loc.tz);
         let key = CacheKey::weather(PROVIDER, loc.lat, loc.lon, days, local_today);
         let request = forecast_request(loc, days);
@@ -94,30 +97,6 @@ impl Provider for OpenMeteo {
 
         report(&response, loc, request.full_url(), days, env)
     }
-}
-
-/// The number of forecast days to ask for: `0` stays `0` (current conditions only), everything
-/// else is capped at what the backend serves, with one warning when the cap bites.
-fn requested_days(requested: u8, max_days: u8, quiet: bool) -> u8 {
-    if requested == 0 {
-        return 0;
-    }
-    let days = requested.min(max_days);
-    if days != requested && !quiet {
-        eprintln!(
-            "warning: {PROVIDER} serves at most {max_days} days; showing {days} of the {requested} requested"
-        );
-    }
-    days
-}
-
-/// The location's current calendar date, from the injected clock.
-///
-/// This is part of the cache key, so the entry a run reads is always keyed by the day it was
-/// fetched for: a rollover misses by key rather than by luck with a TTL.
-fn local_today(env: &Env<'_>, tz: Tz) -> NaiveDate {
-    let now: DateTime<Utc> = env.cache.clock().now().into();
-    now.with_timezone(&tz).date_naive()
 }
 
 /// The request, assembled in a fixed parameter order (the tests assert the URL verbatim).
@@ -597,10 +576,11 @@ mod tests {
 
     use super::{
         BASE, CURRENT_VARIABLES, DAILY_VARIABLES, DailyBlock, DayForecast, HOURLY_VARIABLES,
-        HourlyBlock, forecast_request, hourly_samples, requested_days,
+        HourlyBlock, forecast_request, hourly_samples,
     };
     use crate::model::{Condition, DayPartKind, Location, LocationSource, resolve_local};
     use crate::provider::dayparts::HourSample;
+    use crate::provider::requested_days;
 
     fn berlin() -> chrono_tz::Tz {
         chrono_tz::Tz::Europe__Berlin
@@ -749,9 +729,13 @@ mod tests {
 
     #[test]
     fn the_day_cap_is_the_registry_horizon() {
-        assert_eq!(requested_days(0, 16, true), 0, "zero means current only");
-        assert_eq!(requested_days(3, 16, true), 3);
-        assert_eq!(requested_days(20, 16, true), 16);
+        assert_eq!(
+            requested_days(0, 16, "open-meteo", true),
+            0,
+            "zero means current only"
+        );
+        assert_eq!(requested_days(3, 16, "open-meteo", true), 3);
+        assert_eq!(requested_days(20, 16, "open-meteo", true), 16);
     }
 
     #[test]

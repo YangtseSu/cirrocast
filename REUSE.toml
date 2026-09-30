@@ -27,6 +27,7 @@ path = [
     "tests/fixtures/http/**",
     "tests/fixtures/ip/**",
     "tests/fixtures/report/**",
+    "tests/fixtures/smhi/point_sentinel_2026-10-01.json",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
@@ -67,6 +68,20 @@ SPDX-License-Identifier = "CC-BY-4.0"
 path = "tests/fixtures/open_meteo/**"
 precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Recorded SMHI SNOW1gv1 responses: SMHI's open data is CC BY 4.0 SE (SPDX has no port identifier,
+# and the port is CC BY 4.0 adapted to Swedish law), so the fixtures keep the upstream licence and
+# the provider prints `SMHI (CC BY 4.0 SE)`. `point_sentinel_2026-10-01.json` is hand-written from
+# the same schema to exercise the in-band `9999` missing marker, so it stays first-party (listed
+# with the other hand-written fixtures above).
+[[annotations]]
+path = [
+    "tests/fixtures/smhi/point_stockholm_2026-09-30.json",
+    "tests/fixtures/smhi/point_out_of_coverage_404.html",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "SMHI (Swedish Meteorological and Hydrological Institute)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 # Recorded OpenStreetMap/Nominatim responses: ODbL requires attribution, and the fixtures keep the

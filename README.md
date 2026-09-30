@@ -304,17 +304,18 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 |---|---|---|---|
 | [Open-Meteo](https://open-meteo.com/) geocoding | `Beijing`, `:Beijing` | free tier is **non-commercial**, < 10 000 calls/day, 5 000/hour, 600/minute; `name` needs ≥ 2 characters | data CC-BY-4.0; the CLI prints `Location data based on GeoNames (CC-BY-4.0) via Open-Meteo` with the service link |
 | [Open-Meteo](https://open-meteo.com/) forecast | every weather query | free tier is **non-commercial**, < 10 000 calls/day; `forecast_days` ≤ 16 | data CC-BY-4.0; the rendered report ends with `Data: Open-Meteo.com (CC BY 4.0)` |
+| [SMHI](https://opendata.smhi.se/metfcst/snow1gv1) open data | `-p smhi` (Nordics) | no published quota; SMHI's fair-use rules forbid mass downloads and re-fetching the same data | data CC BY 4.0 SE; the rendered report ends with `Data: SMHI (CC BY 4.0 SE)` |
 | [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding | — | CC-BY-4.0 |
 | [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
 | [ipwho.is](https://ipwho.is/) | `--ip` (primary) | free endpoint: 1 000 requests/day per client IP, then `429` + `Retry-After` | personal or internal use, no redistribution |
 | [ipapi.co](https://ipapi.co/) | `--ip` (fallback) | free tier: up to 1 000 requests/day | internal use, no resale; its terms allow keeping an answer for **at most 24 hours**, which is why `cache.ip_ttl_secs` is capped there |
 
-Weather output carries the credit Open-Meteo's licence asks for: `Data: Open-Meteo.com (CC BY 4.0)`
-plus a provenance line (`attribution: open-meteo https://api.open-meteo.com/v1/forecast`), both taken
-from the provider registry rather than hard-coded, and a geocoded place adds the GeoNames line next
-to them. Where the credit travels depends on the format: the `art-table` footer, the `plain`
-document and the `json` `attribution` object carry it themselves, while `one-line` — one line by
-contract — prints it to stderr.
+Weather output carries the credit the data licence asks for — `Data: Open-Meteo.com (CC BY 4.0)` or
+`Data: SMHI (CC BY 4.0 SE)` — plus a provenance line (`attribution: open-meteo
+https://api.open-meteo.com/v1/forecast`), both taken from the provider registry rather than
+hard-coded, and a geocoded place adds the GeoNames line next to them. Where the credit travels
+depends on the format: the `art-table` footer, the `plain` document and the `json` `attribution`
+object carry it themselves, while `one-line` — one line by contract — prints it to stderr.
 
 Nothing from these services is redistributed: responses are cached under
 `$XDG_CACHE_HOME/cirrocast/` with the TTLs in `[cache]` (10 minutes for weather, 24 hours for an IP

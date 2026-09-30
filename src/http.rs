@@ -692,10 +692,17 @@ fn error_message(body: &str) -> String {
 
 /// A non-2xx response the client is not going to retry.
 fn upstream_error(response: &HttpResponse) -> Error {
+    let message = if response.body().trim_start().starts_with('<') {
+        // SMHI (and others) answer a 404 with an HTML error page; pasting tags into the message
+        // helps nobody, so the shape is named instead.
+        "the upstream returned an HTML error page".to_owned()
+    } else {
+        error_message(response.body())
+    };
     Error::Upstream {
         provider: host_of(&response.url),
         status: Some(response.status),
-        message: error_message(&response.body),
+        message,
     }
 }
 
