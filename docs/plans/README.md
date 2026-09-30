@@ -44,7 +44,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ✅ done | 02, 03, 04 |
 | 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ✅ done | 03, 04, 05 |
 | 07 | B | [art-table-renderer](07-art-table-renderer.md) | ✅ done | 03, 06 |
-| 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ⬜ not-started | 06, 07 |
+| 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ✅ done | 06, 07 |
 | 09 | B | [localization](09-localization.md) | ⬜ not-started | 03, 07 |
 | 10 | B | [additional-providers](10-additional-providers.md) | ⬜ not-started | 05, 06, 08 |
 | 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | ⬜ not-started | 05, 10 |
@@ -210,7 +210,9 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   narrower source is raised and reported under `--verbose`). The terminal's own size comes from
   `rustix::termios::tcgetwinsize` (introduced by step 07; the crate forbids `unsafe`, so a raw
   `ioctl` is not an option, and non-Unix targets skip this tier). Below 60 columns the table
-  degrades to a stacked layout; the renderer never emits lines wider than the resolved width.
+  degrades to a stacked layout; the table formats never emit lines wider than the resolved width.
+  `plain` and `json` are record formats and **ignore the width**: truncating a record would delete
+  the values the format exists to carry, and a pipe wraps or not at its leisure (step 08).
 * Colour: honour `NO_COLOR` (present with any value, an empty one included, disables),
   `CLICOLOR_FORCE` (set and not `0` enables, and wins over `NO_COLOR`), `--color auto|always|never`,
   and non-tty stdout ⇒ no colour in `auto`. An explicit `always` emits escapes even into a pipe; the
@@ -223,7 +225,9 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   `Weather data by Open-Meteo.com (https://open-meteo.com/)` for an Open-Meteo forecast.
   `geo::attribution_line` is the single place that decides the location-side text; every renderer
   that shows upstream data — `plain`, `art-table`, `one-line` and the `json` envelope — carries the
-  matching credit, on stderr where the format is meant to be piped.
+  matching credit, on stderr where the format is meant to be piped. Step 08 fixed the three kinds:
+  `plain` and the `json` `attribution` object keep the credits in the document, `art-table` keeps
+  them in its footer, and `one-line` — one line by contract — prints them to stderr.
 * Coordinates and IP answers carry no credit: the first is the user's own input, and neither
   `ipwho.is` nor `ipapi.co` asks for one (the `--ip` disclosure already names the service).
 * Art blocks and translated condition strings are **re-authored** in this repo. Copying wego or

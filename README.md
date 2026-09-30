@@ -14,38 +14,54 @@ stale backends, docs that do not match the code). It takes [`wttr.in`](https://w
 
 ```
 $ cirrocast Beijing
-cirrocast — Beijing, China (39.9042, 116.4074)
-  ...wttr.in-style art-table output lands at step 07 of docs/plans...
+Weather report: Beijing, Beijing Municipality, China (39.91, 116.40)
+
+  · * · Clear sky
+   (●)  +18°C (+13°C)
+  * · * ↖ 13km/h NW
+        11% 1021hPa 17km 0.0mm
+
+┌───────────────────────┬───────────────────────┬───────────────────────┐
+│ Today, Sep 30         │ Thu 01 Oct            │ Fri 02 Oct            │
+├───────────────────────┼───────────────────────┼───────────────────────┤
+│    \│/  Morning       │    \│/  Morning       │    \│/  Morning       │
+│  ╭───╮  +17°C (+11°C) │   ─(●)─ +16°C (+13°C) │   ─(●)─ +16°C (+13°C) │
+│ (     ) ↖ 19km/h NNW  │    /│\  ← 0.0km/h W   │    /│\  ↗ 6.0km/h NNE │
+│  ╰───╯  0.0mm 18%     │         0.0mm 13%     │         0.0mm 27%     │
+… the noon, evening and night rows of each day, then the credits …
 ```
 
 ```
 $ cirrocast Beijing --format plain
-Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
-Now: 19°C (feels 12°C), Overcast, wind 20 km/h NW, humidity 12%, pressure 1020 hPa, visibility 17 km, 0.0 mm
-2026-09-30  min 15°C  max 20°C  sunrise 06:09  sunset 17:59
-  Morning  17°C  Overcast        precip 0.0 mm (0%)   wind 18 km/h NW
-  Noon     20°C  Overcast        precip 0.0 mm (0%)   wind 19 km/h NW
-  Evening  17°C  Partly cloudy   precip 0.0 mm (10%)   wind 10 km/h NW
-  Night    18°C  Partly cloudy   precip 0.0 mm (14%)   wind 17 km/h N
-… two more days, same four lines each …
+location: Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
+updated: 2026-09-30T19:45:00+08:00
+current: Clear sky 18°C (feels 13°C) wind 13km/h NW humidity 11% precip 0.0mm pressure 1021hPa visibility 17km
+day 2026-09-30: morning Partly cloudy 17°C 0.0mm (0%) wind 19km/h NNW | noon Overcast 20°C 0.0mm (0%) wind 19km/h NW | evening … | night …
+… one `day` line per forecast day …
 Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
 Data: Open-Meteo.com (CC BY 4.0)
+attribution: open-meteo https://api.open-meteo.com/v1/forecast
 ```
 
-That is a real run — `cirrocast Beijing --format plain` on 2026-09-30, 12:45 local — with the day
-lines of the later days elided. When the name is ambiguous, a `note: … 10 candidates …` line goes to
-stderr, so stdout stays pipeable; `-q` silences it, and `:Beijing` demands an exact name.
+```
+$ cirrocast Beijing -f one-line --template @short
+*o* +18°C
+```
+
+Those are real runs — 2026-09-30, 19:45 local, `COLUMNS=120`, `TERM=xterm-256color` — with the middle
+rows elided. When the name is ambiguous a `note: … 10 candidates …` line goes to stderr, so stdout
+stays pipeable; `-q` silences it and `:Beijing` demands an exact name.
 
 ## Status
 
-Steps 01–06 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
+Steps 01–08 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
 resolution, the provider registry, the typed configuration with its `config`/`key` subcommands, the
-canonical model, location resolution (`cirrocast location search`), the shared HTTP/cache layer and
-the first end-to-end forecast (`cirrocast Beijing --format plain`, Open-Meteo through the provider
-chain). The wttr.in-style `art-table` renderer is step 07, and the rest of the flag matrix
-(`--units`, `--lang`, `--color`, `--width`, `--lat/--lon`, `--station`, the non-plain formats,
-`provider list|info`, `completion`, `man`) arrives in step 08 — until then `--format` accepts `plain`
-only and those flags are rejected by the command line. See the plan index for live per-step progress.
+canonical model, location resolution, the shared HTTP/cache layer, the Open-Meteo forecast, the
+wttr.in-style `art-table` renderer and the full flag matrix with the four other output formats
+(`one-line`, `plain`, `json`, `dumb`), shell completions and the man page. Localization (step 09),
+the remaining backends (10, 11) and the quality gates (12–14) are still ahead, so `--lang` accepts
+`auto`/`en-US` only and `--provider` only names implemented backends. See the plan index for live
+per-step progress.
 
 ## Install
 
@@ -59,51 +75,139 @@ cargo install --path .        # from a checkout
 ```
 cirrocast [OPTIONS] [LOCATION]
 
-  -p, --provider <ID[,ID...]>   open-meteo | openweathermap | weatherapi | worldweatheronline
-                                | pirateweather | qweather | smhi | metar | auto
+  -p, --provider <ID[,ID...]>   open-meteo | smhi | metar | openweathermap | weatherapi
+                                | worldweatheronline | pirateweather | qweather | auto
   -f, --format <NAME>           art-table | one-line | plain | json | dumb
-  -d, --days <N>                0..=14, clamped per provider
-  -u, --units <metric|us|uk>
+  -d, --days <N>                0..=14, clamped to what the provider serves
+  -u, --units <SYSTEM>          metric | us | uk
       --lang <TAG>              BCP-47, or "auto"
-      --lat <DEG> --lon <DEG>   explicit coordinates
+      --lat <DEG> --lon <DEG>   coordinates instead of a location argument
       --ip                      locate from the public IP
-      --station <ICAO>          METAR station
+      --station <ICAO>          METAR station (needs --provider metar or auto)
+      --template <TEMPLATE>     one-line template or @PRESET
       --no-cache | --refresh | --offline
-      --color <auto|always|never>   --width <COLS>   --timeout <SECS>
+      --timeout <SECS>
+      --color <WHEN>            auto | always | never
+      --width <COLS>            layout width for the table formats, 1..=500
   -q, --quiet    -v, --verbose
+  -h, --help     -V, --version
 
-cirrocast config   <path|init|show|get|set|edit|validate>
-cirrocast key      <set|rm|list>
-cirrocast provider <list|info>
-cirrocast cache    <stat|clean>
-cirrocast location <search>
-cirrocast completion <shell>   cirrocast man
+cirrocast config     <path|init|show|get|set|edit|validate>
+cirrocast key        <set|rm|list>
+cirrocast provider   <list|info>
+cirrocast cache      <stat|clean>
+cirrocast location   <search>
+cirrocast completion <bash|zsh|fish|elvish|powershell> [--bin-name NAME]
+cirrocast man [--bin-name NAME]
 ```
 
 Location syntax: `Beijing` (fuzzy), `:Beijing` (exact name), `~Tsinghua` (OpenStreetMap),
-`@39.9,116.4` (coordinates), empty (config default, else public IP).
+`@39.9,116.4` (coordinates), empty (config default, else public IP). A location argument,
+`--lat/--lon`, `--ip` and `--station` are mutually exclusive; when the argument comes from
+`CIRROCAST_LOCATION` instead of the command line, a flag on one of the other forms wins by
+precedence rather than conflicting.
+
+### Precedence
+
+Highest first: **command line flag → `CIRROCAST_*` environment variable → `config.toml` → built-in
+default**. The configuration file is consulted only for settings neither the flag nor the variable
+supplied, so an environment value is never overridden by the file. `-v` prints every setting with the
+tier it came from.
+
+| Setting | Flag | Variable | Config key |
+|---|---|---|---|
+| Provider chain | `-p, --provider` | `CIRROCAST_PROVIDER` | `defaults.provider` |
+| Format | `-f, --format` | `CIRROCAST_FORMAT` | `defaults.format` |
+| Days | `-d, --days` | `CIRROCAST_DAYS` | `defaults.days` |
+| Units | `-u, --units` | `CIRROCAST_UNITS` | `defaults.units` |
+| Language | `--lang` | `CIRROCAST_LANG` | `defaults.language` |
+| Location | `[LOCATION]` | `CIRROCAST_LOCATION` | `location.default` |
+| Timeout | `--timeout` | `CIRROCAST_TIMEOUT` | `network.timeout_secs` |
+| Colour | `--color` | — | `render.color` |
+| Width | `--width` | — | `render.width` |
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | success |
+| 1 | generic failure (an unreadable file, an editor that will not run) |
+| 2 | usage: unknown flag or value, conflicting options, an empty template |
+| 3 | network or upstream failure |
+| 4 | configuration or state on disk |
+| 5 | location not found |
+| 6 | missing or invalid API key |
+
+Errors go to stderr as `error: …`, with the cause chain under `-v`; `-q` suppresses warnings and
+notes, never errors.
+
+### Formats
+
+| Format | What it is | Width |
+|---|---|---|
+| `art-table` | the wttr.in-style coloured day-part table (default) | honours `--width`, degrades to a stacked layout below 60 columns |
+| `dumb` | the same table in 7-bit ASCII, no colour; automatic for `TERM=dumb` or a non-UTF-8 locale | as above |
+| `one-line` | one line driven by `%` tokens, for a prompt or status bar | fixed |
+| `plain` | box-free `label: value` lines, one record per line | ignores `--width`: a record is never truncated |
+| `json` | the stable machine-readable document (`schema_version: 1`) | ignores `--width` and `--units` |
+
+`one-line` takes a template with `--template`, either a literal string or a preset:
+
+| Token | Output | Token | Output |
+|---|---|---|---|
+| `%c` | condition art, day/night aware | `%d` `%D` | `2026-09-30` / `Wed 30 Sep` |
+| `%C` | condition text | `%Z` `%z` | `Asia/Shanghai` / `+0800` |
+| `%t` `%f` | temperature / feels-like | `%u` `%U` | `5` / `5 (moderate)` |
+| `%w` | wind `↗ 12km/h NE` | `%S` `%s` | sunrise / sunset `06:05` |
+| `%h` | humidity `56%` | `%l` `%L` | name / `39.90,116.40` |
+| `%p` | precipitation `0.0mm` | `%m` | moon phase — `n/a` until the moon step lands |
+| `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
+
+`%%` is a literal `%`, a trailing lone `%` is one too, `%{…}` is verbatim (`\}` escapes the brace),
+`\n`/`\t`/`\\` are unescaped, and an unknown `%X` prints literally and is reported once under `-v`.
+A value the provider does not report prints `n/a` — never an invented number. The presets are
+`@default` (`%l: %c %C %t (%f), %w, %h, %p, %P, %v`), `@short` (`%c %t`),
+`@full` (`%l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z`), `@uv` (`%l: UV %U`) and
+`@sun` (`%l: sunrise %S sunset %s (%z %Z)`); `--template` without a value, `-f plain/json/…` next to
+`--template`, and an unknown `@name` are usage errors.
+
+`json` is the scripting surface: keys are always present (`null` when the provider has no value), all
+numbers are canonical metric with the unit in the key (`temp_c`, `wind_kmh`, `precip_mm`,
+`pressure_hpa`, `visibility_km`), timestamps carry the location's offset, and `attribution` carries
+the credits. Within `schema_version: 1` changes are additive only — new keys may appear and existing
+ones keep their name, type and unit — so a consumer must ignore keys it does not know; a breaking
+change bumps the version (the changelog lands with step 13).
 
 ### Weather
 
 ```bash
-cirrocast Beijing                       # the configured default format (art-table arrives in step 07)
+cirrocast Beijing                       # default format (art-table) and units (metric)
 cirrocast Beijing --format plain        # box-free lines, for pipes and logs
+cirrocast Beijing -f one-line --template @short
+cirrocast Beijing -f json | jq -r '.current.temp_c'
 cirrocast @39.9042,116.4074 -f plain    # coordinates: no geocoding request at all
-cirrocast Beijing -f plain --days 0     # current conditions only
-cirrocast Beijing -f plain --offline    # cached answer only, never the network
-cirrocast Beijing -f plain --refresh    # ignore the cache and replace it
-cirrocast -p open-meteo -f plain Beijing
+cirrocast --lat 39.9042 --lon 116.4074 -f plain   # the same, as flags
+cirrocast Beijing -u us                 # °F, mph, inHg, mi, in
+cirrocast Beijing --days 0              # current conditions only
+cirrocast Beijing --offline             # cached answer only, never the network
+cirrocast Beijing --refresh             # ignore the cache and replace it
+cirrocast completion bash > ~/.local/share/bash-completion/completions/cirrocast
+cirrocast man > cirrocast.1
 ```
 
 A query resolves the location first (the same four forms as `location search`, with the winning place
 echoed on stderr when the name was ambiguous), then walks the provider chain — `--provider` takes an
-ordered list, and `auto` expands to the implemented keyless backends — and renders the first report
-that comes back. A chain entry that fails at the transport or upstream level falls through to the
-next one with a `warning:` line; a usage, key or location error stops the walk. Every forecast is
-cached for `cache.weather_ttl_secs` under
+ordered list, and `auto` expands to the implemented keyless backends (plus `metar` when `--station`
+is given) — and renders the first report that comes back. A chain entry that fails at the transport
+or upstream level falls through to the next one with a `warning:` line; a usage, key or location
+error stops the walk. `--days` is clamped to the primary provider's horizon with one `warning:` line.
+Every forecast is cached for `cache.weather_ttl_secs` under
 `$XDG_CACHE_HOME/cirrocast/weather/<provider>-<lat>-<lon>-<days>-<local-date>.json`, keyed by the
 location's own calendar date. Providers are also requested in metric, and the renderer converts into
 the display units, so a cache entry is unit-independent.
+
+The `one-line` format is a single line by contract, so the credits its licences require go to stderr;
+`plain` and `json` carry them in the document itself, and `art-table` in a footer.
 
 ## Location
 
@@ -158,9 +262,12 @@ service, each with its own limits and licence. What the tool does to stay inside
 | [ipwho.is](https://ipwho.is/) | `--ip` (primary) | free endpoint: 1 000 requests/day per client IP, then `429` + `Retry-After` | personal or internal use, no redistribution |
 | [ipapi.co](https://ipapi.co/) | `--ip` (fallback) | free tier: up to 1 000 requests/day | internal use, no resale; its terms allow keeping an answer for **at most 24 hours**, which is why `cache.ip_ttl_secs` is capped there |
 
-Weather output carries the credit Open-Meteo's licence asks for: a rendered report ends with
-`Data: Open-Meteo.com (CC BY 4.0)`, taken from the provider registry rather than hard-coded, and a
-geocoded place adds the GeoNames line below it.
+Weather output carries the credit Open-Meteo's licence asks for: `Data: Open-Meteo.com (CC BY 4.0)`
+plus a provenance line (`attribution: open-meteo https://api.open-meteo.com/v1/forecast`), both taken
+from the provider registry rather than hard-coded, and a geocoded place adds the GeoNames line next
+to them. Where the credit travels depends on the format: the `art-table` footer, the `plain`
+document and the `json` `attribution` object carry it themselves, while `one-line` — one line by
+contract — prints it to stderr.
 
 Nothing from these services is redistributed: responses are cached under
 `$XDG_CACHE_HOME/cirrocast/` with the TTLs in `[cache]` (10 minutes for weather, 24 hours for an IP
