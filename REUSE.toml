@@ -15,9 +15,42 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# Recorded upstream API responses used as test fixtures: JSON has no comment syntax.
+# First-party fixtures: JSON and CSV cannot carry a comment header, but the content is ours
+# (hand-written cases, minimised envelopes, responses reduced to the fields the code reads).
+#
+# This list is deliberately explicit per directory: third-party data fixtures are annotated
+# separately below so that no recorded upstream payload is ever relicensed to GPL by a blanket rule.
 [[annotations]]
-path = "tests/fixtures/**"
+path = [
+    "tests/fixtures/config/**",
+    "tests/fixtures/model/**",
+    "tests/fixtures/http/**",
+    "tests/fixtures/ip/**",
+]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Recorded Open-Meteo geocoding responses. The place data behind the service comes from GeoNames,
+# which is published under CC BY 4.0; the fixtures are trimmed to the hits the tests exercise.
+[[annotations]]
+path = [
+    "tests/fixtures/geo/open_meteo_geocode_beijing.json",
+    "tests/fixtures/geo/open_meteo_geocode_beijing_ambiguous.json",
+    "tests/fixtures/geo/open_meteo_geocode_no_hits.json",
+    "tests/fixtures/geo/open_meteo_geocode_bad_timezone.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "GeoNames (geocoding data served by Open-Meteo)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Recorded OpenStreetMap/Nominatim responses: ODbL requires attribution, and the fixtures keep the
+# upstream licence rather than being relicensed.
+[[annotations]]
+path = [
+    "tests/fixtures/geo/nominatim_search_tsinghua.json",
+    "tests/fixtures/geo/nominatim_search_tsinghua_ambiguous.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "OpenStreetMap contributors"
+SPDX-License-Identifier = "ODbL-1.0"

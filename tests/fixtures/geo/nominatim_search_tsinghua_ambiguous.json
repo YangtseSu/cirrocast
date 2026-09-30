@@ -1,0 +1,43 @@
+[
+  {
+    "place_id": 100000001,
+    "lat": "40.0264000",
+    "lon": "116.3150000",
+    "category": "amenity",
+    "type": "school",
+    "name": "Tsinghua University High School",
+    "display_name": "Tsinghua University High School, Zhongguancun North Street, Haidian District, Beijing, China",
+    "address": {
+      "amenity": "Tsinghua University High School",
+      "road": "Zhongguancun North Street",
+      "city": "Haidian District",
+      "state": "Beijing",
+      "ISO3166-2-lvl4": "CN-BJ",
+      "country": "China",
+      "country_code": "cn"
+    },
+    "extratags": {
+      "population": "1200"
+    }
+  },
+  {
+    "place_id": 100000002,
+    "lat": "40.0022905",
+    "lon": "116.3209630",
+    "category": "amenity",
+    "type": "university",
+    "display_name": "Tsinghua University, Shuangqing Road, Haidian District, Beijing, China",
+    "address": {
+      "amenity": "Tsinghua University",
+      "road": "Shuangqing Road",
+      "city": "Haidian District",
+      "state": "Beijing",
+      "ISO3166-2-lvl4": "CN-BJ",
+      "country": "China",
+      "country_code": "cn"
+    },
+    "extratags": {
+      "population": "47000"
+    }
+  }
+]

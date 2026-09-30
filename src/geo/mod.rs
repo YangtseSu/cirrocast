@@ -12,6 +12,10 @@
 //! constructors receive the shared HTTP client and cache of steps 05/06. It performs no I/O of its
 //! own, which is what makes the parse table and the ranking rules testable without a network.
 
+pub mod ip;
+pub mod nominatim;
+pub mod open_meteo;
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -201,6 +205,25 @@ pub fn resolve(
 /// candidates won and how to require an exact name instead.
 #[must_use]
 pub fn ambiguity_note(query: &str, chosen: &Location, resolution: Resolution) -> Option<String> {
+    note(query, chosen, resolution, true)
+}
+
+/// The same note for a fuzzy `~` search, without the advice to prepend `:`.
+///
+/// `:query` asks the *other* geocoder for a case-insensitive name match, so following the advice
+/// inside an OpenStreetMap search would quietly switch the data source instead of narrowing this
+/// one; the count and the winning place are still worth reporting.
+#[must_use]
+pub fn osm_ambiguity_note(
+    query: &str,
+    chosen: &Location,
+    resolution: Resolution,
+) -> Option<String> {
+    note(query, chosen, resolution, false)
+}
+
+/// The shared shape of both notes; `hint` appends the `:query` advice.
+fn note(query: &str, chosen: &Location, resolution: Resolution, hint: bool) -> Option<String> {
     let Resolution::Fuzzy { candidates } = resolution else {
         return None;
     };
@@ -211,8 +234,13 @@ pub fn ambiguity_note(query: &str, chosen: &Location, resolution: Resolution) ->
         .population
         .map(|population| format!(" (population {population})"))
         .unwrap_or_default();
+    let hint = if hint {
+        format!(" — pass `:{query}` to require an exact name match")
+    } else {
+        String::new()
+    };
     Some(format!(
-        "note: {candidates} candidates for `{query}`; using {}{population} — pass `:{query}` to require an exact name match",
+        "note: {candidates} candidates for `{query}`; using {}{population}{hint}",
         place(chosen)
     ))
 }
@@ -492,6 +520,15 @@ mod tests {
         let note = ambiguity_note("Beijing", &anonymous, Resolution::Fuzzy { candidates: 2 })
             .expect("a fuzzy match without population is still noted");
         assert!(note.contains("using Beijing, Beijing Municipality, China — pass"));
+
+        let osm =
+            super::osm_ambiguity_note("Beijing", &anonymous, Resolution::Fuzzy { candidates: 2 })
+                .expect("an OpenStreetMap match is noted too");
+        assert_eq!(
+            osm,
+            "note: 2 candidates for `Beijing`; using Beijing, Beijing Municipality, China"
+        );
+        assert!(super::osm_ambiguity_note("Beijing", &anonymous, Resolution::Only).is_none());
     }
 
     #[test]
