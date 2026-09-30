@@ -1569,10 +1569,12 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
         info_line("locations:", locations),
         info_line(
             "licence:",
-            meta.licence
-                .unwrap_or("not verified yet; the backend is not implemented"),
+            meta.licence.unwrap_or(
+                "not printed yet; the backend is not implemented (obligation in docs/providers.md)",
+            ),
         ),
         info_line("docs:", meta.docs_url),
+        info_line("verified:", meta.verified),
         info_line("notes:", meta.notes),
     ]
 }

@@ -33,7 +33,9 @@ issue templates, security policy) and a link checker keeps them honest.
       config > built-in default, with keys resolved separately per the key store rules).
 - ⬜ `docs/providers.md`: per provider — auth (env var name, key store, keyless), documented rate
       limits and what we do on 429/5xx, coverage and `max_days`, attribution requirement, accuracy
-      caveats, and the WMO-mapping note.
+      caveats, and the WMO-mapping note. (Authored in step 10 as the registry re-verification record —
+      endpoints, quotas with their wording, licence duties, traps; this step reviews it against the
+      shipped binary and adds anything the implementation learned.)
 - ⬜ `docs/formats.md`: every format (`art-table`, `one-line`, `full`, `minimal`, `plain`, `json`,
       `dumb`) with a real captured example block, the full `%` token table (identical to
       `template::TOKENS`), width/precision syntax, escape rules, and the unknown-token policy per

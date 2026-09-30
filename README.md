@@ -296,7 +296,9 @@ touches no network.
 ## Data sources, limits and licences
 
 `cirrocast` ships no data of its own — every place, address and forecast comes from a donated or open
-service, each with its own limits and licence. What the tool does to stay inside them:
+service, each with its own limits and licence. The per-provider record (endpoints, request parameters,
+response fields consumed, quotas with their exact wording, caching ceilings and traps) lives in
+[`docs/providers.md`](docs/providers.md); what the tool does to stay inside those limits:
 
 | Source | Used for | Limits the service sets | Licence / attribution |
 |---|---|---|---|
@@ -326,21 +328,21 @@ is used for. The handful of recorded responses used as test fixtures keep their 
 | ID | Key | Coverage | Observation | Forecast | Max days |
 |---|---|---|---|---|---|
 | `open-meteo` | none | global | yes | yes | 16 |
-| `smhi` | none | Nordics | yes | yes | 10 ⚠ |
+| `smhi` | none | Nordics and adjacent seas | yes | yes | 10 |
 | `metar` | none | stations | yes | no | — |
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | global | yes | yes | 5 |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | global | yes | yes | 3 |
-| `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | global | yes | yes | 3 |
+| `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | global | yes | yes | 5 |
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | global | yes | yes | 7 |
-| `qweather` | `CIRROCAST_QWEATHER_KEY` | China-first | yes | yes | 7 |
+| `qweather` | `CIRROCAST_QWEATHER_KEY` | global | yes | yes | 7 |
 
-⚠ `smhi`'s legacy host (`opendata-download-metfcst.smhi.se`) answered `404` on 2026-09-30, so the
-endpoint must be re-derived before that backend can ship; the correction is tracked in
-`docs/plans/19-more-providers.md`.
-
-Declared capabilities only — each row is re-verified against the provider's live documentation in
-step 10 (`docs/plans/10-additional-providers.md`) and corrected there if wrong. `cirrocast provider
-list` / `provider info <ID>` prints the same data from the binary itself.
+Declared capabilities only, each row carrying the date it was last checked against the provider's live
+documentation (`provider info <ID>` prints it). The full record — endpoints, request parameters,
+response fields consumed, free-tier quotas with their exact wording, licence duties, caching ceilings
+and the traps — lives in [`docs/providers.md`](docs/providers.md); `cirrocast provider list` /
+`provider info <ID>` print the machine-readable subset from the binary itself. The 2026-09-30
+re-verification corrected this table (SMHI's endpoint and horizon, WWO's 5-day free horizon,
+QWeather's global coverage) and is recorded in that file's log.
 
 Keys are BYOK and stored outside `config.toml`, in `keys.toml` (mode `0600`) or in the provider's
 environment variable — see [Configuration § API keys](#api-keys).

@@ -7,10 +7,13 @@
 //! the environment variable holding its API key, how many forecast days it serves, which location
 //! forms it understands and which data shapes it returns.
 //!
-//! The numbers below are **declared from provider documentation, not measured**. Step 10
-//! (additional providers) re-verifies every row against the live API docs before the matching
-//! backend is implemented, and corrects this table where reality disagrees. Treat the values as
-//! claims, not as facts.
+//! The numbers below are **declared from provider documentation, not measured**. Each row carries
+//! the [`ProviderMeta::verified`] date of its last check against the provider's live documentation;
+//! `docs/providers.md` holds the evidence (endpoints, quotas, licence wording, traps) behind every
+//! row, and is the file to read before implementing or re-verifying a backend. Step 10's
+//! re-verification pass corrected several rows (SMHI's endpoint, WWO's horizon, `QWeather`'s
+//! coverage and deprecation status) and stamped the rest; treat the values as dated claims, not as
+//! timeless facts.
 //!
 //! The second half of the module is the behaviour contract: [`Provider`] is what one backend
 //! implements, [`select`] turns a `--provider` value into an ordered chain, and [`fetch_chain`]
@@ -108,7 +111,8 @@ impl ProviderId {
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "keyless, global coverage",
+                notes: "keyless, global coverage; free tier 10 000 calls/day",
+                verified: "2026-09-30",
                 implemented: true,
                 alerts: false,
                 licence: Some("Open-Meteo.com (CC BY 4.0)"),
@@ -124,7 +128,8 @@ impl ProviderId {
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "free tier forecast is served in 3-hour steps",
+                notes: "free tier 60 calls/min, 1 000 000 calls/month; 2 calls per fetch, 3-hour steps",
+                verified: "2026-09-30",
                 implemented: false,
                 alerts: false,
                 licence: None,
@@ -140,7 +145,8 @@ impl ProviderId {
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "free tier",
+                notes: "free tier: 100k calls/month, 3-day forecast (paid plans 14 days)",
+                verified: "2026-09-30",
                 implemented: false,
                 alerts: false,
                 licence: None,
@@ -150,13 +156,14 @@ impl ProviderId {
                 display_name: "World Weather Online",
                 requires_key: true,
                 key_env: Some("CIRROCAST_WORLDWEATHERONLINE_KEY"),
-                docs_url: "https://www.worldweatheronline.com/weather-api/api/docs/",
-                max_days: 3,
+                docs_url: "https://www.worldweatheronline.com/weather-api/api/docs/local-city-town-weather-api.aspx",
+                max_days: 5,
                 current: true,
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "free tier",
+                notes: "free tier 100 requests/day, 5 forecast days per FAQ; format=json is mandatory",
+                verified: "2026-09-30",
                 implemented: false,
                 alerts: false,
                 licence: None,
@@ -172,7 +179,8 @@ impl ProviderId {
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "Dark Sky shaped responses",
+                notes: "Dark Sky shaped responses; free tier 10 000 calls/month",
+                verified: "2026-09-30",
                 implemented: false,
                 alerts: false,
                 licence: None,
@@ -182,13 +190,14 @@ impl ProviderId {
                 display_name: "QWeather",
                 requires_key: true,
                 key_env: Some("CIRROCAST_QWEATHER_KEY"),
-                docs_url: "https://dev.qweather.com/docs/api/",
+                docs_url: "https://dev.qweather.com/en/docs/api/",
                 max_days: 7,
                 current: true,
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "China focused; needs a configured API host",
+                notes: "global coverage; per-account API host required; city v7 APIs deprecated (EOL 2027)",
+                verified: "2026-09-30",
                 implemented: false,
                 alerts: false,
                 licence: None,
@@ -198,13 +207,14 @@ impl ProviderId {
                 display_name: "SMHI",
                 requires_key: false,
                 key_env: None,
-                docs_url: "https://opendata.smhi.se/apidocs/metfcst/index.html",
+                docs_url: "https://opendata.smhi.se/metfcst/snow1gv1",
                 max_days: 10,
                 current: true,
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "keyless, Nordics only",
+                notes: "keyless, Nordics and adjacent seas; SNOW1gv1 steps widen to 6 h/12 h beyond day 3",
+                verified: "2026-09-30",
                 implemented: false,
                 alerts: false,
                 licence: None,
@@ -220,7 +230,8 @@ impl ProviderId {
                 hourly: false,
                 daily: false,
                 location_kinds: LocationKinds::STATION,
-                notes: "keyless, station observations only",
+                notes: "keyless, station observations only; 100 requests/minute",
+                verified: "2026-09-30",
                 implemented: false,
                 alerts: false,
                 licence: None,
@@ -293,6 +304,12 @@ pub struct ProviderMeta {
     pub location_kinds: LocationKinds,
     /// Free-form caveats worth showing in `provider info`.
     pub notes: &'static str,
+    /// The date (`YYYY-MM-DD`) this row was last checked against the provider's live documentation.
+    ///
+    /// The evidence behind the date — endpoints, quotas with their wording, licence obligations and
+    /// the traps the implementation must respect — lives in `docs/providers.md`. A row whose date is
+    /// old is a claim to re-check, not a fact to trust.
+    pub verified: &'static str,
     /// Whether a [`Provider`] implementation exists yet.
     ///
     /// A registry row can be complete before its backend is written; `select` refuses to hand out
@@ -303,8 +320,9 @@ pub struct ProviderMeta {
     pub alerts: bool,
     /// The credit line the data licence requires, e.g. `Open-Meteo.com (CC BY 4.0)`.
     ///
-    /// `None` until the row's provider is implemented and its licence verified, which is what step
-    /// 10 does per backend; a renderer prints it as `Data: …`.
+    /// `None` until the row's provider is implemented, so that no renderer can print a credit for a
+    /// backend that never fetches. The licence *obligation* of every backend — implemented or not —
+    /// is recorded in `docs/providers.md`; this field is only the line the renderers print.
     pub licence: Option<&'static str>,
 }
 
@@ -729,6 +747,18 @@ mod tests {
             if let Some(env) = meta.key_env {
                 assert!(env.starts_with("CIRROCAST_"), "{env} is not namespaced");
             }
+        }
+    }
+
+    #[test]
+    fn every_row_carries_a_verified_date() {
+        for id in ProviderId::all() {
+            let meta = id.metadata();
+            assert!(
+                chrono::NaiveDate::parse_from_str(meta.verified, "%Y-%m-%d").is_ok(),
+                "{id} carries `{}` instead of an ISO `verified` date",
+                meta.verified
+            );
         }
     }
 

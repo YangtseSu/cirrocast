@@ -1,0 +1,652 @@
+<!--
+SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+# Upstream providers — verified reference
+
+Every external service `cirrocast` talks to, with what it accepts, what it returns, whether it needs a
+key, what its free tier allows, and what its licence obliges us to do. This is the written half of the
+provider registry: `src/provider/mod.rs` carries the machine-readable subset (`provider list` /
+`provider info` print it), and this document carries the detail a registry row cannot hold — request
+parameter names, response fields we consume, the exact quota wording, the traps, and the sources.
+
+The file is the one `docs/plans/23-docs-and-guides.md` promises; it was authored in step 10 because the
+registry re-verification of that step needs a written record of what was checked.
+
+## How to read this document
+
+* **Everything is dated.** A claim is true for the day it was fetched. `provider info` prints the same
+  `verified` date the registry row carries; when a provider changes its terms or limits, the date moves.
+* **Quotas carry a quote and a URL.** Free-tier numbers are copied verbatim from the provider's own
+  pages. Where a provider publishes contradictory numbers, both are recorded and the contradiction is
+  named instead of resolved by preference — `docs/plans/10-additional-providers.md` says which value
+  the code uses.
+* **Plan-dependent numbers are marked as such.** QWeather's and WWO's quotas depend on the account;
+  PirateWeather's paid tiers are not public. Those are marked "plan-dependent".
+* **`[INFERENCE]` marks a conclusion we drew** rather than a sentence a provider published.
+* **Unverified items are listed, not omitted.** A number nobody could confirm does not silently become
+  a number.
+* **Client notes** at the end of each section state what our implementation must do about the facts
+  above; they are the seed of the corresponding `src/provider/<id>.rs`.
+
+## At a glance
+
+### Backends
+
+| id | Key | Free tier (verified 2026-09-30) | Coverage | Granularity | Horizon | Status |
+|---|---|---|---|---|---|---|
+| `open-meteo` | none | 10 000 calls/day, 5 000/hour, 600/minute; non-commercial | global | hourly | 16 days | implemented (step 06) |
+| `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | step 10 |
+| `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | step 11 |
+| `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | step 10 |
+| `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | step 10 |
+| `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | step 10 |
+| `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | step 10 |
+| `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (`24h`/`72h`/`168h`) | v7: 30 days daily; successor v1: 10 days | step 10 |
+
+### Obligations that reach the rendered output
+
+| id | Licence | Credit required | Cache ceiling | Extra duty |
+|---|---|---|---|---|
+| `open-meteo` | CC BY 4.0 | `<a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a>`; a link next to displayed data | none published | geocoding adds "Location data based on GeoNames" |
+| `smhi` | CC BY 4.0 SE | name SMHI as the source and state modifications; `Källa: SMHI` is the conventional rendering, not SMHI's own wording | none published; caching encouraged | — |
+| `metar` | US Government work (public domain) | no mandated string; NWS asks that derived works not claim NWS endorsement and that predominantly-NWS works carry the 17 U.S.C. § 403 notice | none published | NWS name/logo are trademarks |
+| `openweathermap` | ODbL 1.0 | "Weather data provided by OpenWeather" + link to https://openweathermap.org/ + the OpenWeather logo, visible where the data appears | none published (10-minute model refresh) | share-alike only if we ever publish an adapted database |
+| `weatherapi` | proprietary (Zoomash Ltd) | free keys: credit WeatherAPI.com by name or logo; the docs suggest `Powered by <a href="https://www.weatherapi.com/">WeatherAPI.com</a>` | current 60 min, forecast 24 h | mandatory end-user disclaimer; no resale; one key per app |
+| `worldweatheronline` | proprietary (Zoomash Ltd) | free keys: "Weather Data by WorldWeatherOnline.com" | current 60 min, forecast 24 h | mandatory end-user disclaimer; no resale |
+| `pirateweather` | proprietary (PirateWeatherAPI) | none documented | `Cache-Control: max-age=900` is sent | no multi-account quota circumvention; warranty disclaimer |
+| `qweather` | proprietary (QWeather Developers License) | name QWeather + https://www.qweather.com; recommended "Weather service by QWeather" | real-time 10–30 min, hourly 30–60 min, daily 1–6 h (guidance) | GeoAPI data must not be bulk-cached or indexed; weather warnings must reproduce `refer.sources` |
+
+### Status-code behaviour (the chain contract, applied per upstream)
+
+`fetch_chain` falls through to the next backend only for transport/upstream failures; everything else
+is the user's answer. Concretely, for the backends above:
+
+| Upstream answer | Mapped to | Effect |
+|---|---|---|
+| `401` / `403` that means "bad or missing credential" | `Error::MissingKey` / `InvalidKey` (exit 6) | chain stops; message names `cirrocast key set <id>` |
+| `429` | `Error::Upstream` (exit 3) | chain continues; `Retry-After` honoured when present and clamped (PirateWeather, ipwho.is publish it; WeatherAPI, ipapi.co and Open-Meteo do not) |
+| `5xx`, timeouts, connection failures | `Error::Upstream` / `Error::Network` (exit 3) | chain continues |
+| `400` with an invalid-parameter body | `Error::Usage` (exit 2) where the fault is ours; `Error::Upstream` where the body is a provider refusal | per provider note |
+| `404` "no such location" (QWeather, SMHI out-of-area) | `Error::Upstream` for SMHI (so `auto` falls through) and for QWeather's "no such location" | see each section |
+| `200` with an error envelope (`{"error":true,…}`, `{"success":false,…}`) | `Error::Upstream(reason)` | Open-Meteo, ipwho.is, ipapi.co all do this |
+
+## Backends
+
+### `open-meteo`
+
+Keyless default. One request per fetch; hourly data is aggregated into the four day parts in the
+location's time zone by `src/provider/open_meteo.rs`.
+
+**Endpoints** (verified 2026-09-30)
+
+| Purpose | Method | URL | Parameters we send |
+|---|---|---|---|
+| Forecast | GET | `https://api.open-meteo.com/v1/forecast` | `latitude`, `longitude`, `current`, `hourly`, `daily`, `timezone=auto`, `forecast_days`, `temperature_unit=celsius`, `wind_speed_unit=kmh`, `precipitation_unit=mm` |
+
+Documented parameters not sent today: `past_days` (0–92), `models` (plural — the singular `model=` is
+**silently ignored**, verified: `model=ecmwf_ifs025` returned the default grid while `models=bogus`
+returned HTTP 400), `cell_selection`, `minutely_15`, `start_date`/`end_date`, `format` (`json`/`csv`/`xlsx`),
+`apikey` (commercial only, with the `customer-api.open-meteo.com` host).
+
+**Response fields consumed.** Top level: `latitude`, `longitude`, `utc_offset_seconds`, `timezone`,
+`elevation`, `current_units`, `current`, `hourly_units`, `hourly`, `daily_units`, `daily`. `hourly` and
+`daily` are column objects (`{ "time": [...], "<variable>": [...] }`); `current` is a flat object whose
+`interval` is 900 s. Units are echoed back per request in `*_units`.
+
+**Auth.** None. `apikey` is documented as "Only required to commercial use to access reserved API
+resources for customers. The server URL requires the prefix `customer-`."
+(<https://open-meteo.com/en/docs>)
+
+**Limits.** "Less than 10'000 API calls per day, 5'000 per hour and 600 per minute."
+(<https://open-meteo.com/en/terms>). The pricing table also prints `300.000 calls / month`, but the
+same page states "A usage statistics portal is under development. Until it is available, monthly limits
+are not enforced." — treat 300 k as advisory. Call accounting is fractional: a request covering more
+than 10 variables or more than two weeks "is considered multiple API calls". Free tier is
+non-commercial ("You may only use the free API services for non-commercial purposes."), and
+Open-Meteo "reserve[s] the right to block applications and IP addresses that misuse our service
+without prior notice." (<https://open-meteo.com/en/pricing>, <https://open-meteo.com/en/terms>)
+
+**Coverage and granularity.** Global, 17 model families behind `best_match`. Hourly is the native
+output; daily is "a simple 24 hour aggregation from hourly values"; the horizon is 16 days
+(`forecast_days`, default 7) and 15-minutely data exists for some models/regions. Returned coordinates
+are the model grid cell and "might be a few kilometres away from the requested coordinate".
+
+**Attribution and licence.** CC BY 4.0; the licence page asks for a link next to any displayed data:
+`<a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a>`
+(<https://open-meteo.com/en/licence>). The geocoding page adds "Location data based on GeoNames".
+`Data: Open-Meteo.com (CC BY 4.0)` is the line the renderers print today.
+
+**Client notes.** Ask for metric units explicitly (the single conversion point is `src/render/`);
+`timezone=auto` because `daily` requires a timezone; treat a missing `visibility`/`precipitation_probability`
+hour as `None`, never as zero; the error envelope is `{"error": true, "reason": "…"}` with HTTP 400.
+
+**Unverified.** The € amounts of the commercial plans (the pricing page renders them client-side); an
+observed HTTP 429 (would need 600 req/min); whether `apikey` works on `customer-` hosts.
+
+### `smhi`
+
+Keyless, regional. **The endpoint in the original step 10 plan is gone**: `category=pmp3g` returns 404
+and was decommissioned 2026-03-31. The live service is **SNOW1gv1** at a different path with a
+different response shape (verified 2026-09-30).
+
+**Endpoints** (verified 2026-09-30)
+
+| Purpose | Method | URL | Parameters |
+|---|---|---|---|
+| Point forecast | GET | `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/<lon>/lat/<lat>/data.json` | path `lon` **before** `lat`; optional `timeseries=<n>` (truncate), `parameters=a,b` |
+| Parameter catalogue | GET | `…/api/category/snow1g/version/1/parameter.json` | — |
+| Run timestamps | GET | `…/createdtime.json`, `…/times.json` | — |
+| Valid-area polygon | GET | `…/geotype/polygon.json` | — |
+
+Old → new path mapping: `pmp3g` → `snow1g`, `version/2` → `version/1`,
+`geopoint/lat/<lat>/lon/<lon>` → `geotype/point/lon/<lon>/lat/<lat>`. Docs moved from
+`opendata.smhi.se/apidocs/metfcst/` (404) to <https://opendata.smhi.se/metfcst/snow1gv1>.
+
+**Response fields consumed.** Top level: `createdTime`, `referenceTime`, `geometry.coordinates`,
+`timeSeries[]`; per step `time` (interval end), `intervalParametersStartTime` (interval start) and
+`data` — a **JSON object keyed by parameter name**, not the old array of
+`{name, level, levelType, unit, values[]}`. Metadata for each name lives in `parameter.json`.
+
+Parameters a weather client needs (old name → new):
+
+| Old | New `name` | `shortName` | `levelType`/`level` | Unit |
+|---|---|---|---|---|
+| `t` | `air_temperature` | `2t` | `hl`/2 | `Cel` |
+| `ws` | `wind_speed` | `ws` | `hl`/10 | `m/s` |
+| `wd` | `wind_from_direction` | `wd` | `hl`/10 | `degree` |
+| `wsymb2` | `symbol_code` | `Wsymb2` | `hl`/0 | — |
+| `r1` | `precipitation_amount_mean_deterministic` | `avg_tprate` | `sfc`/0 | `kg/m2` |
+| `pmean` | `precipitation_amount_mean` | `tpratemean` | `hl`/0 | `kg/m2` |
+| `vis` | `visibility_in_air` | `vis` | `hl`/2 | `km` |
+| `tcc_mean` | `cloud_area_fraction` | `tcc` | `entireAtmosphere`/0 | **`oktas`** (0–8; ×12.5 = %) |
+
+The other 16 fields in every step include `wind_speed_of_gust`, `relative_humidity`,
+`air_pressure_at_mean_sea_level`, `thunderstorm_probability`, `probability_of_frozen_precipitation`,
+`low/medium/high_type_cloud_area_fraction`, `cloud_base_altitude`, `cloud_top_altitude`,
+`precipitation_amount_min/max/median`, `probability_of_precipitation`, `precipitation_frozen_part`,
+`predominant_precipitation_type_at_surface`.
+
+**Auth.** None; no User-Agent or contact requirement is published for this API (unlike the sibling
+`metobs` service). Fair use, verbatim: "Lasta inte ner SMHIs tjänster i onödan … Undvik även att hämta
+samma data fler gånger." and SMHI reserves the right to block IPs on abuse; scheduled access is
+explicitly allowed ("Ja, du kan schemalägga (exempelvis crontab) ett jobb …"), parallel connections
+only "om varje anslutning motsvarar en slutanvändare", and the forecast API updates hourly
+(<https://www.smhi.se/data/om-smhis-data/villkor-for-anvandning>,
+<https://www.smhi.se/data/om-smhis-data/fragor-och-svar>).
+
+**Coverage and granularity.** The valid area is the `geotype/polygon.json` ring: roughly
+lon −18.1…44.1, lat 49.9…74.9, irregular (Sweden, adjacent seas, neighbouring countries, a Norwegian
+lobe). Out-of-area requests returned **HTTP 404 with an empty body** in every probe, although the docs
+claim 400 "FIELD POINT OUT OF BOUNDS" — the client must treat both as "outside coverage" and fall
+through in `auto`. Coordinates snap to the nearest ~2.5 km grid point. A run carried **82 steps ≈ 10
+days**, with the step widening 1 h → 6 h (from day 3) → 12 h (from day 7); the horizon varies per run
+("maximum approximately 10 days").
+
+**`Wsymb2` (1–27).** The canonical table is client-rendered and unreachable by non-JS fetches; the
+code→name mapping below is SMHI's public symbol explainer, whose image filenames carry the code. Code 5
+is absent from that page. Swedish names, verbatim:
+1 Klart, 2 Mest klart, 3 Halvklart, 4 Mycket moln, 6 Mulet, 7 Dimma, 8 Lätt regnskur, 9 Regnskur,
+10 Kraftig regnskur, 11 Åskskur, 12 Lätt by av regn och snö, 13 By av regn och snö, 14 Kraftig by av
+regn och snö, 15 Lätt snöby, 16 Snöby, 17 Kraftig snöby, 18 Lätt regn, 19 Regn, 20 Kraftigt regn,
+21 Regn med åska, 22 Lätt snöblandat regn, 23 Snöblandat regn, 24 Kraftigt snöblandat regn,
+25 Lätt snöfall, 26 Snöfall, 27 Ymnigt snöfall. Intensity thresholds are water-equivalent: light
+≤ 0.5 mm/h, moderate 0.5–4 mm/h, heavy > 4 mm/h; "Lätt snöfall" corresponds to less than 1 cm of snow
+(<https://www.smhi.se/kunskapsbanken/meteorologi/vaderprognoser/vad-betyder-smhis-vadersymboler>).
+
+**Attribution and licence.** "Med våra öppna data följer licensvillkoren Creative commons Erkännande
+4.0 SE." — CC BY 4.0 SE, commercial use permitted; the credit requirement is "Du ska ange SMHI som
+källa och även ange om du har ändrat i licensmaterialet." The literal string "Källa: SMHI" is not
+SMHI's own wording, only the conventional rendering of that requirement
+(<https://www.smhi.se/data/om-smhis-data/villkor-for-anvandning>).
+
+**Client notes.** Read `data` by key, never by index or order; the `parameters` filter needs **literal
+commas** (`%2C` silently returns only the first parameter); map `9999` (and `precipitation_frozen_part:
+-9`) to `None`; precipitation accumulates over the interval, so divide by the interval width for a rate;
+`cloud_area_fraction` is oktas; `symbol_code` arrives as an integer; surface the grid-snapped
+coordinates rather than echoing the request.
+
+**Unverified.** The canonical `Wsymb2` table text (client-rendered docs); an English symbol table (none
+published); gzip/`Cache-Control`/`ETag` headers (no header inspection available); a published numeric
+rate limit (none found); the multipoint grid endpoint (every probe returned 406).
+
+### `metar` (aviationweather.gov)
+
+Keyless, station-based observations. Implemented in step 11, listed here because it shares the
+attribution and error surface.
+
+**Endpoints** (verified 2026-09-30, all GET, no key)
+
+| Purpose | URL | Parameters |
+|---|---|---|
+| Observations | `https://aviationweather.gov/api/data/metar` | `ids` (ICAO, comma-separated; also `@WA` state prefixes), `bbox`, `format` (`raw` default; `json` for us), `taf=true` to embed the station's TAF, `hours` (default 1.5), `date` |
+| Forecasts | `https://aviationweather.gov/api/data/taf` | `ids`, `bbox`, `format`, `metar=true`, `time` (`valid`/`issue`), `date` |
+| Station metadata | `https://aviationweather.gov/api/data/stationinfo` | `ids`, `bbox`, `format` |
+
+**Response fields consumed.** METAR JSON is a bare array; per object: `icaoId`, `receiptTime`,
+`obsTime`, `reportTime`, `temp`, `dewp`, `wdir`, `wspd`, `wgst`, `visib`, `altim`, `slp`, `wxString`,
+`clouds[{cover,base}]`, `rawOb`, `lat`, `lon`, `elev`, `name`, `fltCat`. Station info adds `iataId`,
+`faaId`, `wmoId`, `site`, `state`, `country`. TAF objects carry `rawTAF`, `issueTime`, `validTimeFrom`,
+`validTimeTo` and a `fcsts[]` change-group list.
+
+**Auth.** None; the docs ask for a custom user agent ("Set a custom user agent to prevent automated
+filtering inadvertently blocking valid traffic.").
+
+**Limits.** "All requests are rate limited to 100 requests per minute."; "Most endpoints return a
+maximum of 400 entries"; the database keeps 30 days; CORS is not permitted; undocumented query
+parameters are rejected; bulk consumers are pointed at the `/data/cache/*.gz` files instead of large
+queries (<https://aviationweather.gov/data/api/>).
+
+**Coverage and granularity.** Worldwide METAR/TAF/station info; METARs update at most hourly and `hours`
+is the only look-back window; TAFs are multi-period (typically 24–30 h).
+
+**Attribution and licence.** US Government work, public domain, with NWS conditions: no claim of
+ownership, no implied endorsement, and third parties producing works "consisting predominantly of the
+material appearing in NWS Web pages" must carry the 17 U.S.C. § 403 notice; the NWS name and logo are
+trademarks (<https://www.weather.gov/disclaimer>).
+
+**Client notes.** `metar_id` does not exist (the identifier is `icaoId`); `wmoId`/`id`/`cover`/`rawTaf`
+are live but undocumented — parse defensively; `metar?ids=ZZZZ` answers 204 while `taf?ids=ZZZZ`
+answers 200 with `[]`; a 504 can be transient where the same request later returns 400; non-ICAO ids
+are 400, unknown products 404.
+
+**Unverified.** The 400 body shape (documented as `{"status":"error","error":"…"}` but never captured
+live); an observed 429/403; CORS headers.
+
+### `openweathermap`
+
+BYOK. Two calls per fetch (current + 3-hourly forecast).
+
+**Endpoints** (verified 2026-09-30, GET)
+
+| Purpose | URL | Parameters |
+|---|---|---|
+| Current | `https://api.openweathermap.org/data/2.5/weather` | `lat`, `lon`, `appid`, `units=metric`, `lang`, `mode` |
+| Forecast | `https://api.openweathermap.org/data/2.5/forecast` | `lat`, `lon`, `appid`, `units=metric`, `lang`, `cnt`, `mode` |
+
+`q=`/`id=`/`zip=` lookups still work but are deprecated ("API requests by city name, zip-codes and city
+id have been deprecated"); the replacement is the separate Geocoding API. `exclude` exists only on One
+Call, not on 2.5.
+
+**Response fields consumed.** Current: `main.temp/feels_like/humidity/pressure`, `weather[0].id`,
+`wind.speed/deg/gust`, `clouds.all`, `visibility` (metres, "maximum value … is 10 km"), `rain.1h`,
+`snow.1h`, `sys.sunrise/sunset`, `dt`, `timezone` (shift in seconds, **not** an IANA name), `name`.
+Forecast: `list[].dt/pop/main.*/weather[0].id/wind.*/rain.3h/snow.3h/sys.pod` plus the `city` block
+(`name`, `timezone`, `sunrise`, `sunset` — today's times only, not per day).
+
+**Auth.** `appid` query parameter, account-scoped limits ("API call limits are applied at the account
+level, not per API key or per product"), key activation "up to 2 hours after your successful
+registration" (a fresh key returns 401 until then), and the free host is only `api.openweathermap.org`
+— paid plans use a different host sent by email (<https://openweathermap.org/appid>).
+
+**Limits.** "60 calls/minute 1,000,000 calls/month" on the Free plan; the docs recommend "no more than
+once in 10 minutes for each location"; over-limit requests answer 429 and the account may be suspended
+"for a couple of hours to several days randomly"
+(<https://openweathermap.org/full-price>, <https://openweathermap.org/faq>). The free plan includes
+current weather and the 5-day/3-hour forecast; 16/30-day daily, 4-day hourly and One Call are paid.
+
+**Coverage and granularity.** Global, blended (stations, satellites, radar, GFS, ECMWF, OWHL). Current
+weather is typically a station observation (`"base": "stations"`); the forecast is a 3-hour grid of 40
+slots anchored to local midnight, with `dt` in UTC and `list[].dt_txt` in UTC.
+
+**Attribution and licence.** ODbL 1.0 with mandatory visible attribution on every self-service plan:
+"'Weather data provided by OpenWeather' / Hyperlink to our website https://openweathermap.org/ /
+OpenWeather logo", and "Attribution placed only in hidden documentation or deep legal pages is not
+sufficient." The pricing page's recommended line is "Weather data © OpenWeather". Share-alike applies
+only if we publish an adapted database (<https://openweathermap.org/full-price>,
+<https://openweathermap.org/faq>). No caching ceiling is published.
+
+**Client notes.** `rain`/`snow` blocks are absent (not zero) when nothing falls, and the key differs
+between the endpoints (`rain.1h` vs `rain.3h`); `units=metric` must be explicit (the default is
+Kelvin) and does not affect precipitation (always mm/h); `main.temp_min/max` are **not** daily extremes;
+`weather[0]` is the primary condition and `weather[0].main` is not translated — map from `id`;
+`511` (freezing rain) and `616` (rain and snow) carry snow icons upstream; `pop` is 0–1; `lang`
+translates only the city name and description.
+
+**Unverified.** A gzip/`Accept-Encoding` policy (no mention in any OWM page); a caching/retention rule
+(none published); the behaviour of `cnt` above 40; the 401 body (not captured); live per-coordinate
+behaviour (the public sample host serves canned data).
+
+### `weatherapi`
+
+BYOK. One call per fetch; the free plan is the constraint.
+
+**Endpoints** (verified 2026-09-30, GET, base `https://api.weatherapi.com/v1`)
+
+| Purpose | URL | Parameters |
+|---|---|---|
+| Forecast | `/forecast.json` | `key`, `q`, `days` (1–14; free plan 3), `lang`, `aqi`, `alerts`, `hour`, `dt`/`unixdt` |
+| Current only | `/current.json` | `key`, `q`, `aqi`, `lang` |
+| City search | `/search.json` | `key`, `q` |
+| Astronomy | `/astronomy.json` | `key`, `q`, `dt` |
+
+`q` accepts `lat,lon`, a city name, US zip, UK postcode, Canadian postal code, `metar:<ICAO>`,
+`iata:<code>`, `auto:ip`, an IP address, or `id:<search-id>`.
+
+**Response fields consumed.** `location.{name,region,country,lat,lon,tz_id,localtime_epoch,localtime}`;
+`current.{temp_c,feelslike_c,humidity,pressure_mb,wind_kph,wind_degree,wind_dir,gust_kph,vis_km,uv,
+precip_mm,is_day,condition.code,last_updated_epoch}`;
+`forecast.forecastday[].{date,date_epoch,day.{maxtemp_c,mintemp_c,avgtemp_c,maxwind_kph,totalprecip_mm,
+avghumidity,uv,condition},astro.{sunrise,sunset,moonrise,moonset,moon_phase,moon_illumination},
+hour[].{time,time_epoch,temp_c,feelslike_c,chance_of_rain,precip_mm,wind_kph,gust_kph,vis_km,uv,is_day,
+condition.code}}`; `alerts.alert[]` with `alerts=yes`.
+
+**Auth.** `key` query parameter; sign-up at <https://www.weatherapi.com/signup.aspx>; the key stays the
+same across plan changes; a compromised key is rotated "within 4 business hours of notification".
+
+**Limits.** Free: 100 000 calls/month ("Calls per month | 100K | 3 Million | …"), 3-day forecast, 1-day
+history, `Limited` air quality and alerts; the quota "is reset at midnight on 1st of each month UTC"
+and over-quota access simply stops for the month. Paid plans get a 14-day forecast. The terms promise a
+"per-minute burst limit … published at weatherapi.com/pricing.aspx", but **no number is published on
+any first-party page** — do not hard-code one. HTTP 429 is undocumented (the published error table has
+only 400/401/403) (<https://www.weatherapi.com/pricing.aspx>, <https://www.weatherapi.com/terms.aspx>).
+
+**Coverage and granularity.** Global, "1 to 11 km" points; sources include ECMWF, WMO, NASA, NOAA GFS2
+and JMA; history is archived forecast data from 2010, not observations. `forecastday[].hour[]` carries
+exactly 24 entries per day even across DST; timestamps are local-time strings **without offsets** —
+`location.tz_id` is the IANA zone and `*_epoch` fields are the ones to compute with. Hour strings are
+unpadded (`"2023-01-13 6:30"`).
+
+**Attribution and licence.** The docs ask free users to link back and provide ready-made snippets
+(`Powered by <a href="https://www.weatherapi.com/">WeatherAPI.com</a>`); the API terms turn it into an
+obligation: "If you are a Free API user then for all uses of the data, you will credit WeatherAPI.com
+by name or brand logo as the source of the data." Commercial use is allowed on Free, reselling is not,
+one key serves one application. Caching: "current conditions data — maximum 60 minutes; forecast data —
+maximum 24 hours". A mandatory end-user disclaimer applies to anything shown to users, quoted in full
+in the terms (<https://www.weatherapi.com/terms.aspx>).
+
+**Client notes.** Condition codes are **53 codes over 1000–1282** (not 1000–1087); the canonical list is
+<https://www.weatherapi.com/docs/weather_conditions.json>, which the vendor explicitly blesses for
+vendoring ("Please download the list and use it offline"). Day/night variants differ only in the icon
+text/assets; store `is_day` next to `condition.code`. Astro times are 12-hour strings (`"04:31 PM"`,
+`[INFERENCE]` `%I:%M %p`) and can be `"No moonrise"`/`"No moonset"`; a post-midnight moonset belongs to
+the previous date's block. Errors are `{"error":{"code":…,"message":…}}`: 401/1002 missing key,
+400/1003 missing `q`, 400/1006 no location, 401/2006 invalid key, 403/2007 quota, 403/2008 disabled,
+403/2009 plan. `precip_mm` can be 0.0 during light rain.
+
+**Unverified.** The `days`-beyond-plan error code (none published; every live probe returned 401 with
+no body); the per-minute burst limit; whether `lang=zh` works (the docs table and the conditions file
+disagree on `zh`/`zh_cn`); which free features are "Limited"; `forecastday[0].hour[]` length on the
+current day.
+
+### `worldweatheronline`
+
+BYOK. The free tier is small and the documentation contradicts itself; the code follows the
+conservative reading.
+
+**Endpoints** (verified 2026-09-30)
+
+| Purpose | Method | URL | Parameters |
+|---|---|---|---|
+| Local weather | GET | `https://api.worldweatheronline.com/premium/v1/weather.ashx` | `key`, `q` (name, `lat,lon`, IP, postcode), `format=json`, `num_of_days`, `tp`, `cc`, `fx`, `mca`, `includelocation`, `showlocaltime`, `lang`, `alerts`, `aqi`, `extra` |
+| Bulk | POST | same path | up to 10 locations; each counts against the quota |
+| Location search | GET | `…/premium/v1/search.ashx` | `key`, `query` |
+
+`api.worldweatheronline.com/free/v1/…` is **not documented anywhere current** and returned HTTP 403 in
+every probe; every official example uses `premium/v1`, and the pricing page says "All plans share the
+same core API suite". The free key therefore goes on the `premium/v1` path.
+
+**Response fields consumed.** `data.{request,nearest_area,current_condition,weather,alerts}`;
+`current_condition[0].{temp_C,FeelsLikeC,weatherCode,weatherDesc[0].value,humidity,windspeedKmph,
+winddirDegree,pressure,precipMM,visibility,uvIndex,observation_time}`;
+`weather[].{date,maxtempC,mintempC,uvIndex,astronomy.{sunrise,sunset,moonrise,moonset,moon_phase},
+hourly[].{time,tempC,FeelsLikeC,weatherCode,weatherDesc[0].value,windspeedKmph,winddirDegree,precipMM,
+humidity,pressure,cloudcover,chanceofrain,windgustKmph,visibility}}`.
+
+**Auth.** `key` query parameter, no header scheme; sign-up with email verification; the terms require
+keeping the key out of public repositories and forbid sharing it.
+
+**Limits.** Contradictory, recorded as such: the pricing page and the free terms say **100 requests/day**
+("We request our free weather API users to not exceed 100 requests per day."), while the docs index
+callout says 500 requests/month. Forecast length is likewise inconsistent: the endpoint reference
+allows `num_of_days` 1–14 (`0` = current only), the FAQ says the Free API gives "up to 5 days" and
+Premium "up to 15 days", and the pricing matrix ticks 3/5/7/10/14-day forecasts for Free. Free uptime
+is 95% with no SLA. `tp` ∈ {1,3,6,12,24}, default 3. Commercial use on the free tier is disputed across
+the provider's own pages (pricing says no; the FAQ and the T&C say yes).
+
+**Coverage and granularity.** Global ("approximately 3 million cities"); sources ECMWF, WMO, GTS,
+satellites, NCEP GFS, JMA; data updated "every three-four hours"; all times local to the location,
+`hourly[].time` being an unpadded local `HHMM` string (`"0"`, `"700"`, `"2100"`).
+
+**Attribution and licence.** Proprietary; free-tier credit is mandatory: "the only mandatory credit is
+to write **Weather Data by WorldWeatherOnline.com**" (non-website surfaces), with a link and title
+required on websites. Clause 1C adds a mandatory end-user disclaimer ("informational purposes only …
+Forecasts are probabilistic … not be used as the sole basis for decisions involving personal safety,
+aviation, marine navigation, emergency planning, or other safety-critical activities"). Caching limits:
+current conditions 60 minutes, forecast 24 hours. No resale, no bulk copying
+(<https://www.worldweatheronline.com/weather-api/api/free-api-terms.aspx>,
+<https://www.worldweatheronline.com/weather-api/api/api-t-and-c.aspx>).
+
+**Client notes.** `format=json` is mandatory — the documented default is `xml`; every scalar is a JSON
+**string** (`"temp_C": "18"`); single-element arrays wrap descriptions and areas
+(`weatherDesc[0].value`); astronomy is nested under `weather[].astronomy`; `weatherCode` is a closed
+49-code set with separate day/night icons
+(<https://www.worldweatheronline.com/feed/wwoConditionCodes.txt>). Error mapping observed live: 400
+missing parameter, 401 bad key on `premium/v1`, 403 wrong/deprecated path tier, 404 unknown path. The
+classic `data.error[].msg` envelope is not documented on any current page.
+
+**Unverified.** The error body shape; per-tier `tp`/`num_of_days` maxima; whether a free key is
+restricted to a path; whether the old `v1`/`v2`/`v3` paths exist; the monthly-vs-daily quota conflict;
+the 429 behaviour; alert coverage by country; whether the historical archive is on the free tier.
+
+### `pirateweather`
+
+BYOK. Dark Sky-shaped payloads; the key is a path segment.
+
+**Endpoints** (verified 2026-09-30)
+
+| Purpose | Method | URL | Parameters |
+|---|---|---|---|
+| Forecast | GET | `https://api.pirateweather.net/forecast/<apikey>/<lat>,<lon>` | `units` (default `us`; we send `si`), `exclude`, `extend=hourly`, `lang`, `version`, `include`, `aqiunits`, `icon` |
+| Historical | GET | `https://timemachine.pirateweather.net/forecast/<apikey>/<lat>,<lon>,<time>` | as above plus the mandatory time |
+
+There is **no `tz` parameter**; the response's `timezone` name and `offset` (hours, sometimes a float)
+carry the local calendar. The key may alternatively travel in an `apikey` header with a dummy path
+segment.
+
+**Response fields consumed.** Top level `latitude`, `longitude`, `timezone`, `offset`, `elevation`,
+`currently`, `minutely`, `hourly`, `daily`, `alerts`, `flags`; per block `time` (UNIX UTC seconds),
+`summary`, `icon`, `precipIntensity`, `precipProbability`, `precipType`, `temperature`,
+`apparentTemperature`, `dewPoint`, `humidity`, `pressure`, `windSpeed`, `windGust`, `windBearing`,
+`cloudCover`, `visibility`, `uvIndex`; daily adds `sunriseTime`, `sunsetTime`, `moonPhase`,
+`precipAccumulation`, `temperatureHigh/Low`. Under `units=si`, `precipAccumulation` is **centimetres**
+and `precipIntensity` is mm/h of liquid water; `humidity`/`cloudCover`/`precipProbability` are 0–1;
+`visibility` is capped at 16 km.
+
+**Auth.** Key in the path (or header); sign-up through the Apiable portal, and "it can take up to 20
+minutes for the change to propagate to the gateway"; an invalid key returns a Kong-generated 401 in
+`text/html`, before any coordinate validation.
+
+**Limits.** Free tier: **10 000 calls/month**; a "$2 monthly donation lets you raise your API limit
+from 10,000 calls/month to 20,000"; a per-key rate limit of "1 to 4/ per second (depending on the
+plan)"; quota exhaustion answers 429. The response headers report usage
+(`Ratelimit-Limit`/`-Remaining`/`-Reset`, `X-Forecast-API-Calls`). The only use restriction in the
+terms is that users "do not attempt to circumvent the call limit of the API (i.e. by making multiple
+accounts)" (<https://docs.pirateweather.net/en/latest/>, <https://docs.pirateweather.net/en/latest/API/>).
+
+**Coverage and granularity.** Global; GFS/GEFS backbone with HRRR/NBM/RTMA-RU/URMA over North America,
+ECCC models, DWD MOSMIX, ECMWF IFS/AIFS, RAQDPS and FMI SILAM for air quality, ERA5 for history.
+Blending is per-element first-non-null selection, so one response mixes sources; stale runs are
+excluded (NBM after 2 days, GFS/GEFS/ECMWF after 5). Minutely covers 60 minutes (15-minute accuracy
+inside the HRRR domain), hourly 48 h (`extend=hourly` → 168 h), daily 7 days with 4 a.m. summary
+windows.
+
+**Attribution and licence.** **No mandatory credit is documented** — the docs, the Terms and the
+changelog contain no branding clause, and "Powered by Pirate Weather" is the project's own Home
+Assistant constant, not a licence term. The terms do carry a warranty disclaimer ("should not be used
+for life or property critical applications") and a $100 liability cap. The service sends
+`Cache-Control: max-age=900, must-revalidate` (<https://pirate-weather.apiable.io/terms>,
+<https://docs.pirateweather.net/en/latest/DataSources/>).
+
+**Client notes.** Do not send `tz`; localise with `timezone` + `offset * 3600`. `flags.sources` is a
+candidate list, not per-value provenance (`sourceIDX` with `version=2` is). `-999` appears in place of
+missing values and fields may be absent; `icon` needs a fallback branch (including `none`); requesting
+a future time more than an hour ahead is a 400; the project's own intensity bands are
+0.02/0.4/2.5/10 mm/h — the Dark Sky 0.4/3.4 figures are **not** PirateWeather's.
+
+**Unverified.** The paid-tier catalogue and prices (the portal is a JS shell; its JSON endpoints
+return 401); which plan gets which per-second limit; the production `Cache-Control` value (read from
+source, not from a live response); a live 429 body; any attribution requirement (absence of
+documentation is not proof of absence).
+
+### `qweather`
+
+BYOK. The API host is account-specific and the city-based v7 APIs are **deprecated** — see the open
+decision below.
+
+**Endpoints** (verified 2026-09-30; all GET, HTTPS only, host from the console)
+
+| Purpose | URL template | Parameters |
+|---|---|---|
+| Real-time | `https://<host>/v7/weather/now` | `location=<lon>,<lat>`, `lang` |
+| Hourly | `https://<host>/v7/weather/{24h,72h,168h}` | `location`, `lang` |
+| Daily | `https://<host>/v7/weather/{3d,7d,10d,15d,30d}` | `location`, `lang` |
+| City lookup | `https://<host>/geo/v2/city/lookup` | `location=<name>`, `adm`, `range`, `number`, `lang` |
+| Successors (v1) | `https://<host>/weather/v1/current\|hourly\|daily/<lat>/<lon>` | see the v1 docs |
+
+The host is per account ("For each developer account, the API Host is independent and unique. It is
+also part of the authentication process") and looks like `h2a9cf3mhs.xy.qweatherapi.com`; the legacy
+shared domains (`api.qweather.com`, `devapi.qweather.com`, `geoapi.qweather.com`) "will be gradually
+discontinued starting in 2026" (<https://dev.qweather.com/en/docs/configuration/api-host/>). The
+`<id>.re.qweather.com` form in the original plan is **not documented anywhere** — do not hardcode it.
+
+**Deprecation.** "City Weather Forecast | `/v7/weather/now` `/v7/weather/{days}` `/v7/weather/{hours}`
+| 2027-06-01" (<https://dev.qweather.com/en/docs/deprecated/>), while the v7 mirror doc records
+per-section EOL 2027-02-01. The two official sources disagree; plan for the earlier date. Successors
+are the `/weather/v1/*` endpoints (hourly up to 240 h, daily up to 10 d).
+
+**Response fields consumed.** `code`, `updateTime`, `fxLink`, `refer.{sources,license}` and
+`now.{obsTime,temp,feelsLike,icon,text,wind360,windDir,windScale,windSpeed,humidity,precip,pressure,vis,
+cloud,dew}`, `hourly[].{fxTime,temp,icon,text,wind360,windDir,windScale,windSpeed,humidity,pop,precip,
+pressure,cloud,dew,uvIndex}`, `daily[].{fxDate,sunrise,sunset,moonrise,moonset,moonPhase,tempMax,
+tempMin,iconDay,textDay,iconNight,textNight,wind360Day,…,humidity,precip,uvIndex,vis,cloud,pressure}`.
+Everything is a string; `windScale` is an open range string (`"1-3"`); `now.cloud`/`now.dew`,
+`hourly.pop`, `daily.sunrise/sunset/moonrise/moonset/cloud` and `refer.*` are nullable; `uvIndex` exists
+on hourly and daily but **not** on `now`; timestamps are ISO local times with an offset
+(`"2023-04-12T19:00+08:00"`).
+
+**Auth.** `X-QW-Api-Key: <key>` header or `key=` query parameter (both current; never both at once).
+JWT (Ed25519) is the recommended method but needs token minting and is out of scope. API KEY
+*signature* auth is retired, and API-KEY volume will be limited from 2027 (the docs give both
+2027-01-01 and 2027-02-01).
+
+**Limits.** There is no "Standard" free subscription: billing is pay-as-you-go and the free allowance
+is the **first 50 000 requests/month at ¥0** in the Weather/Essential group (which includes GeoAPI).
+QPM is 3 000 for pay-as-you-go, 50 000+ for Premium. Non-2xx responses are not billed, but sustained
+invalid traffic can suspend the account. Recommended cache ages: real-time 10–30 min, hourly 30–60 min,
+daily 1–6 h (<https://dev.qweather.com/en/docs/finance/pricing/>,
+<https://dev.qweather.com/en/docs/best-practices/cache/>).
+
+**Coverage and granularity.** Global ("200+ countries or regions … over 500,000 cities"); daily 1–30
+days and hourly 1–168 h in v7. China-only products (minutely precipitation, most indices, tropical
+cyclones) are out of scope. The host does not decide coverage — the product does.
+
+**Attribution and licence.** Required regardless of plan: name "QWeather" plus the URL
+`https://www.qweather.com`, recommended as `Weather service by QWeather`; no logo is required by the
+docs (the EULA text itself was 403-blocked, so that reading is docs-only). Weather-warning data must
+reproduce `refer.sources` verbatim. GeoAPI data must not be bulk-cached, stored or indexed
+(<https://dev.qweather.com/en/docs/terms/attribution/>,
+<https://dev.qweather.com/en/docs/terms/restriction/>).
+
+**Errors.** RFC 7807 `application/problem+json` with `error.status/type/title/detail/invalidParams` —
+the `code` field is legacy and absent on errors. 400 invalid parameter/no such location/data
+unavailable, 401 authentication failed, 403 no credit (the old 402), overdue, invalid host, deprecated,
+forbidden, 404 bad path, 405 non-GET, 429 QPM/monthly limit, 500 unknown
+(<https://dev.qweather.com/en/docs/resource/error-code/>).
+
+**Client notes.** Send `Accept-Encoding: gzip` (compression is a transport default, not a `gzip=y`
+parameter); read `data` by key; prefer `wind360` over the language-dependent `windDir` (Chinese
+`lang=zh` returns 南, not `S`); map the `-1`/`-999` wind sentinels and nulls to `None`; the published
+condition-code CSV omits the live night family 150–153 (QWeather's own example emits `"iconNight":
+"151"`), so pass unknown codes through instead of mapping to a fixed table.
+
+**Open decision for step 10.** Implementing the deprecated v7 endpoints would buy at most a year
+before a rewrite, and v1 differs (metric-only, m/s wind, metres visibility, RFC 7807 errors). The
+step's design note should either move to `/weather/v1/*` — which needs one more documentation pass for
+its exact schemas — or implement v7 with the EOL date recorded and a migration task. The registry row
+keeps `max_days: 7` (the default request) until that decision is made.
+
+**Unverified.** The full Developers License text (403); all rendered HTML docs (403 — facts come from
+the `qwd/dev-site` sources that render those pages); the `<id>.re.qweather.com` host form; any live
+successful call (no credential, and v7 is deprecated); per-day quotas (none exist — the free allowance
+is monthly); the `150–153` night family table (search snippets only).
+
+## Location and IP services
+
+### Open-Meteo geocoding (keyless)
+
+`GET https://geocoding-api.open-meteo.com/v1/search` with `name` (required), `count` (default 10, max
+100), `language`, `format`, `countryCode`; `GET …/v1/get?id=<geoname-id>` resolves a single id. The
+`results[]` entries carry `id`, `name`, `latitude`, `longitude`, `elevation`, `feature_code`,
+`country_code`, `admin1`, `timezone`, `population`, `country`. No key; the free-tier budget is shared
+with the forecast API (10 000/day, 5 000/hour, 600/minute) and commercial use is not permitted on it.
+Empty or single-character searches return HTTP 200 **without a `results` key**; empty fields are
+omitted, not nulled. Data is GeoNames under CC BY 4.0 — the credit "Location data based on GeoNames"
+plus a link to Open-Meteo is what `geo::attribution_line` prints
+(<https://open-meteo.com/en/docs/geocoding-api>, <https://open-meteo.com/en/licence>).
+
+### Nominatim (keyless, `~query`)
+
+`GET https://nominatim.openstreetmap.org/search?format=jsonv2&q=…&limit=…&addressdetails=1&extratags=1`
+with `accept-language: en`. Policy, verbatim: "No heavy uses (an absolute maximum of 1 request per
+second)", results "must be cached on your side", no autocomplete and no bulk geocoding, a valid
+User-Agent or Referer identifying the application is mandatory, and the service must be switchable
+without a software update — which is what `network.nominatim_url` / `CIRROCAST_NOMINATIM_URL` are for.
+Data is ODbL: "Clearly display attribution as suitable for your medium", the accepted string being
+"© OpenStreetMap contributors" with a link to the licence; every response also carries its own
+`licence` field. `lat`/`lon` arrive as JSON strings; `place_id` is not stable across servers
+(<https://operations.osmfoundation.org/policies/nominatim/>,
+<https://wiki.osmfoundation.org/wiki/Licence/Attribution_Guidelines>).
+
+**Unverified.** The public instance was unreachable from the verification network (timeouts, no status),
+so the live response shape is documented-only.
+
+### ipwho.is (keyless, primary IP locator)
+
+`GET https://ipwho.is/` (caller's IP) or `https://ipwho.is/<ip>`; optional `fields`, `output`, `lang`.
+Free tier: "1,000 requests per day per client IP address", no key, HTTPS included, commercial use
+allowed. Over-limit is `429` **with** a `Retry-After` header ("Access will be restored automatically
+after 24 hours"). Application errors ride on HTTP 200 as `{"success":false,"message":…}` — a 2xx status
+is not success — while a non-IP path segment is a 404. The terms grant no redistribution and require no
+credit line; the privacy disclosure naming the service is our own practice
+(<https://ipwhois.io/documentation>, <https://ipwhois.io/terms>).
+
+### ipapi.co (keyless, fallback IP locator)
+
+`GET https://ipapi.co/json/` (or `https://ipapi.co/<ip>/json/`). Free tier: "up-to 1000 IP lookups in a
+day (approximately 30K/month)", explicitly "not meant for use in production"; repeat queries of the
+same IP count again. Errors can ride on HTTP 200 as `{"error":true,"reason":…}`; over-quota is 429 with
+a `RateLimited` reason and no documented `Retry-After`. `country` holds the **two-letter code** while
+`country_name` holds the display name. The licence condition that shapes our config: "cache, store, or
+retain any data … beyond the minimum time necessary for immediate use, which shall not exceed 24
+hours", which is why `cache.ip_ttl_secs` is capped at 86 400. No credit line is imposed on API clients;
+the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
+(<https://ipapi.co/terms>, <https://ipapi.co/api/>).
+
+## Planned backends (step 19)
+
+Not implemented; the facts below are the measurements recorded in `docs/plans/19-more-providers.md`
+(2026-09-30) and are repeated here so this file stays the single provider index.
+
+| id | Key | Free tier | Coverage | Horizon | Notes |
+|---|---|---|---|---|---|
+| `met-no` | none | 20 req/s per application | global | 9 days | requires an identifying `User-Agent` and `If-Modified-Since`/`304` handling per MET's terms; CC BY 4.0 |
+| `visualcrossing` | BYOK | 1 000 records/day | global | 15 days | supplies its own alerts; per-account terms, local display only |
+| `open-meteo-archive` | none | shared with Open-Meteo | global | historical | covers 1940-01-01 onward; ERA5 latency window applies |
+| `open-meteo-marine` | none | shared with Open-Meteo | global coastal | 8 days | waves/swell/sea-surface; supplementary `--marine` fetch |
+
+## Re-verification log
+
+* **2026-09-30** — first full pass: all eight v1 backends and the four location/IP services checked
+  against live documentation; registry rows in `src/provider/mod.rs` corrected and stamped
+  `verified: 2026-09-30`. Notable corrections: SMHI's endpoint moved from `pmp3g` to `snow1g/version/1`
+  (the old one is decommissioned and 404s); QWeather's city v7 APIs are deprecated with an EOL in 2027
+  and the free allowance is 50 000 requests/month rather than a "Standard" plan; WeatherAPI's free tier
+  is 100 000 calls/month with a 3-day forecast (not 1 000 000); WWO's `free/v1` path is undocumented
+  and 403s while free keys work on `premium/v1`; PirateWeather has no `tz` parameter and no documented
+  attribution obligation; OpenWeatherMap's data licence is ODbL with mandatory visible attribution.
+  Pages that refused automated reads: `dev.qweather.com` and `www.qweather.com` (403 — facts taken from
+  the `qwd/dev-site` sources that render them), `www.qweather.com/terms/developers-eula` (403),
+  `opendata.smhi.se` documentation pages (client-rendered Docusaurus), and the Nominatim public
+  instance (timeouts from the verification network).

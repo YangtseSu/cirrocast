@@ -109,3 +109,9 @@ XDG_CONFIG_HOME=/tmp/cc cargo run -q -- config path   # /tmp/cc/cirrocast
   `cirrocast 0.1.0`; `provider list` → 8 aligned rows with key env vars; `provider info metar` → station-only
   capabilities; `XDG_CONFIG_HOME=/tmp/cc config path` → `/tmp/cc/cirrocast`; `provider info nope` → exit 2
   with the known-provider list. Git repository initialised on `main` with a private GitHub remote.
+- 2026-09-30 — registry rows corrected by step 10's re-verification pass: `ProviderMeta` gained
+  `verified` (printed by `provider info`), SMHI's `docs_url` points at the live SNOW1gv1 docs, WWO's
+  `max_days` dropped from 3 to 5 and its `docs_url` moved to the Local Weather API page, QWeather's note
+  no longer calls the backend China-focused, and the free-tier headlines of Open-Meteo, OWM, WeatherAPI
+  and PirateWeather were added. Evidence per row in `docs/providers.md`; the rows themselves stay
+  "declared, not measured" until their backends land.
