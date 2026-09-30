@@ -82,6 +82,12 @@ an exact name. Coordinates and `~` results carry a provisional time zone until t
 supplies the location's real one, and `~` output prints `Location data © OpenStreetMap contributors`
 (ODbL).
 
+Non-Latin names are searched in their own script — `新乡`, `Москва`, `Αθήνα`, `القاهرة`, `תל אביב`,
+`กรุงเทพ` — because the geocoding service indexes place names per language and an English request
+cannot match them. Coverage still differs per source: for some Chinese cities the OpenStreetMap route
+is the reliable one (`~新乡市` resolves the city, a bare `新乡` only finds the villages GeoNames
+indexes under that name), so both routes are worth trying when a name comes back wrong.
+
 ```bash
 cirrocast location search Beijing          # Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
 cirrocast location search :Beijing         # same line, no ambiguity note

@@ -220,3 +220,35 @@ fn hits_keep_the_upstream_order() {
     );
     assert_eq!(hits[2].admin1.as_deref(), Some(BEIJING.3));
 }
+
+#[test]
+fn a_non_latin_query_is_searched_in_its_own_script() {
+    let dir = tempfile::tempdir().expect("a temporary cache root");
+    let (transport, cache, client) = harness(
+        dir.path(),
+        vec![fixture("open_meteo_geocode_xinxiang_zh.json")],
+        CacheMode::Normal,
+    );
+    let geocoder = OpenMeteoGeocoder::new(&client, &cache, TTL);
+
+    let hits = geocoder.search("新乡", 10).expect("the fixture decodes");
+
+    // The `en` index of the endpoint cannot match Chinese script at all (a live probe returns no
+    // hits), so the request has to ask for the `zh` index to find anything.
+    assert_eq!(
+        transport.calls()[0].full_url(),
+        format!("{GEOCODE_URL}?name=%E6%96%B0%E4%B9%A1&count=10&language=zh&format=json")
+    );
+    assert_eq!(hits.len(), 3);
+    assert_eq!(hits[0].name, "新乡");
+    assert_eq!(hits[0].admin1.as_deref(), Some("重庆市"));
+    assert_eq!(hits[0].country, "中国");
+    assert_eq!(hits[0].population, Some(6683));
+    assert_eq!(hits[0].tz, Tz::Asia__Shanghai);
+
+    // A second lookup of the same query is a cache hit even though the language differs from the
+    // documented `en` default: the key carries the language that was used.
+    let again = geocoder.search("新乡", 10).expect("served from the cache");
+    assert_eq!(again.len(), 3);
+    assert_eq!(transport.calls().len(), 1);
+}

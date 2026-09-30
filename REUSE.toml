@@ -39,6 +39,7 @@ path = [
     "tests/fixtures/geo/open_meteo_geocode_beijing_ambiguous.json",
     "tests/fixtures/geo/open_meteo_geocode_no_hits.json",
     "tests/fixtures/geo/open_meteo_geocode_bad_timezone.json",
+    "tests/fixtures/geo/open_meteo_geocode_xinxiang_zh.json",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "GeoNames (geocoding data served by Open-Meteo)"

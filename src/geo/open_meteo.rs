@@ -37,9 +37,6 @@ pub const GEOCODE_URL: &str = "https://geocoding-api.open-meteo.com/v1/search";
 /// The `provider` field of the errors this module reports.
 const PROVIDER: &str = "open-meteo-geocoding";
 
-/// The language asked for; the endpoint's `language` parameter covers the `name` it returns.
-const LANGUAGE: &str = "en";
-
 /// A geocoder over the shared HTTP client and cache.
 ///
 /// The client owns the retry policy and the User-Agent, the cache owns the TTL and the
@@ -61,12 +58,13 @@ impl<'a> OpenMeteoGeocoder<'a> {
 
 impl Geocoder for OpenMeteoGeocoder<'_> {
     fn search(&self, query: &str, limit: u8) -> Result<Vec<Location>> {
-        let key = cache_key(query, limit);
+        let language = query_language(query);
+        let key = cache_key(query, limit, language);
         let response: Response = self.cache.read_or_fetch_json(&key, self.ttl, || {
             let request = HttpRequest::get(GEOCODE_URL)
                 .query("name", query)
                 .query("count", limit.to_string())
-                .query("language", LANGUAGE)
+                .query("language", language)
                 .query("format", "json");
             let response = self.http.send(&request)?;
             Ok((response.status(), response.body().to_owned()))
@@ -75,17 +73,47 @@ impl Geocoder for OpenMeteoGeocoder<'_> {
     }
 }
 
-/// The cache key of one lookup: the trimmed, lower-cased name plus the two parameters that
-/// change the answer.
+/// The `language` parameter that can match `query` at all.
+///
+/// The endpoint searches `GeoNames`' alternate names *per language*, so the script of the query
+/// decides which index is worth asking: `name=新乡&language=en` is a guaranteed no-hit while
+/// `language=zh` answers it, and the same holds for Cyrillic (`ru`), Greek (`el`), Arabic (`ar`),
+/// Hebrew (`he`) and Thai (`th`) — all probed against the live service.
+///
+/// Latin queries keep `en`, and not only because that is the documented request shape: the other
+/// indexes answer *different* places for the same Latin text (`Xinxiang` with `language=zh` returns
+/// a village called 南干道), so switching them would silently move a user's query.
+///
+/// Kana, Hangul and Devanagari have no index that matches upstream (also probed), so those queries
+/// keep `en` with everything else and fail as "no location found"; step 09 owns output-language
+/// negotiation, this function is only about being able to find a name in the first place.
+fn query_language(query: &str) -> &'static str {
+    for character in query.chars() {
+        match character as u32 {
+            0x0370..=0x03ff => return "el",
+            0x0400..=0x04ff => return "ru",
+            0x0590..=0x05ff => return "he",
+            0x0600..=0x06ff | 0x0750..=0x077f => return "ar",
+            0x0e00..=0x0e7f => return "th",
+            0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xf900..=0xfaff => return "zh",
+            _ => {}
+        }
+    }
+    "en"
+}
+
+/// The cache key of one lookup: the trimmed, lower-cased name plus the parameters that change the
+/// answer.
 ///
 /// The text is *not* the request URL — the URL is derived from the parameters, and two spellings
 /// (`Beijing`, `beijing`) mean the same lookup, so keying on the parameters keeps one entry per
-/// lookup instead of one per capitalisation.
-fn cache_key(query: &str, limit: u8) -> CacheKey {
+/// lookup instead of one per capitalisation. The language is part of the key because it changes
+/// which index is searched.
+fn cache_key(query: &str, limit: u8, language: &str) -> CacheKey {
     CacheKey::hash(
         "geocode",
         &format!(
-            "open-meteo|{}|{limit}|{LANGUAGE}",
+            "open-meteo|{}|{limit}|{language}",
             query.trim().to_lowercase()
         ),
     )
@@ -176,7 +204,25 @@ impl Hit {
 
 #[cfg(test)]
 mod tests {
-    use super::Response;
+    use super::{Response, query_language};
+
+    /// The script of the query picks the index that can actually match it.
+    #[test]
+    fn the_query_script_selects_the_language_index() {
+        assert_eq!(query_language("Beijing"), "en");
+        assert_eq!(query_language("Beijing, CN"), "en");
+        assert_eq!(query_language("Zürich"), "en");
+        assert_eq!(query_language("新乡"), "zh");
+        assert_eq!(query_language("東京"), "zh");
+        assert_eq!(query_language("Москва"), "ru");
+        assert_eq!(query_language("Αθήνα"), "el");
+        assert_eq!(query_language("القاهرة"), "ar");
+        assert_eq!(query_language("תל אביב"), "he");
+        assert_eq!(query_language("กรุงเทพ"), "th");
+        // No upstream index matches these scripts, so they keep the documented default.
+        assert_eq!(query_language("とうきょう"), "en");
+        assert_eq!(query_language("서울"), "en");
+    }
 
     /// Both no-hit shapes are legitimate empty results, not errors.
     #[test]
