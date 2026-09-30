@@ -122,8 +122,10 @@ provider matrix row. No new CLI flag — backends are selected with `--provider`
 enum + `--help`, add a snapshot test (`insta`) for at least metric/us, 1/3/7 days and a narrow width,
 and document the format in the README with an example block.
 
-**Add a language**: drop `locales/<tag>/main.ftl` (copy `en-US`), translate every key, run
-`cargo test i18n` — the completeness test fails if any WMO condition key is missing. No code change.
+**Add a language**: drop `locales/<tag>/main.ftl` (copy `en-US`), translate every key, add the
+`("<tag>", include_str!("../locales/<tag>/main.ftl"))` line to `CATALOGS` in `src/i18n.rs` (the
+`include_str!` embedding is what requires that one line), run `cargo test i18n` — the completeness
+test fails if any condition key, renderer key or `en-US` key is missing. Nothing else changes.
 
 **Change the config schema**: bump `schema_version`, add the migration arm in `src/config/mod.rs`,
 update the schema block in `docs/plans/README.md`, add a migration test from the previous version.

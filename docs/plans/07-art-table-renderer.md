@@ -221,3 +221,7 @@ cargo test --test render_snapshots -- --nocapture                               
   `--width`/`--color` are step 08's flags, so the run reached the same resolution ladder through
   `COLUMNS`/`CLICOLOR_FORCE`/`NO_COLOR`/`TERM`; `-v` printed the resolved width, its source, the raised-from
   note, the palette and the language.
+- 2026-09-30 — superseded in one place by step 09: the day heading is no longer built by
+  `I18n::date_short` with `chrono`'s English names, but by `I18n::format_date`/`format_day_heading`
+  from the Fluent catalogs (`Wed 30 Sep` / `9月30日 周三`). The rendered bytes for `en-US` are
+  unchanged, which the step 09 snapshot check pins.

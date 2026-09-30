@@ -36,7 +36,7 @@ $ cirrocast Beijing --format plain
 location: Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
 updated: 2026-09-30T19:45:00+08:00
 current: Clear sky 18°C (feels 13°C) wind 13km/h NW humidity 11% precip 0.0mm pressure 1021hPa visibility 17km
-day 2026-09-30: morning Partly cloudy 17°C 0.0mm (0%) wind 19km/h NNW | noon Overcast 20°C 0.0mm (0%) wind 19km/h NW | evening … | night …
+day 2026-09-30: Morning Partly cloudy 17°C 0.0mm (0%) wind 19km/h NNW | Noon Overcast 20°C 0.0mm (0%) wind 19km/h NW | Evening … | Night …
 … one `day` line per forecast day …
 Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
 Data: Open-Meteo.com (CC BY 4.0)
@@ -155,7 +155,7 @@ notes, never errors.
 
 | Token | Output | Token | Output |
 |---|---|---|---|
-| `%c` | condition art, day/night aware | `%d` `%D` | `2026-09-30` / `Wed 30 Sep` |
+| `%c` | condition art, day/night aware | `%d` `%D` | `2026-09-30` / `Thu 01 Oct` |
 | `%C` | condition text | `%Z` `%z` | `Asia/Shanghai` / `+0800` |
 | `%t` `%f` | temperature / feels-like | `%u` `%U` | `5` / `5 (moderate)` |
 | `%w` | wind `↗ 12km/h NE` | `%S` `%s` | sunrise / sunset `06:05` |
@@ -208,6 +208,51 @@ the display units, so a cache entry is unit-independent.
 
 The `one-line` format is a single line by contract, so the credits its licences require go to stderr;
 `plain` and `json` carry them in the document itself, and `art-table` in a footer.
+
+## Languages
+
+The output language follows `--lang`, then `CIRROCAST_LANG`, then `defaults.language`, and when all
+three say `auto` the ambient locale does: `LC_ALL`, `LC_MESSAGES`, `LANG`, in that order. `en-US` is
+the fallback of every chain and the only catalog that must exist.
+
+```bash
+cirrocast Beijing --lang zh-CN                # 天气报告：北京…
+LANG=zh_CN.UTF-8 cirrocast Beijing            # the same, from the environment
+cirrocast Beijing --lang zh-TW -v             # zh-TW → zh-CN → en-US, chain printed
+cirrocast Beijing --lang de-DE                # warning on stderr, English output, exit 0
+```
+
+Two catalogs ship in the binary (embedded, no files to install): `en-US` and `zh-CN` (Simplified
+Chinese). A tag this build cannot serve is a warning, never an error: the run continues in English
+and says so on stderr — `-q` silences the warning without changing the output, `-v` prints the
+negotiated chain. `zh-TW`, `zh-HK` and `zh-MO` resolve to `zh-CN` through that chain (a deliberate
+choice, and one the `-v` line discloses: Traditional readers are not silently served Simplified text
+without a note); every other tag falls back to `en-US`.
+
+What is translated: condition names for all 100 WMO codes, day-part, weekday and month names, the
+date formats, the measurement labels, the UV bands, the sixteen compass directions and the
+`one-line` vocabulary (`%C`, `%w`, `%U`, `%D`, `%m`). What is not: `--help` and the other clap
+strings, the art blocks (they are pictograms), and the attribution lines of the data licences, which
+stay verbatim next to their data. The `json` format translates `condition.text` and nothing else —
+keys stay the machine-readable contract.
+
+Numbers and dates are assembled from catalog messages (`format-*`, `date-*`), so the decimal
+separator, the unit spelling and the phrase order of a date (`Thu 01 Oct` vs `9月30日 周三`) are the
+translator's, not `chrono`'s English.
+
+### Adding a language
+
+1. `cp -r locales/en-US locales/<tag>` and translate every value in `main.ftl` — the keys and the
+   argument names stay as they are.
+2. Add one line to `CATALOGS` in `src/i18n.rs`:
+   `("<tag>", include_str!("../locales/<tag>/main.ftl")),`.
+3. `cargo test --test i18n` — it fails if any of the 100 condition keys, any renderer key or any
+   other message is missing, if the catalog has a key `en-US` does not, or if a pattern does not
+   render.
+
+No other code changes: a language is a file and one line. The catalogs are embedded with
+`include_str!`, so nothing is read from disk at runtime. A new `zh` variant joins the fallback chain
+in `language_chain`.
 
 ## Location
 

@@ -45,7 +45,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ✅ done | 03, 04, 05 |
 | 07 | B | [art-table-renderer](07-art-table-renderer.md) | ✅ done | 03, 06 |
 | 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ✅ done | 06, 07 |
-| 09 | B | [localization](09-localization.md) | ⬜ not-started | 03, 07 |
+| 09 | B | [localization](09-localization.md) | ✅ done | 03, 07 |
 | 10 | B | [additional-providers](10-additional-providers.md) | ⬜ not-started | 05, 06, 08 |
 | 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | ⬜ not-started | 05, 10 |
 | 12 | C | [quality-hardening](12-quality-hardening.md) | ⬜ not-started | 08, 09, 10 |
