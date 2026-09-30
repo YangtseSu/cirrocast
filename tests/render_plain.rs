@@ -63,7 +63,7 @@ fn the_metric_output_is_exactly_these_lines() {
         text,
         "\
 Beijing, Beijing (39.90, 116.41) Asia/Shanghai
-Now: 18°C (feels 12°C), Overcast, wind 19 km/h NW, humidity 14%, pressure 1021 hPa, visibility 17 km, 0.0 mm
+Now: 19°C (feels 12°C), Overcast, wind 20 km/h NW, humidity 12%, pressure 1020 hPa, visibility 17 km, 0.0 mm
 2026-07-15  min 25°C  max 35°C  sunrise 04:58  sunset 19:42
   Morning  29°C  Clear sky       precip 0.0 mm (0%)   wind 2.5 km/h N
   Noon     35°C  Clear sky       precip 0.0 mm (0%)   wind 4.7 km/h SW
@@ -81,11 +81,11 @@ fn the_three_unit_systems_differ_only_where_the_model_converts() {
     let us = render(&report, UnitSystem::Us, 200);
     let uk = render(&report, UnitSystem::Uk, 200);
 
-    assert!(metric.contains("Now: 18°C (feels 12°C)"), "{metric}");
+    assert!(metric.contains("Now: 19°C (feels 12°C)"), "{metric}");
     assert!(us.contains("Now: 65°F (feels 54°F)"), "{us}");
-    assert!(uk.contains("Now: 18°C (feels 12°C)"), "{uk}");
+    assert!(uk.contains("Now: 19°C (feels 12°C)"), "{uk}");
 
-    assert!(metric.contains("wind 19 km/h NW"), "{metric}");
+    assert!(metric.contains("wind 20 km/h NW"), "{metric}");
     assert!(us.contains("wind 12 mph NW"), "{us}");
     assert!(uk.contains("wind 12 mph NW"), "{uk}");
 

@@ -49,11 +49,11 @@ SPDX-License-Identifier = "CC-BY-4.0"
 # and carry the upstream licence rather than being relicensed; the provider prints the matching
 # credit line.
 #
-# Provenance: direct TLS to `api.open-meteo.com` and `historical-forecast-api.open-meteo.com` is
-# blocked from the recording network, so each body was fetched through the `r.jina.ai` text proxy,
-# with only the proxy's header block stripped. The four dates are in the past, so the Historical
-# Forecast API served them; its schema and parameter set are the same as the forecast endpoint's,
-# and the query used the provider's own parameter list.
+# Provenance: the four dates are in the past, so `historical-forecast-api.open-meteo.com/v1/forecast`
+# served them — the same parameter names, response schema and variables as the forecast endpoint the
+# provider calls — fetched directly over TLS with the provider's own parameter list, byte for byte.
+# The `current` block of each file is the observation at recording time (2026-09-30, 04:45Z), which
+# the historical endpoint returns alongside the archived days.
 [[annotations]]
 path = "tests/fixtures/open_meteo/**"
 precedence = "override"

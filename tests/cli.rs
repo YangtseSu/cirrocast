@@ -255,7 +255,7 @@ fn a_coordinate_query_renders_a_report_from_the_cache() {
     // the fixture's first day aggregated into the canonical four parts.
     assert!(stdout.contains("Asia/Shanghai"), "{stdout}");
     assert!(
-        stdout.contains("Now: 18°C (feels 12°C), Overcast"),
+        stdout.contains("Now: 19°C (feels 12°C), Overcast"),
         "{stdout}"
     );
     assert!(
