@@ -57,6 +57,38 @@ pub struct HourSample {
     pub visibility_km: Option<f32>,
 }
 
+/// The first `days` local dates whose four parts all have at least one sample.
+///
+/// A series that starts at the current hour leaves the location-local today incomplete (its earlier
+/// parts are in the past); a day no `DayPart` can be built for is skipped rather than filled with
+/// invented values, so a backend emits the first fully covered days.
+pub fn covered_days(samples: &[HourSample], tz: Tz, days: u8) -> Vec<NaiveDate> {
+    let mut dates: Vec<NaiveDate> = samples
+        .iter()
+        .map(|sample| sample.at.with_timezone(&tz).date_naive())
+        .collect();
+    dates.sort_unstable();
+    dates.dedup();
+    dates
+        .into_iter()
+        .filter(|date| covers_every_part(samples, *date, tz))
+        .take(usize::from(days))
+        .collect()
+}
+
+/// Whether every day part of `date` has a sample.
+fn covers_every_part(samples: &[HourSample], date: NaiveDate, tz: Tz) -> bool {
+    DayPartKind::ALL.iter().all(|kind| {
+        samples.iter().any(|sample| {
+            let local = sample.at.with_timezone(&tz);
+            let hour = local.hour();
+            local.date_naive() == date
+                && hour >= u32::from(kind.hours().start)
+                && hour < u32::from(kind.hours().end)
+        })
+    })
+}
+
 /// Aggregates one local calendar day of samples into the canonical four parts.
 ///
 /// `provider` only names the backend in error messages. The daily extremes and the sun times are

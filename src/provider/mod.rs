@@ -23,6 +23,7 @@
 
 pub mod dayparts;
 pub mod open_meteo;
+pub mod openweathermap;
 pub mod smhi;
 
 use std::fmt;
@@ -137,9 +138,9 @@ impl ProviderId {
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "free tier 60 calls/min, 1 000 000 calls/month; 2 calls per fetch, 3-hour steps",
                 verified: "2026-09-30",
-                implemented: false,
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some("OpenWeather (ODbL 1.0) — https://openweathermap.org/"),
             },
             Self::WeatherApi => ProviderMeta {
                 id: *self,
@@ -594,6 +595,7 @@ pub trait Provider {
 pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
     match id {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
+        ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::Smhi => Ok(Box::new(smhi::Smhi)),
         other => Err(Error::Usage(format!(
             "provider `{other}` is not implemented yet"

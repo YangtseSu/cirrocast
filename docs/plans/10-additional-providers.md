@@ -44,7 +44,7 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
 - ⬜ Capability-driven degradation, documented in `src/render/mod.rs` and tested: a provider with
       `daily == false` still renders `plain`/`one-line`/`json` (day sections collapse to current conditions) and
       `art-table` falls back to a single current-conditions block with a `--verbose` note — never an error.
-- ⬜ `openweathermap.rs`: current `https://api.openweathermap.org/data/2.5/weather?lat=&lon=&units=metric&appid=`
+- ✅ `openweathermap.rs` (landed 2026-10-01): current `https://api.openweathermap.org/data/2.5/weather?lat=&lon=&units=metric&appid=`
       and forecast `https://api.openweathermap.org/data/2.5/forecast?lat=&lon=&units=metric&appid=` (3-hourly,
       40 slots ≈ 5 days); auth is the `appid` query param from `CIRROCAST_OPENWEATHERMAP_KEY`; free tier
       60 calls/min, 1,000,000 calls/month, **2** calls per fetch (a registry note). Mapping: an explicit
@@ -263,3 +263,12 @@ cirrocast provider list && cirrocast provider info smhi
   credit, an out-of-coverage point exited 3 with `out of coverage: …`, and an in-coverage coordinate exited 2
   with the place-name hint. Deviations recorded in the deliverable above and in `docs/providers.md`: a partial
   location-local today is skipped, and a provisional zone is refused rather than aggregated in UTC.
+- 2026-10-01 — OpenWeatherMap landed (`src/provider/openweathermap.rs`, `tests/provider_owm.rs`, recorded
+  fixtures under `tests/fixtures/owm/` with the key scrubbed, ODbL-1.0 REUSE annotation). Two calls per fetch
+  cached under `weather/openweathermap-{current,forecast}-…`; `units=metric` means m/s for wind; `rain`/`snow`
+  are absent rather than zero and use different accumulation windows per endpoint; day extremes come from the
+  slots; `weather[0].id` maps through the explicit family table (unit-tested over every published id);
+  `weather[0].icon`'s trailing letter is the day/night flag. Deviations recorded in the deliverable: a
+  provisional zone is refused before any request (the payload carries only a UTC offset), a partial
+  location-local today is skipped, and a missing `deg` (calm wind) becomes 0. Live smoke: `-p openweathermap
+  Beijing` printed real data with `Data: OpenWeather (ODbL 1.0) — https://openweathermap.org/`.

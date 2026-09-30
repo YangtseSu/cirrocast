@@ -39,7 +39,7 @@ registry re-verification of that step needs a written record of what was checked
 | `open-meteo` | none | 10 000 calls/day, 5 000/hour, 600/minute; non-commercial | global | hourly | 16 days | implemented (step 06) |
 | `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | implemented |
 | `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | step 11 |
-| `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | step 10 |
+| `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | implemented |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | step 10 |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | step 10 |
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | step 10 |
@@ -314,6 +314,15 @@ OpenWeather logo", and "Attribution placed only in hidden documentation or deep 
 sufficient." The pricing page's recommended line is "Weather data © OpenWeather". Share-alike applies
 only if we publish an adapted database (<https://openweathermap.org/full-price>,
 <https://openweathermap.org/faq>). No caching ceiling is published.
+
+**Implemented 2026-10-01** (`src/provider/openweathermap.rs`). Two calls per fetch, each cached under
+its own `weather/openweathermap-{current,forecast}-…` key. Deviations from the plan's sketch, all
+recorded here first: `units=metric` serves wind in **m/s**, so the provider converts to km/h; the day
+extremes are computed from the slots (`main.temp_min/max` are not daily extremes); a partial
+location-local today is skipped like SMHI's; `weather[0].icon`'s trailing letter supplies `is_day`;
+and a **provisional (UTC) zone is refused before any request**, because the payload carries only a
+UTC offset and the aggregation needs a real zone. The credit line printed is
+`OpenWeather (ODbL 1.0) — https://openweathermap.org/`.
 
 **Client notes.** `rain`/`snow` blocks are absent (not zero) when nothing falls, and the key differs
 between the endpoints (`rain.1h` vs `rain.3h`); `units=metric` must be explicit (the default is

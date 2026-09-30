@@ -307,6 +307,11 @@ impl ProviderRun {
         &self.cache
     }
 
+    /// Stores an API key for the run, exactly as `cirrocast key set` does (`0600`, `[keys]` table).
+    pub fn with_key(&self, provider: &str, value: &str) {
+        self.keys.set(provider, value).expect("the key is stored");
+    }
+
     /// The clock this run uses, for `advance`.
     pub fn clock(&self) -> &Arc<FakeClock> {
         &self.clock

@@ -32,11 +32,11 @@
 
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveDate, Timelike, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::Deserialize;
 
-use super::dayparts::{HourSample, aggregate_day, extremes};
+use super::dayparts::{HourSample, aggregate_day, covered_days, extremes};
 use super::{
     Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
     requested_days,
@@ -45,7 +45,7 @@ use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::geo::provisional_zone;
 use crate::http::HttpRequest;
-use crate::model::{Attribution, Condition, Current, DayPartKind, Location, Report};
+use crate::model::{Attribution, Condition, Current, Location, Report};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "smhi";
@@ -340,37 +340,6 @@ fn current_of(response: &PointResponse, tz: Tz, env: &Env<'_>) -> Option<Current
         // The payload has no daylight flag; the local civil day is the honest stand-in until step
         // 17 computes real sun times.
         is_day: matches!(observed_at.hour(), 6..=17),
-    })
-}
-
-/// The first `days` local dates whose four parts all have at least one sample.
-///
-/// The series starts at the current hour, so the location-local today is usually incomplete; a day
-/// no `DayPart` can be built for is skipped rather than filled with invented values.
-fn covered_days(samples: &[HourSample], tz: Tz, days: u8) -> Vec<NaiveDate> {
-    let mut dates: Vec<NaiveDate> = samples
-        .iter()
-        .map(|sample| sample.at.with_timezone(&tz).date_naive())
-        .collect();
-    dates.sort_unstable();
-    dates.dedup();
-    dates
-        .into_iter()
-        .filter(|date| covers_every_part(samples, *date, tz))
-        .take(usize::from(days))
-        .collect()
-}
-
-/// Whether every day part of `date` has a sample.
-fn covers_every_part(samples: &[HourSample], date: NaiveDate, tz: Tz) -> bool {
-    DayPartKind::ALL.iter().all(|kind| {
-        samples.iter().any(|sample| {
-            let local = sample.at.with_timezone(&tz);
-            let hour = local.hour();
-            local.date_naive() == date
-                && hour >= u32::from(kind.hours().start)
-                && hour < u32::from(kind.hours().end)
-        })
     })
 }
 
