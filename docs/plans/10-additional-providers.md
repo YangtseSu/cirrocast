@@ -179,13 +179,15 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       PirateWeather's notes, the free-tier headlines). Quotas that cannot be pinned without an account (QWeather's
       console, WWO's conflicting pages, PirateWeather's paid tiers) are recorded as plan-dependent in
       `docs/providers.md` rather than guessed.
-- ⬜ Fixtures (recorded, never live): `tests/fixtures/owm/{current,forecast,forecast-partial-last-window}.json`,
+- ⬜ Fixtures (recorded, never live) — **all recorded except QWeather's, which waits on the account's API host
+      (the legacy shared hosts answer `403 Invalid Host`)**: `tests/fixtures/owm/{current,forecast,error_401}.json`,
       `weatherapi/{forecast,forecast-key-error}.json`, `wwo/{weather-ashx,weather-ashx-single-element-arrays}.json`,
       `pirateweather/{forecast,forecast-null-values}.json`,
       `qweather/{now,7d,7d-no-hourly,error-401}.json` + `7d.json.gz` (or the v1 equivalents, if the v7/v1 decision
       goes to v1), `smhi/{point-2day,point-out-of-coverage}.json` (the SNOW1gv1 shape: `timeSeries[].data`); keys
       are scrubbed and a test greps the fixture tree for key-shaped strings.
-- ⬜ `tests/provider_*.rs` (one per provider, offline): mapping exhaustiveness (anything unlisted → Unknown),
+- ⬜ `tests/provider_*.rs` (one per implemented provider, offline) — **done for `smhi`, `owm`, `weatherapi`, `wwo`
+      and `pirateweather`; QWeather's waits on its backend**: mapping exhaustiveness (anything unlisted → Unknown),
       aggregation boundaries (first/last window, a `Europe/Stockholm` DST transition, a partial trailing day), unit
       traps (PirateWeather centimetres, SMHI mm/h, WWO single-element arrays) and error mapping (401 → exit 6,
       429 → the chain continues, 500 and malformed JSON → exit 3).
@@ -216,12 +218,22 @@ cirrocast provider list && cirrocast provider info smhi
 ```
 
 ## Exit criteria
-- ⬜ `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test` / `reuse lint` all clean
-- ⬜ `provider list`/`provider info <ID>` cover all seven providers with capabilities, auth, key variable, attribution, limits and verification date
-- ⬜ SMHI renders real data for Stockholm without a key; an out-of-coverage request exits 3 and `-p auto` falls through (observed under `-v`)
-- ⬜ Each provider renders from its fixtures offline with correct condition text/art and no key bytes in any fixture or log
-- ⬜ 401/403 → exit 6, 429 → chain continues, 500/timeout → exit 3, missing QWeather host → exit 4 with the hint;
-      `--days` beyond a provider maximum warns once and clamps
+- ✅ `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test` / `reuse lint` all clean
+      (29 suites green, REUSE 157/157 at the time of the run)
+- ✅ `provider list`/`provider info <ID>` cover all seven providers with capabilities, auth, key variable, credit,
+      limits and verification date (QWeather's `credit:` is the not-implemented placeholder until its backend lands)
+- ✅ SMHI renders real data for Stockholm without a key; an out-of-coverage request exits 3 and falls through
+      (observed under `-v`: `-p smhi,open-meteo @39.9,116.4` → `smhi failed (upstream: out of coverage: 39.90,116.40 is
+      outside the SMHI valid area); falling back to open-meteo`. `auto` puts open-meteo first, so the fall-through is
+      demonstrated with the explicit chain)
+- ✅ Each provider renders from its recorded fixtures offline with the right condition text and credit line, and
+      no fixture carries a key: `tests/cli_offline.rs` seeds the cache with the recorded payloads and runs the real
+      binary (`--offline -p <id> Beijing -f plain`) for all six implemented backends, plus a scan of
+      `tests/fixtures/**` against the keys in the local `keys.toml`
+- ⬜ 401 → exit 6 (tested per backend and in `tests/provider_http.rs`), 429/500/timeout → exit 3 and the chain
+      continues (same suite), `--days` beyond a provider maximum warns once and clamps (observed: `-p weatherapi -d 7`
+      → one warning, 3 days) — **open: a `403` keeps exit 3 by design (it carries quota/plan refusals; documented in the
+      helper) and the missing-QWeather-host hint can only be exercised once that backend lands**
 - ⬜ A provider with `daily == false` still renders `plain`/`one-line`/`json`, and `art-table` degrades to a
       single current-conditions block
 - ✅ Every registry limit carries a `verified` date matching the live documentation at that date (done

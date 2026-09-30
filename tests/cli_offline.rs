@@ -1,0 +1,274 @@
+// SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! End-to-end offline rendering: the recorded payloads drive the real binary.
+//!
+//! Each test seeds the sandbox cache with a recorded upstream body (and the geocode entry that
+//! resolves `Beijing`), then runs `cirrocast --offline`. No test opens a socket, and the assertions
+//! are the ones a user would make by eye: the current temperature, the condition text and the
+//! credit line the data licence requires.
+//!
+//! The cache keys are built with the crate's own `CacheKey` constructors, so a key-shape change
+//! cannot silently make these tests pass by missing the entry.
+
+mod common;
+
+use std::fs;
+use std::path::Path;
+
+use chrono::Utc;
+use chrono_tz::Tz;
+
+use cirrocast::cache::{CACHE_SCHEMA_VERSION, CacheKey};
+use common::{Sandbox, fixture_path};
+
+/// The coordinates the seeded geocode entry resolves `Beijing` to.
+const LAT: f64 = 39.9075;
+const LON: f64 = 116.39723;
+
+/// The three forecast days the runs ask for.
+const DAYS: u8 = 3;
+
+/// Writes one cache entry with the recorded `body`.
+fn seed(sandbox: &Sandbox, key: &CacheKey, body: &str) {
+    let path = sandbox.cache_dir().join(key.path());
+    fs::create_dir_all(path.parent().expect("the entry has a parent"))
+        .expect("the cache directory");
+    let envelope = serde_json::json!({
+        "cache_schema_version": CACHE_SCHEMA_VERSION,
+        "key": key.normalised(),
+        "fetched_at": Utc::now().to_rfc3339(),
+        "ttl_secs": 600,
+        "status": 200,
+        "body": body,
+    });
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&envelope).expect("the envelope encodes"),
+    )
+    .expect("the entry is written");
+}
+
+/// Seeds the geocode entry that resolves `Beijing` to [`LAT`]/[`LON`].
+fn seed_geocode(sandbox: &Sandbox) {
+    let body = fs::read_to_string(fixture_path("geo/open_meteo_geocode_beijing.json"))
+        .expect("the geocode fixture is readable");
+    seed(
+        sandbox,
+        &CacheKey::hash("geocode", "open-meteo|beijing|10|en"),
+        &body,
+    );
+}
+
+/// Stores the throwaway keys the keyed backends need, `0600` as the real store does.
+fn seed_keys(sandbox: &Sandbox) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let text = "[keys]\n\
+                openweathermap = \"test-key-openweathermap\"\n\
+                weatherapi = \"test-key-weatherapi\"\n\
+                worldweatheronline = \"test-key-worldweatheronline\"\n\
+                pirateweather = \"test-key-pirateweather\"\n";
+    fs::create_dir_all(
+        sandbox
+            .keys_file()
+            .parent()
+            .expect("the key file has a parent"),
+    )
+    .expect("the config directory");
+    fs::write(sandbox.keys_file(), text).expect("keys.toml is written");
+    fs::set_permissions(sandbox.keys_file(), fs::Permissions::from_mode(0o600))
+        .expect("keys.toml is owner-only");
+}
+
+/// The recorded payload of `tests/fixtures/<name>`.
+fn body(name: &str) -> String {
+    fs::read_to_string(fixture_path(name)).expect("the fixture is readable")
+}
+
+/// Today in the location's zone: the weather key carries the location-local date.
+fn today() -> chrono::NaiveDate {
+    Utc::now().with_timezone(&Tz::Asia__Shanghai).date_naive()
+}
+
+/// Runs the binary offline for `provider` and returns stdout.
+fn render(sandbox: &Sandbox, provider: &str) -> String {
+    let assert = sandbox
+        .cirrocast()
+        .args([
+            "--offline",
+            "-p",
+            provider,
+            "-d",
+            "3",
+            "Beijing",
+            "-f",
+            "plain",
+        ])
+        .assert()
+        .success();
+    String::from_utf8(assert.get_output().stdout.clone()).expect("stdout is UTF-8")
+}
+
+/// Asserts the current line carries `temperature` and the credit line names the licence.
+fn assert_rendered(stdout: &str, temperature: &str, credit: &str) {
+    assert!(
+        stdout.contains(temperature),
+        "expected {temperature} in:\n{stdout}"
+    );
+    assert!(stdout.contains(credit), "expected {credit} in:\n{stdout}");
+    assert!(stdout.contains("current:"), "no current line in:\n{stdout}");
+}
+
+#[test]
+fn open_meteo_renders_from_the_recorded_payload() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed(
+        &sandbox,
+        &CacheKey::weather("open-meteo", LAT, LON, DAYS, today()),
+        &body("open_meteo/forecast_beijing_2026-07-15.json"),
+    );
+    let stdout = render(&sandbox, "open-meteo");
+    assert_rendered(&stdout, "18°C", "Data: Open-Meteo.com (CC BY 4.0)");
+    assert!(stdout.contains("Clear sky"), "{stdout}");
+}
+
+#[test]
+fn smhi_renders_from_the_recorded_payload() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed(
+        &sandbox,
+        &CacheKey::weather("smhi", LAT, LON, DAYS, today()),
+        &body("smhi/point_stockholm_2026-09-30.json"),
+    );
+    let stdout = render(&sandbox, "smhi");
+    assert_rendered(&stdout, "14°C", "Data: SMHI (CC BY 4.0 SE)");
+    assert!(stdout.contains("Overcast"), "{stdout}");
+}
+
+#[test]
+fn openweathermap_renders_from_the_recorded_payloads() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed_keys(&sandbox);
+    let date = today();
+    seed(
+        &sandbox,
+        &CacheKey::weather_part("openweathermap", "current", LAT, LON, DAYS, date),
+        &body("owm/current.json"),
+    );
+    seed(
+        &sandbox,
+        &CacheKey::weather_part("openweathermap", "forecast", LAT, LON, DAYS, date),
+        &body("owm/forecast.json"),
+    );
+    let stdout = render(&sandbox, "openweathermap");
+    assert_rendered(
+        &stdout,
+        "16°C",
+        "Data: OpenWeather (ODbL 1.0) — https://openweathermap.org/",
+    );
+    assert!(stdout.contains("Clear sky"), "{stdout}");
+}
+
+#[test]
+fn weatherapi_renders_from_the_recorded_payload() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed_keys(&sandbox);
+    seed(
+        &sandbox,
+        &CacheKey::weather("weatherapi", LAT, LON, DAYS, today()),
+        &body("weatherapi/forecast.json"),
+    );
+    let stdout = render(&sandbox, "weatherapi");
+    assert_rendered(
+        &stdout,
+        "15°C",
+        "Data: WeatherAPI.com (free-tier attribution) — https://www.weatherapi.com/",
+    );
+    assert!(stdout.contains("Clear sky"), "{stdout}");
+}
+
+#[test]
+fn worldweatheronline_renders_from_the_recorded_payload() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed_keys(&sandbox);
+    seed(
+        &sandbox,
+        &CacheKey::weather("worldweatheronline", LAT, LON, DAYS, today()),
+        &body("wwo/weather_ashx.json"),
+    );
+    let stdout = render(&sandbox, "worldweatheronline");
+    assert_rendered(
+        &stdout,
+        "15°C",
+        "Data: WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/",
+    );
+    assert!(stdout.contains("Clear sky"), "{stdout}");
+}
+
+#[test]
+fn pirateweather_renders_from_the_recorded_payload() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed_keys(&sandbox);
+    seed(
+        &sandbox,
+        &CacheKey::weather("pirateweather", LAT, LON, DAYS, today()),
+        &body("pirateweather/forecast.json"),
+    );
+    let stdout = render(&sandbox, "pirateweather");
+    assert_rendered(
+        &stdout,
+        "13°C",
+        "Data: Pirate Weather — https://pirateweather.net/",
+    );
+    assert!(stdout.contains("Overcast"), "{stdout}");
+}
+
+/// The fixtures must not carry any of the recorded API keys.
+#[test]
+fn no_fixture_carries_an_api_key() {
+    let keys = std::env::var("HOME")
+        .map(|home| std::path::PathBuf::from(home).join(".config/cirrocast/keys.toml"));
+    let Ok(path) = keys else {
+        return;
+    };
+    let Ok(text) = fs::read_to_string(&path) else {
+        return;
+    };
+    let secrets: Vec<&str> = text
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(_, value)| value.trim().trim_matches('"'))
+        .filter(|value| value.len() >= 8)
+        .collect();
+    assert!(!secrets.is_empty(), "no keys to scan for");
+
+    scan(Path::new("tests/fixtures"), &secrets);
+}
+
+/// Walks `directory`, asserting no file contains any of `secrets`.
+fn scan(directory: &Path, secrets: &[&str]) {
+    for entry in fs::read_dir(directory).expect("the fixtures are readable") {
+        let path = entry.expect("a directory entry").path();
+        if path.is_dir() {
+            scan(&path, secrets);
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for secret in secrets {
+            assert!(
+                !text.contains(secret),
+                "{} contains an API key",
+                path.display()
+            );
+        }
+    }
+}
