@@ -1,0 +1,36 @@
+{
+  "location": {
+    "name": "Beijing",
+    "admin1": "Beijing",
+    "country": "China",
+    "country_code": "CN",
+    "lat": 39.9042,
+    "lon": 116.4074,
+    "tz": "Asia/Shanghai",
+    "elevation_m": 44.0,
+    "population": 18960744,
+    "source": "geocoder"
+  },
+  "current": {
+    "observed_at": "2026-09-30T12:15:00+08:00",
+    "temp_c": 19.0,
+    "feels_like_c": 18.5,
+    "humidity_pct": 60,
+    "precip_mm": 0.0,
+    "weather": 3,
+    "cloud_cover_pct": 80,
+    "pressure_hpa": 1010.0,
+    "wind_kmh": 11.0,
+    "wind_dir_deg": 25,
+    "wind_gust_kmh": null,
+    "visibility_km": 9.0,
+    "is_day": true
+  },
+  "days": [],
+  "attribution": {
+    "provider": "open-meteo",
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "fetched_at": "2026-09-30T04:11:00Z",
+    "raw": null
+  }
+}

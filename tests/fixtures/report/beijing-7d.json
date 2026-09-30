@@ -1,0 +1,436 @@
+{
+  "location": {
+    "name": "Beijing",
+    "admin1": "Beijing",
+    "country": "China",
+    "country_code": "CN",
+    "lat": 39.9042,
+    "lon": 116.4074,
+    "tz": "Asia/Shanghai",
+    "elevation_m": 44.0,
+    "population": 18960744,
+    "source": "geocoder"
+  },
+  "current": {
+    "observed_at": "2026-09-30T12:15:00+08:00",
+    "temp_c": 20.0,
+    "feels_like_c": 20.5,
+    "humidity_pct": 58,
+    "precip_mm": 0.0,
+    "weather": 2,
+    "cloud_cover_pct": 45,
+    "pressure_hpa": 1012.0,
+    "wind_kmh": 13.0,
+    "wind_dir_deg": 50,
+    "wind_gust_kmh": null,
+    "visibility_km": 11.0,
+    "is_day": true
+  },
+  "days": [
+    {
+      "date": "2026-09-30",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 18.0,
+          "feels_like_c": 17.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 0,
+          "wind_kmh": 8.0,
+          "wind_dir_deg": 90,
+          "humidity_pct": 60,
+          "visibility_km": 12.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 24.0,
+          "feels_like_c": 24.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "weather": 1,
+          "wind_kmh": 13.0,
+          "wind_dir_deg": 120,
+          "humidity_pct": 45,
+          "visibility_km": 15.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 21.0,
+          "feels_like_c": 20.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 2,
+          "wind_kmh": 10.0,
+          "wind_dir_deg": 150,
+          "humidity_pct": 55,
+          "visibility_km": 13.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 16.0,
+          "feels_like_c": 15.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "weather": 0,
+          "wind_kmh": 6.0,
+          "wind_dir_deg": 200,
+          "humidity_pct": 70,
+          "visibility_km": 11.0
+        }
+      ],
+      "temp_min_c": 15.0,
+      "temp_max_c": 25.0,
+      "sunrise": "2026-09-30T06:05:00+08:00",
+      "sunset": "2026-09-30T17:58:00+08:00"
+    },
+    {
+      "date": "2026-10-01",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 17.0,
+          "feels_like_c": 16.0,
+          "precip_mm": 0.4,
+          "precip_prob_pct": 45,
+          "weather": 3,
+          "wind_kmh": 9.0,
+          "wind_dir_deg": 80,
+          "humidity_pct": 68,
+          "visibility_km": 9.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 20.0,
+          "feels_like_c": 20.0,
+          "precip_mm": 2.0,
+          "precip_prob_pct": 65,
+          "weather": 61,
+          "wind_kmh": 14.0,
+          "wind_dir_deg": 110,
+          "humidity_pct": 78,
+          "visibility_km": 7.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 18.0,
+          "feels_like_c": 17.0,
+          "precip_mm": 3.5,
+          "precip_prob_pct": 75,
+          "weather": 63,
+          "wind_kmh": 17.0,
+          "wind_dir_deg": 140,
+          "humidity_pct": 85,
+          "visibility_km": 5.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 16.0,
+          "feels_like_c": 15.0,
+          "precip_mm": 1.5,
+          "precip_prob_pct": 60,
+          "weather": 51,
+          "wind_kmh": 12.0,
+          "wind_dir_deg": 150,
+          "humidity_pct": 88,
+          "visibility_km": 6.0
+        }
+      ],
+      "temp_min_c": 15.0,
+      "temp_max_c": 22.0,
+      "sunrise": "2026-10-01T06:06:00+08:00",
+      "sunset": "2026-10-01T17:56:00+08:00"
+    },
+    {
+      "date": "2026-10-02",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 12.0,
+          "feels_like_c": 11.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 20,
+          "weather": 45,
+          "wind_kmh": 7.0,
+          "wind_dir_deg": 70,
+          "humidity_pct": 85,
+          "visibility_km": 4.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 18.0,
+          "feels_like_c": 18.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 15,
+          "weather": 2,
+          "wind_kmh": 9.0,
+          "wind_dir_deg": 60,
+          "humidity_pct": 65,
+          "visibility_km": 8.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 15.0,
+          "feels_like_c": 14.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 1,
+          "wind_kmh": 8.0,
+          "wind_dir_deg": 50,
+          "humidity_pct": 70,
+          "visibility_km": 10.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 11.0,
+          "feels_like_c": 10.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "weather": 0,
+          "wind_kmh": 5.0,
+          "wind_dir_deg": 40,
+          "humidity_pct": 78,
+          "visibility_km": 12.0
+        }
+      ],
+      "temp_min_c": 10.0,
+      "temp_max_c": 19.0,
+      "sunrise": "2026-10-02T06:07:00+08:00",
+      "sunset": "2026-10-02T17:54:00+08:00"
+    },
+    {
+      "date": "2026-10-03",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 10.0,
+          "feels_like_c": 9.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 15,
+          "weather": 1,
+          "wind_kmh": 6.0,
+          "wind_dir_deg": 90,
+          "humidity_pct": 62,
+          "visibility_km": 12.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 17.0,
+          "feels_like_c": 17.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 2,
+          "wind_kmh": 11.0,
+          "wind_dir_deg": 130,
+          "humidity_pct": 50,
+          "visibility_km": 14.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 14.0,
+          "feels_like_c": 13.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 2,
+          "wind_kmh": 9.0,
+          "wind_dir_deg": 160,
+          "humidity_pct": 60,
+          "visibility_km": 12.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 9.0,
+          "feels_like_c": 8.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "weather": 3,
+          "wind_kmh": 7.0,
+          "wind_dir_deg": 200,
+          "humidity_pct": 75,
+          "visibility_km": 9.0
+        }
+      ],
+      "temp_min_c": 8.0,
+      "temp_max_c": 18.0,
+      "sunrise": "2026-10-03T06:08:00+08:00",
+      "sunset": "2026-10-03T17:52:00+08:00"
+    },
+    {
+      "date": "2026-10-04",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 9.0,
+          "feels_like_c": 7.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 25,
+          "weather": 3,
+          "wind_kmh": 10.0,
+          "wind_dir_deg": 300,
+          "humidity_pct": 70,
+          "visibility_km": 9.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 15.0,
+          "feels_like_c": 14.0,
+          "precip_mm": 0.2,
+          "precip_prob_pct": 50,
+          "weather": 51,
+          "wind_kmh": 16.0,
+          "wind_dir_deg": 320,
+          "humidity_pct": 72,
+          "visibility_km": 8.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 12.0,
+          "feels_like_c": 10.5,
+          "precip_mm": 1.0,
+          "precip_prob_pct": 60,
+          "weather": 61,
+          "wind_kmh": 18.0,
+          "wind_dir_deg": 330,
+          "humidity_pct": 80,
+          "visibility_km": 6.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 8.0,
+          "feels_like_c": 6.5,
+          "precip_mm": 0.6,
+          "precip_prob_pct": 55,
+          "weather": 53,
+          "wind_kmh": 14.0,
+          "wind_dir_deg": 340,
+          "humidity_pct": 84,
+          "visibility_km": 5.0
+        }
+      ],
+      "temp_min_c": 7.0,
+      "temp_max_c": 16.0,
+      "sunrise": "2026-10-04T06:09:00+08:00",
+      "sunset": "2026-10-04T17:51:00+08:00"
+    },
+    {
+      "date": "2026-10-05",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 7.0,
+          "feels_like_c": 5.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 20,
+          "weather": 45,
+          "wind_kmh": 9.0,
+          "wind_dir_deg": 20,
+          "humidity_pct": 88,
+          "visibility_km": 4.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 13.0,
+          "feels_like_c": 12.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 15,
+          "weather": 2,
+          "wind_kmh": 12.0,
+          "wind_dir_deg": 40,
+          "humidity_pct": 68,
+          "visibility_km": 9.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 10.0,
+          "feels_like_c": 9.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 0,
+          "wind_kmh": 8.0,
+          "wind_dir_deg": 60,
+          "humidity_pct": 72,
+          "visibility_km": 12.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 6.0,
+          "feels_like_c": 4.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "weather": 0,
+          "wind_kmh": 6.0,
+          "wind_dir_deg": 80,
+          "humidity_pct": 80,
+          "visibility_km": 13.0
+        }
+      ],
+      "temp_min_c": 5.0,
+      "temp_max_c": 14.0,
+      "sunrise": "2026-10-05T06:10:00+08:00",
+      "sunset": "2026-10-05T17:49:00+08:00"
+    },
+    {
+      "date": "2026-10-06",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 6.0,
+          "feels_like_c": 4.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 30,
+          "weather": 3,
+          "wind_kmh": 11.0,
+          "wind_dir_deg": 10,
+          "humidity_pct": 76,
+          "visibility_km": 8.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 12.0,
+          "feels_like_c": 11.0,
+          "precip_mm": 0.8,
+          "precip_prob_pct": 55,
+          "weather": 80,
+          "wind_kmh": 17.0,
+          "wind_dir_deg": 30,
+          "humidity_pct": 74,
+          "visibility_km": 7.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 9.0,
+          "feels_like_c": 8.0,
+          "precip_mm": 1.5,
+          "precip_prob_pct": 65,
+          "weather": 81,
+          "wind_kmh": 19.0,
+          "wind_dir_deg": 40,
+          "humidity_pct": 82,
+          "visibility_km": 5.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 5.0,
+          "feels_like_c": 3.5,
+          "precip_mm": 0.4,
+          "precip_prob_pct": 50,
+          "weather": 51,
+          "wind_kmh": 13.0,
+          "wind_dir_deg": 50,
+          "humidity_pct": 86,
+          "visibility_km": 6.0
+        }
+      ],
+      "temp_min_c": 4.0,
+      "temp_max_c": 13.0,
+      "sunrise": "2026-10-06T06:11:00+08:00",
+      "sunset": "2026-10-06T17:47:00+08:00"
+    }
+  ],
+  "attribution": {
+    "provider": "open-meteo",
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "fetched_at": "2026-09-30T04:11:00Z",
+    "raw": null
+  }
+}

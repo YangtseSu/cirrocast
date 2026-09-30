@@ -1,0 +1,13 @@
+---
+source: tests/render_snapshots.rs
+expression: "render(case(\"current-only.json\", UnitSystem::Us, 80))"
+---
+Weather report: Beijing, Beijing, China (39.90, 116.41)
+
+ ╭───╮  Overcast
+╭╯   ╰╮ +66°F (+65°F)
+(     ) ↗ 6.8mph NNE
+╰─────╯ 60% 29.83inHg 5.6mi 0.00in
+
+Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo…
+Data: Open-Meteo.com (CC BY 4.0)

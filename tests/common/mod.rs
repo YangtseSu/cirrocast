@@ -112,6 +112,36 @@ pub fn fixture(name: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
 
+/// The canonical report recorded in `tests/fixtures/report/<file>`.
+///
+/// These are hand-written `Report` documents, not upstream payloads: no test that renders one can
+/// reach the network, and the same fixture renders to the same bytes on any machine.
+pub fn fixture_report(file: &str) -> Report {
+    let path = fixture_path(&format!("report/{file}"));
+    let text =
+        fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+}
+
+/// The instant a fixture is rendered at: its own observation time, else noon of its first day.
+///
+/// Taken from the report rather than from the clock, so a snapshot cannot drift — and so that the
+/// `Today, Sep 30` heading of the first day is decided by the fixture, not by the test runner's
+/// calendar.
+pub fn fixture_now(report: &Report) -> chrono::DateTime<chrono::FixedOffset> {
+    if let Some(current) = &report.current {
+        return current.observed_at;
+    }
+    let date = report.days.first().map_or_else(
+        || chrono::NaiveDate::from_ymd_opt(2026, 9, 30).expect("a valid date"),
+        |day| day.date,
+    );
+    let noon = date.and_hms_opt(12, 0, 0).expect("noon is a valid time");
+    cirrocast::model::resolve_local(report.location.tz, noon)
+        .expect("the fixture's time zone resolves noon")
+        .fixed_offset()
+}
+
 /// Asserts that `directory` holds no leftover `.<file>.tmp.<pid>` from the atomic writer.
 pub fn assert_no_temporary_files(directory: &Path) {
     let leftovers: Vec<String> = fs::read_dir(directory)

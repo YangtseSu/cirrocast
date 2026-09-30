@@ -1,0 +1,31 @@
+---
+source: tests/render_snapshots.rs
+expression: "render(case(\"beijing-3d-day.json\", UnitSystem::Metric, 40))"
+---
+Weather report: Beijing, Beijing, China…
+
+   \│/  Partly cloudy
+ ╭───╮  +22°C (+24°C)
+(     ) ↗ 12km/h NE
+ ╰───╯  56% 1013hPa 10km 0.0mm
+
+Today, Sep 30
+  Morning │ +18°C │ → 8.0km/h │ 0.0mm
+  Noon    │ +24°C │ ↘ 14km/h │ 0.0mm
+  Evening │ +20°C │ ↓ 10km/h │ 0.0mm
+  Night   │ +15°C │ ↓ 6.0km/h │ 0.0mm
+
+Thu 01 Oct
+  Morning │ +17°C │ → 9.0km/h │ 0.2mm
+  Noon    │ +21°C │ → 15km/h │ 1.2mm
+  Evening │ +18°C │ ↘ 18km/h │ 4.5mm
+  Night   │ +16°C │ ↘ 20km/h │ 6.0mm
+
+Fri 02 Oct
+  Morning │ +14°C │ → 7.0km/h │ 0.0mm
+  Noon    │ +19°C │ ↗ 10km/h │ 0.0mm
+  Evening │ +16°C │ ↗ 8.0km/h │ 0.0mm
+  Night   │ +12°C │ ↗ 5.0km/h │ 0.0mm
+
+Location data based on GeoNames (CC-BY-…
+Data: Open-Meteo.com (CC BY 4.0)
