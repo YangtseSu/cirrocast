@@ -43,7 +43,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | ✅ done | 02, 03 |
 | 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ✅ done | 02, 03, 04 |
 | 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ✅ done | 03, 04, 05 |
-| 07 | B | [art-table-renderer](07-art-table-renderer.md) | ⬜ not-started | 03, 06 |
+| 07 | B | [art-table-renderer](07-art-table-renderer.md) | ✅ done | 03, 06 |
 | 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ⬜ not-started | 06, 07 |
 | 09 | B | [localization](09-localization.md) | ⬜ not-started | 03, 07 |
 | 10 | B | [additional-providers](10-additional-providers.md) | ⬜ not-started | 05, 06, 08 |
@@ -192,22 +192,30 @@ pub trait Provider {
 
 ```rust
 pub struct RenderContext<'a> {  // built once in main, passed by reference
-    pub units: UnitSystem, pub lang: LanguageId, pub color: ColorMode, pub width: usize,
+    pub units: ResolvedUnits, pub lang: LanguageId, pub color: ColorMode, pub width: usize,
     pub term: TermCaps, pub now: DateTime<FixedOffset>, pub tz: chrono_tz::Tz, pub i18n: &'a I18n,
 }
 pub trait Renderer { fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String>; }
 ```
 
+`units` is the *resolved* unit set (step 03's `UnitSystem::resolve`), `color` is already resolved
+(never `Auto`) and `width` already clamped, so a renderer never consults the environment; `term`
+is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_pref`).
+
 * Formats: `art-table` (default, wttr.in's classic four-row coloured columns), `one-line`
-  (wttr.in-compatible `%` tokens), `plain`, `json`. `dumb` (pure ASCII, `TERM=dumb`) is part of
-  step 07.
-* Width handling: `--width` > `COLUMNS` > terminal size via `rustix::termios::tcgetwinsize` > 80
-  (`rustix` is introduced by step 07; the crate forbids `unsafe`, so a raw `ioctl` is not an option).
-  Below 60 columns the table degrades to a stacked layout; the renderer never emits lines wider than
-  the resolved width.
-* Colour: honour `NO_COLOR` (presence disables), `CLICOLOR_FORCE`, `--color auto|always|never`,
-  and non-tty stdout ⇒ no colour. Palette is re-authored 256-colour (temperature ramp, wind, rain),
-  not copied from wego.
+  (wttr.in-compatible `%` tokens), `plain`, `json`. `dumb` is not a fourth layout: it is the
+  art table in the ASCII character set (`+ - |`, ASCII art, no degree sign), selected by
+  `--format dumb` and automatically for `TERM=dumb` or a non-UTF-8 locale.
+* Width handling: `--width` > `COLUMNS` > terminal size > 80, and never below 20 columns (a
+  narrower source is raised and reported under `--verbose`). The terminal's own size comes from
+  `rustix::termios::tcgetwinsize` (introduced by step 07; the crate forbids `unsafe`, so a raw
+  `ioctl` is not an option, and non-Unix targets skip this tier). Below 60 columns the table
+  degrades to a stacked layout; the renderer never emits lines wider than the resolved width.
+* Colour: honour `NO_COLOR` (present with any value, an empty one included, disables),
+  `CLICOLOR_FORCE` (set and not `0` enables, and wins over `NO_COLOR`), `--color auto|always|never`,
+  and non-tty stdout ⇒ no colour in `auto`. An explicit `always` emits escapes even into a pipe; the
+  palette is folded to the sixteen ANSI colours when `TERM`/`COLORTERM` advertise no more. Palette is
+  re-authored 256-colour (temperature ramp, wind, rain), not copied from wego.
 * **Attribution is part of the output contract.** Displaying a place or a forecast is displaying
   someone's data, so the credit travels with it: `Location data based on GeoNames (CC-BY-4.0) via
   Open-Meteo — https://open-meteo.com/` for a geocoded name (CC-BY-4.0 asks for credit plus a service
