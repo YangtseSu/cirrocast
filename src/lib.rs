@@ -8,10 +8,12 @@
 //! ([`provider`]), the canonical data model ([`model`]) and location resolution ([`geo`]). Weather
 //! fetching arrives in later steps.
 
+pub mod cache;
 pub mod cli;
 pub mod config;
 pub mod error;
 pub mod geo;
+pub mod http;
 pub mod model;
 pub mod paths;
 pub mod provider;
