@@ -208,6 +208,16 @@ pub trait Renderer { fn render(&self, report: &Report, ctx: &RenderContext<'_>) 
 * Colour: honour `NO_COLOR` (presence disables), `CLICOLOR_FORCE`, `--color auto|always|never`,
   and non-tty stdout ⇒ no colour. Palette is re-authored 256-colour (temperature ramp, wind, rain),
   not copied from wego.
+* **Attribution is part of the output contract.** Displaying a place or a forecast is displaying
+  someone's data, so the credit travels with it: `Location data based on GeoNames (CC-BY-4.0) via
+  Open-Meteo — https://open-meteo.com/` for a geocoded name (CC-BY-4.0 asks for credit plus a service
+  link next to the data), `Location data © OpenStreetMap contributors (ODbL)` for `~` results and
+  `Weather data by Open-Meteo.com (https://open-meteo.com/)` for an Open-Meteo forecast.
+  `geo::attribution_line` is the single place that decides the location-side text; every renderer
+  that shows upstream data — `plain`, `art-table`, `one-line` and the `json` envelope — carries the
+  matching credit, on stderr where the format is meant to be piped.
+* Coordinates and IP answers carry no credit: the first is the user's own input, and neither
+  `ipwho.is` nor `ipapi.co` asks for one (the `--ip` disclosure already names the service).
 * Art blocks and translated condition strings are **re-authored** in this repo. Copying wego or
   wttr.in source, data files or art is forbidden (see AGENTS.md).
 
@@ -224,6 +234,7 @@ schema_version = 1
             # temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
 [network]   timeout_secs = 15  retries = 3  proxy = ""  nominatim_url = ""
 [cache]     enabled = true  weather_ttl_secs = 600  ip_ttl_secs = 86400  geocode_ttl_secs = 2592000
+            # ip_ttl_secs is capped at 86400: ipapi.co's terms allow caching an IP answer for at most 24 hours
 [render]    color = "auto"  width = 0
 [providers.metar]    station = ""
 [providers.qweather] host = ""

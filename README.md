@@ -102,6 +102,29 @@ to `ipwho.is`, falling back to `ipapi.co` (`CIRROCAST_IP_SERVICE=auto|ipwhois|ip
 answer for 24 hours and names the service it used on stderr. `--offline` serves the cached answer and
 touches no network.
 
+## Data sources, limits and licences
+
+`cirrocast` ships no data of its own — every place, address and forecast comes from a donated or open
+service, each with its own limits and licence. What the tool does to stay inside them:
+
+| Source | Used for | Limits the service sets | Licence / attribution |
+|---|---|---|---|
+| [Open-Meteo](https://open-meteo.com/) geocoding | `Beijing`, `:Beijing` | free tier is **non-commercial**, < 10 000 calls/day, 5 000/hour, 600/minute; `name` needs ≥ 2 characters | data CC-BY-4.0; the CLI prints `Location data based on GeoNames (CC-BY-4.0) via Open-Meteo` with the service link |
+| [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding | — | CC-BY-4.0 |
+| [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
+| [ipwho.is](https://ipwho.is/) | `--ip` (primary) | free endpoint: 1 000 requests/day per client IP, then `429` + `Retry-After` | personal or internal use, no redistribution |
+| [ipapi.co](https://ipapi.co/) | `--ip` (fallback) | free tier: up to 1 000 requests/day | internal use, no resale; its terms allow keeping an answer for **at most 24 hours**, which is why `cache.ip_ttl_secs` is capped there |
+
+Weather output carries the credit Open-Meteo's licence asks for (`Weather data by Open-Meteo.com`,
+with the service URL) wherever a forecast is displayed, from step 06 on.
+
+Nothing from these services is redistributed: responses are cached under
+`$XDG_CACHE_HOME/cirrocast/` with the TTLs in `[cache]` (10 minutes for weather, 24 hours for an IP
+location, 30 days for geocoding) and `--no-cache`, `--refresh` and `--offline` decide what that cache
+is used for. The handful of recorded responses used as test fixtures keep their upstream licence —
+`CC-BY-4.0` for GeoNames/Open-Meteo, `ODbL-1.0` for OpenStreetMap — declared per path in
+[`REUSE.toml`](REUSE.toml).
+
 ## Backends
 
 | ID | Key | Coverage | Observation | Forecast | Max days |
@@ -154,7 +177,7 @@ write and the first one read — and `config validate` reports the file that was
 | `network.nominatim_url` | empty | Nominatim base URL for `~name` searches; empty = the public OpenStreetMap service |
 | `cache.enabled` | `true` | `true`, `false` |
 | `cache.weather_ttl_secs` | `600` | `> 0` (10 minutes) |
-| `cache.ip_ttl_secs` | `86400` | `> 0` (24 hours) |
+| `cache.ip_ttl_secs` | `86400` | `> 0` (24 hours; larger values are capped — see [Data sources, limits and licences](#data-sources-limits-and-licences)) |
 | `cache.geocode_ttl_secs` | `2592000` | `> 0` (30 days) |
 | `render.color` | `auto` | `auto`, `always`, `never` |
 | `render.width` | `0` | `0` (detect from the terminal) or `40..=500` |

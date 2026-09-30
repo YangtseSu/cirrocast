@@ -22,11 +22,11 @@ use crate::geo::ip::{IpLocatorChain, IpService};
 use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
 use crate::geo::open_meteo::OpenMeteoGeocoder;
 use crate::geo::{
-    Geocoder, LocationSpec, Resolution, ambiguity_note, location_line, osm_ambiguity_note, rank,
-    resolve,
+    Geocoder, LocationSpec, Resolution, ambiguity_note, attribution_line, location_line,
+    osm_ambiguity_note, rank, resolve,
 };
 use crate::http::{HttpClient, UreqTransport};
-use crate::model::{Location, LocationSource};
+use crate::model::Location;
 use crate::paths::Paths;
 use crate::provider::{ProviderId, ProviderMeta};
 
@@ -331,8 +331,8 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
             eprintln!("{note}");
         }
     }
-    if location.source == LocationSource::Osm {
-        eprintln!("Location data © OpenStreetMap contributors (ODbL)");
+    if let Some(attribution) = attribution_line(&location) {
+        eprintln!("{attribution}");
     }
     if cli.verbose > 0 {
         for (index, candidate) in candidates.iter().enumerate() {
@@ -394,7 +394,7 @@ fn resolve_location(
                 http,
                 cache,
                 IpService::chain(&ip_service_setting())?,
-                Duration::from_secs(u64::from(config.cache.ip_ttl_secs)),
+                ip_ttl(config, cli.verbose),
             );
             let (location, service) = chain.locate_with_service()?;
             if !cli.quiet {
@@ -521,6 +521,28 @@ fn human_bytes(bytes: u64) -> String {
     }
     let tenths = (u128::from(bytes) * 10 + u128::from(scale) / 2) / u128::from(scale);
     format!("{}.{} {unit}", tenths / 10, tenths % 10)
+}
+
+/// The IP location cache lifetime: `cache.ip_ttl_secs`, capped at 24 hours.
+///
+/// `ipapi.co`'s terms (section 5) allow IP answers to be kept no longer than "the minimum time
+/// necessary for immediate use, which shall not exceed 24 hours", and it is the fallback of the
+/// default chain, so the cap applies to the chain as a whole — a longer configured TTL would be a
+/// licence violation the moment the primary service is unreachable. Exceeding it is reported under
+/// `-v` rather than silently ignored.
+fn ip_ttl(config: &Config, verbose: u8) -> Duration {
+    /// 24 hours, in seconds.
+    const MAX_IP_TTL_SECS: u32 = 86_400;
+    let configured = config.cache.ip_ttl_secs;
+    if configured > MAX_IP_TTL_SECS {
+        if verbose > 0 {
+            eprintln!(
+                "ip: cache.ip_ttl_secs {configured} exceeds the {MAX_IP_TTL_SECS} s that ipapi.co allows; using {MAX_IP_TTL_SECS}"
+            );
+        }
+        return Duration::from_secs(u64::from(MAX_IP_TTL_SECS));
+    }
+    Duration::from_secs(u64::from(configured))
 }
 
 /// The cache mode of this run: the flags win, then `[cache] enabled`.

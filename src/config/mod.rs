@@ -768,7 +768,7 @@ nominatim_url = ""       # Nominatim base URL for `~name` searches; empty = the 
 [cache]
 enabled = true
 weather_ttl_secs = 600       # 10 minutes
-ip_ttl_secs = 86400          # 24 hours
+ip_ttl_secs = 86400          # 24 hours; a larger value is capped there (ipapi.co's terms)
 geocode_ttl_secs = 2592000   # 30 days
 
 [render]
@@ -957,7 +957,7 @@ pub const KEY_TABLE: &[KeySpec] = &[
     KeySpec {
         name: "cache.ip_ttl_secs",
         kind: KeyKind::U32,
-        doc: "IP location cache TTL in seconds",
+        doc: "IP location cache TTL in seconds (capped at 24 h)",
         env: None,
     },
     KeySpec {

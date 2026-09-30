@@ -266,6 +266,28 @@ pub fn location_line(location: &Location) -> String {
     parts.join(" ")
 }
 
+/// The attribution a location's data source requires, or `None` when the source asks for none.
+///
+/// Displaying a place is displaying someone's data: `GeoNames` publishes the geocoding data that
+/// Open-Meteo serves under CC-BY-4.0 (credit plus a link to the service, which is what the licence
+/// page asks for next to displayed data), and OpenStreetMap requires the `ODbL` credit. Coordinates
+/// and IP answers are the user's own input or the locating service's own answer, and neither
+/// `ipwho.is` nor `ipapi.co` asks for a credit line — the privacy disclosure already names whichever
+/// one answered.
+///
+/// The caller prints this next to the location (stderr in the CLI), and step 06's renderers use the
+/// same function so a weather report carries its sources too.
+#[must_use]
+pub fn attribution_line(location: &Location) -> Option<&'static str> {
+    match location.source {
+        LocationSource::Geocoder => Some(
+            "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
+        ),
+        LocationSource::Osm => Some("Location data © OpenStreetMap contributors (ODbL)"),
+        LocationSource::Coordinates | LocationSource::Ip | LocationSource::Config => None,
+    }
+}
+
 /// `Name, admin1, country`, skipping the parts a geocoder did not report.
 #[must_use]
 pub fn place(location: &Location) -> String {
@@ -571,5 +593,31 @@ mod tests {
             location_line(&config),
             "Beijing (39.91, 116.40) Asia/Shanghai"
         );
+    }
+
+    #[test]
+    fn attribution_follows_the_data_source() {
+        let mut location = candidate("Beijing", None, None);
+        assert!(
+            super::attribution_line(&location)
+                .expect("a geocoded place credits GeoNames and Open-Meteo")
+                .contains("GeoNames")
+        );
+        location.source = LocationSource::Osm;
+        assert_eq!(
+            super::attribution_line(&location),
+            Some("Location data © OpenStreetMap contributors (ODbL)")
+        );
+        for source in [
+            LocationSource::Coordinates,
+            LocationSource::Ip,
+            LocationSource::Config,
+        ] {
+            location.source = source;
+            assert!(
+                super::attribution_line(&location).is_none(),
+                "{source:?} needs no attribution"
+            );
+        }
     }
 }
