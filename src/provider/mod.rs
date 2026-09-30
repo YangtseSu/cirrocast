@@ -12,13 +12,23 @@
 //! backend is implemented, and corrects this table where reality disagrees. Treat the values as
 //! claims, not as facts.
 //!
-//! The [`Provider`] trait and the per-provider implementations arrive in steps 06 and 10; this
-//! module deliberately holds data only.
+//! The second half of the module is the behaviour contract: [`Provider`] is what one backend
+//! implements, [`select`] turns a `--provider` value into an ordered chain, and [`fetch_chain`]
+//! walks that chain with the documented fallback rule. Open-Meteo is the only backend implemented
+//! so far ([`open_meteo`]); the registry rows for the others carry `implemented: false` and are
+//! reached only after step 10 adds their modules.
+
+pub mod open_meteo;
 
 use std::fmt;
 use std::str::FromStr;
 
+use crate::cache::Cache;
+use crate::config::Config;
+use crate::config::keys::KeyStore;
 use crate::error::{Error, Result};
+use crate::http::HttpClient;
+use crate::model::{Location, Report};
 
 /// A backend `cirrocast` knows how to talk to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -99,6 +109,9 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "keyless, global coverage",
+                implemented: true,
+                alerts: false,
+                licence: Some("Open-Meteo.com (CC BY 4.0)"),
             },
             Self::OpenWeatherMap => ProviderMeta {
                 id: *self,
@@ -112,6 +125,9 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "free tier forecast is served in 3-hour steps",
+                implemented: false,
+                alerts: false,
+                licence: None,
             },
             Self::WeatherApi => ProviderMeta {
                 id: *self,
@@ -125,6 +141,9 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "free tier",
+                implemented: false,
+                alerts: false,
+                licence: None,
             },
             Self::WorldWeatherOnline => ProviderMeta {
                 id: *self,
@@ -138,6 +157,9 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "free tier",
+                implemented: false,
+                alerts: false,
+                licence: None,
             },
             Self::PirateWeather => ProviderMeta {
                 id: *self,
@@ -151,6 +173,9 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "Dark Sky shaped responses",
+                implemented: false,
+                alerts: false,
+                licence: None,
             },
             Self::QWeather => ProviderMeta {
                 id: *self,
@@ -164,6 +189,9 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "China focused; needs a configured API host",
+                implemented: false,
+                alerts: false,
+                licence: None,
             },
             Self::Smhi => ProviderMeta {
                 id: *self,
@@ -177,6 +205,9 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "keyless, Nordics only",
+                implemented: false,
+                alerts: false,
+                licence: None,
             },
             Self::Metar => ProviderMeta {
                 id: *self,
@@ -190,6 +221,9 @@ impl ProviderId {
                 daily: false,
                 location_kinds: LocationKinds::STATION,
                 notes: "keyless, station observations only",
+                implemented: false,
+                alerts: false,
+                licence: None,
             },
         }
     }
@@ -259,6 +293,19 @@ pub struct ProviderMeta {
     pub location_kinds: LocationKinds,
     /// Free-form caveats worth showing in `provider info`.
     pub notes: &'static str,
+    /// Whether a [`Provider`] implementation exists yet.
+    ///
+    /// A registry row can be complete before its backend is written; `select` refuses to hand out
+    /// an id whose row says `false`, so no code path can end up in the factory's "not implemented"
+    /// arm by accident.
+    pub implemented: bool,
+    /// Whether the provider reports weather alerts (step 15 fills the first `true`).
+    pub alerts: bool,
+    /// The credit line the data licence requires, e.g. `Open-Meteo.com (CC BY 4.0)`.
+    ///
+    /// `None` until the row's provider is implemented and its licence verified, which is what step
+    /// 10 does per backend; a renderer prints it as `Data: …`.
+    pub licence: Option<&'static str>,
 }
 
 /// Which location forms a provider can answer for.
@@ -310,11 +357,330 @@ impl LocationKinds {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// The behaviour contract
+// ---------------------------------------------------------------------------------------------
+
+impl ProviderMeta {
+    /// This row as the contract's [`Capabilities`] value.
+    ///
+    /// Deriving instead of hand-writing the struct in each implementation is what keeps
+    /// `provider list` honest: there is exactly one place that says how many days a backend can
+    /// serve, and it is the row a user reads.
+    #[must_use]
+    pub fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            current: self.current,
+            hourly: self.hourly,
+            daily: self.daily,
+            alerts: self.alerts,
+            max_days: self.max_days,
+            requires_key: self.requires_key,
+            key_env: self.key_env,
+            location_kinds: self.location_kinds,
+        }
+    }
+}
+
+/// What one backend offers, in the shape the provider contract fixes.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Capabilities {
+    /// Current conditions are available.
+    pub current: bool,
+    /// Hourly data is available.
+    pub hourly: bool,
+    /// Daily data is available.
+    pub daily: bool,
+    /// Weather alerts are available (step 15).
+    pub alerts: bool,
+    /// Longest forecast the backend serves, in days (`0` = observations only).
+    pub max_days: u8,
+    /// Whether an API key has to be present before the backend can be used.
+    pub requires_key: bool,
+    /// Environment variable that supplies the key, when there is one.
+    pub key_env: Option<&'static str>,
+    /// Which location forms the backend accepts.
+    pub location_kinds: LocationKinds,
+}
+
+/// How much detail a caller wants from the hourly data.
+///
+/// A backend that only serves coarser steps ignores the requested resolution and answers with what
+/// it has; the day-part aggregation works on whatever arrives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HourlyResolution {
+    /// One sample per hour.
+    Hourly,
+    /// One sample per three hours.
+    ThreeHourly,
+    /// Daily aggregates only, no hourly data.
+    Daily,
+}
+
+/// One fetch: for how many days and at what resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FetchRequest {
+    /// Forecast days requested; `0` means current conditions only.
+    pub days: u8,
+    /// Detail requested from the hourly data.
+    pub hourly_resolution: HourlyResolution,
+}
+
+impl FetchRequest {
+    /// A request for `days` days of hourly data (`0` = current conditions only).
+    #[must_use]
+    pub const fn new(days: u8, hourly_resolution: HourlyResolution) -> Self {
+        Self {
+            days,
+            hourly_resolution,
+        }
+    }
+}
+
+/// Everything a backend may touch while fetching.
+///
+/// Providers never open sockets or read files themselves: the shared [`HttpClient`] carries the
+/// retry policy, [`Cache`] the on-disk answers and [`KeyStore`] the credentials. `quiet`/`verbose`
+/// are the run's output flags — the chain warns about a fallback and a provider reports a clamp,
+/// and both must respect `-q`/`-v`.
+pub struct Env<'a> {
+    /// The shared HTTP client.
+    pub http: &'a HttpClient,
+    /// The on-disk cache, already in the run's mode.
+    pub cache: &'a Cache,
+    /// The validated configuration.
+    pub config: &'a Config,
+    /// The key store, for the backends that need one.
+    pub keys: &'a KeyStore,
+    /// `-q`: suppress non-essential notes and warnings.
+    pub quiet: bool,
+    /// `-v` level.
+    pub verbose: u8,
+}
+
+/// One weather backend.
+///
+/// Implementations are synchronous and stateless (`&self`, no interior mutability), so a provider
+/// value is cheap to create and cannot smuggle state between runs.
+pub trait Provider {
+    /// The registry id, which must match the row in [`ProviderId::metadata`].
+    fn id(&self) -> ProviderId;
+
+    /// What this backend offers; implementations return their registry row's
+    /// [`ProviderMeta::capabilities`].
+    fn capabilities(&self) -> Capabilities;
+
+    /// Fetches one forecast for `loc`.
+    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report>;
+}
+
+/// The implementation behind a registry id.
+///
+/// An id whose row says `implemented: false` has no backend yet; [`select`] keeps such an id out of
+/// every chain, so this error is only reachable through a hand-built chain.
+pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
+    match id {
+        ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
+        other => Err(Error::Usage(format!(
+            "provider `{other}` is not implemented yet"
+        ))),
+    }
+}
+
+/// The credit line a provider's data licence requires, for the renderers that print it.
+///
+/// An unknown or unimplemented provider id has no verified licence row and therefore no line: the
+/// renderer prints what the registry knows rather than inventing a credit.
+#[must_use]
+pub fn licence_line(provider: &str) -> Option<&'static str> {
+    provider
+        .parse::<ProviderId>()
+        .ok()
+        .and_then(|id| id.metadata().licence)
+}
+
+/// The chain a `--provider` value names.
+///
+/// * `auto` expands to every implemented keyless backend that answers for a resolved place, in
+///   registry order — today `open-meteo` alone, `open-meteo,smhi` once step 10 lands, and never a
+///   station-only backend such as `metar` (a station has to be requested explicitly).
+/// * anything else is an explicit ordered chain: each entry must name a known, implemented
+///   provider, and duplicates collapse to their first position.
+/// * an unknown id is [`Error::Usage`] listing the known ids; a known but unimplemented one is the
+///   same variant with `not implemented yet`.
+pub fn select(spec: &str) -> Result<Vec<ProviderId>> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return Err(Error::Usage(
+            "no provider selected; pass `--provider <id>` or set defaults.provider".to_owned(),
+        ));
+    }
+
+    let mut ids = Vec::new();
+    for token in spec.split(',') {
+        let token = token.trim();
+        if token.is_empty() {
+            return Err(Error::Usage(format!(
+                "empty entry in the provider list `{spec}`"
+            )));
+        }
+        if token.eq_ignore_ascii_case("auto") {
+            for id in auto_chain()? {
+                push_unique(&mut ids, id);
+            }
+            continue;
+        }
+        let id: ProviderId = token.parse()?;
+        if !id.metadata().implemented {
+            return Err(Error::Usage(format!(
+                "provider `{id}` is not implemented yet"
+            )));
+        }
+        push_unique(&mut ids, id);
+    }
+
+    if ids.is_empty() {
+        return Err(Error::Config(
+            "the provider chain is empty; pass `--provider <id>`".to_owned(),
+        ));
+    }
+    Ok(ids)
+}
+
+/// The keyless backends that answer for a resolved place, in registry order.
+fn auto_chain() -> Result<Vec<ProviderId>> {
+    let ids: Vec<ProviderId> = ProviderId::all()
+        .into_iter()
+        .filter(|id| {
+            let meta = id.metadata();
+            meta.implemented && !meta.requires_key && meta.location_kinds.city
+        })
+        .collect();
+    if ids.is_empty() {
+        return Err(Error::Config(
+            "no provider is available without an API key; set one and use `--provider <id>`"
+                .to_owned(),
+        ));
+    }
+    Ok(ids)
+}
+
+/// Appends `id` unless the chain already names it.
+fn push_unique(ids: &mut Vec<ProviderId>, id: ProviderId) {
+    if !ids.contains(&id) {
+        ids.push(id);
+    }
+}
+
+/// Fetches from the first backend of `ids` that answers.
+///
+/// The chain falls through to the next entry **only** when the failure is transport-level
+/// ([`Error::Network`]) or comes from upstream ([`Error::Upstream`]): a usage, config, location,
+/// missing-key or body-decoding error is the user's answer and stops the walk. A missing key is
+/// reported before the backend is called at all, so a chain entry cannot be "tried" without its
+/// credential. Unless `-q` is set, each fallback prints one `warning:` line naming the reason.
+pub fn fetch_chain(
+    ids: &[ProviderId],
+    loc: &Location,
+    req: &FetchRequest,
+    env: &Env<'_>,
+) -> Result<Report> {
+    fetch_chain_with(ids, loc, req, env, provider_for)
+}
+
+/// [`fetch_chain`] with an injectable factory, so unit tests can script backend outcomes.
+#[allow(clippy::trivially_copy_pass_by_ref)] // the contract fixes `req: &FetchRequest`
+fn fetch_chain_with(
+    ids: &[ProviderId],
+    loc: &Location,
+    req: &FetchRequest,
+    env: &Env<'_>,
+    build: impl Fn(ProviderId) -> Result<Box<dyn Provider>>,
+) -> Result<Report> {
+    if ids.is_empty() {
+        return Err(Error::Config(
+            "the provider chain is empty; pass `--provider <id>`".to_owned(),
+        ));
+    }
+
+    let mut last_error = None;
+    for (index, id) in ids.iter().enumerate() {
+        let provider = build(*id)?;
+        let capabilities = provider.capabilities();
+
+        if capabilities.requires_key {
+            let variable = capabilities.key_env.ok_or_else(|| {
+                Error::Config(format!(
+                    "provider `{id}` declares that it needs a key but names no environment variable"
+                ))
+            })?;
+            if env.keys.get(id.as_str())?.is_none() {
+                return Err(Error::MissingKey {
+                    provider: id.to_string(),
+                    env: variable.to_owned(),
+                });
+            }
+        }
+
+        if env.verbose > 0 {
+            eprintln!("provider: {id} attempt {}/{}", index + 1, ids.len());
+        }
+
+        match provider.fetch(loc, req, env) {
+            Ok(report) => return Ok(report),
+            Err(error) if matches!(error, Error::Network(_) | Error::Upstream { .. }) => {
+                if env.verbose > 0 {
+                    eprintln!("provider: {id} failed: {error}");
+                }
+                if let Some(next) = ids.get(index + 1)
+                    && !env.quiet
+                {
+                    eprintln!(
+                        "warning: {id} failed ({}); falling back to {next}",
+                        chain_reason(&error)
+                    );
+                }
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        Error::Config("no provider could answer; pass `--provider <id>`".to_owned())
+    }))
+}
+
+/// The short classifier a fallback warning names: `network: …` or `upstream: …`.
+fn chain_reason(error: &Error) -> String {
+    match error {
+        Error::Network(message) => format!("network: {message}"),
+        Error::Upstream { message, .. } => format!("upstream: {message}"),
+        other => other.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use super::{LocationKinds, ProviderId};
+    use chrono::Utc;
+    use chrono_tz::Tz;
+
+    use super::{
+        Capabilities, Env, FetchRequest, HourlyResolution, LocationKinds, Provider, ProviderId,
+        fetch_chain_with, select,
+    };
+    use crate::cache::{Cache, CacheMode, SystemClock};
+    use crate::config::Config;
+    use crate::config::keys::KeyStore;
+    use crate::error::Error;
+    use crate::http::{HttpClient, StubTransport};
+    use crate::model::{Attribution, Location, LocationSource, Report};
+    use crate::paths::Paths;
 
     #[test]
     fn every_provider_parses_from_its_canonical_spelling() {
@@ -372,5 +738,327 @@ mod tests {
         assert_eq!(meta.max_days, 0);
         assert_eq!(meta.location_kinds, LocationKinds::STATION);
         assert!(!meta.daily && !meta.hourly);
+    }
+
+    #[test]
+    fn capabilities_mirror_the_registry_row() {
+        for id in ProviderId::all() {
+            let meta = id.metadata();
+            let capabilities = meta.capabilities();
+            assert_eq!(capabilities.current, meta.current);
+            assert_eq!(capabilities.hourly, meta.hourly);
+            assert_eq!(capabilities.daily, meta.daily);
+            assert_eq!(capabilities.alerts, meta.alerts);
+            assert_eq!(capabilities.max_days, meta.max_days);
+            assert_eq!(capabilities.requires_key, meta.requires_key);
+            assert_eq!(capabilities.key_env, meta.key_env);
+            assert_eq!(capabilities.location_kinds, meta.location_kinds);
+        }
+    }
+
+    #[test]
+    fn an_unimplemented_row_claims_neither_a_backend_nor_a_licence() {
+        for id in ProviderId::all() {
+            let meta = id.metadata();
+            if !meta.implemented {
+                assert!(
+                    meta.licence.is_none(),
+                    "{id} has no backend yet, so its licence row would be an unverified claim"
+                );
+            }
+        }
+        assert_eq!(
+            ProviderId::OpenMeteo.metadata().licence,
+            Some("Open-Meteo.com (CC BY 4.0)")
+        );
+    }
+
+    #[test]
+    fn auto_expands_to_the_implemented_keyless_chain() {
+        assert_eq!(
+            select("auto").expect("auto expands"),
+            vec![ProviderId::OpenMeteo]
+        );
+        assert_eq!(
+            select("AUTO").expect("the spelling is case insensitive"),
+            vec![ProviderId::OpenMeteo]
+        );
+    }
+
+    #[test]
+    fn an_explicit_chain_keeps_order_and_drops_duplicates() {
+        let ids = select("open-meteo, Open-Meteo ,open_meteo").expect("all three name one backend");
+        assert_eq!(ids, vec![ProviderId::OpenMeteo]);
+    }
+
+    #[test]
+    fn unknown_and_unimplemented_ids_are_usage_errors() {
+        let unknown = select("does-not-exist").expect_err("unknown id");
+        assert_eq!(unknown.exit_code(), 2);
+        assert!(
+            unknown
+                .to_string()
+                .contains("unknown provider `does-not-exist`")
+        );
+
+        let planned = select("smhi").expect_err("smhi has no backend yet");
+        assert_eq!(planned.exit_code(), 2);
+        assert!(
+            planned
+                .to_string()
+                .contains("provider `smhi` is not implemented yet")
+        );
+    }
+
+    #[test]
+    fn an_empty_selection_is_a_usage_error() {
+        assert_eq!(select("  ").expect_err("no provider named").exit_code(), 2);
+        assert_eq!(
+            select("open-meteo,").expect_err("empty entry").exit_code(),
+            2
+        );
+    }
+
+    /// The four `Env` members plus the temp directory that keeps the key store and cache alive.
+    struct Fixture {
+        _directory: tempfile::TempDir,
+        http: HttpClient,
+        cache: Cache,
+        config: Config,
+        keys: KeyStore,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let directory = tempfile::tempdir().expect("tempdir");
+            let paths = Paths {
+                config_dir: directory.path().join("config"),
+                config_file: directory.path().join("config/config.toml"),
+                keys_file: directory.path().join("config/keys.toml"),
+                cache_dir: directory.path().join("cache"),
+                data_dir: directory.path().join("data"),
+            };
+            Self {
+                http: HttpClient::new(
+                    Box::new(StubTransport::new(Vec::new())),
+                    0,
+                    Arc::new(SystemClock),
+                    0,
+                ),
+                cache: Cache::with_root(
+                    directory.path().join("cache"),
+                    CacheMode::Normal,
+                    Arc::new(SystemClock),
+                    0,
+                ),
+                config: Config::default(),
+                keys: KeyStore::new(&paths),
+                _directory: directory,
+            }
+        }
+
+        fn env(&self) -> Env<'_> {
+            Env {
+                http: &self.http,
+                cache: &self.cache,
+                config: &self.config,
+                keys: &self.keys,
+                quiet: true,
+                verbose: 0,
+            }
+        }
+    }
+
+    /// What a stub backend answers.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Outcome {
+        Report,
+        Network,
+        Upstream,
+        Usage,
+    }
+
+    /// A backend with a scripted outcome, counting how often it was called.
+    struct Stub {
+        id: ProviderId,
+        outcome: Outcome,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl Provider for Stub {
+        fn id(&self) -> ProviderId {
+            self.id
+        }
+
+        fn capabilities(&self) -> Capabilities {
+            self.id.metadata().capabilities()
+        }
+
+        fn fetch(
+            &self,
+            _loc: &Location,
+            _req: &FetchRequest,
+            _env: &Env<'_>,
+        ) -> super::Result<Report> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match self.outcome {
+                Outcome::Report => Ok(stub_report(self.id)),
+                Outcome::Network => Err(Error::Network("connection reset".to_owned())),
+                Outcome::Upstream => Err(Error::Upstream {
+                    provider: self.id.to_string(),
+                    status: Some(500),
+                    message: "boom".to_owned(),
+                }),
+                Outcome::Usage => Err(Error::Usage("this location is not supported".to_owned())),
+            }
+        }
+    }
+
+    fn stub_report(id: ProviderId) -> Report {
+        Report {
+            location: test_location(),
+            current: None,
+            days: Vec::new(),
+            attribution: Attribution {
+                provider: id.to_string(),
+                url: "https://example.invalid/forecast".to_owned(),
+                fetched_at: Utc::now(),
+                raw: None,
+            },
+        }
+    }
+
+    fn test_location() -> Location {
+        Location {
+            name: "Beijing".to_owned(),
+            admin1: None,
+            country: "China".to_owned(),
+            country_code: Some("CN".to_owned()),
+            lat: 39.9042,
+            lon: 116.4074,
+            tz: Tz::Asia__Shanghai,
+            elevation_m: None,
+            population: None,
+            source: LocationSource::Geocoder,
+        }
+    }
+
+    fn request() -> FetchRequest {
+        FetchRequest::new(3, HourlyResolution::Hourly)
+    }
+
+    /// A factory over a scripted outcome table.
+    fn factory<'a>(
+        outcomes: &'a [(ProviderId, Outcome)],
+        calls: &'a Arc<AtomicUsize>,
+    ) -> impl Fn(ProviderId) -> super::Result<Box<dyn Provider>> + 'a {
+        move |id| {
+            let outcome = outcomes
+                .iter()
+                .find(|(candidate, _)| *candidate == id)
+                .map(|(_, outcome)| *outcome)
+                .ok_or_else(|| Error::Other(format!("no stub for {id}")))?;
+            Ok(Box::new(Stub {
+                id,
+                outcome,
+                calls: Arc::clone(calls),
+            }))
+        }
+    }
+
+    #[test]
+    fn the_chain_returns_the_first_report() {
+        let fixture = Fixture::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let outcomes = [(ProviderId::OpenMeteo, Outcome::Report)];
+        let report = fetch_chain_with(
+            &[ProviderId::OpenMeteo],
+            &test_location(),
+            &request(),
+            &fixture.env(),
+            factory(&outcomes, &calls),
+        )
+        .expect("the stub answers");
+        assert_eq!(report.attribution.provider, "open-meteo");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn transport_and_upstream_failures_fall_through() {
+        let fixture = Fixture::new();
+        for outcome in [Outcome::Network, Outcome::Upstream] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let outcomes = [
+                (ProviderId::OpenMeteo, outcome),
+                (ProviderId::Smhi, Outcome::Report),
+            ];
+            let report = fetch_chain_with(
+                &[ProviderId::OpenMeteo, ProviderId::Smhi],
+                &test_location(),
+                &request(),
+                &fixture.env(),
+                factory(&outcomes, &calls),
+            )
+            .expect("the second entry answers");
+            assert_eq!(report.attribution.provider, "smhi");
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+        }
+    }
+
+    #[test]
+    fn a_usage_error_stops_the_chain() {
+        let fixture = Fixture::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let outcomes = [
+            (ProviderId::OpenMeteo, Outcome::Usage),
+            (ProviderId::Smhi, Outcome::Report),
+        ];
+        let error = fetch_chain_with(
+            &[ProviderId::OpenMeteo, ProviderId::Smhi],
+            &test_location(),
+            &request(),
+            &fixture.env(),
+            factory(&outcomes, &calls),
+        )
+        .expect_err("a usage error is the user's answer");
+        assert!(matches!(error, Error::Usage(_)));
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "the next entry must not be tried"
+        );
+    }
+
+    #[test]
+    fn a_missing_key_is_reported_before_the_backend_runs() {
+        let fixture = Fixture::new();
+        if fixture.keys.get("qweather").expect("key lookup").is_some() {
+            // A machine that exports CIRROCAST_QWEATHER_KEY cannot exercise this path.
+            return;
+        }
+        let calls = Arc::new(AtomicUsize::new(0));
+        let outcomes = [
+            (ProviderId::QWeather, Outcome::Report),
+            (ProviderId::OpenMeteo, Outcome::Report),
+        ];
+        let error = fetch_chain_with(
+            &[ProviderId::QWeather, ProviderId::OpenMeteo],
+            &test_location(),
+            &request(),
+            &fixture.env(),
+            factory(&outcomes, &calls),
+        )
+        .expect_err("no key is configured");
+        assert_eq!(error.exit_code(), 6);
+        let Error::MissingKey { provider, env } = error else {
+            panic!("expected a missing-key error");
+        };
+        assert_eq!(provider, "qweather");
+        assert_eq!(env, "CIRROCAST_QWEATHER_KEY");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "a backend without its key must not be called"
+        );
     }
 }
