@@ -4,9 +4,9 @@
 //! `cirrocast` — a terminal weather client with pluggable backends.
 //!
 //! This crate is the library half of the binary: the command line surface ([`cli`]), the error and
-//! exit-code contract ([`error`]), XDG directory resolution ([`paths`]), the backend registry
-//! ([`provider`]), the canonical data model ([`model`]) and location resolution ([`geo`]). Weather
-//! fetching arrives in later steps.
+//! exit-code contract ([`error`]), XDG directory resolution ([`paths`]), the backend registry and
+//! the provider trait ([`provider`]), the canonical data model ([`model`]), location resolution
+//! ([`geo`]) and the render layer ([`render`]).
 
 pub mod cache;
 pub mod cli;
@@ -17,3 +17,4 @@ pub mod http;
 pub mod model;
 pub mod paths;
 pub mod provider;
+pub mod render;
