@@ -214,3 +214,101 @@ fn cache_mode_flags_are_mutually_exclusive() {
         .code(2)
         .stderr(predicate::str::contains("cannot be used with"));
 }
+
+/// The whole pipeline over a pre-seeded cache entry: no request leaves the machine, and the output
+/// is the one a fetched report produces.
+#[test]
+fn a_coordinate_query_renders_a_report_from_the_cache() {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
+
+    let sandbox = common::Sandbox::new();
+    let body = std::fs::read_to_string(common::fixture_path(
+        "open_meteo/forecast_beijing_2026-07-15.json",
+    ))
+    .expect("the fixture is readable");
+
+    // The key the CLI computes for `@39.9042,116.4074 --days 3`: the location is coordinates, so
+    // its zone is still UTC when the key is built and `local_today` is today's UTC date.
+    let today = chrono::Utc::now().date_naive();
+    let key = CacheKey::weather("open-meteo", 39.9042, 116.4074, 3, today);
+    let cache = Cache::with_root(
+        sandbox.cache_dir(),
+        CacheMode::Normal,
+        Arc::new(SystemClock),
+        0,
+    );
+    cache
+        .write(&key, 200, &body, Duration::from_secs(600))
+        .expect("the cache entry is written");
+
+    let assert = sandbox
+        .cirrocast()
+        .args(["@39.9042,116.4074", "--format", "plain", "--offline"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
+
+    // The response's zone replaces the provisional UTC of a coordinate location, and the report is
+    // the fixture's first day aggregated into the canonical four parts.
+    assert!(stdout.contains("Asia/Shanghai"), "{stdout}");
+    assert!(
+        stdout.contains("Now: 18°C (feels 12°C), Overcast"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("2026-07-15  min 25°C  max 35°C"),
+        "{stdout}"
+    );
+    for label in ["Morning", "Noon", "Evening", "Night"] {
+        assert!(stdout.contains(label), "`{label}` missing from:\n{stdout}");
+    }
+    assert!(
+        stdout.contains("Data: Open-Meteo.com (CC BY 4.0)"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn an_unknown_provider_is_a_usage_error() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["-p", "open-meteo,does-not-exist", "@39.9,116.4"])
+        .assert()
+        .code(2)
+        .stderr(
+            predicate::str::contains("error:").and(predicate::str::contains(
+                "unknown provider `does-not-exist`",
+            )),
+        );
+}
+
+#[test]
+fn a_planned_provider_is_a_usage_error() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["-p", "smhi", "@39.9,116.4"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "provider `smhi` is not implemented yet",
+        ));
+}
+
+#[test]
+fn only_the_plain_format_exists_yet() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["@39.9,116.4", "--format", "art-table"])
+        .assert()
+        .code(2)
+        .stderr(
+            predicate::str::contains("invalid value 'art-table'")
+                .and(predicate::str::contains("possible values: plain")),
+        );
+}

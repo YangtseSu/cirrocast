@@ -45,6 +45,21 @@ precedence = "override"
 SPDX-FileCopyrightText = "GeoNames (geocoding data served by Open-Meteo)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# Recorded Open-Meteo forecast responses (weather model data, CC BY 4.0). They are kept verbatim
+# and carry the upstream licence rather than being relicensed; the provider prints the matching
+# credit line.
+#
+# Provenance: direct TLS to `api.open-meteo.com` and `historical-forecast-api.open-meteo.com` is
+# blocked from the recording network, so each body was fetched through the `r.jina.ai` text proxy,
+# with only the proxy's header block stripped. The four dates are in the past, so the Historical
+# Forecast API served them; its schema and parameter set are the same as the forecast endpoint's,
+# and the query used the provider's own parameter list.
+[[annotations]]
+path = "tests/fixtures/open_meteo/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com"
+SPDX-License-Identifier = "CC-BY-4.0"
+
 # Recorded OpenStreetMap/Nominatim responses: ODbL requires attribution, and the fixtures keep the
 # upstream licence rather than being relicensed.
 [[annotations]]
