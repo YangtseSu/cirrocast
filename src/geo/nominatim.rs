@@ -146,7 +146,7 @@ impl Geocoder for Nominatim<'_> {
         let key = self.cache_key(query, limit);
         let hits: Vec<Hit> = self
             .cache
-            .read_or_fetch_json(&key, self.ttl, || self.fetch(query, limit))?;
+            .read_or_fetch_json(&key, self.ttl, "nominatim", || self.fetch(query, limit))?;
         hits.into_iter().map(location_from_hit).collect()
     }
 }

@@ -59,6 +59,20 @@ pub enum Error {
         env: String,
     },
 
+    /// A provider rejected the API key it was given.
+    ///
+    /// Separate from [`Error::Upstream`] because the answer is never "try again": the credential
+    /// is wrong, disabled or not entitled, and only the user can fix it.
+    #[error(
+        "provider {provider} rejected the API key (HTTP {status}): replace it with `cirrocast key set {provider}`"
+    )]
+    InvalidKey {
+        /// Provider id, e.g. `openweathermap`.
+        provider: String,
+        /// The HTTP status the rejection came with (`401` today; a provider may refine it).
+        status: u16,
+    },
+
     /// Anything else: an unexpected failure that still has to exit non-zero.
     #[error("{0}")]
     Other(String),
@@ -75,7 +89,7 @@ impl Error {
             Self::Network(_) | Self::Upstream { .. } => 3,
             Self::Config(_) => 4,
             Self::LocationNotFound(_) => 5,
-            Self::MissingKey { .. } => 6,
+            Self::MissingKey { .. } | Self::InvalidKey { .. } => 6,
         }
     }
 }
@@ -130,7 +144,27 @@ mod tests {
                 },
                 6,
             ),
+            (
+                Error::InvalidKey {
+                    provider: "openweathermap".into(),
+                    status: 401,
+                },
+                6,
+            ),
         ]
+    }
+
+    #[test]
+    fn an_invalid_key_names_the_fix() {
+        let error = Error::InvalidKey {
+            provider: "weatherapi".into(),
+            status: 401,
+        };
+        assert_eq!(
+            error.to_string(),
+            "provider weatherapi rejected the API key (HTTP 401): \
+             replace it with `cirrocast key set weatherapi`"
+        );
     }
 
     #[test]

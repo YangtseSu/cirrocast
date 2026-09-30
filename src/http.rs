@@ -16,7 +16,9 @@
 //! * `http_status_as_error(false)` keeps the status *and* the body of a 4xx/5xx response, which is
 //!   what lets the policy retry `429`/`5xx` and report the upstream's own `reason` text;
 //! * [`HttpRequest::normalized`] is the cache key input: query pairs sorted and encoded, header
-//!   names lower-cased, so two spellings of the same request hash to one cache entry.
+//!   names lower-cased, so two spellings of the same request hash to one cache entry;
+//! * [`HttpRequest::secret`] marks a credential so that no log line, error message or cache
+//!   envelope can contain it — the redacted spellings are the only ones printed anywhere.
 
 use std::collections::VecDeque;
 use std::path::Path;
@@ -76,13 +78,35 @@ impl Method {
 }
 
 /// One request, before any transport sees it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// A request may carry a credential — in a query parameter, a header or the path itself — and every
+/// log line, error message and cache envelope must stay free of it. [`HttpRequest::secret`] records
+/// such a value; the redacted spellings ([`HttpRequest::redacted_url`],
+/// [`HttpRequest::redacted_normalized`], the [`Debug`] output) are what the rest of the program
+/// prints.
+#[derive(Clone, PartialEq, Eq)]
 pub struct HttpRequest {
     method: Method,
     url: String,
     query: Vec<(String, String)>,
     headers: Vec<(String, String)>,
     timeout: Option<Duration>,
+    secrets: Vec<String>,
+}
+
+/// The placeholder a secret is replaced with.
+const REDACTED: &str = "***";
+
+impl std::fmt::Debug for HttpRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpRequest")
+            .field("method", &self.method)
+            .field("url", &self.redacted_url())
+            .field("headers", &self.headers.len())
+            .field("timeout", &self.timeout)
+            .field("secrets", &self.secrets.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl HttpRequest {
@@ -94,7 +118,22 @@ impl HttpRequest {
             query: Vec::new(),
             headers: Vec::new(),
             timeout: None,
+            secrets: Vec::new(),
         }
+    }
+
+    /// Records `value` as a secret: it is replaced with `***` in every URL, log line, error
+    /// message and cache envelope this request produces.
+    ///
+    /// The value itself is never used to send anything — it is already part of the URL, query or
+    /// headers; this only tells the redaction where to look.
+    #[must_use]
+    pub fn secret(mut self, value: impl Into<String>) -> Self {
+        let value = value.into();
+        if !value.is_empty() {
+            self.secrets.push(value);
+        }
+        self
     }
 
     /// Appends one query parameter; insertion order is the order on the wire.
@@ -160,6 +199,34 @@ impl HttpRequest {
             .map(|(key, value)| format!("{}={}", encode(key), encode(value)))
             .collect();
         format!("{}?{}", self.url, pairs.join("&"))
+    }
+
+    /// [`Self::full_url`] with every recorded secret replaced by `***`.
+    #[must_use]
+    pub fn redacted_url(&self) -> String {
+        self.redact(&self.full_url())
+    }
+
+    /// [`Self::normalized`] with every recorded secret replaced by `***`, so a credential can
+    /// never be written into a cache envelope or a `-v` line.
+    #[must_use]
+    pub fn redacted_normalized(&self) -> String {
+        self.redact(&self.normalized())
+    }
+
+    /// Replaces each recorded secret with [`REDACTED`], longest first so overlapping values cannot
+    /// leave a tail behind.
+    fn redact(&self, text: &str) -> String {
+        let mut secrets: Vec<&str> = self
+            .secrets
+            .iter()
+            .map(String::as_str)
+            .filter(|value| !value.is_empty())
+            .collect();
+        secrets.sort_by_key(|value| std::cmp::Reverse(value.len()));
+        secrets.into_iter().fold(text.to_owned(), |text, secret| {
+            text.replace(secret, REDACTED)
+        })
     }
 
     /// The canonical spelling of this request, and the input to a cache key: method, URL, query
@@ -567,7 +634,7 @@ impl HttpClient {
             eprintln!(
                 "http: {} {} attempt {}/{} after {reason}; sleeping {:.1} s",
                 request.method().as_str(),
-                request.full_url(),
+                request.redacted_url(),
                 attempt + 1,
                 self.attempts,
                 delay.as_secs_f64()
@@ -580,7 +647,7 @@ impl HttpClient {
 /// not.
 fn network_error(request: &HttpRequest, attempts: u32, error: &TransportError) -> Error {
     let method = request.method().as_str();
-    let url = request.full_url();
+    let url = request.redacted_url();
     if error.is_retryable() {
         Error::Network(format!(
             "{method} {url} failed after {attempts} attempts: {error}"
@@ -705,6 +772,40 @@ mod tests {
             .query("name", "Beijing, CN")
             .header("user-agent", "cirrocast/0.1.0");
         assert_eq!(request.normalized(), reordered.normalized());
+    }
+
+    #[test]
+    fn a_secret_is_redacted_everywhere_the_request_is_printed() {
+        let request = HttpRequest::get("https://api.example.invalid/data/2.5/weather")
+            .query("lat", "39.9042")
+            .query("appid", "sk-live-0123456789abcdef")
+            .header("X-Api-Key", "sk-live-0123456789abcdef")
+            .secret("sk-live-0123456789abcdef");
+
+        assert!(request.full_url().contains("sk-live-0123456789abcdef"));
+        assert!(!request.redacted_url().contains("sk-live-0123456789abcdef"));
+        assert!(request.redacted_url().contains("appid=***"));
+        assert!(
+            !request
+                .redacted_normalized()
+                .contains("sk-live-0123456789abcdef")
+        );
+        assert!(request.redacted_normalized().contains("***"));
+
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("sk-live-0123456789abcdef"), "{debug}");
+    }
+
+    #[test]
+    fn redaction_takes_the_longest_secret_first() {
+        let request = HttpRequest::get("https://api.example.invalid/v1/forecast")
+            .query("key", "abcdef")
+            .secret("abcd")
+            .secret("abcdef");
+        assert_eq!(
+            request.redacted_url(),
+            "https://api.example.invalid/v1/forecast?key=***"
+        );
     }
 
     #[test]

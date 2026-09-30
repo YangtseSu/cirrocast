@@ -25,12 +25,15 @@ pub mod open_meteo;
 
 use std::fmt;
 use std::str::FromStr;
+use std::time::Duration;
 
-use crate::cache::Cache;
+use serde::de::DeserializeOwned;
+
+use crate::cache::{Cache, CacheKey};
 use crate::config::Config;
 use crate::config::keys::KeyStore;
 use crate::error::{Error, Result};
-use crate::http::HttpClient;
+use crate::http::{HttpClient, HttpRequest};
 use crate::model::{Location, Report};
 
 /// A backend `cirrocast` knows how to talk to.
@@ -475,6 +478,69 @@ pub struct Env<'a> {
     pub quiet: bool,
     /// `-v` level.
     pub verbose: u8,
+}
+
+/// One upstream JSON request plus the cache policy it runs under.
+///
+/// Built by a provider — only it knows the URL, the parameters and the cache key shape — and
+/// executed by [`fetch_json`]. A credential in the request is marked with
+/// [`HttpRequest::secret`] so the redaction reaches the log lines, the error messages and the
+/// cache envelope.
+pub struct JsonFetch<'a> {
+    /// The backend the request belongs to; names the provider in errors.
+    pub provider: ProviderId,
+    /// The request to send.
+    pub request: HttpRequest,
+    /// Where the answer is cached. The caller owns the shape: it knows the location, the day count
+    /// and the location-local date the key is built from.
+    pub key: CacheKey,
+    /// How long the cached answer stays fresh.
+    pub ttl: Duration,
+    /// The one HTTP call behind this fetch, for the `-v` line the provider prints.
+    pub what: &'a str,
+}
+
+/// Fetches and decodes one JSON answer, keeping the cross-cutting policy in one place.
+///
+/// * the cache decides whether a request happens at all (`--no-cache`, `--refresh`, `--offline`
+///   and the TTL come from [`Cache`]); a cached body that no longer parses is refetched;
+/// * [`HttpClient`] owns retries, backoff, `Retry-After` and gzip;
+/// * a `401` becomes [`Error::InvalidKey`] (exit 6) because the credential is the user's to fix and
+///   neither a retry nor a fallback can change it. A `403` deliberately stays
+///   [`Error::Upstream`]: it carries quota, plan, permission and host-mismatch refusals whose body
+///   text is the actionable part, and a provider that can tell "the key is invalid" apart from
+///   "the plan is exhausted" refines it in its own decoder;
+/// * `429`, `5xx` and transport failures keep their taxonomy ([`Error::Upstream`] /
+///   [`Error::Network`]), which is what lets a chain fall through to the next backend;
+/// * decoding happens here, so a schema change names the provider rather than the cache.
+pub fn fetch_json<T: DeserializeOwned>(env: &Env<'_>, fetch: &JsonFetch<'_>) -> Result<T> {
+    if env.verbose > 0 {
+        eprintln!(
+            "provider: {} {} (cache {})",
+            fetch.provider,
+            fetch.what,
+            env.cache.mode().name()
+        );
+    }
+    env.cache
+        .read_or_fetch_json(&fetch.key, fetch.ttl, fetch.provider.as_str(), || {
+            let response = env.http.send(&fetch.request)?;
+            Ok((response.status(), response.body().to_owned()))
+        })
+        .map_err(|error| rejected_key(error, fetch.provider))
+}
+
+/// Turns a provider's `401` into [`Error::InvalidKey`]; every other error keeps its taxonomy.
+fn rejected_key(error: Error, provider: ProviderId) -> Error {
+    match error {
+        Error::Upstream {
+            status: Some(401), ..
+        } => Error::InvalidKey {
+            provider: provider.to_string(),
+            status: 401,
+        },
+        other => other,
+    }
 }
 
 /// One weather backend.

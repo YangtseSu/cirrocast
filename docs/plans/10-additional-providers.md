@@ -23,12 +23,20 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       plus the at-a-glance tables, the status-code behaviour table and the re-verification log. Authored
       here because the registry re-verification below needs a written record; `docs/plans/23-docs-and-guides.md`
       keeps the user-facing review of the same file.
-- ⬜ `provider/mod.rs`: `HttpRequest { url, query: &[(&str, &str)], headers: &[(&str, &str)], cache_tag: &str,
-      ttl_secs: u64, key_secret: Option<&str> }` and `http_json<T: DeserializeOwned>(env, req) -> Result<T>` —
-      the one helper for UA + `Accept-Encoding`, the cache policy from `cache.rs` (TTL, offline/refresh/no-cache),
-      retries with backoff, gzip and JSON decode, and the error taxonomy (401/403 → `MissingKey`/`InvalidKey`
-      exit 6, 429 → `Upstream` with `Retry-After` honoured, 5xx/timeout → `Upstream`/`Network` exit 3, malformed
-      body → `Upstream`), masking the secret in every log line (`***`).
+- ✅ `provider/mod.rs`: the shared JSON helper landed as `provider::fetch_json(env, &JsonFetch { provider,
+      request, key, ttl, what })` (naming amended: the low-level `http::HttpRequest` already exists, so the
+      descriptor is `JsonFetch`, and the secret travels on the request instead of in a `key_secret` field —
+      `HttpRequest::secret` marks a credential so the redaction reaches the `-v` lines, the error messages
+      *and* the cache envelope, which `redacted_normalized()` keeps clean). The cache key is the caller's
+      (`CacheKey::weather` for one-call backends, the new `CacheKey::weather_part` for a backend with more
+      than one resource), because only the provider knows the location, the day count and the local date.
+      Taxonomy as built: one helper for UA + `Accept-Encoding` (ureq's default `gzip` feature decompresses
+      transparently), the cache policy from `cache.rs` (TTL, offline/refresh/no-cache), retries with backoff
+      and `Retry-After` from `http.rs`, and JSON decode naming the provider. `401` → the new
+      `Error::InvalidKey` (exit 6, "replace it with `cirrocast key set <id>`"); a `403` deliberately stays
+      `Error::Upstream` (exit 3) because it carries quota/plan/host refusals whose body text is the actionable
+      part — a provider that can tell "invalid key" apart refines it in its own decoder; `429`/`5xx`/timeout
+      keep `Upstream`/`Network` so a chain continues.
 - ⬜ Fallback chain semantics as contracted: only `Error::Upstream`/`Error::Network` continue to the next entry,
       while `Usage`/`Config`/`Location`/`MissingKey`/`InvalidKey` abort immediately with their own exit code. An
       exhausted chain reports every attempt: `error: all providers failed: open-meteo (upstream timeout after
@@ -233,3 +241,10 @@ cirrocast provider list && cirrocast provider info smhi
   ODbL with mandatory visible attribution. `ProviderMeta` gained `verified` (printed by `provider info`), the
   wrong registry rows were corrected in the same commit, and `docs/plans/01-project-scaffold.md` notes the
   correction. `docs/plans/23-docs-and-guides.md` keeps its review of the same file for the user-facing pass.
+- 2026-10-01 — shared HTTP helper landed (`provider::JsonFetch` / `fetch_json`), with the redaction and
+  taxonomy pieces it needs: `HttpRequest::secret`/`redacted_url`/`redacted_normalized` (and a `Debug` impl
+  that cannot print a credential), `Error::InvalidKey` (exit 6), `CacheKey::weather_part` for multi-resource
+  backends, `Cache::mode()`, and `Cache::read_or_fetch_json` naming the provider in decode errors. Open-Meteo
+  and the three geocoders migrated to the new signatures in the same commit; `tests/provider_http.rs` covers
+  401/403/429/5xx/malformed-body/offline/cache-hit/redaction. Naming and the 401-vs-403 split deviate from the
+  text above and are recorded there.

@@ -170,11 +170,13 @@ impl<'a> IpLocatorChain<'a> {
     /// `ipwho.is` had produced it.
     fn locate_via(&self, service: IpService) -> Result<Location> {
         let key = CacheKey::ip(service.slug());
-        let body: Value = self.cache.read_or_fetch_json(&key, self.ttl, || {
-            let request = HttpRequest::get(service.endpoint());
-            let response = self.http.send(&request)?;
-            Ok((response.status(), response.body().to_owned()))
-        })?;
+        let body: Value = self
+            .cache
+            .read_or_fetch_json(&key, self.ttl, service.slug(), || {
+                let request = HttpRequest::get(service.endpoint());
+                let response = self.http.send(&request)?;
+                Ok((response.status(), response.body().to_owned()))
+            })?;
         match service {
             IpService::IpWhoIs => from_ipwho_is(service, &body),
             IpService::IpApiCo => from_ipapi_co(service, &body),

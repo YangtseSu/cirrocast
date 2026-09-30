@@ -33,7 +33,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::Deserialize;
 
-use super::{Capabilities, Env, FetchRequest, Provider, ProviderId};
+use super::{Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json};
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
@@ -81,10 +81,16 @@ impl Provider for OpenMeteo {
         let request = forecast_request(loc, days);
         let ttl = Duration::from_secs(u64::from(env.config.cache.weather_ttl_secs));
 
-        let response: ForecastResponse = env.cache.read_or_fetch_json(&key, ttl, || {
-            let response = env.http.send(&request)?;
-            Ok((response.status(), response.body().to_owned()))
-        })?;
+        let response: ForecastResponse = fetch_json(
+            env,
+            &JsonFetch {
+                provider: ProviderId::OpenMeteo,
+                request: request.clone(),
+                key,
+                ttl,
+                what: "forecast",
+            },
+        )?;
 
         report(&response, loc, request.full_url(), days, env)
     }

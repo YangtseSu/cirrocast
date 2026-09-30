@@ -98,7 +98,7 @@ fn a_future_envelope_version_is_a_miss_and_a_corrupt_entry_self_heals() {
 
     let fetches = AtomicUsize::new(0);
     let value: serde_json::Value = cache
-        .read_or_fetch_json(&key(), Duration::from_secs(600), || {
+        .read_or_fetch_json(&key(), Duration::from_secs(600), "test", || {
             fetches.fetch_add(1, Ordering::SeqCst);
             Ok((200, "{\"results\":[\"recovered\"]}".to_owned()))
         })
@@ -108,7 +108,7 @@ fn a_future_envelope_version_is_a_miss_and_a_corrupt_entry_self_heals() {
     assert!(cache.read(&key()).expect("a read succeeds").is_some());
 
     let again: serde_json::Value = cache
-        .read_or_fetch_json(&key(), Duration::from_secs(600), || {
+        .read_or_fetch_json(&key(), Duration::from_secs(600), "test", || {
             fetches.fetch_add(1, Ordering::SeqCst);
             Ok((200, "{}".to_owned()))
         })
@@ -132,7 +132,7 @@ fn no_cache_reads_and_writes_nothing() {
 
     let fetches = AtomicUsize::new(0);
     cache
-        .read_or_fetch_json::<serde_json::Value>(&key(), Duration::from_secs(600), || {
+        .read_or_fetch_json::<serde_json::Value>(&key(), Duration::from_secs(600), "test", || {
             fetches.fetch_add(1, Ordering::SeqCst);
             Ok((200, "{}".to_owned()))
         })
@@ -152,7 +152,7 @@ fn refresh_bypasses_a_fresh_entry_and_replaces_it() {
     let refreshing = reopen(cache.root(), CacheMode::Refresh, &clock);
     assert!(refreshing.read(&key()).expect("a read succeeds").is_none());
     let value: serde_json::Value = refreshing
-        .read_or_fetch_json(&key(), Duration::from_secs(600), || {
+        .read_or_fetch_json(&key(), Duration::from_secs(600), "test", || {
             Ok((200, "{\"generation\":2}".to_owned()))
         })
         .expect("the refreshed body parses");
@@ -178,7 +178,7 @@ fn offline_serves_hits_and_fails_loudly_on_misses() {
     let offline = reopen(cache.root(), CacheMode::Offline, &clock);
     let fetches = AtomicUsize::new(0);
     let value: serde_json::Value = offline
-        .read_or_fetch_json(&key(), Duration::from_secs(600), || {
+        .read_or_fetch_json(&key(), Duration::from_secs(600), "test", || {
             fetches.fetch_add(1, Ordering::SeqCst);
             Ok((200, "{}".to_owned()))
         })
@@ -188,7 +188,7 @@ fn offline_serves_hits_and_fails_loudly_on_misses() {
 
     let missing = CacheKey::hash("geocode", "open-meteo|shanghai|10|en");
     let error = offline
-        .read_or_fetch_json::<serde_json::Value>(&missing, Duration::from_secs(600), || {
+        .read_or_fetch_json::<serde_json::Value>(&missing, Duration::from_secs(600), "test", || {
             panic!("offline mode must not fetch")
         })
         .expect_err("a miss is a hard failure");

@@ -228,6 +228,25 @@ impl CacheKey {
         }
     }
 
+    /// A weather key for one *resource* of a provider that needs more than one request per fetch
+    /// (`openweathermap`'s `current` and `forecast`, for example), so the answers cannot overwrite
+    /// each other.
+    #[must_use]
+    pub fn weather_part(
+        provider: &str,
+        part: &str,
+        lat: f64,
+        lon: f64,
+        days: u8,
+        date: NaiveDate,
+    ) -> Self {
+        let name = format!("{provider}-{part}-{lat:.2}-{lon:.2}-{days}-{date}.json");
+        Self {
+            path: PathBuf::from("weather").join(&name),
+            normalised: format!("weather|{provider}|{part}|{lat:.2}|{lon:.2}|{days}|{date}"),
+        }
+    }
+
     /// The path below the cache root.
     #[must_use]
     pub fn path(&self) -> &Path {
@@ -445,11 +464,13 @@ impl Cache {
     ///
     /// A cached body that no longer parses counts as a miss and is fetched again (so a provider
     /// schema change heals itself instead of failing forever); a miss in [`CacheMode::Offline`] is
-    /// [`Error::Network`] naming the exact key path.
+    /// [`Error::Network`] naming the exact key path. `provider` is only the name a decode failure
+    /// reports, so the error points at the upstream that changed rather than at the cache.
     pub fn read_or_fetch_json<T: DeserializeOwned>(
         &self,
         key: &CacheKey,
         ttl: Duration,
+        provider: &str,
         fetch: impl FnOnce() -> Result<(u16, String)>,
     ) -> Result<T> {
         if let Some(entry) = self.read(key)? {
@@ -471,7 +492,7 @@ impl Cache {
         let (status, body) = fetch()?;
         self.write(key, status, &body, ttl)?;
         serde_json::from_str(&body).map_err(|error| Error::Upstream {
-            provider: "cache".to_owned(),
+            provider: provider.to_owned(),
             status: Some(status),
             message: format!(
                 "the response stored at {} does not parse as JSON: {error}",
@@ -716,6 +737,23 @@ mod tests {
         assert_eq!(
             CacheKey::ip("ipwho-is").path().to_string_lossy(),
             "ip/ipwho-is.json"
+        );
+
+        let part = CacheKey::weather_part(
+            "openweathermap",
+            "forecast",
+            39.9075,
+            116.39723,
+            5,
+            chrono::NaiveDate::from_ymd_opt(2026, 9, 30).expect("a valid date"),
+        );
+        assert_eq!(
+            part.path().to_string_lossy(),
+            "weather/openweathermap-forecast-39.91-116.40-5-2026-09-30.json"
+        );
+        assert_ne!(
+            part, weather,
+            "a resource must not share the single-call key"
         );
     }
 
