@@ -9,14 +9,15 @@
 
 use std::io::{IsTerminal as _, Read as _};
 use std::process::Command as StdCommand;
+use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::{ArgAction, Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum as _};
 
 use crate::cache::{Cache, CacheMode, CacheStat, Clock, SystemClock};
-use crate::config::Config;
 use crate::config::keys::{KeySource, KeyStore};
+use crate::config::{Config, Settings};
 use crate::error::{Error, Result};
 use crate::geo::ip::{IpLocatorChain, IpService};
 use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
@@ -27,8 +28,11 @@ use crate::geo::{
 };
 use crate::http::{HttpClient, UreqTransport};
 use crate::model::Location;
+use crate::model::units::UnitSystem;
 use crate::paths::Paths;
-use crate::provider::{ProviderId, ProviderMeta};
+use crate::provider::{Env, fetch_chain, select};
+use crate::provider::{FetchRequest, HourlyResolution, ProviderId, ProviderMeta};
+use crate::render::{ColorMode, Format, RenderContext, TermCaps};
 
 /// Top level command line.
 #[derive(Debug, Parser)]
@@ -37,8 +41,7 @@ use crate::provider::{ProviderId, ProviderMeta};
     version,
     about,
     long_about = None,
-    propagate_version = true,
-    arg_required_else_help = true
+    propagate_version = true
 )]
 pub struct Cli {
     /// Print more detail; repeat for the full error cause chain.
@@ -49,9 +52,60 @@ pub struct Cli {
     #[arg(global = true, short, long)]
     pub quiet: bool,
 
-    /// What to do.
+    /// What to do; omitted = fetch the weather for the location argument.
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
+
+    #[command(flatten)]
+    pub query: QueryArgs,
+}
+
+/// The weather query: the flags `cirrocast <LOCATION>` understands today.
+///
+/// The full matrix (`--units`, `--lang`, `--color`, `--width`, `--lat/--lon`, `--station` and the
+/// non-plain formats) arrives in step 08; this is what turns a location into a rendered report.
+#[derive(Debug, Args)]
+pub struct QueryArgs {
+    /// Location argument (`Beijing`, `:Beijing`, `~Tsinghua`, `@39.9,116.4`); omitted = the
+    /// configured default location, else the public IP.
+    #[arg(value_name = "LOCATION", env = "CIRROCAST_LOCATION")]
+    pub location: Option<String>,
+
+    /// Provider chain, comma separated; `auto` expands to the implemented keyless backends.
+    #[arg(short = 'p', long, value_name = "LIST", env = "CIRROCAST_PROVIDER")]
+    pub provider: Option<String>,
+
+    /// Output format.
+    #[arg(short = 'f', long, value_name = "FORMAT", env = "CIRROCAST_FORMAT")]
+    pub format: Option<Format>,
+
+    /// Forecast days, `0` = current conditions only.
+    #[arg(
+        short = 'd',
+        long,
+        value_name = "N",
+        env = "CIRROCAST_DAYS",
+        value_parser = clap::value_parser!(u8).range(0..=14)
+    )]
+    pub days: Option<u8>,
+
+    /// Locate from the public IP address. This sends the address to ipwho.is (falling back to
+    /// ipapi.co); the answer is cached for 24 hours. It never happens without `--ip` or an empty
+    /// location everywhere.
+    #[arg(long)]
+    pub ip: bool,
+
+    /// Per-request timeout in seconds; overrides `network.timeout_secs`.
+    #[arg(
+        long,
+        value_name = "SECS",
+        env = "CIRROCAST_TIMEOUT",
+        value_parser = clap::value_parser!(u32).range(1..=300)
+    )]
+    pub timeout: Option<u32>,
+
+    #[command(flatten)]
+    pub cache: CacheFlags,
 }
 
 /// The subcommands `cirrocast` understands today.
@@ -268,15 +322,157 @@ pub struct ProviderInfoArgs {
 }
 
 impl Cli {
-    /// Runs the selected subcommand and writes its output to stdout.
+    /// Runs the selected subcommand, or the weather query when none was given, and writes its
+    /// output to stdout.
     pub fn run(&self) -> Result<()> {
         match &self.command {
-            Command::Config(args) => run_config(&args.command),
-            Command::Key(args) => run_key(&args.command),
-            Command::Provider(args) => run_provider(&args.command),
-            Command::Location(args) => run_location(&args.command, self),
-            Command::Cache(args) => run_cache(&args.command, self),
+            Some(Command::Config(args)) => run_config(&args.command),
+            Some(Command::Key(args)) => run_key(&args.command),
+            Some(Command::Provider(args)) => run_provider(&args.command),
+            Some(Command::Location(args)) => run_location(&args.command, self),
+            Some(Command::Cache(args)) => run_cache(&args.command, self),
+            None => run_query(&self.query, self),
         }
+    }
+}
+
+/// Runs the weather query: resolve a location, fetch a report, render it.
+///
+/// The order matters for what a user sees when something fails: the provider list and the format
+/// are checked before any network request, so a typo in `--provider` costs no traffic, and the
+/// location is resolved before the forecast because every backend needs it.
+fn run_query(query: &QueryArgs, cli: &Cli) -> Result<()> {
+    let paths = Paths::resolve()?;
+    let config = Config::load(&paths)?;
+    let settings = Settings::resolve(
+        &config,
+        &crate::config::CliOverrides {
+            provider: query.provider.clone(),
+            format: query.format.map(|format| format.name().to_owned()),
+            days: query.days,
+            location: query.location.clone(),
+            timeout_secs: query.timeout,
+            no_cache: query.cache.no_cache,
+            refresh: query.cache.refresh,
+            offline: query.cache.offline,
+            ..crate::config::CliOverrides::default()
+        },
+    )?;
+
+    let ids = select(&settings.provider)?;
+    let format = match query.format {
+        Some(format) => format,
+        None => Format::from_name(&settings.format)?,
+    };
+    let renderer = format.renderer()?;
+    let units = UnitSystem::from_str(&settings.units)?.resolve(&config.units)?;
+
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let cache = Cache::open(
+        &paths,
+        cache_mode(&config, query.cache)?,
+        Arc::clone(&clock),
+        cli.verbose,
+    );
+    let transport = UreqTransport::new(
+        &config.network,
+        Duration::from_secs(u64::from(settings.timeout_secs)),
+    )?;
+    let http = HttpClient::new(
+        Box::new(transport),
+        config.network.retries,
+        clock,
+        cli.verbose,
+    );
+    let keys = KeyStore::new(&paths);
+
+    let (spec, text) = location_target(settings.location.as_deref(), query.ip, &config)?;
+    let (location, resolution, candidates) =
+        resolve_location(&spec, QUERY_CANDIDATES, &config, &http, &cache, cli)?;
+    if let Some(text) = &text
+        && !cli.quiet
+    {
+        let note = if matches!(spec, LocationSpec::Osm(_)) {
+            osm_ambiguity_note(text, &location, resolution)
+        } else {
+            ambiguity_note(text, &location, resolution)
+        };
+        if let Some(note) = note {
+            eprintln!("{note}");
+        }
+    }
+    if cli.verbose > 0 {
+        for (index, candidate) in candidates.iter().enumerate() {
+            eprintln!(
+                "location: candidate {}/{}: {}",
+                index + 1,
+                candidates.len(),
+                location_line(candidate)
+            );
+        }
+    }
+
+    let env = Env {
+        http: &http,
+        cache: &cache,
+        config: &config,
+        keys: &keys,
+        quiet: cli.quiet,
+        verbose: cli.verbose,
+    };
+    let request = FetchRequest::new(settings.days, HourlyResolution::Hourly);
+    let report = fetch_chain(&ids, &location, &request, &env)?;
+
+    let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
+    let ctx = RenderContext {
+        units,
+        color: color_mode(&config.render.color)?,
+        width: render_width(&config),
+        term: term_caps(),
+        now: now.with_timezone(&report.location.tz).fixed_offset(),
+        tz: report.location.tz,
+    };
+    println!("{}", renderer.render(&report, &ctx)?);
+    Ok(())
+}
+
+/// How many ranked geocoder candidates a weather query asks for; the ambiguity note and the `-v`
+/// listing use them, and a later step may expose the number as a flag.
+const QUERY_CANDIDATES: u8 = 10;
+
+/// The configured colour mode.
+///
+/// `[render] color` is validated when the configuration loads, so a value that does not parse here
+/// means the configuration was built by hand.
+fn color_mode(name: &str) -> Result<ColorMode> {
+    ColorMode::from_str(name, true)
+        .map_err(|_| Error::Config(format!("unknown colour mode `{name}`")))
+}
+
+/// The output width: `[render] width` when set, else `COLUMNS`, else the usual 80.
+fn render_width(config: &Config) -> usize {
+    if config.render.width > 0 {
+        return config.render.width;
+    }
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|columns| columns.trim().parse().ok())
+        .unwrap_or(80)
+}
+
+/// What the terminal can do, as far as a renderer may care in this step.
+///
+/// Step 07 resolves this together with `--color`, `CLICOLOR_FORCE` and the width probing; here it
+/// is the honest minimum: a terminal, not a dumb one, and `NO_COLOR` unset.
+fn term_caps() -> TermCaps {
+    let is_tty = std::io::stdout().is_terminal();
+    let term = std::env::var("TERM").unwrap_or_default();
+    let dumb = term.is_empty() || term == "dumb";
+    let color = is_tty && !dumb && std::env::var_os("NO_COLOR").is_none();
+    TermCaps {
+        is_tty,
+        color,
+        dumb,
     }
 }
 
@@ -314,9 +510,9 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
         clock,
         cli.verbose,
     );
-    let (spec, text) = location_target(args, &config)?;
+    let (spec, text) = location_target(args.query.as_deref(), args.ip, &config)?;
     let (location, resolution, candidates) =
-        resolve_location(&spec, args, &config, &http, &cache, cli)?;
+        resolve_location(&spec, args.limit, &config, &http, &cache, cli)?;
 
     println!("{}", location_line(&location));
     if let Some(text) = &text
@@ -354,15 +550,19 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
 /// The spec to resolve and the text a note quotes: `--ip` wins, then an explicit argument, then
 /// `location.default` — which is itself a spec, so `:Beijing` or `@39.9,116.4` configured there
 /// behaves exactly as it does on the command line.
-fn location_target(args: &SearchArgs, config: &Config) -> Result<(LocationSpec, Option<String>)> {
-    let requested = LocationSpec::parse_arg(args.query.as_deref())?;
-    if args.ip && requested != LocationSpec::Default {
+fn location_target(
+    requested: Option<&str>,
+    ip: bool,
+    config: &Config,
+) -> Result<(LocationSpec, Option<String>)> {
+    let requested = LocationSpec::parse_arg(requested)?;
+    if ip && requested != LocationSpec::Default {
         return Err(Error::Usage(
             "`--ip` cannot be combined with a location argument; it locates from the public IP"
                 .to_owned(),
         ));
     }
-    if args.ip {
+    if ip {
         return Ok((LocationSpec::Default, None));
     }
     if requested != LocationSpec::Default {
@@ -382,7 +582,7 @@ fn location_target(args: &SearchArgs, config: &Config) -> Result<(LocationSpec, 
 /// ranked candidates the `-v` listing prints.
 fn resolve_location(
     spec: &LocationSpec,
-    args: &SearchArgs,
+    limit: u8,
     config: &Config,
     http: &HttpClient,
     cache: &Cache,
@@ -408,20 +608,20 @@ fn resolve_location(
                 cache,
                 Duration::from_secs(u64::from(config.cache.geocode_ttl_secs)),
             );
-            let hits = geocoder.search(spec.query().unwrap_or_default(), args.limit)?;
-            let candidates = rank(hits.clone(), spec.query(), args.limit);
-            let (location, resolution) = resolve(hits, spec, args.limit)?;
+            let hits = geocoder.search(spec.query().unwrap_or_default(), limit)?;
+            let candidates = rank(hits.clone(), spec.query(), limit);
+            let (location, resolution) = resolve(hits, spec, limit)?;
             Ok((location, resolution, candidates))
         }
         spec @ LocationSpec::Osm(_) => {
             let nominatim = Nominatim::new(http, cache, nominatim_url(config));
-            let hits = nominatim.search(spec.query().unwrap_or_default(), args.limit)?;
-            let candidates = rank(hits.clone(), spec.query(), args.limit);
-            let (location, resolution) = resolve(hits, spec, args.limit)?;
+            let hits = nominatim.search(spec.query().unwrap_or_default(), limit)?;
+            let candidates = rank(hits.clone(), spec.query(), limit);
+            let (location, resolution) = resolve(hits, spec, limit)?;
             Ok((location, resolution, candidates))
         }
         spec @ LocationSpec::LatLon(..) => {
-            let (location, resolution) = resolve(Vec::new(), spec, args.limit)?;
+            let (location, resolution) = resolve(Vec::new(), spec, limit)?;
             Ok((location, resolution, Vec::new()))
         }
     }
@@ -798,12 +998,26 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
     vec![
         info_line("id:", meta.id),
         info_line("name:", meta.display_name),
+        info_line(
+            "status:",
+            if meta.implemented {
+                "implemented"
+            } else {
+                "planned"
+            },
+        ),
         info_line("key:", key_label(meta)),
         info_line("current:", yes_no(meta.current)),
         info_line("hourly:", yes_no(meta.hourly)),
         info_line("daily:", yes_no(meta.daily)),
+        info_line("alerts:", yes_no(meta.alerts)),
         info_line("max days:", meta.max_days),
         info_line("locations:", locations),
+        info_line(
+            "licence:",
+            meta.licence
+                .unwrap_or("not verified yet; the backend is not implemented"),
+        ),
         info_line("docs:", meta.docs_url),
         info_line("notes:", meta.notes),
     ]
