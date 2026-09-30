@@ -24,6 +24,11 @@ fn english() -> I18n {
     I18n::load(&LanguageRequest::Auto, |_| None)
 }
 
+/// A catalog for one language tag, for the locale runs.
+fn catalog(tag: &str) -> I18n {
+    I18n::load(&LanguageRequest::Tag(tag.to_owned()), |_| None)
+}
+
 /// The fixture every case renders.
 fn report() -> Report {
     common::fixture_report("beijing-1d.json")
@@ -76,10 +81,14 @@ fn line(template: &str) -> String {
 
 /// The rendered `one-line` output for a template and a unit system.
 fn rendered(template: &str, units: UnitSystem) -> String {
+    rendered_in(template, units, &english())
+}
+
+/// The same, in a given language.
+fn rendered_in(template: &str, units: UnitSystem, i18n: &I18n) -> String {
     let report = report();
-    let i18n = english();
     OneLine::new(one_line::resolve_template(Some(template)).expect("a template"))
-        .render(&report, &context(&report, units, capable(), &i18n))
+        .render(&report, &context(&report, units, capable(), i18n))
         .expect("the renderer renders")
 }
 
@@ -239,4 +248,37 @@ fn the_presets_render_the_documented_lines() {
     snapshot!("one_line_preset_full", "@full");
     snapshot!("one_line_preset_uv", "@uv");
     snapshot!("one_line_preset_sun", "@sun");
+}
+
+/// The full preset in Chinese: same line, every word from the `zh-CN` catalog.
+///
+/// The tokens carry the vocabulary (`晴间多云`, `东南风`, `紫外线 5（中等）`, `06:05`) and the
+/// separators stay the template's, because a one-line template is a template in every language.
+#[test]
+fn the_full_preset_reads_in_chinese() {
+    insta::with_settings!({ prepend_module_to_snapshot => false }, {
+        insta::assert_snapshot!(
+            "one_line_preset_full_zh",
+            rendered_in("@full", UnitSystem::Metric, &catalog("zh-CN"))
+        );
+    });
+}
+
+/// Every token that has a value renders it in Chinese too.
+#[test]
+fn the_chinese_tokens_read_the_catalog() {
+    let chinese = catalog("zh-CN");
+    for (template, expected) in [
+        ("%C", "晴间多云"),
+        ("%w", "↗ 10km/h 北东北风"),
+        ("%U", "5（中等）"),
+        ("%D", "9月30日 周三"),
+        ("%d", "2026-09-30"),
+    ] {
+        assert_eq!(
+            rendered_in(template, UnitSystem::Metric, &chinese),
+            expected,
+            "{template}"
+        );
+    }
 }

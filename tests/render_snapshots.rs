@@ -17,17 +17,23 @@ use std::time::Duration;
 
 use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
 use cirrocast::config::UnitOverrides;
-use cirrocast::i18n::{I18n, LanguageId, LanguageRequest};
+use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::Report;
 use cirrocast::model::condition::Condition;
 use cirrocast::model::units::UnitSystem;
 use cirrocast::paths::Paths;
 use cirrocast::render::art::{art, night_variant, one_line_art};
 use cirrocast::render::{ColorMode, Format, RenderContext, TermCaps, renderer_for};
+use unicode_width::UnicodeWidthChar as _;
 
 /// The English catalog, loaded the way the CLI loads an unconfigured run.
 fn english() -> I18n {
     I18n::load(&LanguageRequest::Auto, |_| None)
+}
+
+/// A catalog for one language tag, for the locale runs.
+fn catalog(tag: &str) -> I18n {
+    I18n::load(&LanguageRequest::Tag(tag.to_owned()), |_| None)
 }
 
 /// One rendered configuration.
@@ -38,9 +44,10 @@ struct Case {
     width: usize,
     format: Format,
     color: ColorMode,
+    lang: &'static str,
 }
 
-/// The `art-table` case of a fixture: metric or us, one width, no colour.
+/// The `art-table` case of a fixture: metric or us, one width, no colour, English.
 const fn case(file: &'static str, units: UnitSystem, width: usize) -> Case {
     Case {
         file,
@@ -48,6 +55,24 @@ const fn case(file: &'static str, units: UnitSystem, width: usize) -> Case {
         width,
         format: Format::ArtTable,
         color: ColorMode::Never,
+        lang: "en-US",
+    }
+}
+
+/// The same case in another language.
+const fn translated(case: Case, lang: &'static str) -> Case {
+    Case { lang, ..case }
+}
+
+/// The `plain` case of a fixture.
+const fn plain(file: &'static str, units: UnitSystem, width: usize) -> Case {
+    Case {
+        file,
+        units,
+        width,
+        format: Format::Plain,
+        color: ColorMode::Never,
+        lang: "en-US",
     }
 }
 
@@ -66,7 +91,10 @@ fn capable_terminal() -> TermCaps {
 /// Renders a case through the same entry point the CLI uses.
 fn render(case: Case) -> String {
     let report = common::fixture_report(case.file);
-    let i18n = english();
+    let i18n = match case.lang {
+        "en-US" => english(),
+        tag => catalog(tag),
+    };
     let caps = capable_terminal();
     let ctx = RenderContext {
         units: case
@@ -78,7 +106,7 @@ fn render(case: Case) -> String {
         term: caps,
         now: common::fixture_now(&report),
         tz: report.location.tz,
-        lang: LanguageId::EN_US,
+        lang: i18n.lang(),
         i18n: &i18n,
     };
     renderer_for(case.format, &caps, None)
@@ -292,6 +320,71 @@ fn gallery_block(lines: &mut Vec<String>, key: &str) {
         let glyph = if index == 1 { one_line_art(key) } else { "" };
         lines.push(format!("  {unicode:<7} │ {ascii:<7} │ {glyph}"));
     }
+}
+
+/// The Chinese table: the same layout, every label and condition from the `zh-CN` catalog.
+///
+/// Chinese is the width test the English snapshots cannot be: its labels are two double-width
+/// glyphs where English has five or six single-width ones, so a border that is one column off
+/// shows up here and nowhere else. Both layouts are covered — the columns at 80 and the stacked
+/// form at 40, where a part is a line rather than a cell.
+#[test]
+fn the_chinese_table_keeps_its_borders_aligned() {
+    let three_days = translated(case("beijing-3d-day.json", UnitSystem::Metric, 80), "zh-CN");
+    let stacked = translated(case("beijing-3d-day.json", UnitSystem::Metric, 40), "zh-CN");
+    let night = translated(case("beijing-night.json", UnitSystem::Metric, 80), "zh-CN");
+    snapshot!("art_table_zh_metric_d3_w80", three_days);
+    snapshot!("art_table_zh_metric_d3_w40", stacked);
+    snapshot!("art_table_zh_night_d2_w80", night);
+}
+
+/// The Chinese table obeys the width invariant as strictly as the English one.
+///
+/// The rows are built from localized strings of different display widths, so this walks the same
+/// widths the English property test does and checks every line of every width.
+#[test]
+fn the_chinese_table_never_exceeds_its_width() {
+    for width in [20, 32, 40, 59, 60, 80, 120] {
+        let text = render(translated(
+            case("beijing-7d.json", UnitSystem::Metric, width),
+            "zh-CN",
+        ));
+        for line in text.lines() {
+            let columns = line
+                .chars()
+                .map(|character| character.width().unwrap_or(0))
+                .sum::<usize>();
+            assert!(
+                columns <= width,
+                "width {width}: {line:?} is {columns} columns"
+            );
+        }
+        // The first line is the localized header in every layout, truncated or not.
+        assert!(
+            text.lines()
+                .next()
+                .is_some_and(|line| line.starts_with("天气报告：")),
+            "width {width}:\n{text}"
+        );
+    }
+}
+
+/// The `plain` records in Chinese: the values are translated, the shape of a record is not.
+#[test]
+fn the_chinese_plain_records_keep_their_shape() {
+    let text = render(translated(
+        plain("beijing-3d-day.json", UnitSystem::Metric, 80),
+        "zh-CN",
+    ));
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[0].starts_with("地点: "), "{text}");
+    assert!(lines[1].starts_with("更新: 2026-09-30T"), "{text}");
+    assert!(lines[2].starts_with("当前: 多云 "), "{text}");
+    assert!(lines[3].starts_with("逐日 2026-09-30: 早上 "), "{text}");
+    assert!(text.contains("数据： Open-Meteo.com"), "{text}");
+    insta::with_settings!({ prepend_module_to_snapshot => false }, {
+        insta::assert_snapshot!("plain_zh_metric_d3", text);
+    });
 }
 
 /// The configuration the locale runs use: a coordinate location (no geocoding), one day, the

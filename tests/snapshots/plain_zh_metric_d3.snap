@@ -1,0 +1,13 @@
+---
+source: tests/render_snapshots.rs
+expression: text
+---
+地点: Beijing, Beijing, China (39.90, 116.41) Asia/Shanghai
+更新: 2026-09-30T12:15:00+08:00
+当前: 多云 22°C (体感 24°C) 风 12km/h 东北风 湿度 56% 降水 0.0mm 气压 1013hPa 能见度 10km
+逐日 2026-09-30: 早上 晴 18°C 0.0mm (10%) 风 8.0km/h 东风 | 中午 晴间多云 24°C 0.0mm (5%) 风 14km/h 东东南风 | 傍晚 多云 20°C 0.0mm (10%) 风 10km/h 南东南风 | 夜间 晴 15°C 0.0mm (5%) 风 6.0km/h 南西南风
+逐日 2026-10-01: 早上 多云 17°C 0.2mm (40%) 风 9.0km/h 东风 | 中午 阴 21°C 1.2mm (55%) 风 15km/h 东东南风 | 傍晚 小雨 18°C 4.5mm (75%) 风 18km/h 东南风 | 夜间 中雨 16°C 6.0mm (80%) 风 20km/h 南东南风
+逐日 2026-10-02: 早上 阴 14°C 0.0mm (20%) 风 7.0km/h 东东北风 | 中午 雾 19°C 0.0mm (15%) 风 10km/h 东东北风 | 傍晚 多云 16°C 0.0mm (10%) 风 8.0km/h 东北风 | 夜间 晴 12°C 0.0mm (5%) 风 5.0km/h 东北风
+Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
+数据： Open-Meteo.com (CC BY 4.0)
+来源: open-meteo https://api.open-meteo.com/v1/forecast
