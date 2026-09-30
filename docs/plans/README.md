@@ -40,8 +40,8 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 01 | A | [project-scaffold](01-project-scaffold.md) | ✅ done | — |
 | 02 | A | [config-and-state](02-config-and-state.md) | ✅ done | 01 |
 | 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | ✅ done | 01, 02 |
-| 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | ⬜ not-started | 02, 03 |
-| 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ⬜ not-started | 02, 03, 04 |
+| 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | ✅ done | 02, 03 |
+| 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ✅ done | 02, 03, 04 |
 | 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ⬜ not-started | 03, 04, 05 |
 | 07 | B | [art-table-renderer](07-art-table-renderer.md) | ⬜ not-started | 03, 06 |
 | 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ⬜ not-started | 06, 07 |
@@ -222,7 +222,7 @@ schema_version = 1
 [location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"
 [units]     # per-quantity overrides; an absent (or empty) key follows defaults.units
             # temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
-[network]   timeout_secs = 15  retries = 3  proxy = ""
+[network]   timeout_secs = 15  retries = 3  proxy = ""  nominatim_url = ""
 [cache]     enabled = true  weather_ttl_secs = 600  ip_ttl_secs = 86400  geocode_ttl_secs = 2592000
 [render]    color = "auto"  width = 0
 [providers.metar]    station = ""

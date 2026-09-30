@@ -151,6 +151,11 @@ pub struct Network {
     pub retries: u32,
     /// Proxy URL; empty means "connect directly".
     pub proxy: String,
+    /// Base URL of the Nominatim service; empty means the public OpenStreetMap endpoint.
+    ///
+    /// The OSM usage policy allows a service to be swapped without a software update, which is why
+    /// this is configuration rather than a constant.
+    pub nominatim_url: String,
 }
 
 /// `[cache]`.
@@ -236,6 +241,7 @@ impl Default for Network {
             timeout_secs: 15,
             retries: 3,
             proxy: String::new(),
+            nominatim_url: String::new(),
         }
     }
 }
@@ -447,6 +453,12 @@ impl Config {
                 self.network.proxy
             )));
         }
+        if !is_service_url(&self.network.nominatim_url) {
+            return Err(Error::Config(format!(
+                "network.nominatim_url: `{}` is not an http(s) base URL",
+                self.network.nominatim_url
+            )));
+        }
         Ok(())
     }
 
@@ -600,6 +612,21 @@ fn is_proxy_url(value: &str) -> bool {
     }
 }
 
+/// Whether `value` is empty or an `http(s)://host[:port][/path]` base URL.
+///
+/// Used for the swappable service endpoints (`network.nominatim_url`), which are plain HTTP URLs
+/// rather than proxy URLs, and which must never carry a scheme that is not http(s) — the shared
+/// client only speaks HTTP.
+fn is_service_url(value: &str) -> bool {
+    if value.is_empty() {
+        return true;
+    }
+    let Some((scheme, rest)) = value.split_once("://") else {
+        return false;
+    };
+    matches!(scheme, "http" | "https") && !rest.trim_matches('/').is_empty()
+}
+
 // ---------------------------------------------------------------------------------------------
 // Writing
 // ---------------------------------------------------------------------------------------------
@@ -736,6 +763,7 @@ default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"; em
 timeout_secs = 15        # 1..=300
 retries = 3              # 0..=10
 proxy = ""               # e.g. "socks5://127.0.0.1:1080"; empty = connect directly
+nominatim_url = ""       # Nominatim base URL for `~name` searches; empty = the public OpenStreetMap service
 
 [cache]
 enabled = true
@@ -909,6 +937,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "network.nominatim_url",
+        kind: KeyKind::Str,
+        doc: "Nominatim base URL; empty = the public service",
+        env: Some("CIRROCAST_NOMINATIM_URL"),
+    },
+    KeySpec {
         name: "cache.enabled",
         kind: KeyKind::Bool,
         doc: "use the on-disk cache",
@@ -1005,6 +1039,7 @@ impl Config {
             "network.timeout_secs" => self.network.timeout_secs.to_string(),
             "network.retries" => self.network.retries.to_string(),
             "network.proxy" => self.network.proxy.clone(),
+            "network.nominatim_url" => self.network.nominatim_url.clone(),
             "cache.enabled" => self.cache.enabled.to_string(),
             "cache.weather_ttl_secs" => self.cache.weather_ttl_secs.to_string(),
             "cache.ip_ttl_secs" => self.cache.ip_ttl_secs.to_string(),
@@ -1055,6 +1090,7 @@ impl Config {
             "network.timeout_secs" => self.network.timeout_secs = u32_value(spec.name, &value)?,
             "network.retries" => self.network.retries = u32_value(spec.name, &value)?,
             "network.proxy" => self.network.proxy = value,
+            "network.nominatim_url" => self.network.nominatim_url = value,
             "cache.enabled" => self.cache.enabled = bool_value(spec.name, &value)?,
             "cache.weather_ttl_secs" => {
                 self.cache.weather_ttl_secs = u32_value(spec.name, &value)?;
@@ -1342,7 +1378,7 @@ mod tests {
     #[test]
     fn validation_names_the_offending_key() {
         type Case = (&'static str, fn(&mut Config), &'static str);
-        let cases: [Case; 16] = [
+        let cases: [Case; 17] = [
             (
                 "defaults.days",
                 |config| config.defaults.days = 99,
@@ -1392,6 +1428,11 @@ mod tests {
                 "network.proxy",
                 |config| config.network.proxy = "http://".to_owned(),
                 "network.proxy: `http://` is neither",
+            ),
+            (
+                "network.nominatim_url",
+                |config| config.network.nominatim_url = "ftp://osm.example".to_owned(),
+                "network.nominatim_url: `ftp://osm.example` is not an http(s) base URL",
             ),
             (
                 "cache.weather_ttl_secs",

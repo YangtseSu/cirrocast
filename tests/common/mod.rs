@@ -13,7 +13,7 @@ use assert_cmd::Command;
 
 /// Every `CIRROCAST_*` override variable, cleared for the child process so that the developer's
 /// shell cannot influence a test.
-const OVERRIDE_VARS: [&str; 7] = [
+const OVERRIDE_VARS: [&str; 9] = [
     "CIRROCAST_PROVIDER",
     "CIRROCAST_FORMAT",
     "CIRROCAST_UNITS",
@@ -21,6 +21,8 @@ const OVERRIDE_VARS: [&str; 7] = [
     "CIRROCAST_LANG",
     "CIRROCAST_LOCATION",
     "CIRROCAST_TIMEOUT",
+    "CIRROCAST_NOMINATIM_URL",
+    "CIRROCAST_IP_SERVICE",
 ];
 
 /// A throwaway XDG environment: config, cache and data all point into a temporary directory, and

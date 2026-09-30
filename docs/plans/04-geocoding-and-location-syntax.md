@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 04 — geocoding-and-location-syntax
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: `02-config-and-state.md` (`Config`/`Settings.location`, `KEY_TABLE`), `03-canonical-model-and-units.md` (`Location`, `LocationSource`) — and, for the network half only (`src/geo/open_meteo.rs`, `src/geo/nominatim.rs`, reachable `location search` results), `05-http-cache-and-ip-location.md` (`src/http.rs`, `src/cache.rs`, the `Clock` trait)
 Touches: `src/geo/mod.rs`, `src/geo/open_meteo.rs`, `src/geo/nominatim.rs`, `src/config/mod.rs` (one `KEY_TABLE` row), `src/cli.rs`, `src/main.rs`, `tests/geo_spec.rs`, `tests/geo_open_meteo.rs`, `tests/geo_nominatim.rs`, `tests/fixtures/geo/`, `REUSE.toml`, `LICENSES/`, `docs/plans/README.md`
 
@@ -25,21 +25,21 @@ stderr; malformed input fails with `Error::Usage` and a message that lists the a
 - ✅ The same message family is appended with the accepted forms so the error is self-explanatory: `accepted forms: Beijing | :Beijing | ~Tsinghua | @39.9042,116.4074` (single constant `USAGE_FORMS` in `src/geo/mod.rs`, reused by the usage error text and by `cirrocast --help`).
 - ✅ `pub trait Geocoder { fn search(&self, q: &str, limit: u8) -> Result<Vec<Location>>; }` — synchronous, `&self`, no interior mutability, matching the provider contract's style; network access only through the step-05 `HttpClient` handed to each implementation's constructor.
 - ✅ `pub fn resolve(results: Vec<Location>, spec: &LocationSpec, limit: u8) -> Result<(Location, Resolution)>` in `src/geo/mod.rs` with `pub enum Resolution { Only, Fuzzy { candidates: usize }, Exact, Coordinates }`: ranking is (1) exact case-insensitive `name` match against the query, (2) `Location::population` descending, (3) upstream order. Zero results ⇒ `Error::Location("no location found for `Beijing`")` (exit 5); `Exact` with no case-insensitive name match ⇒ the same error naming the query. Population is optional ranking metadata and is never rendered.
-- ⬜ Ambiguity is reported once, on **stderr**, and never in stdout or JSON: `note: 3 candidates for "Beijing"; using Beijing, Beijing, China (population 18960744) — pass `:Beijing` to require an exact name match`; suppressed by `-q`. Emitted only when `candidates > 1`.
+- ✅ Ambiguity is reported once, on **stderr**, and never in stdout or JSON: `note: 3 candidates for `Beijing`; using Beijing, Beijing Municipality, China (population 18960744) — pass `:Beijing` to require an exact name match`; suppressed by `-q`. Emitted only when `candidates > 1`. A `~` search gets the same count and winner through `geo::osm_ambiguity_note`, without the `:query` hint: that spelling asks the *other* geocoder for an exact name, so following the advice would switch the data source instead of narrowing the search.
 - ✅ `pub fn location_line(loc: &Location) -> String` for the shared header/echo format: `<name>, <admin1>, <country> (<lat>, <lon>) <tz>`, with empty/absent parts skipped, two decimals on both coordinates, and `tz` printed as the IANA name; for `LocationSource::Coordinates`/`Osm` with a provisional UTC zone the tail reads `<timezone resolved at fetch time>`. Step 06's plain renderer reuses this function for its `[LOCATION]` header.
-- ⬜ `src/geo/open_meteo.rs`: `pub struct OpenMeteoGeocoder<'a> { http: &'a HttpClient, cache: &'a Cache, ttl: Duration }` with `const GEOCODE_URL: &str = "https://geocoding-api.open-meteo.com/v1/search"`, requesting exactly `?name=<q>&count=10&language=en&format=json` (percent-encoding and query assembly come from step 05's `HttpRequest`), parsing `{ "results": [ … ] }` into `GeocodeHit { id, name, latitude, longitude, elevation: Option<f64>, timezone: Option<String>, country: Option<String>, country_code: Option<String>, admin1: Option<String>, population: Option<u64> }` (every optional field is `Option` because the API omits empty fields).
-- ⬜ Response → `Candidate` mapping: `Location { name, admin1, country: country.unwrap_or_default(), country_code, lat, lon, tz: Tz::from_str(timezone)…, elevation_m, source: LocationSource::Geocoder }`; a missing or unparsable `timezone` is **not** silently replaced — it fails with `Error::Upstream("geocoding result `Beijing` has no usable IANA timezone (got \\"Mars/Olympus\\")")`, because day-part aggregation depends on the zone; a missing `results` key or an empty array is a normal no-hit, not an error.
-- ⬜ Results are cached at `geocode/<sha256>.json` with the key `sha256("open-meteo|" + query.trim().to_lowercase() + "|" + limit + "|en")` and `cache.geocode_ttl_secs`, written through the step-05 cache (so `--offline` can serve a previously resolved name and `--refresh` bypasses a stale one).
-- ⬜ `Exact` handling with this API: the endpoint has no exact-match parameter, so `:Beijing` sends `name=Beijing` and then filters on `name.eq_ignore_ascii_case(query)`; nothing matches ⇒ `Error::Location`. A name may carry a qualifier (`Beijing, CN`, using the API's documented `<location>[, <country or admin1>]` form) which is passed through verbatim in `Fuzzy` and `Exact` queries.
-- ⬜ `src/geo/nominatim.rs`: `pub struct Nominatim<'a> { http: &'a HttpClient, cache: &'a Cache, base_url: String }` — the constructor **requires** `&Cache`, so the module cannot be used without step 05's cache layer (response cache `geocode/<sha256>.json` with the same 30-day TTL, plus the throttle state below). Requests `https://nominatim.openstreetmap.org/search?format=jsonv2&q=<query>&limit=<n>&addressdetails=1&extratags=1`.
-- ⬜ Mandatory, descriptive `User-Agent` on every Nominatim request: step 05's `cirrocast/<version> (+https://github.com/YangtseSu/cirrocast)`; no request is sent without it (non-empty UA asserted in the transport call), and the CLI sends one request per user action only — never an autocomplete-style loop.
-- ⬜ 1 request/second self-throttling enforced through step 05's `Clock`: the last-request timestamp lives in the cache directory (`ratelimit/nominatim.json`, `{ "last_request_unix_ms": … }`), and before a request the client asks the `Clock` for `now()`, computes the remaining wait and calls `clock.sleep(remaining)`; the throttle file is written *before* the request. Concurrent invocations therefore also respect the limit, and tests inject a recording `Clock` that asserts the requested sleep instead of sleeping.
-- ⬜ Nominatim response → `Candidate` mapping from `place_id, lat, lon (strings), name, display_name, category, type, address { country, state, city }, extratags { timezone, population }`: `name` falls back to the first comma-separated segment of `display_name`, `admin1` from `address.state`, `country` from `address.country`, `population` from `extratags.population` when present; timezone is taken from `extratags.timezone` when it parses as an IANA name, otherwise `Tz::UTC` **with** `LocationSource::Osm` so step 06 knows to replace it from the forecast response.
-- ⬜ ODbL compliance in the surface itself: whenever a `~` result is used, `Location data © OpenStreetMap contributors (ODbL)` is printed on stderr, and step 06's plain renderer adds the same line for `LocationSource::Osm` (the contract's attribution requirement, satisfied at the point of display).
-- ⬜ Service switchability required by the Nominatim policy: `Config.network.nominatim_url` (empty = the public endpoint) plus the `CIRROCAST_NOMINATIM_URL` env override and a `network.nominatim_url` row in step 02's `KEY_TABLE`, so the service can be changed without a software update.
-- ⬜ CLI: `cirrocast location search <QUERY> [--limit <N>]` in `src/cli.rs` + dispatch in `src/main.rs`, printing `location_line(&loc)` on stdout, the ambiguity note and ODbL attribution on stderr, `-v` additionally listing every candidate in rank order; `--limit` defaults to `10` (the API's default `count`) and is capped at `100` (the API maximum).
+- ✅ `src/geo/open_meteo.rs`: `pub struct OpenMeteoGeocoder<'a> { http: &'a HttpClient, cache: &'a Cache, ttl: Duration }` with `const GEOCODE_URL: &str = "https://geocoding-api.open-meteo.com/v1/search"`, requesting exactly `?name=<q>&count=<limit>&language=en&format=json` (percent-encoding and query assembly come from step 05's `HttpRequest`), parsing `{ "results": [ … ] }` into a private hit struct with `name`, `latitude`, `longitude`, `elevation: Option<f64>`, `timezone: Option<String>`, `country: Option<String>`, `country_code: Option<String>`, `admin1: Option<String>`, `population: Option<u64>` (every optional field is `Option` because the API omits empty fields; the endpoint's `id`/`feature_code` bookkeeping is ignored rather than modelled).
+- ✅ Response → `Location` mapping: `Location { name, admin1, country: country.unwrap_or_default(), country_code, lat, lon, tz: Tz::from_str(timezone)…, elevation_m, source: LocationSource::Geocoder }`; a missing or unparsable `timezone` is **not** silently replaced — it fails with `Error::Upstream { provider: "open-meteo-geocoding", … }` and the message `geocoding result `Beijing` has no usable IANA timezone (got "Mars/Olympus")` (or `(no timezone reported)`), because day-part aggregation depends on the zone; a missing `results` key or an empty array is a normal no-hit, not an error.
+- ✅ Results are cached at `geocode/<sha256>.json` with the key `sha256("open-meteo|" + query.trim().to_lowercase() + "|" + limit + "|en")` and `cache.geocode_ttl_secs`, written through the step-05 cache (so `--offline` can serve a previously resolved name and `--refresh` bypasses a stale one).
+- ✅ `Exact` handling with this API: the endpoint has no exact-match parameter, so `:Beijing` sends `name=Beijing` and the filtered-out candidates are dropped in `geo::resolve` (which is spec-aware) on `name.eq_ignore_ascii_case(query)`; nothing matches ⇒ `Error::LocationNotFound` naming the query. A name may carry a qualifier (`Beijing, CN`, using the API's documented `<location>[, <country or admin1>]` form) which is passed through verbatim in `Fuzzy` and `Exact` queries.
+- ✅ `src/geo/nominatim.rs`: `pub struct Nominatim<'a> { http: &'a HttpClient, cache: &'a Cache, base_url: String }` — the constructor **requires** `&Cache`, so the module cannot be used without step 05's cache layer (response cache `geocode/<sha256>.json` with `TTL = 30 days` copied into the struct by `new`, plus the throttle state below). Requests `<base_url>/search?format=jsonv2&q=<query>&limit=<n>&addressdetails=1&extratags=1`, plus `accept-language: en` so the OSM names come back English whatever the machine's locale is (the sibling Open-Meteo geocoder pins `language=en` for the same reason, and the documented smoke output is English).
+- ✅ Mandatory, descriptive `User-Agent` on every Nominatim request: step 05's `cirrocast/<version> (+https://github.com/YangtseSu/cirrocast)` (added explicitly with `HttpRequest::header` so it is visible in the recorded request, not only inside the ureq agent); no request is sent without it (the test asserts the exact header value), and the CLI sends one request per user action only — never an autocomplete-style loop.
+- ✅ 1 request/second self-throttling enforced through step 05's `Clock`: the last-request timestamp lives in the cache directory (`ratelimit/nominatim.json`, `{ "last_request_unix_ms": … }`, read and written through `Cache::read_state`/`write_state` so the geocoder never touches the file system itself), and before a request the client asks the `Clock` for `now()`, computes the remaining wait and calls `clock.sleep(remaining)` — only when the wait is positive; the throttle file is written *before* the request, and only on a cache miss (a hit neither throttles nor sleeps). Concurrent invocations therefore also respect the limit, and the tests inject a recording `Clock` that asserts the requested sleep instead of sleeping.
+- ✅ Nominatim response → `Location` mapping from `lat`, `lon` (strings), `name`, `display_name`, `address { country, country_code, state }`, `extratags { timezone, population }`: `name` falls back to the first comma-separated segment of `display_name`, `admin1` from `address.state`, `country` from `address.country`, `country_code` from `address.country_code`, `population` from `extratags.population` when present (a string in OSM, a number in some extracts — both accepted); timezone is taken from `extratags.timezone` when it parses as an IANA name, otherwise `Tz::UTC` **with** `LocationSource::Osm` so step 06 knows to replace it from the forecast response. Missing or unparsable coordinates fail the whole search naming the hit, instead of dropping a candidate silently.
+- ✅ ODbL compliance in the surface itself: whenever a `~` result is used, `Location data © OpenStreetMap contributors (ODbL)` is printed on stderr (never suppressed, not even by `-q` — it is a licence obligation, not commentary), and step 06's plain renderer adds the same line for `LocationSource::Osm` (the contract's attribution requirement, satisfied at the point of display).
+- ✅ Service switchability required by the Nominatim policy: `Config.network.nominatim_url` (validated as an `http(s)` base URL, empty = the public endpoint) plus the `CIRROCAST_NOMINATIM_URL` env override and a `network.nominatim_url` row in step 02's `KEY_TABLE`, so the service can be changed without a software update. The CLI resolves the three sources (env → config → public endpoint) in `nominatim_url()`.
+- ✅ CLI: `cirrocast location search <QUERY> [--limit <N>] [--ip] [--timeout <SECS>] [--no-cache|--refresh|--offline]` in `src/cli.rs` + dispatch in `src/main.rs`, printing `location_line(&loc)` on stdout, the ambiguity note and ODbL attribution on stderr, `-v` additionally listing every candidate in rank order and the cache key path; `--limit` defaults to `10` (the API's default `count`) and is capped at `100` (the API maximum). `search` is the only action of a `location` subcommand, so `location search --ip` (step 05) and a future `location` picker fit the same surface.
 - ✅ `tests/geo_spec.rs`: the fixture-driven parse table (`tests/fixtures/geo/spec-cases.tsv`: every accepted form, every rejection with its message fragment and the accepted-forms hint). The ranking rules (exact match beats a larger population, population beats upstream order, upstream order as the last resort), `location_line` for geocoded/coordinate/OSM/config locations and `Resolution` reporting are unit tests next to the code in `src/geo/mod.rs`, per the repo's "unit tests live next to the code" rule. `tests/geo_open_meteo.rs` and `tests/geo_nominatim.rs` replay fixtures through `StubTransport` and never touch the network.
-- ⬜ Fixture licensing: the recorded geocoding responses derive from GeoNames/Open-Meteo data (`CC-BY-4.0`) and from OpenStreetMap (`ODbL-1.0`), so add `LICENSES/CC-BY-4.0.txt`, `LICENSES/ODbL-1.0.txt`, exact-path `[[annotations]]` entries with those identifiers in `REUSE.toml`, and narrow step 01's blanket `tests/fixtures/**` override so no fixture is silently relicensed to GPL.
+- ✅ Fixture licensing: the recorded geocoding responses derive from GeoNames/Open-Meteo data (`CC-BY-4.0`) and from OpenStreetMap (`ODbL-1.0`), so `LICENSES/CC-BY-4.0.txt` and `LICENSES/ODbL-1.0.txt` were added, `REUSE.toml` carries exact-path `[[annotations]]` entries with those identifiers, and step 01's blanket `tests/fixtures/**` override was narrowed to explicit first-party paths (`config/**`, `model/**`, `http/**`, `ip/**`) so no third-party payload can be silently relicensed to GPL. `reuse lint` reports all 80 files licensed.
 
 ## Design notes
 
@@ -84,36 +84,39 @@ Fixtures: `tests/fixtures/geo/spec-cases.tsv` (arg → expected `LocationSpec` o
 fragment), `tests/fixtures/geo/open_meteo_geocode_beijing.json`, `…_beijing_ambiguous.json` (upstream
 order contradicts population order), `…_no_hits.json`, `…_bad_timezone.json`,
 `tests/fixtures/geo/nominatim_search_tsinghua.json`, `…_tsinghua_ambiguous.json`. Manual smoke run
-(network; the second and third invocations are cache hits):
+(network; run 2026-09-30 in a throwaway `XDG_CACHE_HOME`, so every command was a cache miss — the
+second invocation of a query is a silent hit). Upstream data moves: the numbers below are what the
+live services answered that day, not constants.
 
 ```sh
 cargo run -- location search Beijing
-# stdout: Beijing, Beijing, China (39.90, 116.40) Asia/Shanghai
-# stderr: note: N candidates for "Beijing"; using Beijing, Beijing, China (population …) — pass `:Beijing` to require an exact name match
+# stdout: Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
+# stderr: note: 10 candidates for `Beijing`; using Beijing, Beijing Municipality, China (population 18960744) — pass `:Beijing` to require an exact name match
 cargo run -- location search :Beijing                    # same line, no stderr note
 cargo run -- location search '~Tsinghua'
-# stdout: Tsinghua University, Beijing, China (40.00, 116.33) <timezone resolved at fetch time>
-# stderr: Location data © OpenStreetMap contributors (ODbL)
+# stdout: Tsinghua University, China (40.00, 116.32) <timezone resolved at fetch time>
+# stderr: note: 7 candidates for `Tsinghua`; using Tsinghua University, China
+#         Location data © OpenStreetMap contributors (ODbL)
 cargo run -- location search '@39.9042,116.4074'
 # stdout: 39.9042, 116.4074 <timezone resolved at fetch time>          (source = Coordinates)
-cargo run -- location search '@91,0'; echo $?            # error: latitude 91 is out of range -90..=90   (exit 2)
-cargo run -- location search 'Beijing, Mars'             # error: no location found for `Beijing, Mars`   (exit 5)
+cargo run -- location search '@91,0'; echo $?            # error: latitude 91 is out of range -90..=90 (accepted forms: …)   (exit 2)
+cargo run -- location search 'Beijing, Mars'             # error: location not found: no location found for `Beijing, Mars`   (exit 5)
 ```
 
 ## Exit criteria
 
-- ⬜ Every string in `spec-cases.tsv` parses or fails exactly as annotated; no `panic!` path exists in
+- ✅ Every string in `spec-cases.tsv` parses or fails exactly as annotated; no `panic!` path exists in
       `src/geo/` for user input.
-- ⬜ `tests/geo_open_meteo.rs` and `tests/geo_nominatim.rs` pass with `StubTransport` only — no test
+- ✅ `tests/geo_open_meteo.rs` and `tests/geo_nominatim.rs` pass with `StubTransport` only — no test
       opens a socket (asserted by having no `UreqTransport` instance in the test binary).
-- ⬜ The throttle test asserts a requested sleep of ≥ 1000 ms between two Nominatim calls and finishes
+- ✅ The throttle test asserts a requested sleep of ≥ 1000 ms between two Nominatim calls and finishes
       without sleeping in wall-clock time.
-- ⬜ `cargo fmt --check` clean.
-- ⬜ `cargo clippy --all-targets -- -D warnings` clean.
-- ⬜ `cargo test` clean (`tests/geo_spec.rs`, `tests/geo_open_meteo.rs`, `tests/geo_nominatim.rs`).
-- ⬜ `reuse lint` clean, with `CC-BY-4.0` / `ODbL-1.0` texts present in `LICENSES/` and the
+- ✅ `cargo fmt --check` clean.
+- ✅ `cargo clippy --all-targets -- -D warnings` clean.
+- ✅ `cargo test` clean (`tests/geo_spec.rs`, `tests/geo_open_meteo.rs`, `tests/geo_nominatim.rs`).
+- ✅ `reuse lint` clean, with `CC-BY-4.0` / `ODbL-1.0` texts present in `LICENSES/` and the
       `tests/fixtures/**` override narrowed to first-party fixtures.
-- ⬜ Smoke run above prints the shown stdout lines; the ambiguity note and the ODbL line appear on
+- ✅ Smoke run above prints the shown stdout lines; the ambiguity note and the ODbL line appear on
       stderr only, and `@91,0` exits 2 while the no-hit query exits 5.
 
 ## Risks
@@ -140,3 +143,14 @@ cargo run -- location search 'Beijing, Mars'             # error: no location fo
   adjusted). The two-character minimum applies to fuzzy *and* exact queries, since both go to the same API;
   `~` queries are Nominatim's and have no such rule. The network half (`OpenMeteoGeocoder`, `Nominatim`, the
   CLI) lands after step 05, as this file's design notes describe.
+- 2026-09-30 — network half landed after step 05 as designed: `OpenMeteoGeocoder`, `Nominatim` (1 req/s
+  throttle through `Cache::clock()` and `ratelimit/nominatim.json`, mandatory `UA` header, mandatory cache)
+  and the `cirrocast location search` surface with `--limit`, `--ip`, `--timeout` and the cache-mode flags.
+  Two wording-level changes, both recorded in the deliverables above: the `:query` exact filter runs in
+  `geo::resolve` (the `Geocoder` trait has no spec parameter, and that keeps the filter unit-testable), and
+  Nominatim requests carry `accept-language: en` so the OSM names are English like the Open-Meteo ones.
+  Upstream reality differs from the illustrative smoke lines in two places, now corrected in this file: the
+  live admin1 for Beijing is `Beijing Municipality` (and the coordinates round to 39.91/116.40), and the
+  `~Tsinghua` hit carries neither a state nor a timezone tag. Smoke run verified in a throwaway
+  `XDG_CACHE_HOME`: every documented stdout line, both stderr notes, the ODbL line, exit 2 for `@91,0` and
+  exit 5 for the no-hit query.

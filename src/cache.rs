@@ -566,8 +566,10 @@ impl Cache {
             let throttle = self.root.join("ratelimit");
             if let Ok(entries) = fs::read_dir(&throttle) {
                 for entry in entries.flatten() {
-                    if entry.path().is_file() && fs::remove_file(entry.path()).is_ok() {
-                        removed += 1;
+                    if entry.path().is_file() {
+                        // State files (the Nominatim throttle) are cleaned too, but they are not
+                        // cache entries and are not counted as such in the report.
+                        let _ = fs::remove_file(entry.path());
                     }
                 }
             }

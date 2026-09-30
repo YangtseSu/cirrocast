@@ -3,6 +3,8 @@
 
 //! End to end tests of the CLI surface, driven through the real binary.
 
+mod common;
+
 use assert_cmd::Command;
 use predicates::prelude::*;
 
@@ -106,4 +108,109 @@ fn config_path_prints_the_xdg_config_file() {
             "{}\n",
             config_home.path().join("cirrocast/config.toml").display()
         )));
+}
+
+#[test]
+fn location_search_resolves_coordinates_without_touching_the_network() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "@39.9042,116.4074"])
+        .assert()
+        .success()
+        .stdout(predicate::eq(
+            "39.9042, 116.4074 <timezone resolved at fetch time>\n",
+        ))
+        .stderr(predicate::eq(""));
+}
+
+#[test]
+fn location_search_reports_usage_errors_with_exit_code_two() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "@91,0"])
+        .assert()
+        .code(2)
+        .stdout(predicate::eq(""))
+        .stderr(
+            predicate::str::contains("latitude 91 is out of range -90..=90").and(
+                predicate::str::contains(
+                    "accepted forms: Beijing | :Beijing | ~Tsinghua | @39.9042,116.4074",
+                ),
+            ),
+        );
+
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "B"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("is too short"));
+}
+
+#[test]
+fn location_search_help_and_error_messages_share_the_accepted_forms() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "accepted forms: Beijing | :Beijing | ~Tsinghua | @39.9042,116.4074",
+        ));
+}
+
+#[test]
+fn cache_stat_and_clean_report_an_empty_cache() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["cache", "stat"])
+        .assert()
+        .success()
+        .stdout(predicate::eq(
+            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\n",
+        ));
+
+    sandbox
+        .cirrocast()
+        .args(["cache", "clean"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("removed 0 expired entries\n"));
+
+    sandbox
+        .cirrocast()
+        .args(["cache", "clean", "--all"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("removed 0 entries\n"));
+
+    sandbox
+        .cirrocast()
+        .args(["cache", "clean", "--all", "--offline"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "offline mode: cache writes are disabled",
+        ));
+}
+
+#[test]
+fn cache_mode_flags_are_mutually_exclusive() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args([
+            "location",
+            "search",
+            "@39.9,116.4",
+            "--no-cache",
+            "--offline",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be used with"));
 }

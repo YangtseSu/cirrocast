@@ -20,10 +20,12 @@ cirrocast — Beijing, China (39.9042, 116.4074)
 
 ## Status
 
-Early scaffold (steps 01–02 of 14 in [`docs/plans/`](docs/plans/README.md)) — the CLI skeleton, XDG
-path resolution, the provider registry, the typed configuration with its `config`/`key` subcommands
-are in place. Weather fetching starts at step 06 (`docs/plans/06-open-meteo-provider.md`); the
-wttr.in-style renderer at step 07. See the plan index for live per-step progress.
+Early scaffold (steps 01–05 of 24 in [`docs/plans/`](docs/plans/README.md)): the CLI skeleton, XDG
+path resolution, the provider registry, the typed configuration with its `config`/`key`
+subcommands, the canonical model, location resolution (`cirrocast location search`) and the shared
+HTTP/cache layer are in place. Weather fetching starts at step 06
+(`docs/plans/06-open-meteo-provider.md`); the wttr.in-style renderer at step 07. See the plan index
+for live per-step progress.
 
 ## Install
 
@@ -60,6 +62,39 @@ cirrocast completion <shell>   cirrocast man
 
 Location syntax: `Beijing` (fuzzy), `:Beijing` (exact name), `~Tsinghua` (OpenStreetMap),
 `@39.9,116.4` (coordinates), empty (config default, else public IP).
+
+## Location
+
+Four spellings, one deterministic result — the chosen place is always echoed, so a script that runs
+the same command twice gets the same answer:
+
+| Argument | Meaning |
+|---|---|
+| `Beijing` | fuzzy search through the keyless Open-Meteo geocoding API |
+| `:Beijing` | only a candidate whose name matches exactly (case-insensitively) |
+| `~Tsinghua` | OpenStreetMap/Nominatim, cached for 30 days and throttled to one request per second |
+| `@39.9042,116.4074` | coordinates; no geocoding request at all |
+| *(empty)* | `location.default`, else the public-IP lookup |
+
+Multiple fuzzy candidates are ranked by exact name, then population, then upstream order, and the
+ambiguity is reported once on stderr (suppressed by `-q`) with the winning place; add `:` to demand
+an exact name. Coordinates and `~` results carry a provisional time zone until the forecast response
+supplies the location's real one, and `~` output prints `Location data © OpenStreetMap contributors`
+(ODbL).
+
+```bash
+cirrocast location search Beijing          # Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
+cirrocast location search :Beijing         # same line, no ambiguity note
+cirrocast location search '~Tsinghua University' --limit 5
+cirrocast location search @39.9042,116.4074
+```
+
+**Privacy:** the public-IP lookup is the only request that reveals anything about *you* rather than
+about a place you asked for, and it is never implicit — it runs only with `--ip` or when no location
+is configured anywhere (`location.default` empty and no positional argument). It sends the public IP
+to `ipwho.is`, falling back to `ipapi.co` (`CIRROCAST_IP_SERVICE=auto|ipwhois|ipapi`), caches the
+answer for 24 hours and names the service it used on stderr. `--offline` serves the cached answer and
+touches no network.
 
 ## Backends
 
@@ -110,6 +145,7 @@ write and the first one read — and `config validate` reports the file that was
 | `network.timeout_secs` | `15` | `1..=300` |
 | `network.retries` | `3` | `0..=10` |
 | `network.proxy` | empty | `scheme://host[:port]` or `host:port`; empty = direct |
+| `network.nominatim_url` | empty | Nominatim base URL for `~name` searches; empty = the public OpenStreetMap service |
 | `cache.enabled` | `true` | `true`, `false` |
 | `cache.weather_ttl_secs` | `600` | `> 0` (10 minutes) |
 | `cache.ip_ttl_secs` | `86400` | `> 0` (24 hours) |
@@ -124,9 +160,10 @@ The `[units]` overrides are per quantity and optional: an absent (or empty) key 
 
 Precedence, highest first: **command line flag → `CIRROCAST_*` environment variable → `config.toml`
 → built-in default**. The variables are `CIRROCAST_PROVIDER`, `CIRROCAST_FORMAT`,
-`CIRROCAST_UNITS`, `CIRROCAST_DAYS`, `CIRROCAST_LANG`, `CIRROCAST_LOCATION` and
-`CIRROCAST_TIMEOUT`; API keys use their own `CIRROCAST_<PROVIDER>_KEY` namespace (below).
-`cirrocast config get <KEY>` prints the effective value, environment override included.
+`CIRROCAST_UNITS`, `CIRROCAST_DAYS`, `CIRROCAST_LANG`, `CIRROCAST_LOCATION`,
+`CIRROCAST_TIMEOUT`, `CIRROCAST_NOMINATIM_URL` and `CIRROCAST_IP_SERVICE`; API keys use their own
+`CIRROCAST_<PROVIDER>_KEY` namespace (below). `cirrocast config get <KEY>` prints the effective
+value, environment override included.
 
 ```bash
 cirrocast config path                              # where the file lives (creates nothing)

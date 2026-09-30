@@ -9,12 +9,24 @@
 
 use std::io::{IsTerminal as _, Read as _};
 use std::process::Command as StdCommand;
+use std::sync::Arc;
+use std::time::Duration;
 
 use clap::{ArgAction, Args, Parser, Subcommand};
 
+use crate::cache::{Cache, CacheMode, CacheStat, Clock, SystemClock};
 use crate::config::Config;
 use crate::config::keys::{KeySource, KeyStore};
 use crate::error::{Error, Result};
+use crate::geo::ip::{IpLocatorChain, IpService};
+use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
+use crate::geo::open_meteo::OpenMeteoGeocoder;
+use crate::geo::{
+    Geocoder, LocationSpec, Resolution, ambiguity_note, location_line, osm_ambiguity_note, rank,
+    resolve,
+};
+use crate::http::{HttpClient, UreqTransport};
+use crate::model::{Location, LocationSource};
 use crate::paths::Paths;
 use crate::provider::{ProviderId, ProviderMeta};
 
@@ -53,6 +65,95 @@ pub enum Command {
 
     /// Inspect the supported weather providers.
     Provider(ProviderArgs),
+
+    /// Resolve a location argument without fetching weather.
+    Location(LocationArgs),
+
+    /// Inspect and maintain the on-disk cache.
+    Cache(CacheArgs),
+}
+
+/// Arguments of `cirrocast location`.
+#[derive(Debug, Args)]
+pub struct LocationArgs {
+    /// Location action.
+    #[command(subcommand)]
+    pub command: LocationCommand,
+}
+
+/// Actions of `cirrocast location`.
+#[derive(Debug, Subcommand)]
+pub enum LocationCommand {
+    /// Resolve `QUERY` and print the place it means.
+    #[command(after_help = crate::geo::USAGE_FORMS)]
+    Search(SearchArgs),
+}
+
+/// Arguments of `cirrocast location search`.
+#[derive(Debug, Args)]
+pub struct SearchArgs {
+    /// Location argument (`Beijing`, `:Beijing`, `~Tsinghua`, `@39.9,116.4`); omitted = the
+    /// configured default location, else the public IP.
+    pub query: Option<String>,
+
+    /// Locate from the public IP address. This sends the address to ipwho.is (falling back to
+    /// ipapi.co); the answer is cached for 24 hours. It never happens without `--ip` or an empty
+    /// location everywhere.
+    #[arg(long)]
+    pub ip: bool,
+
+    /// How many geocoder candidates to rank (1..=100).
+    #[arg(long, value_name = "N", default_value_t = 10, value_parser = clap::value_parser!(u8).range(1..=100))]
+    pub limit: u8,
+
+    /// Per-request timeout in seconds; overrides `network.timeout_secs`.
+    #[arg(long, value_name = "SECS", value_parser = clap::value_parser!(u32).range(1..=300))]
+    pub timeout: Option<u32>,
+
+    #[command(flatten)]
+    pub cache: CacheFlags,
+}
+
+/// The mutually exclusive cache-control flags.
+#[derive(Debug, Clone, Copy, Default, Args)]
+pub struct CacheFlags {
+    /// Ignore the cache for this run and store nothing.
+    #[arg(long, conflicts_with_all = ["refresh", "offline"])]
+    pub no_cache: bool,
+
+    /// Ignore cached answers and replace them with fresh ones.
+    #[arg(long, conflicts_with_all = ["no_cache", "offline"])]
+    pub refresh: bool,
+
+    /// Serve cached answers only and never touch the network.
+    #[arg(long, conflicts_with_all = ["no_cache", "refresh"])]
+    pub offline: bool,
+}
+
+/// Arguments of `cirrocast cache`.
+#[derive(Debug, Args)]
+pub struct CacheArgs {
+    /// Cache action.
+    #[command(subcommand)]
+    pub command: CacheCommand,
+}
+
+/// Actions of `cirrocast cache`.
+#[derive(Debug, Subcommand)]
+pub enum CacheCommand {
+    /// Show what each namespace holds.
+    Stat,
+
+    /// Remove expired entries, or every entry with `--all`.
+    Clean {
+        /// Remove everything, not only what has expired.
+        #[arg(long)]
+        all: bool,
+
+        /// Refused on purpose: offline mode does not write (or delete) anything.
+        #[arg(long)]
+        offline: bool,
+    },
 }
 
 /// Arguments of `cirrocast config`.
@@ -173,8 +274,293 @@ impl Cli {
             Command::Config(args) => run_config(&args.command),
             Command::Key(args) => run_key(&args.command),
             Command::Provider(args) => run_provider(&args.command),
+            Command::Location(args) => run_location(&args.command, self),
+            Command::Cache(args) => run_cache(&args.command, self),
         }
     }
+}
+
+/// Runs `cirrocast location …`.
+fn run_location(command: &LocationCommand, cli: &Cli) -> Result<()> {
+    match command {
+        LocationCommand::Search(args) => run_location_search(args, cli),
+    }
+}
+
+/// Resolves one location argument and prints the place it means.
+///
+/// The resolved location goes to stdout on its own line; everything that is commentary — the
+/// ambiguity note, the `ODbL` attribution, the IP-lookup disclosure and the `-v` candidate list —
+/// goes to stderr, so stdout stays pipeable and a script never has to filter prose.
+fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
+    let paths = Paths::resolve()?;
+    let config = Config::load(&paths)?;
+    config.validate()?;
+
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let cache = Cache::open(
+        &paths,
+        cache_mode(&config, args.cache)?,
+        Arc::clone(&clock),
+        cli.verbose,
+    );
+    let timeout = Duration::from_secs(u64::from(
+        args.timeout.unwrap_or(config.network.timeout_secs),
+    ));
+    let transport = UreqTransport::new(&config.network, timeout)?;
+    let http = HttpClient::new(
+        Box::new(transport),
+        config.network.retries,
+        clock,
+        cli.verbose,
+    );
+    let (spec, text) = location_target(args, &config)?;
+    let (location, resolution, candidates) =
+        resolve_location(&spec, args, &config, &http, &cache, cli)?;
+
+    println!("{}", location_line(&location));
+    if let Some(text) = &text
+        && !cli.quiet
+    {
+        let note = if matches!(spec, LocationSpec::Osm(_)) {
+            osm_ambiguity_note(text, &location, resolution)
+        } else {
+            ambiguity_note(text, &location, resolution)
+        };
+        if let Some(note) = note {
+            eprintln!("{note}");
+        }
+    }
+    if location.source == LocationSource::Osm {
+        eprintln!("Location data © OpenStreetMap contributors (ODbL)");
+    }
+    if cli.verbose > 0 {
+        for (index, candidate) in candidates.iter().enumerate() {
+            let population = candidate
+                .population
+                .map(|population| format!(" (population {population})"))
+                .unwrap_or_default();
+            eprintln!(
+                "location: candidate {}/{}: {}{population}",
+                index + 1,
+                candidates.len(),
+                location_line(candidate)
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The spec to resolve and the text a note quotes: `--ip` wins, then an explicit argument, then
+/// `location.default` — which is itself a spec, so `:Beijing` or `@39.9,116.4` configured there
+/// behaves exactly as it does on the command line.
+fn location_target(args: &SearchArgs, config: &Config) -> Result<(LocationSpec, Option<String>)> {
+    let requested = LocationSpec::parse_arg(args.query.as_deref())?;
+    if args.ip && requested != LocationSpec::Default {
+        return Err(Error::Usage(
+            "`--ip` cannot be combined with a location argument; it locates from the public IP"
+                .to_owned(),
+        ));
+    }
+    if args.ip {
+        return Ok((LocationSpec::Default, None));
+    }
+    if requested != LocationSpec::Default {
+        let text = requested.query().unwrap_or_default().to_owned();
+        return Ok((requested, Some(text)));
+    }
+    match configured_location(config) {
+        Some(text) => {
+            let spec = LocationSpec::parse_arg(Some(&text))?;
+            Ok((spec, Some(text)))
+        }
+        None => Ok((LocationSpec::Default, None)),
+    }
+}
+
+/// Resolves `spec` through the geocoder it names, returning the winner, how it was chosen and the
+/// ranked candidates the `-v` listing prints.
+fn resolve_location(
+    spec: &LocationSpec,
+    args: &SearchArgs,
+    config: &Config,
+    http: &HttpClient,
+    cache: &Cache,
+    cli: &Cli,
+) -> Result<(Location, Resolution, Vec<Location>)> {
+    match spec {
+        LocationSpec::Default => {
+            let chain = IpLocatorChain::new(
+                http,
+                cache,
+                IpService::chain(&ip_service_setting())?,
+                Duration::from_secs(u64::from(config.cache.ip_ttl_secs)),
+            );
+            let (location, service) = chain.locate_with_service()?;
+            if !cli.quiet {
+                eprintln!("ip: located from the public IP via {}", service.label());
+            }
+            Ok((location, Resolution::Only, Vec::new()))
+        }
+        spec @ (LocationSpec::Fuzzy(_) | LocationSpec::Exact(_)) => {
+            let geocoder = OpenMeteoGeocoder::new(
+                http,
+                cache,
+                Duration::from_secs(u64::from(config.cache.geocode_ttl_secs)),
+            );
+            let hits = geocoder.search(spec.query().unwrap_or_default(), args.limit)?;
+            let candidates = rank(hits.clone(), spec.query(), args.limit);
+            let (location, resolution) = resolve(hits, spec, args.limit)?;
+            Ok((location, resolution, candidates))
+        }
+        spec @ LocationSpec::Osm(_) => {
+            let nominatim = Nominatim::new(http, cache, nominatim_url(config));
+            let hits = nominatim.search(spec.query().unwrap_or_default(), args.limit)?;
+            let candidates = rank(hits.clone(), spec.query(), args.limit);
+            let (location, resolution) = resolve(hits, spec, args.limit)?;
+            Ok((location, resolution, candidates))
+        }
+        spec @ LocationSpec::LatLon(..) => {
+            let (location, resolution) = resolve(Vec::new(), spec, args.limit)?;
+            Ok((location, resolution, Vec::new()))
+        }
+    }
+}
+
+/// Runs `cirrocast cache …`.
+fn run_cache(command: &CacheCommand, cli: &Cli) -> Result<()> {
+    let paths = Paths::resolve()?;
+    match command {
+        CacheCommand::Stat => {
+            let cache = Cache::open(
+                &paths,
+                CacheMode::Normal,
+                Arc::new(SystemClock),
+                cli.verbose,
+            );
+            for line in cache_stat_lines(&cache.stat()?) {
+                println!("{line}");
+            }
+        }
+        CacheCommand::Clean { all, offline } => {
+            let mode = if *offline {
+                CacheMode::Offline
+            } else {
+                CacheMode::Normal
+            };
+            let cache = Cache::open(&paths, mode, Arc::new(SystemClock), cli.verbose);
+            let report = cache.clean(*all)?;
+            if *all {
+                println!("removed {} entries", report.removed);
+            } else {
+                println!("removed {} expired entries", report.removed);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One `cache stat` line per namespace: name, entry count, size, then the fetch window.
+///
+/// Fixed column widths (13/9/10) rather than computed ones, because the layout is documented in the
+/// step file and in `--help` output: the three namespaces always fit and a user comparing two runs
+/// sees the same columns.
+fn cache_stat_lines(stat: &CacheStat) -> Vec<String> {
+    stat.namespaces
+        .iter()
+        .map(|namespace| {
+            let entries = if namespace.entries == 1 {
+                "1 entry".to_owned()
+            } else {
+                format!("{} entries", namespace.entries)
+            };
+            let window = match (namespace.oldest, namespace.newest) {
+                (Some(oldest), Some(newest)) => {
+                    format!("   oldest {}   newest {}", rfc3339(oldest), rfc3339(newest))
+                }
+                _ => String::new(),
+            };
+            format!(
+                "{:<13}{entries:<9}{:>10}{window}",
+                namespace.name,
+                human_bytes(namespace.bytes)
+            )
+        })
+        .collect()
+}
+
+/// A timestamp in the envelope's own spelling (`2026-09-30T00:46:07Z`), which is what the cache
+/// files and the documentation use, rather than `chrono`'s space-separated `Display`.
+fn rfc3339(time: chrono::DateTime<chrono::Utc>) -> String {
+    time.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// A byte count in the largest unit that keeps it short: `0 B`, `1.6 kB`, `2.3 MB`.
+///
+/// Integer arithmetic with one decimal digit, rounding half up, so the function needs neither a
+/// float cast nor a precision assumption about how large a cache can grow.
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [(&str, u64); 4] = [
+        ("GB", 1_000_000_000),
+        ("MB", 1_000_000),
+        ("kB", 1_000),
+        ("B", 1),
+    ];
+    let (unit, scale) = UNITS
+        .iter()
+        .find(|(_, scale)| bytes >= *scale)
+        .copied()
+        .unwrap_or(("B", 1));
+    if scale == 1 {
+        return format!("{bytes} B");
+    }
+    let tenths = (u128::from(bytes) * 10 + u128::from(scale) / 2) / u128::from(scale);
+    format!("{}.{} {unit}", tenths / 10, tenths % 10)
+}
+
+/// The cache mode of this run: the flags win, then `[cache] enabled`.
+fn cache_mode(config: &Config, flags: CacheFlags) -> Result<CacheMode> {
+    if !flags.no_cache && !flags.refresh && !flags.offline && !config.cache.enabled {
+        return Ok(CacheMode::NoCache);
+    }
+    CacheMode::from_flags(flags.no_cache, flags.refresh, flags.offline)
+}
+
+/// The configured default location, when there is one.
+fn configured_location(config: &Config) -> Option<String> {
+    let text = config.location.default.trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_owned())
+    }
+}
+
+/// The Nominatim base URL: `CIRROCAST_NOMINATIM_URL`, else `network.nominatim_url`, else the
+/// public service.
+fn nominatim_url(config: &Config) -> String {
+    if let Some(value) = std::env::var("CIRROCAST_NOMINATIM_URL")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+    {
+        return value;
+    }
+    let configured = config.network.nominatim_url.trim();
+    if configured.is_empty() {
+        DEFAULT_URL.to_owned()
+    } else {
+        configured.to_owned()
+    }
+}
+
+/// The IP-location service setting: `CIRROCAST_IP_SERVICE`, else `auto`.
+fn ip_service_setting() -> String {
+    std::env::var("CIRROCAST_IP_SERVICE")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "auto".to_owned())
 }
 
 /// Runs `cirrocast config …`.

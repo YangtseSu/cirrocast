@@ -13,7 +13,7 @@ use predicates::prelude::*;
 
 /// Every key of `KEY_TABLE` with a value that passes validation — the table is the source of truth
 /// for the *set* of keys, so this list is checked against it below.
-const PROBES: [(&str, &str); 23] = [
+const PROBES: [(&str, &str); 24] = [
     ("schema_version", "1"),
     ("defaults.provider", "smhi"),
     ("defaults.format", "json"),
@@ -29,6 +29,7 @@ const PROBES: [(&str, &str); 23] = [
     ("network.timeout_secs", "30"),
     ("network.retries", "5"),
     ("network.proxy", "http://127.0.0.1:8080"),
+    ("network.nominatim_url", "https://nominatim.example.org"),
     ("cache.enabled", "false"),
     ("cache.weather_ttl_secs", "900"),
     ("cache.ip_ttl_secs", "60"),

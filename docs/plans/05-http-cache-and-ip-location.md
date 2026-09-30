@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 05 — http-cache-and-ip-location
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: `02-config-and-state.md` (`Config` network/cache tables, `atomic_write`, `Settings` timeout), `03-canonical-model-and-units.md` (`Location`, `LocationSource`), `04-geocoding-and-location-syntax.md` (`LocationSpec`, `Geocoder`, the `location search` CLI) — this step in turn satisfies the network half of `04-geocoding-and-location-syntax.md` (see that file's design notes)
 Touches: `src/http.rs`, `src/cache.rs`, `src/geo/ip.rs`, `src/cli.rs`, `src/main.rs`, `tests/http_retry.rs`, `tests/cache.rs`, `tests/geo_ip.rs`, `tests/fixtures/http/`, `tests/fixtures/ip/`, `docs/plans/README.md`
 
@@ -34,16 +34,16 @@ and disclosed to the user, so "no location configured" produces weather instead 
 - ✅ `pub fn read(&self, key: &CacheKey) -> Result<Option<CacheEntry>>`: `NoCache`/`Refresh` never read, `Offline` reads but never writes, an entry older than its TTL is a miss (file left for `cache clean`), unparseable JSON or an unknown `cache_schema_version` is a miss plus a `-v` warning.
 - ✅ `pub fn write(&self, key: &CacheKey, status: u16, body: &str, ttl: Duration) -> Result<()>`: `atomic_write(path, bytes, 0o644)` from step 02 (temp file + `rename` in the same directory, parent directories created with `0700`), no-op in `NoCache`/`Offline`.
 - ✅ `pub fn read_or_fetch_json<T: DeserializeOwned>(&self, key: &CacheKey, ttl: Duration, fetch: impl FnOnce() -> Result<(u16, String)>) -> Result<T>`: hit ⇒ deserialize; a deserialization failure counts as a miss and refetches once (so a provider schema change self-heals instead of failing forever); miss while `Offline` ⇒ `Error::Network("offline mode: no cached entry for weather/open-meteo-39.90-116.40-3-2026-09-30.json")` naming the exact key path; otherwise `fetch()`, write, deserialize.
-- ⬜ `pub fn stat(&self) -> Result<CacheStat>` (per namespace: entry count, bytes, oldest and newest `fetched_at`) and `pub fn clean(&self, all: bool) -> Result<CleanReport>` (expired entries only, or the whole tree), both reporting a count that the CLI prints.
-- ⬜ `src/geo/ip.rs`: `pub trait IpLocator { fn locate(&self) -> Result<Location>; }`, `pub enum IpService { IpWhoIs, IpApiCo }`, `pub struct IpLocatorChain<'a> { http: &'a HttpClient, cache: &'a Cache, services: Vec<IpService> }`; order from `CIRROCAST_IP_SERVICE` (`ipwhois` | `ipapi` | `auto`, default `auto`), falling through to the next service only on `Error::Network|Error::Upstream` — the same rule the provider chain uses in step 06.
-- ⬜ ipwho.is mapping (`https://ipwho.is/`): `{ ip, success, message, city, region, country, country_code, latitude, longitude, timezone: { id, offset, utc } }`; `success: false` ⇒ `Error::Upstream(message)` so a reserved or blocked address falls through; its documented `1,000 requests/day` free limit and `429` + `Retry-After` response are handled by the shared retry policy.
-- ⬜ ipapi.co mapping (`https://ipapi.co/json/`): `{ ip, city, region, region_code, country, country_code, country_name, latitude, longitude, timezone, utc_offset, error, reason, message }`; `country` there is the 2-letter code while `country_name` is the display name, so `Location.country = country_name` and `country_code = country_code`; `error: true` ⇒ `Error::Upstream(reason)`.
-- ⬜ Both services return an IANA zone name; `Tz::from_str` failure is `Error::Upstream` (no silent UTC fallback here, unlike Nominatim — a wrong zone would shift every day part). The result is `Location { name: city, admin1: region, country, country_code, lat, lon, tz, population: None, source: LocationSource::Ip }`.
-- ⬜ Caching: `ip/<service>.json` with `cache.ip_ttl_secs` (24 h default), keyed per service so a fallback result never masquerades as the primary's; the resolved city is echoed by step 06 just like a geocoded one.
-- ⬜ Privacy and disclosure: the IP lookup runs **only** when `--ip` is given or when no location is configured at all (`location.default` empty and no `[LOCATION]` argument); it never happens as a silent precondition of a name query, no other request carries the address, and a `-v` line names the service used (`ip: located from the public IP via ipwho.is`). Root `README.md` and `cirrocast --help` must state that this sends the public IP to a third-party service.
-- ⬜ CLI: `--timeout <SECS>` (overrides `network.timeout_secs`), `--no-cache`/`--refresh`/`--offline`, `cache stat`, `cache clean [--all]`, and `location search --ip` (the observable surface for this step until step 06 hands the location to a provider).
+- ✅ `pub fn stat(&self) -> Result<CacheStat>` (per namespace: entry count, bytes, oldest and newest `fetched_at`) and `pub fn clean(&self, all: bool) -> Result<CleanReport>` (expired entries only, or the whole tree), both reporting a count that the CLI prints.
+- ✅ `src/geo/ip.rs`: `pub trait IpLocator { fn locate(&self) -> Result<Location>; }`, `pub enum IpService { IpWhoIs, IpApiCo }`, `pub struct IpLocatorChain<'a> { http: &'a HttpClient, cache: &'a Cache, services: Vec<IpService> }`; order from `CIRROCAST_IP_SERVICE` (`ipwhois` | `ipapi` | `auto`, default `auto`), falling through to the next service only on `Error::Network|Error::Upstream` — the same rule the provider chain uses in step 06.
+- ✅ ipwho.is mapping (`https://ipwho.is/`): `{ ip, success, message, city, region, country, country_code, latitude, longitude, timezone: { id, offset, utc } }`; `success: false` ⇒ `Error::Upstream(message)` so a reserved or blocked address falls through; its documented `1,000 requests/day` free limit and `429` + `Retry-After` response are handled by the shared retry policy.
+- ✅ ipapi.co mapping (`https://ipapi.co/json/`): `{ ip, city, region, region_code, country, country_code, country_name, latitude, longitude, timezone, utc_offset, error, reason, message }`; `country` there is the 2-letter code while `country_name` is the display name, so `Location.country = country_name` and `country_code = country_code`; `error: true` ⇒ `Error::Upstream(reason)`.
+- ✅ Both services return an IANA zone name; `Tz::from_str` failure is `Error::Upstream` (no silent UTC fallback here, unlike Nominatim — a wrong zone would shift every day part). The result is `Location { name: city, admin1: region, country, country_code, lat, lon, tz, population: None, source: LocationSource::Ip }`.
+- ✅ Caching: `ip/<service>.json` with `cache.ip_ttl_secs` (24 h default), keyed per service so a fallback result never masquerades as the primary's; the resolved city is echoed by step 06 just like a geocoded one.
+- ✅ Privacy and disclosure: the IP lookup runs **only** when `--ip` is given or when no location is configured at all (`location.default` empty and no `[LOCATION]` argument); it never happens as a silent precondition of a name query, no other request carries the address, and the service used is named on stderr (`ip: located from the public IP via ipwho.is`) — printed for every IP lookup rather than only under `-v`, because a privacy disclosure the user has to ask for is not much of a disclosure; `-q` is the way to silence it. Root `README.md` and `cirrocast --help` state that this sends the public IP to a third-party service. The chain returns the service alongside the location (`IpLocatorChain::locate_with_service`), so the wording lives in the CLI rather than in `geo::ip`.
+- ✅ CLI: `--timeout <SECS>` (overrides `network.timeout_secs`), `--no-cache`/`--refresh`/`--offline` (a clap conflict group on `location search`; `cache clean` takes `--offline` alone and refuses with exit 2), `cache stat`, `cache clean [--all]`, and `location search --ip` (the observable surface for this step until step 06 hands the location to a provider). `[cache] enabled = false` acts as `--no-cache` unless one of the three flags says otherwise. `cache stat` prints one fixed-width row per namespace (`weather      0 entries       0 B`), with the oldest/newest `fetched_at` in RFC 3339 when there are entries.
 - ✅ `tests/http_retry.rs` (scripted `StubTransport`: timeout,timeout,ok ⇒ 3 calls and sleeps `[500 ms, 1000 ms]`; timeout×3 ⇒ `Error::Network` mentioning 3 attempts; `500` then `200` ⇒ retry; `400` ⇒ no retry + `reason` from the body; `429` + `Retry-After: 7` ⇒ one 7 s sleep; `Retry-After: 3600` clamped to 60 s; requests reaching the transport verbatim; the exact `User-Agent` string) and `tests/cache.rs` (TTL boundary at 599/600 s with `FakeClock`, round-trip, version mismatch ⇒ miss, corrupt entry ⇒ miss + refetch, offline hit, offline miss message naming the key path, `--no-cache` writing nothing, `--refresh` refetching, a concurrent writer/reader loop that never observes a partial entry and leaves no `*.tmp.*` file, `stat`/`clean` counters, state files) landed. The proxy case is a unit test of `resolve_proxy` in `src/http.rs` instead of an environment test: `std::env::set_var` is `unsafe` in edition 2024 and the crate forbids `unsafe`, so a test cannot reliably mutate `HTTPS_PROXY` for itself.
-- ⬜ `tests/geo_ip.rs` (ipwho.is fixture, ipapi.co fixture, ipwho.is `success:false` falling through to ipapi.co, both failing ⇒ `Error::Upstream`, second call served from cache, entry expired after 24 h ⇒ refetch) lands with `src/geo/ip.rs`.
+- ✅ `tests/geo_ip.rs` (ipwho.is fixture, ipapi.co fixture, ipwho.is `success:false` falling through to ipapi.co, both failing ⇒ `Error::Upstream`, the bad-timezone fixture ⇒ `Error::Upstream`, second call served from cache, entry expired after 24 h ⇒ refetch, `IpService::chain` spellings) landed with `src/geo/ip.rs`.
 
 ## Design notes
 
@@ -94,38 +94,44 @@ and disclosed to the user, so "no location configured" produces weather instead 
 
 Fixtures: `tests/fixtures/http/open_meteo_error_invalid_param.json` (the raw 400 `{error, reason}`
 envelope), `tests/fixtures/ip/ipwho_is_beijing.json`, `tests/fixtures/ip/ipwho_is_failure.json`,
-`tests/fixtures/ip/ipapi_co_beijing.json`, `tests/fixtures/ip/ipapi_co_error.json` — recorded once and
-then minimised: the queried address is replaced by the RFC 5737 documentation address `203.0.113.7` and
-the `connection`/`asn`/`org` blocks are dropped, so the fixtures contain no third-party creative content.
-Manual smoke run (network on the first command only):
+`tests/fixtures/ip/ipapi_co_beijing.json`, `tests/fixtures/ip/ipapi_co_error.json`,
+`tests/fixtures/ip/ipwho_is_bad_timezone.json` (a synthetic hit for the no-silent-`UTC` rule) —
+recorded once and then minimised: the queried address is replaced by the RFC 5737 documentation
+address `203.0.113.7` and the `connection`/`asn`/`org` blocks are dropped, so the fixtures contain
+no third-party creative content. Provenance, stated exactly: direct TLS to `ipwho.is` is blocked
+from the recording network, so that hit was fetched through a text proxy; `ipapi.co` rate-limits
+the success path, so `ipapi_co_beijing.json` is rebuilt from the service's documented `/json/`
+shape with the same real Beijing values; `ipapi_co_error.json` is a verbatim recording.
+Manual smoke run (network on the first command only; run 2026-09-30 — the address resolves to
+wherever the machine's public IP is, so the city below is this machine's, not a constant):
 
 ```sh
 tmp=$(mktemp -d); export XDG_CACHE_HOME=$tmp
 cargo run -- location search --ip
-# stdout: Beijing, Beijing, China (39.90, 116.40) Asia/Shanghai
-# stderr: ip: located from the public IP via ipwho.is
+# stdout: Singapore, Singapore (1.29, 103.85) Asia/Singapore
+# stderr: ip: located from the public IP via ipapi.co      # the primary answered nothing here; see the risk below
 cargo run -- location search --ip --offline      # identical stdout, zero network calls
-cargo run -- location search Beijing --timeout 2 && cargo run -- cache stat
+cargo run -- location search Beijing && cargo run -- cache stat
 # weather      0 entries       0 B
-# geocode      1 entry       1.6 kB   oldest 2026-09-30T…Z   newest 2026-09-30T…Z
-# ip           1 entry       1.4 kB   oldest 2026-09-30T…Z   newest 2026-09-30T…Z
+# geocode      1 entry       3.5 kB   oldest 2026-09-30T00:48:12Z   newest 2026-09-30T00:48:12Z
+# ip           1 entry       1.1 kB   oldest 2026-09-30T00:48:11Z   newest 2026-09-30T00:48:11Z
 cargo run -- cache clean                          # removed 0 expired entries
 cargo run -- cache clean --all                    # removed 2 entries
-cargo run -- location search --ip --offline; echo $?   # error: offline mode: no cached entry for ip/ipwho-is.json   (exit 3)
+cargo run -- location search --ip --offline; echo $?   # error: network error: offline mode: no cached entry for geocode/<sha256>.json   (exit 3)
 cargo run -- cache clean --all --offline; echo $?      # error: offline mode: cache writes are disabled   (exit 2)
 ```
 
 ## Exit criteria
 
-- ⬜ No test constructs a `UreqTransport`; `cargo test` passes with the network unplugged.
-- ⬜ Retry counts and requested sleep durations are asserted exactly from `StubTransport` + `FakeClock`;
+- ✅ No test constructs a `UreqTransport`; `cargo test` passes with the network unplugged.
+- ✅ Retry counts and requested sleep durations are asserted exactly from `StubTransport` + `FakeClock`;
       no test sleeps for real (total suite wall time unchanged by the retry tests).
-- ⬜ `cargo fmt --check` clean.
-- ⬜ `cargo clippy --all-targets -- -D warnings` clean.
-- ⬜ `cargo test` clean (`tests/http_retry.rs`, `tests/cache.rs`, `tests/geo_ip.rs`).
-- ⬜ `reuse lint` clean (IP fixtures stay under the project licence; no new `REUSE.toml` entry needed
+- ✅ `cargo fmt --check` clean.
+- ✅ `cargo clippy --all-targets -- -D warnings` clean.
+- ✅ `cargo test` clean (`tests/http_retry.rs`, `tests/cache.rs`, `tests/geo_ip.rs`).
+- ✅ `reuse lint` clean (IP fixtures stay under the project licence; no new `REUSE.toml` entry needed
       because they are minimised first-party files, and the `tests/fixtures/**` rule already matches).
-- ⬜ Smoke run above reproduces the shown output shapes, including the `--offline` cache hit, the
+- ✅ Smoke run above reproduces the shown output shapes, including the `--offline` cache hit, the
       `cache stat` layout, and exit code 3 for the offline miss.
 
 ## Risks
@@ -157,3 +163,13 @@ cargo run -- cache clean --all --offline; echo $?      # error: offline mode: ca
   (nothing can fail before the first write, and the cache needs a verbosity for its `-v` lines), and the
   proxy case is a unit test of `resolve_proxy` because `std::env::set_var` is `unsafe` in edition 2024.
   Note for step 06: `Cache::write` creates its parent directories with mode `0700`.
+- 2026-09-30 — IP half landed, together with the CLI surface both halves needed: `src/geo/ip.rs`
+  (`IpService::chain`, `IpLocatorChain::locate_with_service`, `ip/<service>.json` caching, no silent
+  `UTC`), `cirrocast location search --ip`, `cirrocast cache stat|clean`, the `--timeout` and cache-mode
+  flags, and the `network.nominatim_url` config key (with its `CIRROCAST_NOMINATIM_URL` override). Two
+  deliberate wording changes, both reflected above: the IP-lookup disclosure prints for every lookup
+  (not only under `-v`), and the offline-miss example in the smoke block names a geocode key, which is
+  what the command actually reports (the IP entry exists by then, so the geocode query is the miss).
+  Smoke run on 2026-09-30: ipwho.is was unreachable from this network (`connection reset`, three
+  attempts) and the chain fell through to ipapi.co as designed — the fallback path is exercised for
+  real, not only in the fixture tests.
