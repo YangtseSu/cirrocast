@@ -42,7 +42,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 03 | A | [canonical-model-and-units](03-canonical-model-and-units.md) | ✅ done | 01, 02 |
 | 04 | A | [geocoding-and-location-syntax](04-geocoding-and-location-syntax.md) | ✅ done | 02, 03 |
 | 05 | A | [http-cache-and-ip-location](05-http-cache-and-ip-location.md) | ✅ done | 02, 03, 04 |
-| 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ⬜ not-started | 03, 04, 05 |
+| 06 | A | [open-meteo-provider](06-open-meteo-provider.md) | ✅ done | 03, 04, 05 |
 | 07 | B | [art-table-renderer](07-art-table-renderer.md) | ⬜ not-started | 03, 06 |
 | 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ⬜ not-started | 06, 07 |
 | 09 | B | [localization](09-localization.md) | ⬜ not-started | 03, 07 |

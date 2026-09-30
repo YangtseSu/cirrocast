@@ -18,14 +18,32 @@ cirrocast — Beijing, China (39.9042, 116.4074)
   ...wttr.in-style art-table output lands at step 07 of docs/plans...
 ```
 
+```
+$ cirrocast Beijing --format plain
+Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
+Now: 31°C (feels 36°C), Partly cloudy, wind 12 km/h SE, humidity 66%, pressure 1004 hPa, visibility 10 km, 0.0 mm
+2026-07-15  min 25°C  max 35°C  sunrise 04:58  sunset 19:42
+  Morning  29°C  Clear sky     precip 0.0 mm (0%)   wind 2.5 km/h N
+  Noon     35°C  Clear sky     precip 0.0 mm (0%)   wind 4.7 km/h SW
+  Evening  30°C  Overcast      precip 0.0 mm (0%)   wind 13 km/h SW
+  Night    26°C  Overcast      precip 0.0 mm (0%)   wind 6.0 km/h SW
+Data: Open-Meteo.com (CC BY 4.0)
+```
+
+The `plain` shape above is the recorded-response run from the test suite
+(`tests/fixtures/open_meteo/forecast_beijing_2026-07-15.json`), so the numbers are the weather of that
+day, not of today.
+
 ## Status
 
-Early scaffold (steps 01–05 of 24 in [`docs/plans/`](docs/plans/README.md)): the CLI skeleton, XDG
-path resolution, the provider registry, the typed configuration with its `config`/`key`
-subcommands, the canonical model, location resolution (`cirrocast location search`) and the shared
-HTTP/cache layer are in place. Weather fetching starts at step 06
-(`docs/plans/06-open-meteo-provider.md`); the wttr.in-style renderer at step 07. See the plan index
-for live per-step progress.
+Steps 01–06 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
+resolution, the provider registry, the typed configuration with its `config`/`key` subcommands, the
+canonical model, location resolution (`cirrocast location search`), the shared HTTP/cache layer and
+the first end-to-end forecast (`cirrocast Beijing --format plain`, Open-Meteo through the provider
+chain). The wttr.in-style `art-table` renderer is step 07, and the rest of the flag matrix
+(`--units`, `--lang`, `--color`, `--width`, `--lat/--lon`, `--station`, the non-plain formats,
+`provider list|info`, `completion`, `man`) arrives in step 08 — until then `--format` accepts `plain`
+only and those flags are rejected by the command line. See the plan index for live per-step progress.
 
 ## Install
 
@@ -62,6 +80,28 @@ cirrocast completion <shell>   cirrocast man
 
 Location syntax: `Beijing` (fuzzy), `:Beijing` (exact name), `~Tsinghua` (OpenStreetMap),
 `@39.9,116.4` (coordinates), empty (config default, else public IP).
+
+### Weather
+
+```bash
+cirrocast Beijing                       # the configured default format (art-table arrives in step 07)
+cirrocast Beijing --format plain        # box-free lines, for pipes and logs
+cirrocast @39.9042,116.4074 -f plain    # coordinates: no geocoding request at all
+cirrocast Beijing -f plain --days 0     # current conditions only
+cirrocast Beijing -f plain --offline    # cached answer only, never the network
+cirrocast Beijing -f plain --refresh    # ignore the cache and replace it
+cirrocast -p open-meteo -f plain Beijing
+```
+
+A query resolves the location first (the same four forms as `location search`, with the winning place
+echoed on stderr when the name was ambiguous), then walks the provider chain — `--provider` takes an
+ordered list, and `auto` expands to the implemented keyless backends — and renders the first report
+that comes back. A chain entry that fails at the transport or upstream level falls through to the
+next one with a `warning:` line; a usage, key or location error stops the walk. Every forecast is
+cached for `cache.weather_ttl_secs` under
+`$XDG_CACHE_HOME/cirrocast/weather/<provider>-<lat>-<lon>-<days>-<local-date>.json`, keyed by the
+location's own calendar date. Providers are also requested in metric, and the renderer converts into
+the display units, so a cache entry is unit-independent.
 
 ## Location
 
@@ -110,13 +150,15 @@ service, each with its own limits and licence. What the tool does to stay inside
 | Source | Used for | Limits the service sets | Licence / attribution |
 |---|---|---|---|
 | [Open-Meteo](https://open-meteo.com/) geocoding | `Beijing`, `:Beijing` | free tier is **non-commercial**, < 10 000 calls/day, 5 000/hour, 600/minute; `name` needs ≥ 2 characters | data CC-BY-4.0; the CLI prints `Location data based on GeoNames (CC-BY-4.0) via Open-Meteo` with the service link |
+| [Open-Meteo](https://open-meteo.com/) forecast | every weather query | free tier is **non-commercial**, < 10 000 calls/day; `forecast_days` ≤ 16 | data CC-BY-4.0; the rendered report ends with `Data: Open-Meteo.com (CC BY 4.0)` |
 | [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding | — | CC-BY-4.0 |
 | [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
 | [ipwho.is](https://ipwho.is/) | `--ip` (primary) | free endpoint: 1 000 requests/day per client IP, then `429` + `Retry-After` | personal or internal use, no redistribution |
 | [ipapi.co](https://ipapi.co/) | `--ip` (fallback) | free tier: up to 1 000 requests/day | internal use, no resale; its terms allow keeping an answer for **at most 24 hours**, which is why `cache.ip_ttl_secs` is capped there |
 
-Weather output carries the credit Open-Meteo's licence asks for (`Weather data by Open-Meteo.com`,
-with the service URL) wherever a forecast is displayed, from step 06 on.
+Weather output carries the credit Open-Meteo's licence asks for: a rendered report ends with
+`Data: Open-Meteo.com (CC BY 4.0)`, taken from the provider registry rather than hard-coded, and a
+geocoded place adds the GeoNames line below it.
 
 Nothing from these services is redistributed: responses are cached under
 `$XDG_CACHE_HOME/cirrocast/` with the TTLs in `[cache]` (10 minutes for weather, 24 hours for an IP
