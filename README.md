@@ -349,6 +349,16 @@ and the traps — lives in [`docs/providers.md`](docs/providers.md); `cirrocast 
 re-verification corrected this table (SMHI's endpoint and horizon, WWO's 5-day free horizon,
 QWeather's global coverage) and is recorded in that file's log.
 
+A chain falls through to the next backend **only** when the failure is transport-level or comes from
+upstream (a timeout, a `429`, a `5xx`, an out-of-coverage point); a usage, configuration, location or
+credential error stops the walk, because retrying another backend cannot fix it. `--verbose` prints
+one line per attempt plus `attribution: <credit> (<request URL>)` after the fetch that answered, so
+the exact upstream call is visible without a packet capture. Every rendered report carries the credit
+its data licence asks for — `Data: Open-Meteo.com (CC BY 4.0)`, `Data: SMHI (CC BY 4.0 SE)`,
+`Data: OpenWeather (ODbL 1.0) — https://openweathermap.org/` and so on, all taken from the provider
+registry rather than hard-coded — and `provider info <ID>` prints the same line under `credit:` along
+with the provider's auth mechanism, coverage, granularity and documented limits.
+
 Keys are BYOK and stored outside `config.toml`, in `keys.toml` (mode `0600`) or in the provider's
 environment variable — see [Configuration § API keys](#api-keys).
 

@@ -802,6 +802,13 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     let request = FetchRequest::new(days, HourlyResolution::Hourly);
     let report = fetch_chain(&ids, &location, &request, &env)?;
 
+    if cli.verbose > 0 {
+        // The credit the terms require, plus the exact request that produced the answer, so a
+        // bug report can name the upstream call without a packet capture.
+        let credit = licence_line(&report.attribution.provider).unwrap_or("no credit line");
+        eprintln!("attribution: {credit} ({})", report.attribution.url);
+    }
+
     let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
     let ctx = RenderContext {
         units: setup.units,
@@ -1549,7 +1556,7 @@ fn provider_table() -> Vec<String> {
 /// The detail block printed by `provider info`.
 fn provider_details(meta: &ProviderMeta) -> Vec<String> {
     let locations = meta.location_kinds.summary();
-    vec![
+    let mut lines = vec![
         info_line("id:", meta.id),
         info_line("name:", meta.display_name),
         info_line(
@@ -1560,15 +1567,27 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
                 "planned"
             },
         ),
+        info_line("auth:", meta.auth),
         info_line("key:", key_label(meta)),
+    ];
+    if meta.requires_key {
+        lines.push(info_line(
+            "store key:",
+            format!("cirrocast key set {}", meta.id),
+        ));
+    }
+    lines.extend([
         info_line("current:", yes_no(meta.current)),
         info_line("hourly:", yes_no(meta.hourly)),
         info_line("daily:", yes_no(meta.daily)),
         info_line("alerts:", yes_no(meta.alerts)),
         info_line("max days:", meta.max_days),
         info_line("locations:", locations),
+        info_line("coverage:", meta.coverage),
+        info_line("granularity:", meta.granularity),
+        info_line("limits:", meta.limits),
         info_line(
-            "licence:",
+            "credit:",
             meta.licence.unwrap_or(
                 "not printed yet; the backend is not implemented (obligation in docs/providers.md)",
             ),
@@ -1576,7 +1595,8 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
         info_line("docs:", meta.docs_url),
         info_line("verified:", meta.verified),
         info_line("notes:", meta.notes),
-    ]
+    ]);
+    lines
 }
 
 /// How the `KEY` column and the `key:` line spell the credential requirement.
@@ -1591,7 +1611,7 @@ fn yes_no(flag: bool) -> &'static str {
 
 /// One `label: value` line, padded so the values line up.
 fn info_line(label: &str, value: impl std::fmt::Display) -> String {
-    format!("{label:<12}{value}")
+    format!("{label:<13}{value}")
 }
 
 /// The width of a column: the wider of its header and its longest value.

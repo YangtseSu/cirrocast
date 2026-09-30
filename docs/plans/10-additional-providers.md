@@ -161,12 +161,12 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       the payload contains, `max_days: 10` is an upper bound and fewer days than requested is not an error; no UV
       parameter exists (`uv_index: None`). Limits: `current: true` (nearest step), `hourly: true`, `daily: true`,
       `alerts: false`, `requires_key: false`, `key_env: None`, `location_kinds: LatLon`.
-- ⬜ `provider info <ID>` prints id, display name, capabilities, auth mechanism and key variable, how to store
-      the key (`cirrocast key set <id>`), attribution with URL and licence, rate limits, coverage, day-part
-      granularity, docs URL and the registry row's `verified` date; `provider list` gains `key: yes|no` and
-      `max days` columns, `--verbose` prints `attribution: <text> (<url>)` after every successful fetch (silenced
-      by `-q`; OWM, WeatherAPI, WWO and QWeather require it by their terms, PirateWeather has no documented
-      attribution duty — see `docs/providers.md`), and the README gains a provider table
+- ✅ `provider info <ID>` prints id, display name, status, auth mechanism, key variable and the `cirrocast key
+      set <id>` hint, capabilities, locations, coverage, granularity, documented limits, the credit line, docs URL
+      and the registry row's `verified` date (`ProviderMeta` gained `auth`, `coverage`, `granularity` and `limits`
+      for this, filled from the verified documentation); `provider list` keeps its `KEY`/`MAXDAYS` columns (they
+      answer the `key: yes|no` and `max days` questions with more information), `--verbose` prints
+      `attribution: <credit> (<request URL>)` after the fetch that answered, and the README gains a provider table
       (id, key env var, free-tier note, coverage, granularity) plus one paragraph on the chain and attribution.
 - ✅ Registry re-verification (done 2026-09-30, landed with `docs/providers.md`): every declared limit in the
       provider registry (`src/provider/mod.rs`, rows from step 01/06) was re-read against the provider's live
