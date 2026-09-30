@@ -1,0 +1,111 @@
+---
+source: tests/render_json.rs
+expression: "render(&report(), UnitSystem::Metric)"
+---
+{
+  "schema_version": 1,
+  "location": {
+    "name": "Beijing",
+    "admin1": "Beijing",
+    "country": "China",
+    "country_code": "CN",
+    "lat": 39.9042,
+    "lon": 116.4074,
+    "timezone": "Asia/Shanghai",
+    "elevation_m": 44.0,
+    "source": "geocoder"
+  },
+  "current": {
+    "time": "2026-09-30T12:15:00+08:00",
+    "condition": {
+      "code": 1,
+      "text": "Mainly clear"
+    },
+    "temp_c": 21.5,
+    "feels_like_c": 22.0,
+    "humidity_pct": 52,
+    "precip_mm": 0.0,
+    "pressure_hpa": 1015.0,
+    "visibility_km": 14.0,
+    "wind_kmh": 10.0,
+    "wind_dir_deg": 30,
+    "wind_gust_kmh": null,
+    "cloud_cover_pct": 25,
+    "uv_index": 5.0,
+    "is_day": true
+  },
+  "days": [
+    {
+      "date": "2026-09-30",
+      "sunrise": "06:05",
+      "sunset": "17:58",
+      "min_c": 14.0,
+      "max_c": 24.0,
+      "parts": {
+        "morning": {
+          "condition": {
+            "code": 0,
+            "text": "Clear sky"
+          },
+          "temp_c": 17.0,
+          "feels_like_c": 16.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "humidity_pct": 58,
+          "visibility_km": 12.0,
+          "wind_kmh": 7.0,
+          "wind_dir_deg": 100
+        },
+        "noon": {
+          "condition": {
+            "code": 1,
+            "text": "Mainly clear"
+          },
+          "temp_c": 23.0,
+          "feels_like_c": 23.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "humidity_pct": 42,
+          "visibility_km": 15.0,
+          "wind_kmh": 12.0,
+          "wind_dir_deg": 130
+        },
+        "evening": {
+          "condition": {
+            "code": 2,
+            "text": "Partly cloudy"
+          },
+          "temp_c": 19.0,
+          "feels_like_c": 18.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "humidity_pct": 55,
+          "visibility_km": 13.0,
+          "wind_kmh": 9.0,
+          "wind_dir_deg": 170
+        },
+        "night": {
+          "condition": {
+            "code": 3,
+            "text": "Overcast"
+          },
+          "temp_c": 14.0,
+          "feels_like_c": 13.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "humidity_pct": 72,
+          "visibility_km": 10.0,
+          "wind_kmh": 6.0,
+          "wind_dir_deg": 210
+        }
+      }
+    }
+  ],
+  "attribution": {
+    "provider": "open-meteo",
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "notice": "Open-Meteo.com (CC BY 4.0)",
+    "location_notice": "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
+    "retrieved_at": "2026-09-30T04:11:00Z"
+  }
+}

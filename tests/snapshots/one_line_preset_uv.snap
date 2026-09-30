@@ -1,0 +1,5 @@
+---
+source: tests/render_one_line.rs
+expression: "rendered(\"@uv\", UnitSystem :: Metric)"
+---
+Beijing: UV 5 (moderate)

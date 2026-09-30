@@ -26,6 +26,8 @@
 pub mod art;
 pub mod art_table;
 pub mod color;
+pub mod json;
+pub mod one_line;
 pub mod plain;
 
 use std::io::IsTerminal as _;
@@ -410,9 +412,8 @@ pub trait Renderer {
 /// The output formats.
 ///
 /// `art-table` is the default and the reason the crate exists; `dumb` is the same renderer with
-/// the ASCII charset, so the layout is implemented once. `one-line` and `json` are spelled here but
-/// their bodies are step 08's: [`renderer_for`] refuses them with a usage error instead of
-/// pretending to render them.
+/// the ASCII charset, so the layout is implemented once. `one-line` takes a `%`-token template,
+/// `plain` is the greppable line-per-record form and `json` the stable machine-readable document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Format {
     /// The wttr.in-style coloured table (default).
@@ -474,19 +475,29 @@ impl Format {
 ///
 /// A terminal that cannot draw UTF-8 or box drawing gets the ASCII table automatically, so the
 /// user sees a table rather than mojibake; the caller reports that switch under `--verbose`.
-pub fn renderer_for(format: Format, caps: &TermCaps) -> Result<Box<dyn Renderer>> {
+///
+/// `template` is the resolved `--template` value ([`one_line::resolve_template`]) and belongs to
+/// `one-line` alone: passing one for another format is a usage error rather than a silently
+/// ignored argument.
+pub fn renderer_for(
+    format: Format,
+    caps: &TermCaps,
+    template: Option<&str>,
+) -> Result<Box<dyn Renderer>> {
+    if template.is_some() && format != Format::OneLine {
+        return Err(Error::Usage(format!(
+            "`--template` requires `--format one-line`; {} takes no template",
+            format.as_str()
+        )));
+    }
     match format {
         Format::ArtTable => Ok(Box::new(art_table::ArtTable::new(caps.charset()))),
         Format::Dumb => Ok(Box::new(art_table::ArtTable::new(Charset::Ascii))),
         Format::Plain => Ok(Box::new(plain::Plain)),
-        Format::OneLine => Err(Error::Usage(
-            "format `one-line` has no renderer in this build yet; use art-table, plain or dumb"
-                .to_owned(),
-        )),
-        Format::Json => Err(Error::Usage(
-            "format `json` has no renderer in this build yet; use art-table, plain or dumb"
-                .to_owned(),
-        )),
+        Format::Json => Ok(Box::new(json::Json)),
+        Format::OneLine => Ok(Box::new(one_line::OneLine::new(
+            one_line::resolve_template(template)?,
+        ))),
     }
 }
 
@@ -732,16 +743,28 @@ mod tests {
     }
 
     #[test]
-    fn the_formats_without_a_renderer_are_refused_as_usage_errors() {
+    fn every_format_has_a_renderer_and_templates_belong_to_one_line() {
         let caps = caps();
-        assert!(renderer_for(Format::ArtTable, &caps).is_ok());
-        assert!(renderer_for(Format::Dumb, &caps).is_ok());
-        assert!(renderer_for(Format::Plain, &caps).is_ok());
+        for format in Format::ALL {
+            assert!(
+                renderer_for(format, &caps, None).is_ok(),
+                "{} has no renderer",
+                format.as_str()
+            );
+        }
 
-        for format in [Format::OneLine, Format::Json] {
-            let error = renderer_for(format, &caps).err().expect("no renderer yet");
+        assert!(renderer_for(Format::OneLine, &caps, Some("@short")).is_ok());
+        for format in [Format::ArtTable, Format::Dumb, Format::Plain, Format::Json] {
+            let error = renderer_for(format, &caps, Some("%c %t"))
+                .err()
+                .expect("a template outside one-line");
             assert_eq!(error.exit_code(), 2, "{}", format.as_str());
-            assert!(error.to_string().contains(format.as_str()));
+            assert!(
+                error
+                    .to_string()
+                    .contains("`--template` requires `--format one-line`"),
+                "{error}"
+            );
         }
     }
 }

@@ -35,7 +35,7 @@ impl LanguageId {
         self.tag
     }
 
-    /// Resolves a `language` setting (`defaults.language`, and `--lang` from step 08).
+    /// Resolves a `language` setting (`defaults.language`, and the `--lang` flag).
     ///
     /// A tag this build has no messages for is refused instead of silently rendering English: a
     /// user who asked for `zh-CN` must be told that the build cannot do it, not shown a language
@@ -91,6 +91,11 @@ impl I18n {
         match key {
             "label-report" => "Weather report:",
             "label-data" => "Data:",
+            "uv-band-low" => "low",
+            "uv-band-moderate" => "moderate",
+            "uv-band-high" => "high",
+            "uv-band-very-high" => "very high",
+            "uv-band-extreme" => "extreme",
             "part-morning" => DayPartKind::Morning.label(),
             "part-noon" => DayPartKind::Noon.label(),
             "part-evening" => DayPartKind::Evening.label(),
@@ -118,6 +123,26 @@ impl I18n {
     #[must_use]
     pub fn condition(&self, condition: Condition) -> &'static str {
         condition.description_en()
+    }
+
+    /// The band name of a UV index, as the WHO scale defines it.
+    ///
+    /// `2.9` is low and `3.0` moderate: the bands are cut on the value the token prints, so the
+    /// number and its name can never disagree (`%u` prints `2` for `2.9` and `3` for `3.0`).
+    #[must_use]
+    pub fn uv_band(&self, uv: f32) -> &'static str {
+        let key = if uv < 3.0 {
+            "uv-band-low"
+        } else if uv < 6.0 {
+            "uv-band-moderate"
+        } else if uv < 8.0 {
+            "uv-band-high"
+        } else if uv < 11.0 {
+            "uv-band-very-high"
+        } else {
+            "uv-band-extreme"
+        };
+        self.text(key)
     }
 
     /// The day heading: `Today, Sep 30` for `today`, else `Tue 30 Sep`.
@@ -179,6 +204,22 @@ mod tests {
         assert_eq!(i18n.part(DayPartKind::Night), "Night");
         assert_eq!(i18n.condition(Condition::from_u8(95)), "Thunderstorm");
         assert_eq!(i18n.condition(Condition::from_u8(4)), "Unknown");
+
+        // The bands are cut on the printed value, so a number and its label never disagree.
+        for (uv, band) in [
+            (0.0, "low"),
+            (2.9, "low"),
+            (3.0, "moderate"),
+            (5.9, "moderate"),
+            (6.0, "high"),
+            (7.9, "high"),
+            (8.0, "very high"),
+            (10.9, "very high"),
+            (11.0, "extreme"),
+            (14.5, "extreme"),
+        ] {
+            assert_eq!(i18n.uv_band(uv), band, "UV {uv}");
+        }
         assert_eq!(
             i18n.text("no-such-key"),
             "no-such-key",

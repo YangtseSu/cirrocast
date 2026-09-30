@@ -51,7 +51,7 @@ pub const BASE: &str = "https://api.open-meteo.com/v1/forecast";
 /// Current-condition variables, in the fixed order the request uses.
 const CURRENT_VARIABLES: &str = "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,\
 precipitation,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,\
-wind_direction_10m,wind_gusts_10m,visibility";
+wind_direction_10m,wind_gusts_10m,visibility,uv_index";
 
 /// Hourly variables, in the fixed order the request uses.
 const HOURLY_VARIABLES: &str = "temperature_2m,apparent_temperature,precipitation_probability,\
@@ -202,6 +202,9 @@ pub struct CurrentBlock {
     /// Horizontal visibility in **metres**.
     #[serde(default)]
     pub visibility: Option<f32>,
+    /// UV index; dimensionless, so it has no unit conversion.
+    #[serde(default)]
+    pub uv_index: Option<f32>,
 }
 
 /// The `hourly` object: one array per variable, all as long as `time`.
@@ -395,6 +398,7 @@ fn current_of(block: &CurrentBlock, tz: Tz) -> Result<Current> {
         wind_gust_kmh: block.wind_gusts_10m,
         // Upstream reports visibility in metres; the model stores kilometres.
         visibility_km: block.visibility.map(|metres| metres / 1000.0),
+        uv_index: block.uv_index,
         is_day: require(block.is_day, "current.is_day")? >= 0.5,
     })
 }

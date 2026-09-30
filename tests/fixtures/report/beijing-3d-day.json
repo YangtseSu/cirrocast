@@ -24,6 +24,7 @@
     "wind_dir_deg": 45,
     "wind_gust_kmh": 28.0,
     "visibility_km": 10.0,
+    "uv_index": 6.0,
     "is_day": true
   },
   "days": [

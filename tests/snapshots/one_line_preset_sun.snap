@@ -1,0 +1,5 @@
+---
+source: tests/render_one_line.rs
+expression: "rendered(\"@sun\", UnitSystem :: Metric)"
+---
+Beijing: sunrise 06:05 sunset 17:58 (+0800 Asia/Shanghai)

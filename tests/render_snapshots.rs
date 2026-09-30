@@ -76,7 +76,7 @@ fn render(case: Case) -> String {
         lang: LanguageId::EN_US,
         i18n: &i18n,
     };
-    renderer_for(case.format, &caps)
+    renderer_for(case.format, &caps, None)
         .expect("the format has a renderer")
         .render(&report, &ctx)
         .expect("the fixture renders")

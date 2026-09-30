@@ -845,6 +845,7 @@ mod tests {
             wind_dir_deg: 45,
             wind_gust_kmh: None,
             visibility_km: Some(10.0),
+            uv_index: Some(5.0),
             is_day,
         }
     }

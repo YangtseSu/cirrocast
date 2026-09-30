@@ -255,18 +255,28 @@ fn a_coordinate_query_renders_a_report_from_the_cache() {
     // the fixture's first day aggregated into the canonical four parts.
     assert!(stdout.contains("Asia/Shanghai"), "{stdout}");
     assert!(
-        stdout.contains("Now: 19°C (feels 12°C), Overcast"),
+        stdout.contains(
+            "current: Clear sky 18°C (feels 13°C) wind 13km/h NW humidity 11% precip 0.0mm pressure 1021hPa visibility 17km"
+        ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("2026-07-15  min 25°C  max 35°C"),
+        stdout.contains("updated: 2026-09-30T19:30:00+08:00"),
         "{stdout}"
     );
-    for label in ["Morning", "Noon", "Evening", "Night"] {
+    assert!(
+        stdout.contains("day 2026-07-15: morning") && stdout.contains(" | noon "),
+        "{stdout}"
+    );
+    for label in ["morning", "noon", "evening", "night"] {
         assert!(stdout.contains(label), "`{label}` missing from:\n{stdout}");
     }
     assert!(
         stdout.contains("Data: Open-Meteo.com (CC BY 4.0)"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("attribution: open-meteo https://api.open-meteo.com/v1/forecast"),
         "{stdout}"
     );
 }
@@ -300,21 +310,10 @@ fn a_planned_provider_is_a_usage_error() {
 }
 
 #[test]
-fn the_formats_without_a_renderer_are_usage_errors() {
+fn an_unknown_format_is_a_usage_error() {
     let sandbox = common::Sandbox::new();
 
     // Checked before any request is sent, so this stays offline.
-    for format in ["one-line", "json"] {
-        sandbox
-            .cirrocast()
-            .args(["@39.9,116.4", "--format", format])
-            .assert()
-            .code(2)
-            .stderr(predicate::str::contains(format!(
-                "format `{format}` has no renderer in this build yet"
-            )));
-    }
-
     sandbox
         .cirrocast()
         .args(["@39.9,116.4", "--format", "yaml"])

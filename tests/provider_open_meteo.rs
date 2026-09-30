@@ -59,7 +59,7 @@ fn the_request_matches_the_provider_contract() {
             "current",
             "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,\
 weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,\
-wind_gusts_10m,visibility"
+wind_gusts_10m,visibility,uv_index"
         )
     );
     assert_eq!(
@@ -120,11 +120,12 @@ fn a_current_only_request_asks_for_neither_hourly_nor_daily() {
     );
     assert!(report.days.is_empty());
     let current = report.current.expect("the current block is present");
-    assert_eq!(current.temp_c, 18.5);
-    assert_eq!(current.weather, Condition::from_u8(3));
-    assert_eq!(current.humidity_pct, 12);
-    assert_eq!(current.visibility_km, Some(17.24));
-    assert!(current.is_day);
+    assert_eq!(current.temp_c, 18.1);
+    assert_eq!(current.weather, Condition::from_u8(0));
+    assert_eq!(current.humidity_pct, 11);
+    assert_eq!(current.visibility_km, Some(17.28));
+    assert_eq!(current.uv_index, Some(0.0));
+    assert!(!current.is_day);
 }
 
 #[test]

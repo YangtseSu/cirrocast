@@ -485,7 +485,7 @@ impl RenderSetup {
             None => Format::from_name(&settings.format)?,
         };
         let term = TermCaps::detect();
-        let renderer = renderer_for(format, &term)?;
+        let renderer = renderer_for(format, &term, None)?;
         let units = UnitSystem::from_str(&settings.units)?.resolve(&config.units)?;
         let lang = LanguageId::from_setting(&settings.lang)?;
         let i18n = I18n::new(lang);

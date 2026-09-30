@@ -102,7 +102,7 @@ impl Live {
             now: Utc::now().fixed_offset(),
             tz: report.location.tz,
         };
-        renderer_for(Format::Plain, &ctx.term)
+        renderer_for(Format::Plain, &ctx.term, None)
             .expect("plain exists")
             .render(report, &ctx)
             .expect("the report renders")

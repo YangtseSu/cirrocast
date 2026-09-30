@@ -102,6 +102,12 @@ pub struct Current {
     pub wind_gust_kmh: Option<f32>,
     /// Horizontal visibility in km.
     pub visibility_km: Option<f32>,
+    /// UV index at the observation, when the provider reports one (0 = none, 11+ = extreme).
+    ///
+    /// Optional because not every backend offers it (the METAR rows of step 11 carry none); a
+    /// renderer that has no value prints it as missing rather than as zero, which is also a real
+    /// UV reading.
+    pub uv_index: Option<f32>,
     /// Whether the location is in daylight right now.
     pub is_day: bool,
 }

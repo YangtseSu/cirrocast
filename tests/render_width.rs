@@ -56,7 +56,7 @@ fn render_in(report: &Report, width: usize, format: Format) -> String {
         lang: LanguageId::EN_US,
         i18n: &i18n,
     };
-    renderer_for(format, &caps)
+    renderer_for(format, &caps, None)
         .expect("the format has a renderer")
         .render(report, &ctx)
         .expect("the fixture renders")

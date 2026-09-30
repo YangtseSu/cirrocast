@@ -1,0 +1,5 @@
+---
+source: tests/render_one_line.rs
+expression: "rendered(\"@full\", UnitSystem :: Metric)"
+---
+Beijing: \o_ Mainly clear +22°C (+22°C) ↗ 10km/h NNE 52% 0.0mm 1015hPa n/a 14km 5 06:05 17:58 Asia/Shanghai

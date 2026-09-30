@@ -61,8 +61,8 @@ SPDX-License-Identifier = "CC-BY-4.0"
 # Provenance: the four dates are in the past, so `historical-forecast-api.open-meteo.com/v1/forecast`
 # served them — the same parameter names, response schema and variables as the forecast endpoint the
 # provider calls — fetched directly over TLS with the provider's own parameter list, byte for byte.
-# The `current` block of each file is the observation at recording time (2026-09-30, 04:45Z), which
-# the historical endpoint returns alongside the archived days.
+# The `current` block of each file is the observation at recording time (2026-09-30, 11:30Z) and is
+# what carries the `uv_index` value the `%u` token and the JSON schema read.
 [[annotations]]
 path = "tests/fixtures/open_meteo/**"
 precedence = "override"
