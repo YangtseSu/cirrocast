@@ -769,7 +769,7 @@ fn fetch_chain_with(
         ));
     }
 
-    let mut last_error = None;
+    let mut attempts = Vec::new();
     for (index, id) in ids.iter().enumerate() {
         let provider = build(*id)?;
         let capabilities = provider.capabilities();
@@ -806,15 +806,18 @@ fn fetch_chain_with(
                         chain_reason(&error)
                     );
                 }
-                last_error = Some(error);
+                attempts.push(format!("{id} ({})", chain_reason(&error)));
             }
             Err(error) => return Err(error),
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        Error::Config("no provider could answer; pass `--provider <id>`".to_owned())
-    }))
+    if attempts.is_empty() {
+        return Err(Error::Config(
+            "no provider could answer; pass `--provider <id>`".to_owned(),
+        ));
+    }
+    Err(Error::Chain { attempts })
 }
 
 /// The short classifier a fallback warning names: `network: …` or `upstream: …`.
@@ -1204,6 +1207,32 @@ mod tests {
             1,
             "the next entry must not be tried"
         );
+    }
+
+    #[test]
+    fn an_exhausted_chain_reports_every_attempt() {
+        let fixture = Fixture::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let outcomes = [
+            (ProviderId::OpenMeteo, Outcome::Network),
+            (ProviderId::Smhi, Outcome::Upstream),
+        ];
+        let error = fetch_chain_with(
+            &[ProviderId::OpenMeteo, ProviderId::Smhi],
+            &test_location(),
+            &request(),
+            &fixture.env(),
+            factory(&outcomes, &calls),
+        )
+        .expect_err("both entries fail");
+        assert_eq!(error.exit_code(), 3);
+        let text = error.to_string();
+        assert!(
+            text.starts_with("all providers failed: open-meteo (network: "),
+            "{text}"
+        );
+        assert!(text.contains("; smhi (upstream: "), "{text}");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
     #[test]

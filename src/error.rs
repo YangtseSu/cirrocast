@@ -73,6 +73,13 @@ pub enum Error {
         status: u16,
     },
 
+    /// Every backend of a chain failed; the message names each attempt in order.
+    #[error("all providers failed: {}", attempts.join("; "))]
+    Chain {
+        /// One `id (reason)` entry per attempt.
+        attempts: Vec<String>,
+    },
+
     /// Anything else: an unexpected failure that still has to exit non-zero.
     #[error("{0}")]
     Other(String),
@@ -86,7 +93,7 @@ impl Error {
         match self {
             Self::Other(_) => 1,
             Self::Usage(_) => 2,
-            Self::Network(_) | Self::Upstream { .. } => 3,
+            Self::Network(_) | Self::Upstream { .. } | Self::Chain { .. } => 3,
             Self::Config(_) => 4,
             Self::LocationNotFound(_) => 5,
             Self::MissingKey { .. } | Self::InvalidKey { .. } => 6,
@@ -151,7 +158,31 @@ mod tests {
                 },
                 6,
             ),
+            (
+                Error::Chain {
+                    attempts: vec![
+                        "open-meteo (network: timeout)".to_owned(),
+                        "smhi (upstream: out of coverage)".to_owned(),
+                    ],
+                },
+                3,
+            ),
         ]
+    }
+
+    #[test]
+    fn a_chain_failure_names_every_attempt() {
+        let error = Error::Chain {
+            attempts: vec![
+                "open-meteo (network: timeout after 15s)".to_owned(),
+                "smhi (upstream: out of coverage: 39.90,116.40)".to_owned(),
+            ],
+        };
+        assert_eq!(
+            error.to_string(),
+            "all providers failed: open-meteo (network: timeout after 15s); \
+             smhi (upstream: out of coverage: 39.90,116.40)"
+        );
     }
 
     #[test]

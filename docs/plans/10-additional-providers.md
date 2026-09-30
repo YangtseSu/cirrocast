@@ -37,10 +37,12 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       `Error::Upstream` (exit 3) because it carries quota/plan/host refusals whose body text is the actionable
       part — a provider that can tell "invalid key" apart refines it in its own decoder; `429`/`5xx`/timeout
       keep `Upstream`/`Network` so a chain continues.
-- ⬜ Fallback chain semantics as contracted: only `Error::Upstream`/`Error::Network` continue to the next entry,
-      while `Usage`/`Config`/`Location`/`MissingKey`/`InvalidKey` abort immediately with their own exit code. An
-      exhausted chain reports every attempt: `error: all providers failed: open-meteo (upstream timeout after
-      15s); smhi (out of coverage: 39.90,116.40 outside the PMP3g domain)`.
+- ✅ Fallback chain semantics as contracted (the `fetch_chain` walk already existed from step 06): only
+      `Error::Upstream`/`Error::Network` continue to the next entry, while `Usage`/`Config`/`Location`/`MissingKey`/
+      `InvalidKey` abort immediately with their own exit code. The exhausted-chain message landed as
+      `Error::Chain { attempts }` (exit 3), rendered as `error: all providers failed: <id> (<reason>); <id>
+      (<reason>)` with `chain_reason`'s `network:`/`upstream:` classifier — observed live:
+      `-p smhi,open-meteo --offline @39.9,116.4` printed both offline-miss reasons.
 - ✅ Capability-driven degradation: the renderers already handle a report with no days (`art-table` guards the
       table with `!report.days.is_empty()`, `one-line` falls back to `current`, and `plain`/`json` keep their
       keys), and the fixtures cover it (`tests/fixtures/report/current-only.json` is rendered by the json,
