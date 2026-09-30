@@ -236,8 +236,10 @@ cirrocast provider list && cirrocast provider info smhi
       continues (same suite), `--days` beyond a provider maximum warns once and clamps (observed: `-p weatherapi -d 7`
       → one warning, 3 days) — **open: a `403` keeps exit 3 by design (it carries quota/plan refusals; documented in the
       helper) and the missing-QWeather-host hint can only be exercised once that backend lands**
-- ⬜ A provider with `daily == false` still renders `plain`/`one-line`/`json`, and `art-table` degrades to a
-      single current-conditions block
+- ✅ A report with no days still renders `plain`/`one-line`/`json` and `art-table` degrades to a single
+      current-conditions block: pinned by `tests/fixtures/report/current-only.json` through the json, snapshot
+      (art-table at width 80), width and plain suites, plus the `-v` note the CLI prints. The end-to-end pin through
+      a real `daily == false` backend lands with `metar` in step 11 — this step has no such provider
 - ✅ Every registry limit carries a `verified` date matching the live documentation at that date (done
       2026-09-30; `every_row_carries_a_verified_date` in `src/provider/mod.rs` keeps it from regressing)
 
