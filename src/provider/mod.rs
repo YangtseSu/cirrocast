@@ -25,6 +25,7 @@ pub mod dayparts;
 pub mod open_meteo;
 pub mod openweathermap;
 pub mod pirateweather;
+pub mod qweather;
 pub mod smhi;
 pub mod weatherapi;
 pub mod worldweatheronline;
@@ -225,21 +226,21 @@ impl ProviderId {
                 display_name: "QWeather",
                 requires_key: true,
                 key_env: Some("CIRROCAST_QWEATHER_KEY"),
-                docs_url: "https://dev.qweather.com/en/docs/api/",
-                max_days: 7,
+                docs_url: "https://dev.qweather.com/en/docs/api/weather/",
+                max_days: 10,
                 current: true,
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "global coverage; per-account API host required; city v7 APIs deprecated (EOL 2027)",
+                notes: "global coverage; v1 endpoints, metric-only measures; per-account API host required",
                 auth: "API key in the `X-QW-Api-Key` header (or `key=` query)",
                 coverage: "global",
-                granularity: "hourly and daily",
+                granularity: "hourly (up to 240 h) and daily (up to 10 days)",
                 limits: "first 50 000 requests/month at ¥0; QPM 3 000",
-                verified: "2026-09-30",
-                implemented: false,
+                verified: "2026-10-01",
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some("QWeather — https://www.qweather.com/"),
             },
             Self::Smhi => ProviderMeta {
                 id: *self,
@@ -644,12 +645,13 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
+        ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),
         ProviderId::Smhi => Ok(Box::new(smhi::Smhi)),
         ProviderId::WeatherApi => Ok(Box::new(weatherapi::WeatherApi)),
         ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),
-        other => Err(Error::Usage(format!(
-            "provider `{other}` is not implemented yet"
-        ))),
+        ProviderId::Metar => Err(Error::Usage(
+            "provider `metar` is not implemented yet".to_owned(),
+        )),
     }
 }
 
@@ -981,12 +983,12 @@ mod tests {
                 .contains("unknown provider `does-not-exist`")
         );
 
-        let planned = select("qweather").expect_err("qweather has no backend yet");
+        let planned = select("metar").expect_err("metar has no backend yet");
         assert_eq!(planned.exit_code(), 2);
         assert!(
             planned
                 .to_string()
-                .contains("provider `qweather` is not implemented yet")
+                .contains("provider `metar` is not implemented yet")
         );
     }
 

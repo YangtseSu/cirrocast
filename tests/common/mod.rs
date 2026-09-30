@@ -285,6 +285,19 @@ impl ProviderRun {
         )
     }
 
+    /// A run with a caller-provided configuration, for the backends that read one (`QWeather`'s
+    /// account host).
+    pub fn with_config(
+        replies: Vec<StubReply>,
+        clock: Arc<FakeClock>,
+        mode: CacheMode,
+        config: Config,
+    ) -> Self {
+        let mut run = Self::new(replies, clock, mode);
+        run.config = config;
+        run
+    }
+
     /// The environment a provider receives.
     pub fn env(&self) -> Env<'_> {
         Env {

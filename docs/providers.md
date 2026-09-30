@@ -43,7 +43,7 @@ registry re-verification of that step needs a written record of what was checked
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | implemented |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | implemented |
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | implemented |
-| `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (`24h`/`72h`/`168h`) | v7: 30 days daily; successor v1: 10 days | step 10 |
+| `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (up to 240 h) | 10 days (v1) | implemented |
 
 ### Obligations that reach the rendered output
 
@@ -548,85 +548,77 @@ documentation is not proof of absence).
 
 ### `qweather`
 
-BYOK. The API host is account-specific and the city-based v7 APIs are **deprecated** — see the open
-decision below.
+BYOK. **The city-based v7 APIs are deprecated (EOL 2027), so this backend speaks the v1 endpoints**
+(`/weather/v1/{current,hourly,daily}/{lat}/{lon}`), verified live on 2026-10-01 against the account
+host the console issues.
 
-**Endpoints** (verified 2026-09-30; all GET, HTTPS only, host from the console)
+**Endpoints** (verified 2026-10-01, all GET, HTTPS only, host from the account)
 
 | Purpose | URL template | Parameters |
 |---|---|---|
-| Real-time | `https://<host>/v7/weather/now` | `location=<lon>,<lat>`, `lang` |
-| Hourly | `https://<host>/v7/weather/{24h,72h,168h}` | `location`, `lang` |
-| Daily | `https://<host>/v7/weather/{3d,7d,10d,15d,30d}` | `location`, `lang` |
-| City lookup | `https://<host>/geo/v2/city/lookup` | `location=<name>`, `adm`, `range`, `number`, `lang` |
-| Successors (v1) | `https://<host>/weather/v1/current\|hourly\|daily/<lat>/<lon>` | see the v1 docs |
+| Current | `https://<host>/weather/v1/current/<lat>/<lon>` | `lang` |
+| Hourly | `https://<host>/weather/v1/hourly/<lat>/<lon>` | `hours` (1–240; probed: `241` → `400`), `lang` |
+| Daily | `https://<host>/weather/v1/daily/<lat>/<lon>` | `days` (1–10; probed: `11` → `400`), `lang` |
 
-The host is per account ("For each developer account, the API Host is independent and unique. It is
-also part of the authentication process") and looks like `h2a9cf3mhs.xy.qweatherapi.com`; the legacy
-shared domains (`api.qweather.com`, `devapi.qweather.com`, `geoapi.qweather.com`) "will be gradually
-discontinued starting in 2026" (<https://dev.qweather.com/en/docs/configuration/api-host/>). The
-`<id>.re.qweather.com` form in the original plan is **not documented anywhere** — do not hardcode it.
+The host is **per account** (`<account-id>.re.qweatherapi.com` in the verified account) and is part of
+the authentication ("even if a developer's credentials are leaked, an attacker cannot request data
+without knowing the API Host"). The legacy shared domains (`api.qweather.com`, `devapi.qweather.com`,
+`geoapi.qweather.com`) answer `403` with `"title": "Invalid Host"` — probed with a valid key on
+2026-10-01 — so `<host>` has no default and comes from `[providers.qweather].host`.
 
-**Deprecation.** "City Weather Forecast | `/v7/weather/now` `/v7/weather/{days}` `/v7/weather/{hours}`
-| 2027-06-01" (<https://dev.qweather.com/en/docs/deprecated/>), while the v7 mirror doc records
-per-section EOL 2027-02-01. The two official sources disagree; plan for the earlier date. Successors
-are the `/weather/v1/*` endpoints (hourly up to 240 h, daily up to 10 d).
+**Response shape.** Every value is a **measure object** (`{"value": 10.96, "unit": "°C"}`), the
+timestamps are **UTC instants** (`2026-10-01T00:00Z`, minutes form — valid ISO 8601, not strict
+RFC 3339), and the payload carries **no time zone and no observation time**:
 
-**Response fields consumed.** `code`, `updateTime`, `fxLink`, `refer.{sources,license}` and
-`now.{obsTime,temp,feelsLike,icon,text,wind360,windDir,windScale,windSpeed,humidity,precip,pressure,vis,
-cloud,dew}`, `hourly[].{fxTime,temp,icon,text,wind360,windDir,windScale,windSpeed,humidity,pop,precip,
-pressure,cloud,dew,uvIndex}`, `daily[].{fxDate,sunrise,sunset,moonrise,moonset,moonPhase,tempMax,
-tempMin,iconDay,textDay,iconNight,textNight,wind360Day,…,humidity,precip,uvIndex,vis,cloud,pressure}`.
-Everything is a string; `windScale` is an open range string (`"1-3"`); `now.cloud`/`now.dew`,
-`hourly.pop`, `daily.sunrise/sunset/moonrise/moonset/cloud` and `refer.*` are nullable; `uvIndex` exists
-on hourly and daily but **not** on `now`; timestamps are ISO local times with an offset
-(`"2023-04-12T19:00+08:00"`).
+* `current`: `condition{text,code}`, `temperature`, `feelsLike`, `humidity` (0–1), `wind{direction{degree,compass},speed{value,unit:"m/s"},scale}`, `windGust`, `precipitation{amount{mm},intensity{mm/h},type}`, `pressure{hPa}`, `visibility{m}`, `dewPoint`, `cloudCover` (0–1), `uvIndex`, plus `metadata{tag,attributions[]}`.
+* `hours[]`: the same fields plus `forecastTime`, `precipitation.probability` (percent) and per-hour `uvIndex`.
+* `days[]`: `forecastStartTime`/`forecastEndTime` (UTC instants of the **location-local midnight** boundaries — `16:00Z` for Beijing, `04:00Z` for New York), `astro{...}` (sunrise/sunset as UTC instants), `temperatureMax/Min/Avg`, `uvIndexMax`, `daytime`/`nighttime` sub-blocks with their own condition/temperature/wind/precipitation.
+* `metadata.attributions` lists the attribution page upstream asks to be shown.
 
-**Auth.** `X-QW-Api-Key: <key>` header or `key=` query parameter (both current; never both at once).
-JWT (Ed25519) is the recommended method but needs token minting and is out of scope. API KEY
-*signature* auth is retired, and API-KEY volume will be limited from 2027 (the docs give both
+**Auth.** `X-QW-Api-Key: <key>` header (the `key=` query form also works; never both). The API KEY
+*signature* flow is retired, and API-KEY volume will be limited from 2027 (the docs give both
 2027-01-01 and 2027-02-01).
 
-**Limits.** There is no "Standard" free subscription: billing is pay-as-you-go and the free allowance
-is the **first 50 000 requests/month at ¥0** in the Weather/Essential group (which includes GeoAPI).
-QPM is 3 000 for pay-as-you-go, 50 000+ for Premium. Non-2xx responses are not billed, but sustained
-invalid traffic can suspend the account. Recommended cache ages: real-time 10–30 min, hourly 30–60 min,
-daily 1–6 h (<https://dev.qweather.com/en/docs/finance/pricing/>,
-<https://dev.qweather.com/en/docs/best-practices/cache/>).
+**Limits.** Pay-as-you-go with the **first 50 000 requests/month at ¥0** (no "Standard" free plan);
+QPM 3 000 for pay-as-you-go, 50 000+ for Premium. Non-2xx responses are not billed, but sustained
+invalid traffic can suspend the account. Recommended cache ages: real-time 10–30 min, hourly
+30–60 min, daily 1–6 h.
 
-**Coverage and granularity.** Global ("200+ countries or regions … over 500,000 cities"); daily 1–30
-days and hourly 1–168 h in v7. China-only products (minutely precipitation, most indices, tropical
-cyclones) are out of scope. The host does not decide coverage — the product does.
+**Coverage and granularity.** Global ("200+ countries or regions … over 500,000 cities"); hourly up
+to 240 hours and daily up to 10 days on v1 (both probed). The v1 endpoints are metric-only: `unit=i`
+is ignored (probed).
 
 **Attribution and licence.** Required regardless of plan: name "QWeather" plus the URL
-`https://www.qweather.com`, recommended as `Weather service by QWeather`; no logo is required by the
-docs (the EULA text itself was 403-blocked, so that reading is docs-only). Weather-warning data must
-reproduce `refer.sources` verbatim. GeoAPI data must not be bulk-cached, stored or indexed
-(<https://dev.qweather.com/en/docs/terms/attribution/>,
-<https://dev.qweather.com/en/docs/terms/restriction/>).
+`https://www.qweather.com`; no logo is required by the docs (the EULA text itself was 403-blocked, so
+that reading is docs-only). Weather-warning data must reproduce `refer.sources` verbatim, and GeoAPI
+data must not be bulk-cached or indexed — this backend does not call GeoAPI.
 
-**Errors.** RFC 7807 `application/problem+json` with `error.status/type/title/detail/invalidParams` —
-the `code` field is legacy and absent on errors. 400 invalid parameter/no such location/data
-unavailable, 401 authentication failed, 403 no credit (the old 402), overdue, invalid host, deprecated,
-forbidden, 404 bad path, 405 non-GET, 429 QPM/monthly limit, 500 unknown
-(<https://dev.qweather.com/en/docs/resource/error-code/>).
+**Errors.** RFC 7807 `application/problem+json` with `error.status/type/title/detail/invalidParams`;
+a bad key is `401` (`#unauthorized`), a bad parameter or location `400`
+(`#invalid-parameter`). `403` covers no-credit, overdue, invalid host and permission refusals.
 
-**Client notes.** Send `Accept-Encoding: gzip` (compression is a transport default, not a `gzip=y`
-parameter); read `data` by key; prefer `wind360` over the language-dependent `windDir` (Chinese
-`lang=zh` returns 南, not `S`); map the `-1`/`-999` wind sentinels and nulls to `None`; the published
-condition-code CSV omits the live night family 150–153 (QWeather's own example emits `"iconNight":
-"151"`), so pass unknown codes through instead of mapping to a fixed table.
+**Implemented 2026-10-01** (`src/provider/qweather.rs`, `max_days: 10`). Two calls per fetch
+(current + hourly), each cached under `weather/qweather-{current,hourly}-…`; every measure's unit is
+checked against the canonical one (`°C`, `m/s`, `mm`, `hPa`, `m`) and a mismatch is an upstream error
+rather than a silent conversion; the day extremes come from the samples. Findings pinned by tests:
 
-**Open decision for step 10.** Implementing the deprecated v7 endpoints would buy at most a year
-before a rewrite, and v1 differs (metric-only, m/s wind, metres visibility, RFC 7807 errors). The
-step's design note should either move to `/weather/v1/*` — which needs one more documentation pass for
-its exact schemas — or implement v7 with the EOL date recorded and a migration task. The registry row
-keeps `max_days: 7` (the default request) until that decision is made.
+* **The hourly series is anchored to the next UTC midnight**, not to the current hour (probed at
+  16:40Z and 23:51Z, both starting at the following `00:00Z`), so the location-local today is usually
+  incomplete and is skipped — the first fully covered local day is emitted, the same rule SMHI,
+  OpenWeatherMap and WWO use.
+* **The current block carries no observation time**, so `observed_at` is the fetch instant.
+* **The payload has no time zone**, so a provisional (UTC) location is refused with a usage error
+  (the daily boundaries would reveal the offset, but an offset is not a zone).
+* The `days[]` block is **not consumed**: its `daytime`/`nighttime` split does not map onto the four
+  canonical parts, and the extremes are derivable from the hourly series.
 
-**Unverified.** The full Developers License text (403); all rendered HTML docs (403 — facts come from
-the `qwd/dev-site` sources that render those pages); the `<id>.re.qweather.com` host form; any live
-successful call (no credential, and v7 is deprecated); per-day quotas (none exist — the free allowance
-is monthly); the `150–153` night family table (search snippets only).
+Credit line: `QWeather — https://www.qweather.com/`. A missing host is `Error::Config` (exit 4) with
+`set providers.qweather.host (see cirrocast provider info qweather)`.
+
+**Unverified.** The Developers License text (403) and every rendered `dev.qweather.com` page (403 —
+the v1 facts above come from live responses and the public docs repository); the exact QPM scope
+(per project vs per account); whether `days[]`'s `daytime`/`nighttime` windows are fixed local
+windows (observed 07:00–19:00 local, which is not the solar day).
 
 ## Location and IP services
 
@@ -694,6 +686,11 @@ Not implemented; the facts below are the measurements recorded in `docs/plans/19
 
 ## Re-verification log
 
+* **2026-10-01** — QWeather re-verified for **v1** (the v7 endpoints are deprecated): live probes against the
+  account host confirmed the paths, the measure-object shape, the UTC-instants-without-a-zone rule, the
+  `hours` ≤ 240 and `days` ≤ 10 ceilings, the metric-only behaviour, the RFC 7807 errors and the `403
+  Invalid Host` answer of the legacy shared domains. The section above records the findings; the backend
+  implements them.
 * **2026-09-30** — first full pass: all eight v1 backends and the four location/IP services checked
   against live documentation; registry rows in `src/provider/mod.rs` corrected and stamped
   `verified: 2026-09-30`. Notable corrections: SMHI's endpoint moved from `pmp3g` to `snow1g/version/1`

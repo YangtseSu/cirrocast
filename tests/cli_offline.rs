@@ -68,7 +68,8 @@ fn seed_keys(sandbox: &Sandbox) {
                 openweathermap = \"test-key-openweathermap\"\n\
                 weatherapi = \"test-key-weatherapi\"\n\
                 worldweatheronline = \"test-key-worldweatheronline\"\n\
-                pirateweather = \"test-key-pirateweather\"\n";
+                pirateweather = \"test-key-pirateweather\"\n\
+                qweather = \"test-key-qweather\"\n";
     fs::create_dir_all(
         sandbox
             .keys_file()
@@ -228,6 +229,33 @@ fn pirateweather_renders_from_the_recorded_payload() {
         "Data: Pirate Weather — https://pirateweather.net/",
     );
     assert!(stdout.contains("Overcast"), "{stdout}");
+}
+
+#[test]
+fn qweather_renders_from_the_recorded_payloads() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed_keys(&sandbox);
+    // The account host comes from the configuration; the test uses a placeholder.
+    sandbox.write_config("[providers.qweather]\nhost = \"https://example.qweatherapi.com\"\n");
+    let date = today();
+    seed(
+        &sandbox,
+        &CacheKey::weather_part("qweather", "current", LAT, LON, DAYS, date),
+        &body("qweather/current.json"),
+    );
+    seed(
+        &sandbox,
+        &CacheKey::weather_part("qweather", "hourly", LAT, LON, DAYS, date),
+        &body("qweather/hourly.json"),
+    );
+    let stdout = render(&sandbox, "qweather");
+    assert_rendered(
+        &stdout,
+        "12°C",
+        "Data: QWeather — https://www.qweather.com/",
+    );
+    assert!(stdout.contains("Clear sky"), "{stdout}");
 }
 
 /// The fixtures must not carry any of the recorded API keys.

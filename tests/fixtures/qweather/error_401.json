@@ -1,0 +1,1 @@
+{"error":{"status":401,"type":"https://dev.qweather.com/docs/resource/error-code/#unauthorized","title":"Unauthorized","detail":"Authentication failed, check your KEY/Token or Host."}}

@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 10 — Additional providers
 
-Status: 🚧 in-progress
+Status: ✅ done
 Depends on: 05, 06, 08
 Touches: src/provider/{mod,openweathermap,weatherapi,worldweatheronline,pirateweather,qweather,smhi}.rs, src/render/mod.rs,
 src/cli.rs, src/http.rs, tests/provider_*.rs, tests/fixtures/{owm,weatherapi,wwo,pirateweather,qweather,smhi}/, README.md,
@@ -102,30 +102,24 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       become millimetres — pinned by a fixture. Limits: `daily: true` (`daily.data[]`, 7 days), `hourly: true`
       (48 h; `extend=hourly` → 168 h), `max_days: 7`, `requires_key: true`, `location_kinds: LatLon`. No
       attribution is documented in the terms — do not invent a credit line for it (see `docs/providers.md`).
-- ⬜ `qweather.rs`: **Corrected 2026-09-30 — decide v7 vs v1 before writing the module.** The city-based v7
-      endpoints (`/v7/weather/now`, `/v7/weather/{3,7,10,15,30}d`, `/v7/weather/{24,72,168}h`, GeoAPI
-      `/geo/v2/city/lookup`) are deprecated with an EOL in 2027 (the official pages disagree: 2027-06-01 in the
-      deprecation table, 2027-02-01 in the v7 doc), and their successors are `/weather/v1/{current,hourly,daily}`
-      (metric-only, m/s wind, metres visibility, RFC 7807 errors). Implementing v7 now buys at most a year; the
-      step must either move to v1 after one more documentation pass or ship v7 with the EOL recorded and a
-      migration task. `<host>` has no default and comes from config `[providers.qweather].host`; it is the
-      **per-account** host issued by the console (`<id>.xy.qweatherapi.com` — the `<id>.re.qweather.com` form in
-      the first draft of this plan is documented nowhere, and the legacy `api.`/`devapi.`/`geoapi.qweather.com`
-      domains are being discontinued from 2026); a missing host while qweather is selected is `Error::Config`
-      (exit 4) with `set [providers.qweather].host (see cirrocast provider info qweather)`. Auth:
-      `X-QW-Api-Key: <key>` header or `key=` query parameter (never both) from `CIRROCAST_QWEATHER_KEY`; JWT is
-      the recommended method but needs token minting and stays out of scope. Free tier: pay-as-you-go with the
-      **first 50,000 requests/month at ¥0** (there is no "Standard" free plan), QPM 3,000; day ranges are not a
-      billing dimension, so the plan does not cap `<nd>`. Mapping: an explicit
-      `now.icon`/`iconDay`/`iconNight` table by family (clear, partly cloudy, overcast, rain, snow, fog/haze,
-      extreme hot/cold, unknown), where `iconNight` selects night art and the published CSV's missing 150–153
-      night family is passed through rather than mapped. Aggregation: day parts from `/v7/weather/24h`, else
-      synthesized from `daily[]` with `warning: qweather has no hourly data on this plan; day parts show daily
-      values`. Naming: the GeoAPI name is kept in both scripts and the display name picked from it (`zh-CN` →
-      Chinese, `en-US` → English/pinyin), and GeoAPI results must not be bulk-cached. Limits: `daily: true`,
-      `max_days: 7`, `requires_key: true`, `location_kinds: City|LatLon`; responses are gzip-compressed
-      (transport default — send `Accept-Encoding: gzip`; there is no `gzip=y` parameter). Obligation: name
-      QWeather + `https://www.qweather.com` wherever data is shown.
+- ✅ `qweather.rs` (landed 2026-10-01 on **v1**, per the decision recorded below): `GET
+      https://<host>/weather/v1/current/<lat>/<lon>` and `…/weather/v1/hourly/<lat>/<lon>?hours=<n>` with
+      `lang=en`, where `<host>` is the **per-account** host from `[providers.qweather].host` (a missing host is
+      `Error::Config`, exit 4, with `set providers.qweather.host (see cirrocast provider info qweather)`; the
+      legacy `api.`/`devapi.`/`geoapi.qweather.com` domains answer `403 Invalid Host` with a valid key, probed
+      2026-10-01). Auth: `X-QW-Api-Key` header from `CIRROCAST_QWEATHER_KEY`. The v7 city endpoints
+      (`/v7/weather/…`) are deprecated (EOL 2027), so the module speaks v1: measure objects
+      (`{"value":…,"unit":…}`) whose units are **checked** (`°C`, `m/s`, `mm`, `hPa`, `m`) instead of assumed,
+      UTC instants in the minutes form (`2026-10-01T00:00Z`), `hours` ≤ 240 and `days` ≤ 10 (both probed),
+      metric-only (`unit=i` ignored), RFC 7807 errors (401 → exit 6 through the shared helper). Findings pinned
+      by tests: the hourly series is anchored to the **next UTC midnight** (so the location-local today is
+      usually incomplete and skipped — the first fully covered day is emitted, like SMHI/OWM/WWO), the current
+      block carries **no observation time** (the fetch instant stands in), and the payload has **no time zone**
+      (a provisional location is refused with a usage error). The `days[]` block is deliberately not consumed
+      (its day/night split does not map onto the four parts). Limits: `daily: true`, `max_days: 10`,
+      `requires_key: true`, `location_kinds: City|LatLon`. Obligation: name QWeather +
+      `https://www.qweather.com` wherever data is shown (GeoAPI is not called, so its no-bulk-cache rule does
+      not apply).
 - ✅ `smhi.rs` (landed 2026-10-01, see the corrections below): `GET
       https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/<lon>/lat/<lat>/data.json`
       (the old `category=pmp3g/version/2/geopoint/lat/…` path was decommissioned 2026-03-31 and returns 404; note
@@ -181,15 +175,13 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       PirateWeather's notes, the free-tier headlines). Quotas that cannot be pinned without an account (QWeather's
       console, WWO's conflicting pages, PirateWeather's paid tiers) are recorded as plan-dependent in
       `docs/providers.md` rather than guessed.
-- ⬜ Fixtures (recorded, never live) — **all recorded except QWeather's, which waits on the account's API host
-      (the legacy shared hosts answer `403 Invalid Host`)**: `tests/fixtures/owm/{current,forecast,error_401}.json`,
+- ✅ Fixtures (recorded, never live): `tests/fixtures/owm/{current,forecast,error_401}.json`,
       `weatherapi/{forecast,forecast-key-error}.json`, `wwo/{weather-ashx,weather-ashx-single-element-arrays}.json`,
       `pirateweather/{forecast,forecast-null-values}.json`,
-      `qweather/{now,7d,7d-no-hourly,error-401}.json` + `7d.json.gz` (or the v1 equivalents, if the v7/v1 decision
-      goes to v1), `smhi/{point-2day,point-out-of-coverage}.json` (the SNOW1gv1 shape: `timeSeries[].data`); keys
-      are scrubbed and a test greps the fixture tree for key-shaped strings.
-- ⬜ `tests/provider_*.rs` (one per implemented provider, offline) — **done for `smhi`, `owm`, `weatherapi`, `wwo`
-      and `pirateweather`; QWeather's waits on its backend**: mapping exhaustiveness (anything unlisted → Unknown),
+      `qweather/{current,hourly,error_401}.json` (the v1 shapes), `smhi/{point-stockholm,point-out-of-coverage}`
+      plus a hand-written `point_sentinel` (the SNOW1gv1 shape: `timeSeries[].data`); keys are scrubbed and
+      `tests/cli_offline.rs` scans the fixture tree against the keys in the local `keys.toml`.
+- ✅ `tests/provider_*.rs` (one per backend, offline): mapping exhaustiveness (anything unlisted → Unknown),
       aggregation boundaries (first/last window, a `Europe/Stockholm` DST transition, a partial trailing day), unit
       traps (PirateWeather centimetres, SMHI mm/h, WWO single-element arrays) and error mapping (401 → exit 6,
       429 → the chain continues, 500 and malformed JSON → exit 3).
@@ -232,10 +224,11 @@ cirrocast provider list && cirrocast provider info smhi
       no fixture carries a key: `tests/cli_offline.rs` seeds the cache with the recorded payloads and runs the real
       binary (`--offline -p <id> Beijing -f plain`) for all six implemented backends, plus a scan of
       `tests/fixtures/**` against the keys in the local `keys.toml`
-- ⬜ 401 → exit 6 (tested per backend and in `tests/provider_http.rs`), 429/500/timeout → exit 3 and the chain
+- ✅ 401 → exit 6 (tested per backend and in `tests/provider_http.rs`), 429/500/timeout → exit 3 and the chain
       continues (same suite), `--days` beyond a provider maximum warns once and clamps (observed: `-p weatherapi -d 7`
-      → one warning, 3 days) — **open: a `403` keeps exit 3 by design (it carries quota/plan refusals; documented in the
-      helper) and the missing-QWeather-host hint can only be exercised once that backend lands**
+      → one warning, 3 days), and the missing-QWeather-host path is exit 4 with the hint (unit-tested in
+      `tests/provider_qweather.rs`). Deviation kept on purpose: a `403` stays exit 3 because it carries quota, plan
+      and host refusals whose body text is the actionable part (documented in the helper and the provider reference)
 - ✅ A report with no days still renders `plain`/`one-line`/`json` and `art-table` degrades to a single
       current-conditions block: pinned by `tests/fixtures/report/current-only.json` through the json, snapshot
       (art-table at width 80), width and plain suites, plus the `-v` note the CLI prints. The end-to-end pin through

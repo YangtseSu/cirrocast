@@ -309,6 +309,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [WeatherAPI.com](https://www.weatherapi.com/) | `-p weatherapi` | free tier: 100 000 calls/month, 3-day forecast; `lang=en` is pinned and translation is ours | data proprietary; free keys must credit WeatherAPI.com — the rendered report ends with `Data: WeatherAPI.com (free-tier attribution) — https://www.weatherapi.com/`; caching ceilings 60 min (current) / 24 h (forecast) |
 | [World Weather Online](https://www.worldweatheronline.com/) | `-p worldweatheronline` | free tier: 100 requests/day, up to 5 forecast days per its FAQ; `format=json` is sent explicitly | data proprietary; free keys must credit WorldWeatherOnline.com — the rendered report ends with `Data: WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/` |
 | [Pirate Weather](https://pirateweather.net/) | `-p pirateweather` | free tier: 10 000 calls/month, 1–4 requests/second; `extend=hourly` is sent for the 7-day horizon | data proprietary; no attribution is mandated — the rendered report ends with `Data: Pirate Weather — https://pirateweather.net/` |
+| [QWeather](https://www.qweather.com/) | `-p qweather` | free allowance: first 50 000 requests/month at ¥0, QPM 3 000; needs the account API host in `[providers.qweather].host` | data proprietary; the rendered report ends with `Data: QWeather — https://www.qweather.com/` |
 | [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding | — | CC-BY-4.0 |
 | [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
 | [ipwho.is](https://ipwho.is/) | `--ip` (primary) | free endpoint: 1 000 requests/day per client IP, then `429` + `Retry-After` | personal or internal use, no redistribution |
@@ -339,7 +340,7 @@ is used for. The handful of recorded responses used as test fixtures keep their 
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | global | yes | yes | 3 |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | global | yes | yes | 5 |
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | global | yes | yes | 7 |
-| `qweather` | `CIRROCAST_QWEATHER_KEY` | global | yes | yes | 7 |
+| `qweather` | `CIRROCAST_QWEATHER_KEY` | global | yes | yes | 10 |
 
 Declared capabilities only, each row carrying the date it was last checked against the provider's live
 documentation (`provider info <ID>` prints it). The full record — endpoints, request parameters,
@@ -347,7 +348,7 @@ response fields consumed, free-tier quotas with their exact wording, licence dut
 and the traps — lives in [`docs/providers.md`](docs/providers.md); `cirrocast provider list` /
 `provider info <ID>` print the machine-readable subset from the binary itself. The 2026-09-30
 re-verification corrected this table (SMHI's endpoint and horizon, WWO's 5-day free horizon,
-QWeather's global coverage) and is recorded in that file's log.
+QWeather's global coverage and v1 horizon) and is recorded in that file's log.
 
 A chain falls through to the next backend **only** when the failure is transport-level or comes from
 upstream (a timeout, a `429`, a `5xx`, an out-of-coverage point); a usage, configuration, location or
