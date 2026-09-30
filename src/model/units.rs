@@ -323,6 +323,30 @@ where
     value.map(str::parse::<T>).transpose()
 }
 
+/// How a value and its unit symbol are joined.
+///
+/// The art table is a grid: a column is thirteen cells wide, so `0.0mm` counts. Prose-like lines
+/// read better with the space (`0.0 mm`). The choice is a parameter rather than two sets of
+/// formatters, so a quantity still has exactly one conversion path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnitStyle {
+    /// `12 km/h`, `1013 hPa`.
+    Spaced,
+    /// `12km/h`, `1013hPa` — the art table, where a cell is narrow.
+    Compact,
+}
+
+impl UnitStyle {
+    /// What goes between the value and the symbol.
+    #[must_use]
+    pub const fn separator(self) -> &'static str {
+        match self {
+            Self::Spaced => " ",
+            Self::Compact => "",
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Conversions
 // ---------------------------------------------------------------------------------------------
@@ -511,93 +535,125 @@ pub fn format_temp(celsius: f32, unit: TempUnit) -> String {
     format!("{}{}", fmt_int(value), unit.symbol())
 }
 
+/// Formats a temperature with an explicit sign, e.g. `+23°C`, `-5°C`.
+///
+/// The sign is decided after rounding, so `-0.4` prints `+0°C` rather than a negative zero. The
+/// art table and the `one-line` format use this form; the `plain` output spells temperatures
+/// without a sign because it reads as prose.
+///
+/// ```
+/// # use cirrocast::model::units::{format_temp_signed, TempUnit};
+/// assert_eq!(format_temp_signed(23.0, TempUnit::Celsius), "+23°C");
+/// assert_eq!(format_temp_signed(-5.2, TempUnit::Celsius), "-5°C");
+/// assert_eq!(format_temp_signed(-0.4, TempUnit::Celsius), "+0°C");
+/// assert_eq!(format_temp_signed(0.0, TempUnit::Fahrenheit), "+32°F");
+/// ```
+#[must_use]
+pub fn format_temp_signed(celsius: f32, unit: TempUnit) -> String {
+    let value = match unit {
+        TempUnit::Celsius => celsius,
+        TempUnit::Fahrenheit => c_to_f(celsius),
+    };
+    let sign = if normalise_zero(round_half_away_from_zero(value)) < 0.0 {
+        "-"
+    } else {
+        "+"
+    };
+    format!("{sign}{}{}", fmt_int(value.abs()), unit.symbol())
+}
+
 /// Formats a wind speed, e.g. `12 km/h`, `8.3 km/h`, `5.8 mph`.
 ///
 /// The one-decimal form is used below 10 in the target unit (after rounding), so a light breeze
 /// stays readable while stronger winds stay short.
 ///
 /// ```
-/// # use cirrocast::model::units::{format_wind, WindUnit};
-/// assert_eq!(format_wind(12.0, WindUnit::Kmh), "12 km/h");
-/// assert_eq!(format_wind(8.3, WindUnit::Kmh), "8.3 km/h");
-/// assert_eq!(format_wind(9.3, WindUnit::Mph), "5.8 mph");
-/// assert_eq!(format_wind(9.95, WindUnit::Kmh), "10 km/h");
+/// # use cirrocast::model::units::{UnitStyle, format_wind, WindUnit};
+/// assert_eq!(format_wind(12.0, WindUnit::Kmh, UnitStyle::Spaced), "12 km/h");
+/// assert_eq!(format_wind(12.0, WindUnit::Kmh, UnitStyle::Compact), "12km/h");
+/// assert_eq!(format_wind(8.3, WindUnit::Kmh, UnitStyle::Spaced), "8.3 km/h");
+/// assert_eq!(format_wind(9.3, WindUnit::Mph, UnitStyle::Spaced), "5.8 mph");
+/// assert_eq!(format_wind(9.95, WindUnit::Kmh, UnitStyle::Spaced), "10 km/h");
 /// ```
 #[must_use]
-pub fn format_wind(kmh: f32, unit: WindUnit) -> String {
+pub fn format_wind(kmh: f32, unit: WindUnit, style: UnitStyle) -> String {
     let value = match unit {
         WindUnit::Kmh => kmh,
         WindUnit::Mph => kmh_to_mph(kmh),
         WindUnit::Mps => kmh_to_mps(kmh),
         WindUnit::Knots => kmh_to_knots(kmh),
     };
-    format!("{} {}", fmt_small(value), unit.symbol())
+    format!("{}{}{}", fmt_small(value), style.separator(), unit.symbol())
 }
 
 /// Formats a pressure: integer hPa, two decimals in inHg, integer in mmHg.
 ///
 /// ```
-/// # use cirrocast::model::units::{format_pressure, PressureUnit};
-/// assert_eq!(format_pressure(1013.25, PressureUnit::Hpa), "1013 hPa");
-/// assert_eq!(format_pressure(1013.25, PressureUnit::Inhg), "29.92 inHg");
-/// assert_eq!(format_pressure(1013.25, PressureUnit::Mmhg), "760 mmHg");
+/// # use cirrocast::model::units::{UnitStyle, format_pressure, PressureUnit};
+/// assert_eq!(format_pressure(1013.25, PressureUnit::Hpa, UnitStyle::Spaced), "1013 hPa");
+/// assert_eq!(format_pressure(1013.25, PressureUnit::Hpa, UnitStyle::Compact), "1013hPa");
+/// assert_eq!(format_pressure(1013.25, PressureUnit::Inhg, UnitStyle::Spaced), "29.92 inHg");
+/// assert_eq!(format_pressure(1013.25, PressureUnit::Mmhg, UnitStyle::Spaced), "760 mmHg");
 /// ```
 #[must_use]
-pub fn format_pressure(hpa: f32, unit: PressureUnit) -> String {
+pub fn format_pressure(hpa: f32, unit: PressureUnit, style: UnitStyle) -> String {
     let value = match unit {
         PressureUnit::Hpa => fmt_int(hpa),
         PressureUnit::Inhg => fmt_2dp(hpa_to_inhg(hpa)),
         PressureUnit::Mmhg => fmt_int(hpa_to_mmhg(hpa)),
     };
-    format!("{value} {}", unit.symbol())
+    format!("{value}{}{}", style.separator(), unit.symbol())
 }
 
 /// Formats a distance, e.g. `4.2 km`, `14 km`, `2.6 mi`.
 ///
 /// ```
-/// # use cirrocast::model::units::{format_distance, DistanceUnit};
-/// assert_eq!(format_distance(4.2, DistanceUnit::Km), "4.2 km");
-/// assert_eq!(format_distance(14.0, DistanceUnit::Km), "14 km");
-/// assert_eq!(format_distance(4.2, DistanceUnit::Mi), "2.6 mi");
+/// # use cirrocast::model::units::{UnitStyle, format_distance, DistanceUnit};
+/// assert_eq!(format_distance(4.2, DistanceUnit::Km, UnitStyle::Spaced), "4.2 km");
+/// assert_eq!(format_distance(4.2, DistanceUnit::Km, UnitStyle::Compact), "4.2km");
+/// assert_eq!(format_distance(14.0, DistanceUnit::Km, UnitStyle::Spaced), "14 km");
+/// assert_eq!(format_distance(4.2, DistanceUnit::Mi, UnitStyle::Spaced), "2.6 mi");
 /// ```
 #[must_use]
-pub fn format_distance(km: f32, unit: DistanceUnit) -> String {
+pub fn format_distance(km: f32, unit: DistanceUnit, style: UnitStyle) -> String {
     let value = match unit {
         DistanceUnit::Km => km,
         DistanceUnit::Mi => km_to_mi(km),
     };
-    format!("{} {}", fmt_small(value), unit.symbol())
+    format!("{}{}{}", fmt_small(value), style.separator(), unit.symbol())
 }
 
 /// Formats a visibility distance; same rule as [`format_distance`], but a separate entry point
 /// because the two are rendered in different rows and may diverge later (capping, `>10 km`, …).
 ///
 /// ```
-/// # use cirrocast::model::units::{format_visibility, DistanceUnit};
-/// assert_eq!(format_visibility(8.0, DistanceUnit::Km), "8.0 km");
-/// assert_eq!(format_visibility(8.0, DistanceUnit::Mi), "5.0 mi");
-/// assert_eq!(format_visibility(20.0, DistanceUnit::Km), "20 km");
+/// # use cirrocast::model::units::{UnitStyle, format_visibility, DistanceUnit};
+/// assert_eq!(format_visibility(8.0, DistanceUnit::Km, UnitStyle::Spaced), "8.0 km");
+/// assert_eq!(format_visibility(8.0, DistanceUnit::Mi, UnitStyle::Spaced), "5.0 mi");
+/// assert_eq!(format_visibility(20.0, DistanceUnit::Km, UnitStyle::Spaced), "20 km");
+/// assert_eq!(format_visibility(10.0, DistanceUnit::Km, UnitStyle::Compact), "10km");
 /// ```
 #[must_use]
-pub fn format_visibility(km: f32, unit: DistanceUnit) -> String {
-    format_distance(km, unit)
+pub fn format_visibility(km: f32, unit: DistanceUnit, style: UnitStyle) -> String {
+    format_distance(km, unit, style)
 }
 
 /// Formats precipitation: always one decimal in millimetres, two in inches.
 ///
 /// ```
-/// # use cirrocast::model::units::{format_precip, PrecipUnit};
-/// assert_eq!(format_precip(0.0, PrecipUnit::Mm), "0.0 mm");
-/// assert_eq!(format_precip(0.2, PrecipUnit::Mm), "0.2 mm");
-/// assert_eq!(format_precip(0.2, PrecipUnit::In), "0.01 in");
+/// # use cirrocast::model::units::{UnitStyle, format_precip, PrecipUnit};
+/// assert_eq!(format_precip(0.0, PrecipUnit::Mm, UnitStyle::Spaced), "0.0 mm");
+/// assert_eq!(format_precip(0.0, PrecipUnit::Mm, UnitStyle::Compact), "0.0mm");
+/// assert_eq!(format_precip(0.2, PrecipUnit::Mm, UnitStyle::Spaced), "0.2 mm");
+/// assert_eq!(format_precip(0.2, PrecipUnit::In, UnitStyle::Spaced), "0.01 in");
 /// ```
 #[must_use]
-pub fn format_precip(mm: f32, unit: PrecipUnit) -> String {
+pub fn format_precip(mm: f32, unit: PrecipUnit, style: UnitStyle) -> String {
     let value = match unit {
         PrecipUnit::Mm => fmt_1dp(mm),
         PrecipUnit::In => fmt_2dp(mm_to_in(mm)),
     };
-    format!("{value} {}", unit.symbol())
+    format!("{value}{}{}", style.separator(), unit.symbol())
 }
 
 // ---------------------------------------------------------------------------------------------

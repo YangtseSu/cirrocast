@@ -15,6 +15,7 @@ use chrono::{TimeZone as _, Utc};
 
 use cirrocast::cache::CacheMode;
 use cirrocast::config::UnitOverrides;
+use cirrocast::i18n::{I18n, LanguageId};
 use cirrocast::model::units::UnitSystem;
 use cirrocast::model::{LocationSource, Report};
 use cirrocast::render::{ColorMode, RenderContext, Renderer, TermCaps, plain::Plain};
@@ -33,17 +34,16 @@ fn report() -> Report {
 
 /// Renders `report` in `units`, clipped to `width`.
 fn render(report: &Report, units: UnitSystem, width: usize) -> String {
+    let i18n = I18n::new(LanguageId::EN_US);
     let ctx = RenderContext {
         units: units
             .resolve(&UnitOverrides::default())
             .expect("the default overrides resolve"),
         color: ColorMode::Never,
         width,
-        term: TermCaps {
-            is_tty: false,
-            color: false,
-            dumb: false,
-        },
+        term: TermCaps::default(),
+        lang: LanguageId::EN_US,
+        i18n: &i18n,
         now: Utc
             .with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
             .single()

@@ -13,8 +13,8 @@ mod common;
 use cirrocast::config::UnitOverrides;
 use cirrocast::error::Error;
 use cirrocast::model::units::{
-    DistanceUnit, PrecipUnit, PressureUnit, ResolvedUnits, TempUnit, UnitSystem, WindUnit,
-    compass_16, fmt_int, format_distance, format_precip, format_pressure, format_temp,
+    DistanceUnit, PrecipUnit, PressureUnit, ResolvedUnits, TempUnit, UnitStyle, UnitSystem,
+    WindUnit, compass_16, fmt_int, format_distance, format_precip, format_pressure, format_temp,
     format_visibility, format_wind, round_half_away_from_zero,
 };
 
@@ -55,11 +55,11 @@ fn system_defaults(system: UnitSystem) -> ResolvedUnits {
 fn render(quantity: &str, value: f32, units: ResolvedUnits) -> String {
     match quantity {
         "temp" => format_temp(value, units.temp),
-        "wind" => format_wind(value, units.wind),
-        "pressure" => format_pressure(value, units.pressure),
-        "distance" => format_distance(value, units.distance),
-        "visibility" => format_visibility(value, units.distance),
-        "precip" => format_precip(value, units.precip),
+        "wind" => format_wind(value, units.wind, UnitStyle::Spaced),
+        "pressure" => format_pressure(value, units.pressure, UnitStyle::Spaced),
+        "distance" => format_distance(value, units.distance, UnitStyle::Spaced),
+        "visibility" => format_visibility(value, units.distance, UnitStyle::Spaced),
+        "precip" => format_precip(value, units.precip, UnitStyle::Spaced),
         other => panic!("unknown quantity `{other}` in the fixture"),
     }
 }
@@ -142,10 +142,19 @@ fn overrides_replace_every_system_default() {
 
     // The overrides must reach the output, not just the struct.
     assert_eq!(format_temp(23.0, units.temp), "73°F");
-    assert_eq!(format_wind(18.52, units.wind), "10 kn");
-    assert_eq!(format_pressure(1013.25, units.pressure), "760 mmHg");
-    assert_eq!(format_distance(4.2, units.distance), "2.6 mi");
-    assert_eq!(format_precip(0.2, units.precip), "0.01 in");
+    assert_eq!(format_wind(18.52, units.wind, UnitStyle::Spaced), "10 kn");
+    assert_eq!(
+        format_pressure(1013.25, units.pressure, UnitStyle::Spaced),
+        "760 mmHg"
+    );
+    assert_eq!(
+        format_distance(4.2, units.distance, UnitStyle::Spaced),
+        "2.6 mi"
+    );
+    assert_eq!(
+        format_precip(0.2, units.precip, UnitStyle::Spaced),
+        "0.01 in"
+    );
 }
 
 #[test]

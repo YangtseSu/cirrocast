@@ -20,8 +20,8 @@ use super::{RenderContext, Renderer};
 use crate::error::Result;
 use crate::geo::{attribution_line, location_line};
 use crate::model::units::{
-    ResolvedUnits, compass_16, format_precip, format_pressure, format_temp, format_visibility,
-    format_wind,
+    ResolvedUnits, UnitStyle, compass_16, format_precip, format_pressure, format_temp,
+    format_visibility, format_wind,
 };
 use crate::model::{Current, DayForecast, DayPart, Report};
 use crate::provider::licence_line;
@@ -31,16 +31,16 @@ use crate::provider::licence_line;
 pub struct Plain;
 
 impl Renderer for Plain {
-    fn render(&self, report: &Report, ctx: &RenderContext) -> Result<String> {
+    fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
         let mut lines = vec![location_line(&report.location)];
 
         if let Some(current) = &report.current {
-            lines.push(now_line(current, ctx.units));
+            lines.push(now_line(current, ctx));
         }
         for day in &report.days {
             lines.push(day_line(day, ctx.units));
             for part in &day.parts {
-                lines.push(part_line(part, ctx.units));
+                lines.push(part_line(part, ctx));
             }
         }
 
@@ -48,7 +48,7 @@ impl Renderer for Plain {
             lines.push(credit.to_owned());
         }
         if let Some(licence) = licence_line(&report.attribution.provider) {
-            lines.push(format!("Data: {licence}"));
+            lines.push(format!("{} {licence}", ctx.i18n.text("label-data")));
         }
 
         Ok(lines
@@ -60,33 +60,38 @@ impl Renderer for Plain {
 }
 
 /// The current conditions: one line, fields omitted when the provider has no value for them.
-fn now_line(current: &Current, units: ResolvedUnits) -> String {
+fn now_line(current: &Current, ctx: &RenderContext<'_>) -> String {
+    let units = ctx.units;
     let mut text = format!(
         "Now: {} (feels {}), {}",
         format_temp(current.temp_c, units.temp),
         format_temp(current.feels_like_c, units.temp),
-        current.weather.description_en()
+        ctx.i18n.condition(current.weather)
     );
     let _ = write!(
         text,
         ", wind {} {}",
-        format_wind(current.wind_kmh, units.wind),
+        format_wind(current.wind_kmh, units.wind, UnitStyle::Spaced),
         compass_16(current.wind_dir_deg)
     );
     let _ = write!(text, ", humidity {}%", current.humidity_pct);
     let _ = write!(
         text,
         ", pressure {}",
-        format_pressure(current.pressure_hpa, units.pressure)
+        format_pressure(current.pressure_hpa, units.pressure, UnitStyle::Spaced)
     );
     if let Some(visibility) = current.visibility_km {
         let _ = write!(
             text,
             ", visibility {}",
-            format_visibility(visibility, units.distance)
+            format_visibility(visibility, units.distance, UnitStyle::Spaced)
         );
     }
-    let _ = write!(text, ", {}", format_precip(current.precip_mm, units.precip));
+    let _ = write!(
+        text,
+        ", {}",
+        format_precip(current.precip_mm, units.precip, UnitStyle::Spaced)
+    );
     text
 }
 
@@ -108,18 +113,23 @@ fn day_line(day: &DayForecast, units: ResolvedUnits) -> String {
 }
 
 /// One day part: label, representative temperature, condition, precipitation and wind.
-fn part_line(part: &DayPart, units: ResolvedUnits) -> String {
+fn part_line(part: &DayPart, ctx: &RenderContext<'_>) -> String {
+    let units = ctx.units;
     let mut text = format!(
         "  {:<8}{:>5}  {:<16}precip {}",
         part.kind.label(),
         format_temp(part.temp_c, units.temp),
-        part.weather.description_en(),
-        format_precip(part.precip_mm, units.precip)
+        ctx.i18n.condition(part.weather),
+        format_precip(part.precip_mm, units.precip, UnitStyle::Spaced)
     );
     if let Some(probability) = part.precip_prob_pct {
         let _ = write!(text, " ({probability}%)");
     }
-    let _ = write!(text, "   wind {}", format_wind(part.wind_kmh, units.wind));
+    let _ = write!(
+        text,
+        "   wind {}",
+        format_wind(part.wind_kmh, units.wind, UnitStyle::Spaced)
+    );
     if let Some(direction) = part.wind_dir_deg {
         let _ = write!(text, " {}", compass_16(direction));
     }
@@ -149,6 +159,7 @@ mod tests {
     use chrono_tz::Tz;
 
     use super::{Plain, clip};
+    use crate::i18n::{I18n, LanguageId};
     use crate::model::units::UnitSystem;
     use crate::model::{
         Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
@@ -253,26 +264,25 @@ mod tests {
         }
     }
 
-    fn context(units: UnitSystem, width: usize) -> RenderContext {
+    fn context(i18n: &I18n, units: UnitSystem, width: usize) -> RenderContext<'_> {
         RenderContext {
             units: units
                 .resolve(&crate::config::UnitOverrides::default())
                 .expect("the default overrides resolve"),
             color: ColorMode::Never,
             width,
-            term: TermCaps {
-                is_tty: false,
-                color: false,
-                dumb: false,
-            },
+            term: TermCaps::default(),
             now: moment(12, 30),
             tz: Tz::Asia__Shanghai,
+            lang: LanguageId::EN_US,
+            i18n,
         }
     }
 
     fn render(report: &Report, units: UnitSystem, width: usize) -> String {
+        let i18n = I18n::new(LanguageId::EN_US);
         Plain
-            .render(report, &context(units, width))
+            .render(report, &context(&i18n, units, width))
             .expect("plain always renders")
     }
 

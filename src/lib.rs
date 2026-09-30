@@ -14,6 +14,7 @@ pub mod config;
 pub mod error;
 pub mod geo;
 pub mod http;
+pub mod i18n;
 pub mod model;
 pub mod paths;
 pub mod provider;

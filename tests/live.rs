@@ -23,11 +23,12 @@ use cirrocast::error::Result;
 use cirrocast::geo::open_meteo::OpenMeteoGeocoder;
 use cirrocast::geo::{Geocoder, LocationSpec, resolve};
 use cirrocast::http::{HttpClient, UreqTransport};
+use cirrocast::i18n::{I18n, LanguageId};
 use cirrocast::model::units::UnitSystem;
 use cirrocast::model::{Location, LocationSource, Report};
 use cirrocast::paths::Paths;
 use cirrocast::provider::{Env, FetchRequest, HourlyResolution, fetch_chain, select};
-use cirrocast::render::{ColorMode, Format, RenderContext, TermCaps};
+use cirrocast::render::{ColorMode, Format, RenderContext, TermCaps, renderer_for};
 
 /// Whether the live tests are enabled on this machine.
 fn enabled() -> bool {
@@ -88,22 +89,20 @@ impl Live {
 
     /// The report as the CLI would print it.
     fn render(&self, report: &Report) -> String {
+        let i18n = I18n::new(LanguageId::EN_US);
         let ctx = RenderContext {
             units: UnitSystem::Metric
                 .resolve(&self.config.units)
                 .expect("the default units resolve"),
             color: ColorMode::Never,
             width: 100,
-            term: TermCaps {
-                is_tty: false,
-                color: false,
-                dumb: false,
-            },
+            term: TermCaps::default(),
+            lang: LanguageId::EN_US,
+            i18n: &i18n,
             now: Utc::now().fixed_offset(),
             tz: report.location.tz,
         };
-        Format::Plain
-            .renderer()
+        renderer_for(Format::Plain, &ctx.term)
             .expect("plain exists")
             .render(report, &ctx)
             .expect("the report renders")

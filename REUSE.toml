@@ -26,7 +26,16 @@ path = [
     "tests/fixtures/model/**",
     "tests/fixtures/http/**",
     "tests/fixtures/ip/**",
+    "tests/fixtures/report/**",
 ]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# insta snapshots. The `.snap` format is insta's (a YAML header, then the recorded text), so the
+# files cannot carry a comment header of their own; the content is our own renderer output.
+[[annotations]]
+path = "tests/snapshots/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"

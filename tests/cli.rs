@@ -300,15 +300,29 @@ fn a_planned_provider_is_a_usage_error() {
 }
 
 #[test]
-fn only_the_plain_format_exists_yet() {
+fn the_formats_without_a_renderer_are_usage_errors() {
     let sandbox = common::Sandbox::new();
+
+    // Checked before any request is sent, so this stays offline.
+    for format in ["one-line", "json"] {
+        sandbox
+            .cirrocast()
+            .args(["@39.9,116.4", "--format", format])
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains(format!(
+                "format `{format}` has no renderer in this build yet"
+            )));
+    }
+
     sandbox
         .cirrocast()
-        .args(["@39.9,116.4", "--format", "art-table"])
+        .args(["@39.9,116.4", "--format", "yaml"])
         .assert()
         .code(2)
         .stderr(
-            predicate::str::contains("invalid value 'art-table'")
-                .and(predicate::str::contains("possible values: plain")),
+            predicate::str::contains("invalid value 'yaml'").and(predicate::str::contains(
+                "possible values: art-table, one-line, plain, json, dumb",
+            )),
         );
 }

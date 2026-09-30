@@ -14,8 +14,8 @@
 use cirrocast::config::UnitOverrides;
 use cirrocast::error::Result;
 use cirrocast::model::units::{
-    ResolvedUnits, UnitSystem, format_distance, format_precip, format_pressure, format_temp,
-    format_visibility, format_wind,
+    ResolvedUnits, UnitStyle, UnitSystem, format_distance, format_precip, format_pressure,
+    format_temp, format_visibility, format_wind,
 };
 
 /// Which formatter a demo row exercises.
@@ -40,11 +40,11 @@ impl Quantity {
     fn format(self, value: f32, units: ResolvedUnits) -> String {
         match self {
             Self::Temp => format_temp(value, units.temp),
-            Self::Wind => format_wind(value, units.wind),
-            Self::Pressure => format_pressure(value, units.pressure),
-            Self::Distance => format_distance(value, units.distance),
-            Self::Visibility => format_visibility(value, units.distance),
-            Self::Precip => format_precip(value, units.precip),
+            Self::Wind => format_wind(value, units.wind, UnitStyle::Spaced),
+            Self::Pressure => format_pressure(value, units.pressure, UnitStyle::Spaced),
+            Self::Distance => format_distance(value, units.distance, UnitStyle::Spaced),
+            Self::Visibility => format_visibility(value, units.distance, UnitStyle::Spaced),
+            Self::Precip => format_precip(value, units.precip, UnitStyle::Spaced),
         }
     }
 }

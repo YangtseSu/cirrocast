@@ -27,12 +27,16 @@ use crate::geo::{
     osm_ambiguity_note, rank, resolve,
 };
 use crate::http::{HttpClient, UreqTransport};
+use crate::i18n::{I18n, LanguageId};
 use crate::model::Location;
-use crate::model::units::UnitSystem;
+use crate::model::units::{ResolvedUnits, UnitSystem};
 use crate::paths::Paths;
 use crate::provider::{Env, fetch_chain, select};
 use crate::provider::{FetchRequest, HourlyResolution, ProviderId, ProviderMeta};
-use crate::render::{ColorMode, Format, RenderContext, TermCaps};
+use crate::render::{
+    Charset, ColorMode, Format, RenderContext, TermCaps, effective_depth, renderer_for,
+    resolve_color, resolve_width,
+};
 
 /// Top level command line.
 #[derive(Debug, Parser)]
@@ -348,7 +352,7 @@ fn run_query(query: &QueryArgs, cli: &Cli) -> Result<()> {
         &config,
         &crate::config::CliOverrides {
             provider: query.provider.clone(),
-            format: query.format.map(|format| format.name().to_owned()),
+            format: query.format.map(|format| format.as_str().to_owned()),
             days: query.days,
             location: query.location.clone(),
             timeout_secs: query.timeout,
@@ -360,12 +364,10 @@ fn run_query(query: &QueryArgs, cli: &Cli) -> Result<()> {
     )?;
 
     let ids = select(&settings.provider)?;
-    let format = match query.format {
-        Some(format) => format,
-        None => Format::from_name(&settings.format)?,
-    };
-    let renderer = format.renderer()?;
-    let units = UnitSystem::from_str(&settings.units)?.resolve(&config.units)?;
+    let setup = RenderSetup::resolve(query, &config, &settings)?;
+    if cli.verbose > 0 {
+        render_notes(&setup);
+    }
 
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let cache = Cache::open(
@@ -425,14 +427,16 @@ fn run_query(query: &QueryArgs, cli: &Cli) -> Result<()> {
 
     let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
     let ctx = RenderContext {
-        units,
-        color: color_mode(&config.render.color)?,
-        width: render_width(&config),
-        term: term_caps(),
+        units: setup.units,
+        color: setup.color,
+        width: setup.width.columns,
+        term: setup.term,
         now: now.with_timezone(&report.location.tz).fixed_offset(),
         tz: report.location.tz,
+        lang: setup.lang,
+        i18n: &setup.i18n,
     };
-    println!("{}", renderer.render(&report, &ctx)?);
+    println!("{}", setup.renderer.render(&report, &ctx)?);
     Ok(())
 }
 
@@ -449,30 +453,92 @@ fn color_mode(name: &str) -> Result<ColorMode> {
         .map_err(|_| Error::Config(format!("unknown colour mode `{name}`")))
 }
 
-/// The output width: `[render] width` when set, else `COLUMNS`, else the usual 80.
-fn render_width(config: &Config) -> usize {
-    if config.render.width > 0 {
-        return config.render.width;
-    }
-    std::env::var("COLUMNS")
-        .ok()
-        .and_then(|columns| columns.trim().parse().ok())
-        .unwrap_or(80)
+/// Everything the renderer needs, resolved before a single request is sent: the format, the
+/// units, the language and its catalog, the layout width and the palette.
+///
+/// Resolving this first is what makes a typo in `--format` or an unusable language cost no traffic
+/// — and what keeps the query function about fetching.
+struct RenderSetup {
+    /// The renderer for the selected format.
+    renderer: Box<dyn crate::render::Renderer>,
+    /// The format it renders.
+    format: Format,
+    /// The units the report is converted into.
+    units: ResolvedUnits,
+    /// The language the report is rendered in.
+    lang: LanguageId,
+    /// The message catalog behind every label.
+    i18n: I18n,
+    /// The layout width and where it came from.
+    width: crate::render::Width,
+    /// The colour mode this run uses.
+    color: ColorMode,
+    /// What the terminal supports.
+    term: TermCaps,
 }
 
-/// What the terminal can do, as far as a renderer may care in this step.
-///
-/// Step 07 resolves this together with `--color`, `CLICOLOR_FORCE` and the width probing; here it
-/// is the honest minimum: a terminal, not a dumb one, and `NO_COLOR` unset.
-fn term_caps() -> TermCaps {
-    let is_tty = std::io::stdout().is_terminal();
-    let term = std::env::var("TERM").unwrap_or_default();
-    let dumb = term.is_empty() || term == "dumb";
-    let color = is_tty && !dumb && std::env::var_os("NO_COLOR").is_none();
-    TermCaps {
-        is_tty,
-        color,
-        dumb,
+impl RenderSetup {
+    /// Resolves the settings for one run.
+    fn resolve(query: &QueryArgs, config: &Config, settings: &Settings) -> Result<Self> {
+        let format = match query.format {
+            Some(format) => format,
+            None => Format::from_name(&settings.format)?,
+        };
+        let term = TermCaps::detect();
+        let renderer = renderer_for(format, &term)?;
+        let units = UnitSystem::from_str(&settings.units)?.resolve(&config.units)?;
+        let lang = LanguageId::from_setting(&settings.lang)?;
+        let i18n = I18n::new(lang);
+        let width = resolve_width((config.render.width > 0).then_some(config.render.width));
+        let color = if format == Format::Dumb {
+            ColorMode::Never
+        } else {
+            resolve_color(color_mode(&config.render.color)?, &term)
+        };
+        Ok(Self {
+            renderer,
+            format,
+            units,
+            lang,
+            i18n,
+            width,
+            color,
+            term,
+        })
+    }
+}
+
+/// What the run resolved to, under `--verbose`: which width, which palette, and why the table
+/// fell back to ASCII.
+fn render_notes(setup: &RenderSetup) {
+    let (format, caps, width, color) = (setup.format, &setup.term, setup.width, setup.color);
+    eprintln!(
+        "width: {} columns (from {})",
+        width.columns,
+        width.source.as_str()
+    );
+    if let Some(raised) = width.raised_from {
+        eprintln!(
+            "note: {raised} columns is below the {} column minimum; laying out for {}",
+            crate::render::MIN_WIDTH,
+            width.columns
+        );
+    }
+    eprintln!(
+        "color: {} ({} palette, tty: {})",
+        color.as_str(),
+        match effective_depth(color, caps) {
+            crate::render::ColorDepth::Mono => "none",
+            crate::render::ColorDepth::Ansi16 => "16 colour",
+            crate::render::ColorDepth::Ansi256 => "256 colour",
+        },
+        caps.is_tty
+    );
+    eprintln!("language: {}", setup.lang.tag());
+    if format == Format::Dumb {
+        eprintln!("note: `--format dumb` draws the ASCII table without colour");
+    } else if caps.charset() == Charset::Ascii {
+        eprintln!("note: drawing the ASCII table (dumb TERM or a non-UTF-8 locale)");
     }
 }
 
