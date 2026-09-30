@@ -41,7 +41,7 @@ registry re-verification of that step needs a written record of what was checked
 | `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | step 11 |
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | implemented |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | implemented |
-| `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | step 10 |
+| `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | implemented |
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | step 10 |
 | `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (`24h`/`72h`/`168h`) | v7: 30 days daily; successor v1: 10 days | step 10 |
 
@@ -453,6 +453,15 @@ aviation, marine navigation, emergency planning, or other safety-critical activi
 current conditions 60 minutes, forecast 24 hours. No resale, no bulk copying
 (<https://www.worldweatheronline.com/weather-api/api/free-api-terms.aspx>,
 <https://www.worldweatheronline.com/weather-api/api/api-t-and-c.aspx>).
+
+**Implemented 2026-10-01** (`src/provider/worldweatheronline.rs`). One call per fetch with `format=json`
+and `tp=3`; the string-valued scalars and single-element arrays are unwrapped by `text_number`; the
+daily extremes and `astronomy[0]` sun times come from the response; a day whose slots do not cover
+all four parts is skipped. Two findings recorded here: **`observation_time` is the UTC wall clock**,
+not the local time the docs claim (two recordings at known instants both matched UTC — the provider
+joins it to the fetch instant's UTC date and converts), and the payload carries **no time zone**, so
+a provisional (UTC) location is refused before any request like OpenWeatherMap's. Credit line:
+`WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/`.
 
 **Client notes.** `format=json` is mandatory — the documented default is `xml`; every scalar is a JSON
 **string** (`"temp_C": "18"`); single-element arrays wrap descriptions and areas

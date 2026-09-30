@@ -26,6 +26,7 @@ pub mod open_meteo;
 pub mod openweathermap;
 pub mod smhi;
 pub mod weatherapi;
+pub mod worldweatheronline;
 
 use std::fmt;
 use std::str::FromStr;
@@ -175,9 +176,11 @@ impl ProviderId {
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "free tier 100 requests/day, 5 forecast days per FAQ; format=json is mandatory",
                 verified: "2026-09-30",
-                implemented: false,
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some(
+                    "WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/",
+                ),
             },
             Self::PirateWeather => ProviderMeta {
                 id: *self,
@@ -601,6 +604,7 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::Smhi => Ok(Box::new(smhi::Smhi)),
         ProviderId::WeatherApi => Ok(Box::new(weatherapi::WeatherApi)),
+        ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),
         other => Err(Error::Usage(format!(
             "provider `{other}` is not implemented yet"
         ))),

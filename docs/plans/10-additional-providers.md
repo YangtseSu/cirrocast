@@ -70,7 +70,7 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       `max_days: 3` on a free key (a paid key raises the cap; the step 08 clamp covers it), `requires_key: true`.
       Obligations: free keys must credit WeatherAPI.com by name or logo, caching caps are 60 min (current) and
       24 h (forecast), and the terms add a mandatory end-user disclaimer.
-- ⬜ `worldweatheronline.rs`: `GET https://api.worldweatheronline.com/premium/v1/weather.ashx` with `key`,
+- ✅ `worldweatheronline.rs` (landed 2026-10-01): `GET https://api.worldweatheronline.com/premium/v1/weather.ashx` with `key`,
       `q=lat,lon`, `format=json`, `num_of_days=` and `tp=3`. **Corrected 2026-09-30**: the `free/v1` path is not
       documented anywhere current and returns 403 — every official example and the pricing page's "All plans share
       the same core API suite" put a free key on `premium/v1`; `format=json` is mandatory because the documented
@@ -280,3 +280,11 @@ cirrocast provider list && cirrocast provider info smhi
   the day's local date); `uv` fills the model's UV field; the condition table covers all 53 published codes
   with a unit test. A 403 keeps the `Upstream` taxonomy because it carries quota/plan refusals (the 401 → exit
   6 split is the shared helper's). Live smoke printed real data with the free-tier credit line.
+- 2026-10-01 — World Weather Online landed (`src/provider/worldweatheronline.rs`, `tests/provider_wwo.rs`, recorded
+  response and 401 fixtures under `tests/fixtures/wwo/`, `LicenseRef-Proprietary-API-Data` annotation). One call
+  per fetch with `format=json` (the default is XML) and `tp=3`; every scalar arrives as a JSON string and the
+  descriptive fields are single-element arrays, so `text_number` unwraps them; `hourly[].time` is an unpadded
+  local `HHMM` joined to the day's date; the daily extremes and `astronomy[0]` sun times are the response's own.
+  Two quirks pinned by tests and recorded in `docs/providers.md`: `observation_time` is the **UTC** wall clock
+  (the docs say local; two recordings at known instants show UTC), and a provisional zone is refused before any
+  request because the payload carries no zone. A day whose slots do not cover all four parts is skipped.

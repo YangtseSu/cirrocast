@@ -77,7 +77,7 @@ pub fn covered_days(samples: &[HourSample], tz: Tz, days: u8) -> Vec<NaiveDate> 
 }
 
 /// Whether every day part of `date` has a sample.
-fn covers_every_part(samples: &[HourSample], date: NaiveDate, tz: Tz) -> bool {
+pub fn covers_every_part(samples: &[HourSample], date: NaiveDate, tz: Tz) -> bool {
     DayPartKind::ALL.iter().all(|kind| {
         samples.iter().any(|sample| {
             let local = sample.at.with_timezone(&tz);
