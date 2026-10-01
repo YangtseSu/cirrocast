@@ -37,7 +37,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   and units are pinned by tests that read the *parsed* document (round-trip through `serde_json`, not a text
   snapshot) and compare it with the key index of `docs/schema.md`; the hand-maintained `EXPECTED_KEYS` array is
   deleted rather than kept as a second list that can drift.
-- ⬜ `CHANGELOG.md` (new, Keep a Changelog 1.1.0 + SemVer, SPDX header): an `Unreleased` section plus `0.x`
+- ✅ `CHANGELOG.md` (new, Keep a Changelog 1.1.0 + SemVer, SPDX header): an `Unreleased` section plus `0.x`
   entries summarising the user-visible changes of steps 01–11 (backends, formats, localization, cache/offline
   behaviour), each entry naming the CLI surface it affects; the `1.0.0` entry is added in step 14; compare links
   point at GitHub tags.
@@ -201,3 +201,5 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 - 2026-10-01 — `tests/render_json.rs` now reads the documented key index and checks every value's JSON type and
   the never-null claims against it; the duplicated `EXPECTED_KEYS` array is gone, and a knowingly renamed doc
   key was verified to fail the suite.
+- 2026-10-01 — `CHANGELOG.md` added: Keep a Changelog 1.1.0, an `Unreleased` placeholder and a dated `0.1.0`
+  entry that names the CLI surface of every user-visible feature up to step 12.
