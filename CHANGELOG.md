@@ -15,6 +15,27 @@ records how each of them changes and which changes are breaking.
 
 Nothing yet.
 
+## [1.0.0] - 2026-10-02
+
+The v1 acceptance release: the whole A–C surface proved by execution in step 14 — the eight
+backends against all five formats, the side-by-side against `wttr.in`, the four failure exit codes,
+the packaged install — and `1.0.0` freezes the CLI, the JSON schema v1 and the config schema v1 for
+the v1 scope. No new surface; the acceptance run produced three fixes:
+
+### Changed
+
+* `art-table` and its `dumb` twin: the day-cell tail pairs the precipitation amount with the
+  precipitation *probability* (`0.0mm 20%`), matching the `plain` document's `0.0mm (0%)` and
+  wttr.in's `0.0 mm | 0%`; humidity stays in the current-conditions block above the table (step 07).
+* `--help` and the man page describe `-v`/`-vv` as they really behave: `-v` prints the upstream
+  request behind the answer, `-vv` adds every HTTP attempt and the cache decisions (step 12).
+
+### Fixed
+
+* `--ip` with both location services failing names every attempt
+  (`all IP location services failed: ipwho.is (…); ipapi.co (…)`) instead of only the last service
+  (step 05).
+
 ## [0.1.0] - 2026-10-01
 
 The first release: the whole v1 surface, shipped as `0.x` while phases A–C of `docs/plans/`
@@ -59,5 +80,6 @@ landed. `1.0.0` freezes it.
 * Exit codes `0`–`6` documented in `--help` and the README, with `error: …` on stderr and the
   cause chain under `-v`.
 
-[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.0.0
 [0.1.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v0.1.0

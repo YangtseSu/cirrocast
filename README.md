@@ -76,18 +76,19 @@ stays pipeable; `-q` silences it and `:Beijing` demands an exact name.
 
 ## Status
 
-Steps 01–13 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
+Steps 01–14 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
 resolution, the provider registry, the typed configuration with its `config`/`key` subcommands, the
 canonical model, location resolution, the shared HTTP/cache layer, the Open-Meteo forecast, the
 wttr.in-style `art-table` renderer, the full flag matrix with the four other output formats
 (`one-line`, `plain`, `json`, `dumb`), shell completions and the man page, localization (`en-US` +
 `zh-CN`) and eight selectable backends — three of them keyless, including the station-based `metar`
 observation. Step 12 hardened the error contract, the `--offline` and XDG behaviour, the network
-guard and the decoder paths; step 13 made it releasable: `v0.1.0` is tagged, the release workflow
-ships three native archives, the AUR package is published, and the JSON and config schemas are
-written out in [`docs/schema.md`](docs/schema.md) with the versioning policy in
-[Versioning](#versioning) and the history in [`CHANGELOG.md`](CHANGELOG.md). Step 14 (v1 acceptance)
-is the gate that follows: it proves the whole surface by execution and cuts `1.0.0`.
+guard and the decoder paths; step 13 made it releasable: the release workflow ships three native
+archives, the AUR package is published, and the JSON and config schemas are written out in
+[`docs/schema.md`](docs/schema.md) with the versioning policy in [Versioning](#versioning) and the
+history in [`CHANGELOG.md`](CHANGELOG.md). Step 14 is the v1 acceptance gate: `v1.0.0` is tagged,
+every requirement in the plan index carries a recorded command and its observed output, and the
+surface it proves is now frozen — phases D and E build on it.
 
 ## Install
 
@@ -99,7 +100,7 @@ paru -S cirrocast                           # Arch: the AUR package (yay, or a m
                                             # makepkg); https://aur.archlinux.org/packages/cirrocast
 
 # Prebuilt archives for Linux (x86_64, aarch64) and macOS (Apple silicon), one per release:
-version=v0.1.0 target=x86_64-unknown-linux-gnu
+version=v1.0.0 target=x86_64-unknown-linux-gnu
 curl -LO "https://github.com/YangtseSu/cirrocast/releases/download/$version/cirrocast-$version-$target.tar.gz"
 sha256sum -c "cirrocast-$version-$target.tar.gz.sha256"
 tar xzf "cirrocast-$version-$target.tar.gz"
@@ -513,16 +514,16 @@ Four version numbers move independently; only the first three are visible to a c
 
 | Number | Where it appears | Now | Changes when |
 |---|---|---|---|
-| crate version | `Cargo.toml`, `--version`, release tags | `0.1.0` | any release, following SemVer |
+| crate version | `Cargo.toml`, `--version`, release tags | `1.0.0` | any release, following SemVer |
 | JSON schema version | `"schema_version"` in every `-f json` document | `1` | a key is removed, renamed, retyped, changes unit, or changes between always-present and nullable |
 | config schema version | `schema_version` in `config.toml` | `1` | an existing key's meaning, type or validity changes (a new key with a default is additive and does not) |
 | cache envelope version | `cache_schema_version` in cache files | `1` | internal only: a mismatch is a cache miss, never an error |
 
 The release schedule, matching [`docs/plans/README.md`](docs/plans/README.md):
 
-* **`0.x`** while phases A–C land — the surface may still move, and `0.1.0` is the first release;
-* **`1.0.0`** freezes the CLI, the configuration schema and the JSON schema for the v1 scope
-  (phases A–C, steps 01–14);
+* **`0.x`** while phases A–C landed — `0.1.0` (2026-10-01) was the first release;
+* **`1.0.0`** (2026-10-02) freezes the CLI, the configuration schema and the JSON schema for the v1
+  scope (phases A–C, steps 01–14);
 * **`1.1.0`–`1.2.0`** for phase D (steps 15–19: alerts, air quality, moon and astro, the offline city
   database, more backends);
 * **`2.0.0`** for phase E (steps 20–24: the wttr.in-compatible local service, multi-location output,
@@ -549,7 +550,7 @@ covers it, and ecosystem packages are step 24. Every archive ships next to the `
 computed:
 
 ```bash
-sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c
+sha256sum -c cirrocast-v1.0.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c
 ```
 
 `cargo package --list --locked` and `cargo publish --dry-run --locked` run on every pull request
@@ -584,7 +585,7 @@ git commit -am "upgpkg: cirrocast X.Y.Z-1" && git push
 ```bash
 # what a bump is verified with, on a clean machine or in a chroot
 pkgctl build                         # devtools clean chroot; makechrootpkg -c does the same
-sudo pacman -U cirrocast-0.1.0-1-x86_64.pkg.tar.zst
+sudo pacman -U cirrocast-1.0.0-1-x86_64.pkg.tar.zst
 cirrocast --version && man -w cirrocast
 pacman -Ql cirrocast | grep -E 'completions/cirrocast$|site-functions/_cirrocast$|vendor_completions\.d/cirrocast\.fish$' | wc -l   # 3
 ```
