@@ -24,7 +24,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
 
 ## Deliverables
 
-- ⬜ Versioning policy in `README.md#versioning`: `Cargo.toml` stays `0.x` while phases A–C land, `1.0.0` is
+- ✅ Versioning policy in `README.md#versioning`: `Cargo.toml` stays `0.x` while phases A–C land, `1.0.0` is
   cut in step 14, phase D releases are `1.1.0`–`1.2.0` (steps 15–19) and phase E is `2.0.0` (steps 20–24),
   matching `docs/plans/README.md`; the crate version, the JSON schema version and the config schema version move
   independently.
@@ -220,3 +220,6 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 - 2026-10-01 — `ci.yml` gained a `package` job: `cargo package --list --locked` plus
   `cargo publish --dry-run --locked` on every pull request, so the packaged file set and the packaging build
   are reviewed before a tag exists.
+- 2026-10-01 — `README.md#versioning` added: the four independent version numbers (crate, JSON schema, config
+  schema, cache envelope), the release schedule matching the plan index, and the minor/major rule for schema
+  changes.

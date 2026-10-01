@@ -480,6 +480,33 @@ GPL-3.0-or-later — see [`LICENSE`](LICENSE). The repository is
 [REUSE](https://reuse.software/)-compliant; per-file copyright and licence information lives in
 SPDX headers and in [`REUSE.toml`](REUSE.toml).
 
+## Versioning
+
+Four version numbers move independently; only the first three are visible to a consumer, and
+[`docs/schema.md`](docs/schema.md) is where their change rules and their fields live.
+
+| Number | Where it appears | Now | Changes when |
+|---|---|---|---|
+| crate version | `Cargo.toml`, `--version`, release tags | `0.1.0` | any release, following SemVer |
+| JSON schema version | `"schema_version"` in every `-f json` document | `1` | a key is removed, renamed, retyped, changes unit, or changes between always-present and nullable |
+| config schema version | `schema_version` in `config.toml` | `1` | an existing key's meaning, type or validity changes (a new key with a default is additive and does not) |
+| cache envelope version | `cache_schema_version` in cache files | `1` | internal only: a mismatch is a cache miss, never an error |
+
+The release schedule, matching [`docs/plans/README.md`](docs/plans/README.md):
+
+* **`0.x`** while phases A–C land — the surface may still move, and `0.1.0` is the first release;
+* **`1.0.0`** freezes the CLI, the configuration schema and the JSON schema for the v1 scope
+  (phases A–C, steps 01–14);
+* **`1.1.0`–`1.2.0`** for phase D (steps 15–19: alerts, air quality, moon and astro, the offline city
+  database, more backends);
+* **`2.0.0`** for phase E (steps 20–24: the wttr.in-compatible local service, multi-location output,
+  performance budgets, the documentation set, ecosystem packages).
+
+Within a major version, adding a key to the JSON document or adding a config key with a built-in
+default is a **minor** change: a consumer keeps working if it ignores what it does not know.
+Removing, renaming, retyping or re-meaning anything is a **major** change, bumps `schema_version`
+and is named in [`CHANGELOG.md`](CHANGELOG.md).
+
 ## Development and CI
 
 The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
