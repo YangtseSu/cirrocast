@@ -202,6 +202,22 @@
   ],
   "attribution": {
     "provider": "open-meteo",
+    "display_name": "Open-Meteo",
+    "licence": "Open-Meteo.com (CC BY 4.0)",
+    "capabilities": {
+      "current": true,
+      "hourly": true,
+      "daily": true,
+      "alerts": false,
+      "max_days": 16,
+      "requires_key": false,
+      "key_env": null,
+      "locations": {
+        "city": true,
+        "station": false,
+        "lat_lon": true
+      }
+    },
     "url": "https://api.open-meteo.com/v1/forecast",
     "fetched_at": "2026-09-30T04:11:00Z",
     "raw": null

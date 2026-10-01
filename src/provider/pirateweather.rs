@@ -32,15 +32,13 @@ use serde::Deserialize;
 
 use super::dayparts::{HourSample, aggregate_day, covered_days};
 use super::{
-    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
-    requested_days,
+    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
+    local_today, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
-use crate::model::{
-    Attribution, Condition, Current, DayForecast, Location, LocationSource, Report,
-};
+use crate::model::{Condition, Current, DayForecast, Location, LocationSource, Report};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "pirateweather";
@@ -258,11 +256,11 @@ fn report(
         location,
         current,
         days: forecasts,
-        attribution: Attribution {
-            provider: PROVIDER.to_owned(),
+        attribution: attribution(
+            ProviderId::PirateWeather,
             url,
-            fetched_at: env.cache.clock().now().into(),
-            raw: (env.verbose > 0).then(|| {
+            env.cache.clock().now().into(),
+            (env.verbose > 0).then(|| {
                 format!(
                     "units {} offset {:+}h sources {}",
                     response
@@ -277,7 +275,7 @@ fn report(
                         .map_or(0, |flags| flags.sources.len()),
                 )
             }),
-        },
+        ),
     })
 }
 

@@ -34,8 +34,8 @@ use serde::Serialize;
 use super::{RenderContext, Renderer};
 use crate::error::{Error, Result};
 use crate::geo::attribution_line;
+use crate::model::ReportCapabilities as Capabilities;
 use crate::model::{Attribution, Condition, Current, DayForecast, DayPart, Location, Report};
-use crate::provider::{capabilities_of, licence_line};
 
 /// The schema version this build emits; see the module documentation for what may change within
 /// one version.
@@ -66,7 +66,7 @@ struct Document<'a> {
     days: Vec<DayJson<'a>>,
     /// What the backend offers, so a consumer can tell "no days because it is an observation"
     /// from "no days because the request asked for none". `null` when the provider is unknown.
-    capabilities: Option<CapabilitiesJson>,
+    capabilities: Option<&'a Capabilities>,
     /// Where the data came from and what has to be credited.
     attribution: AttributionJson<'a>,
 }
@@ -86,66 +86,10 @@ impl<'a> Document<'a> {
                 .iter()
                 .map(|day| DayJson::of(day, ctx))
                 .collect(),
-            capabilities: capabilities_of(&report.attribution.provider).map(CapabilitiesJson::of),
+            capabilities: report.attribution.capabilities.as_ref(),
             attribution: AttributionJson::of(&report.attribution, &report.location),
         }
     }
-}
-
-/// What the backend behind the document offers.
-///
-/// The flags are deliberately flat rather than folded into enums: each one is independent, and a
-/// consumer reads `capabilities.daily` without unpacking a nested shape.
-#[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Serialize)]
-struct CapabilitiesJson {
-    /// Current conditions are available.
-    current: bool,
-    /// Hourly data is available.
-    hourly: bool,
-    /// Daily data is available; `false` means `days` is empty by nature, not by request.
-    daily: bool,
-    /// Weather alerts are available.
-    alerts: bool,
-    /// Longest forecast the backend serves, in days (`0` = observations only).
-    max_days: u8,
-    /// Whether an API key has to be present before the backend can be used.
-    requires_key: bool,
-    /// Environment variable that supplies the key, when there is one.
-    key_env: Option<&'static str>,
-    /// Which location forms the backend accepts.
-    locations: LocationsJson,
-}
-
-impl CapabilitiesJson {
-    /// Projects a registry row.
-    fn of(capabilities: crate::provider::Capabilities) -> Self {
-        Self {
-            current: capabilities.current,
-            hourly: capabilities.hourly,
-            daily: capabilities.daily,
-            alerts: capabilities.alerts,
-            max_days: capabilities.max_days,
-            requires_key: capabilities.requires_key,
-            key_env: capabilities.key_env,
-            locations: LocationsJson {
-                city: capabilities.location_kinds.city,
-                station: capabilities.location_kinds.station,
-                lat_lon: capabilities.location_kinds.lat_lon,
-            },
-        }
-    }
-}
-
-/// The location forms a backend accepts.
-#[derive(Debug, Serialize)]
-struct LocationsJson {
-    /// Resolved place names.
-    city: bool,
-    /// METAR station identifiers.
-    station: bool,
-    /// Raw `lat,lon` coordinates.
-    lat_lon: bool,
 }
 
 /// The place the report is for.
@@ -390,7 +334,7 @@ struct AttributionJson<'a> {
     /// The endpoint the answer came from, without query parameters or any API key.
     url: &'a str,
     /// The data licence credit, `null` when the backend has no verified one.
-    notice: Option<&'static str>,
+    notice: Option<&'a str>,
     /// The place-data credit, `null` when the location source asks for none.
     location_notice: Option<&'static str>,
     /// When the data was fetched (or read from the cache), in UTC.
@@ -407,7 +351,7 @@ impl<'a> AttributionJson<'a> {
         Self {
             provider: &attribution.provider,
             url: endpoint(&attribution.url),
-            notice: licence_line(&attribution.provider),
+            notice: attribution.licence.as_deref(),
             location_notice: attribution_line(location),
             retrieved_at: attribution
                 .fetched_at
@@ -474,6 +418,24 @@ mod tests {
         }
     }
 
+    /// The provenance a provider-built report carries: the `open-meteo` row, spelled out because
+    /// the renderers may not import the provider registry (step 12's layering gate).
+    fn attribution() -> Attribution {
+        Attribution {
+            provider: "open-meteo".to_owned(),
+            display_name: "Open-Meteo".to_owned(),
+            licence: Some("Open-Meteo.com (CC BY 4.0)".to_owned()),
+            capabilities: Some(crate::model::ReportCapabilities::open_meteo_test()),
+            url: "https://api.open-meteo.com/v1/forecast?latitude=39.9042&longitude=116.4074"
+                .to_owned(),
+            fetched_at: Utc
+                .with_ymd_and_hms(2026, 9, 30, 4, 15, 0)
+                .single()
+                .expect("an instant"),
+            raw: None,
+        }
+    }
+
     fn report(current: Option<Current>, days: Vec<DayForecast>) -> Report {
         Report {
             location: Location {
@@ -491,16 +453,7 @@ mod tests {
             },
             current,
             days,
-            attribution: Attribution {
-                provider: "open-meteo".to_owned(),
-                url: "https://api.open-meteo.com/v1/forecast?latitude=39.9042&longitude=116.4074"
-                    .to_owned(),
-                fetched_at: Utc
-                    .with_ymd_and_hms(2026, 9, 30, 4, 15, 0)
-                    .single()
-                    .expect("an instant"),
-                raw: None,
-            },
+            attribution: attribution(),
         }
     }
 

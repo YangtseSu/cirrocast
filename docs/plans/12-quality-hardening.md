@@ -8,9 +8,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Status: 🚧 in-progress
 Depends on: 08 (cli-surface-and-formats), 09 (localization), 10 (additional-providers)
 Touches: `src/**/*.rs` (error text and logging only), `src/http.rs` (network guard), `src/config/mod.rs`
-(validation), `src/cli.rs` (help text), `deny.toml` (new), `.github/workflows/ci.yml` (new),
-`LICENSES/GPL-3.0-or-later.txt`, `REUSE.toml`, `tests/{exit_codes,no_network,decoder_robustness}.rs` (new),
-`tests/fixtures/malformed/**` (new), `README.md`, `AGENTS.md` (lint trap only)
+(validation), `src/cli.rs` (help text), `src/model/mod.rs` + `src/provider/mod.rs` (the attribution mirror the
+render-path gate requires), `deny.toml` (new), `.github/workflows/ci.yml` (new), `LICENSES/GPL-3.0-or-later.txt`,
+`REUSE.toml`, `tests/{exit_codes,no_network,decoder_robustness,xdg}.rs` (new), `tests/fixtures/malformed/**` (new),
+`README.md`, `AGENTS.md` (lint trap only)
 
 ## Goal
 
@@ -83,9 +84,13 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   offset, empty/`{}`/`[]`/`null` bodies, wrong types (`"temp": "abc"`) and single-byte mutations — each input
   yields `Error::Upstream`/`Error::Config` with a cause chain and never panics, hangs or allocates unboundedly
   (payload cap enforced in `http.rs`).
-- ⬜ Render-path audit: `src/render/**` and `src/model/**` import nothing from `http`, `provider` or `cache`,
+- ✅ Render-path audit: `src/render/**` and `src/model/**` import nothing from `http`, `provider` or `cache`,
   enforced by a CI grep gate (`! grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model`), with
-  `cargo tree` confirming only `serde`/`serde_json`/`chrono`/locale data beyond std.
+  `cargo tree` confirming only `serde`/`serde_json`/`chrono`/locale data beyond std. (The three registry
+  lookups the renderers used — capabilities, display name, licence credit — moved into
+  `model::Attribution`: every provider fills them through `provider::attribution(...)`, and
+  `the_report_mirror_carries_every_registry_field` proves the copy is complete. The hand-written report
+  fixtures carry the same fields, so every renderer snapshot is byte-identical.)
 - ✅ XDG audit: no write outside `$XDG_{CONFIG,CACHE,DATA}_HOME/cirrocast` (verified by running with all three
   pointed at a temporary tree and diffing it), `XDG_CONFIG_DIRS` honoured for reads, and `--offline`/`--no-cache`
   creating no cache directory.
@@ -93,7 +98,7 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   0600 and refused when wider, and a test greps captured `-vv` stderr for the fake key it exported and finds
   nothing.
 - ⬜ `.github/workflows/ci.yml`: jobs `fmt`, `clippy --all-targets -- -D warnings`, `test` (matrix
-  ubuntu-latest + macos-latest × stable + 1.85.0, `CIRROCAST_FORBID_NETWORK=1`, `--locked`), `reuse`
+  ubuntu-26.04 + macos-latest × stable + 1.98.0, `CIRROCAST_FORBID_NETWORK=1`, `--locked`), `reuse`
   (`fsfe/reuse-action`), `deny` (`EmbarkStudios/cargo-deny-action`), `audit` (`rustsec/audit-check`), plus the
   layer and `cmp` gates; every third-party action pinned to a commit SHA, `concurrency` cancelling superseded
   runs, no Windows job. README/AGENTS document the matrix, MSRV, deny policy, the no-network rule and the
@@ -341,7 +346,7 @@ zmij 1.0.23 | MIT
 
 ```
 cargo deny check && cargo audit && reuse lint                    # all green, 0 lint problems
-cargo +1.85.0 build --all-targets --locked && cargo +1.85.0 test --locked
+cargo +1.98.0 build --all-targets --locked && cargo +1.98.0 test --locked
 CIRROCAST_FORBID_NETWORK=1 cargo test                            # suite green with the guard active
 strace -f -e trace=network target/release/cirrocast --version 2>&1 | grep -c 'socket('   # expect 0
 hyperfine --warmup 10 --runs 50 'target/release/cirrocast --version'                     # under 50 ms
@@ -351,7 +356,7 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
 ## Exit criteria
 
 - ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
-- ⬜ `cargo deny check` and `cargo audit` green, `cargo +1.85.0 build --all-targets --locked` green, and the
+- ⬜ `cargo deny check` and `cargo audit` green, `cargo +1.98.0 build --all-targets --locked` green, and the
   dependency licence verdict table filled in with no unresolved GPL-3.0-or-later incompatibility.
 - ⬜ `CIRROCAST_FORBID_NETWORK=1 cargo test` passes, the guard test shows a blocked request exiting 3 with the
   guard message, and `hyperfine` reports `--version` under 50 ms with no socket opened.
@@ -360,7 +365,7 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
 
 * Advisory-database or mirror flakiness in CI would destabilise red/green: pin actions by SHA and give every
   `[advisories] ignore` entry a reason plus a review date.
-* A dependency bump can raise MSRV above 1.85 or add a denied licence: `--locked` in CI forces such a bump into a
+* A dependency bump can raise MSRV above 1.98 or add a denied licence: `--locked` in CI forces such a bump into a
   reviewed commit that the licence gate can fail.
 * The loopback exception could hide a network-dependent test: the blocking test targets a real host, while the
   layer gate and the `unshare -rn` run give independent signals.

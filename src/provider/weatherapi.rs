@@ -31,13 +31,13 @@ use serde::Deserialize;
 
 use super::dayparts::{HourSample, aggregate_day};
 use super::{
-    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
-    requested_days,
+    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
+    local_today, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
-use crate::model::{Attribution, Condition, Current, Location, LocationSource, Report};
+use crate::model::{Condition, Current, Location, LocationSource, Report};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "weatherapi";
@@ -310,11 +310,11 @@ fn report(
         location,
         current,
         days: forecasts,
-        attribution: Attribution {
-            provider: PROVIDER.to_owned(),
+        attribution: attribution(
+            ProviderId::WeatherApi,
             url,
-            fetched_at: env.cache.clock().now().into(),
-            raw: (env.verbose > 0).then(|| {
+            env.cache.clock().now().into(),
+            (env.verbose > 0).then(|| {
                 format!(
                     "upstream matched {} ({:.2},{:.2}) in {}; local time epoch {}",
                     response.location.name,
@@ -324,7 +324,7 @@ fn report(
                     response.location.localtime_epoch
                 )
             }),
-        },
+        ),
     })
 }
 

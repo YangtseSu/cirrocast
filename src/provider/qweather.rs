@@ -40,14 +40,14 @@ use serde::Deserialize;
 
 use super::dayparts::{HourSample, aggregate_day, covered_days, extremes};
 use super::{
-    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
-    requested_days,
+    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
+    local_today, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::geo::provisional_zone;
 use crate::http::HttpRequest;
-use crate::model::{Attribution, Condition, Current, Location, Report};
+use crate::model::{Condition, Current, Location, Report};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "qweather";
@@ -136,17 +136,17 @@ impl Provider for QWeather {
             location: loc.clone(),
             current: Some(current_of(&current, now, loc.tz)?),
             days: forecasts,
-            attribution: Attribution {
-                provider: PROVIDER.to_owned(),
+            attribution: attribution(
+                ProviderId::QWeather,
                 url,
-                fetched_at: now,
-                raw: (env.verbose > 0).then(|| {
+                now,
+                (env.verbose > 0).then(|| {
                     format!(
                         "host {host}; v1 metric-only measures; metadata tag {}",
                         current.metadata.tag
                     )
                 }),
-            },
+            ),
         })
     }
 }

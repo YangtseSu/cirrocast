@@ -44,7 +44,7 @@ use crate::config::Config;
 use crate::config::keys::KeyStore;
 use crate::error::{Error, Result};
 use crate::http::{HttpClient, HttpRequest};
-use crate::model::{Location, Report};
+use crate::model::{Attribution, Location, Report, ReportCapabilities, ReportLocationKinds};
 
 /// A backend `cirrocast` knows how to talk to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -685,6 +685,55 @@ pub fn licence_line(provider: &str) -> Option<&'static str> {
         .and_then(|id| id.metadata().licence)
 }
 
+impl Capabilities {
+    /// This capability set as the report-side mirror the renderers read.
+    ///
+    /// The mirror exists so that `src/render` can shape its output from what a backend declared
+    /// without importing this module (the render-path audit in step 12 forbids that import).
+    #[must_use]
+    pub fn report(self) -> ReportCapabilities {
+        ReportCapabilities {
+            current: self.current,
+            hourly: self.hourly,
+            daily: self.daily,
+            alerts: self.alerts,
+            max_days: self.max_days,
+            requires_key: self.requires_key,
+            key_env: self.key_env.map(str::to_owned),
+            locations: ReportLocationKinds {
+                city: self.location_kinds.city,
+                station: self.location_kinds.station,
+                lat_lon: self.location_kinds.lat_lon,
+            },
+        }
+    }
+}
+
+/// The [`Attribution`] block of a report produced by `id`.
+///
+/// Every provider builds its report through this constructor, so the renderers receive the display
+/// name, the licence credit and the capability flags *with the data* instead of looking the
+/// provider up again. A provider whose registry row is missing would be a bug; the report still
+/// parses because the fields are optional on the model.
+#[must_use]
+pub fn attribution(
+    id: ProviderId,
+    url: String,
+    fetched_at: DateTime<Utc>,
+    raw: Option<String>,
+) -> Attribution {
+    let meta = id.metadata();
+    Attribution {
+        provider: id.as_str().to_owned(),
+        display_name: meta.display_name.to_owned(),
+        licence: meta.licence.map(str::to_owned),
+        capabilities: Some(meta.capabilities().report()),
+        url,
+        fetched_at,
+        raw,
+    }
+}
+
 /// What the backend behind a report says it offers, for the renderers that shape their output
 /// around it.
 ///
@@ -985,6 +1034,39 @@ mod tests {
     }
 
     #[test]
+    fn the_report_mirror_carries_every_registry_field() {
+        // `Attribution` carries a copy of the row so the renderers never import this module; the
+        // copy is built here, so this test is the one place that proves nothing is dropped.
+        let fetched = Utc::now();
+        for id in ProviderId::all() {
+            let meta = id.metadata();
+            let attribution =
+                super::attribution(id, "https://example.invalid/x".to_owned(), fetched, None);
+            assert_eq!(attribution.provider, id.as_str());
+            assert_eq!(attribution.display_name, meta.display_name);
+            assert_eq!(attribution.licence.as_deref(), meta.licence);
+            let mirror = attribution
+                .capabilities
+                .expect("every row exposes capabilities");
+            assert_eq!(mirror.current, meta.current);
+            assert_eq!(mirror.hourly, meta.hourly);
+            assert_eq!(mirror.daily, meta.daily);
+            assert_eq!(mirror.alerts, meta.alerts);
+            assert_eq!(mirror.max_days, meta.max_days);
+            assert_eq!(mirror.requires_key, meta.requires_key);
+            assert_eq!(mirror.key_env.as_deref(), meta.key_env);
+            assert_eq!(
+                mirror.locations,
+                crate::model::ReportLocationKinds {
+                    city: meta.location_kinds.city,
+                    station: meta.location_kinds.station,
+                    lat_lon: meta.location_kinds.lat_lon,
+                }
+            );
+        }
+    }
+
+    #[test]
     fn an_unimplemented_row_claims_neither_a_backend_nor_a_licence() {
         for id in ProviderId::all() {
             let meta = id.metadata();
@@ -1149,12 +1231,12 @@ mod tests {
             location: test_location(),
             current: None,
             days: Vec::new(),
-            attribution: Attribution {
-                provider: id.to_string(),
-                url: "https://example.invalid/forecast".to_owned(),
-                fetched_at: Utc::now(),
-                raw: None,
-            },
+            attribution: Attribution::unregistered(
+                id.to_string(),
+                "https://example.invalid/forecast",
+                Utc::now(),
+                None,
+            ),
         }
     }
 

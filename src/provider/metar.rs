@@ -46,11 +46,11 @@ use serde::Deserialize;
 
 use self::decode::{Decoded, decode_metar};
 use self::station_table::Station;
-use super::{Capabilities, Env, FetchRequest, Provider, ProviderId, requested_days};
+use super::{Capabilities, Env, FetchRequest, Provider, ProviderId, attribution, requested_days};
 use crate::cache::{CacheKey, CacheMode};
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
-use crate::model::{Attribution, Current, Location, LocationSource, Report};
+use crate::model::{Current, Location, LocationSource, Report};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "metar";
@@ -111,12 +111,12 @@ impl Provider for Metar {
             location: station,
             current: Some(current),
             days: Vec::new(),
-            attribution: Attribution {
-                provider: PROVIDER.to_owned(),
-                url: observation_request(&icao).redacted_url(),
-                fetched_at: env.cache.clock().now().into(),
+            attribution: attribution(
+                ProviderId::Metar,
+                observation_request(&icao).redacted_url(),
+                env.cache.clock().now().into(),
                 raw,
-            },
+            ),
         })
     }
 }

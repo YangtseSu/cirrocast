@@ -36,14 +36,14 @@ use serde::Deserialize;
 
 use super::dayparts::{HourSample, aggregate_day, covered_days, extremes};
 use super::{
-    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
-    requested_days,
+    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
+    local_today, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::geo::provisional_zone;
 use crate::http::HttpRequest;
-use crate::model::{Attribution, Condition, Current, Location, Report};
+use crate::model::{Condition, Current, Location, Report};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "openweathermap";
@@ -133,16 +133,16 @@ impl Provider for OpenWeatherMap {
             location: loc.clone(),
             current,
             days: forecasts,
-            attribution: Attribution {
-                provider: PROVIDER.to_owned(),
+            attribution: attribution(
+                ProviderId::OpenWeatherMap,
                 url,
-                fetched_at: env.cache.clock().now().into(),
-                raw: (env.verbose > 0).then(|| {
+                env.cache.clock().now().into(),
+                (env.verbose > 0).then(|| {
                     format!(
                         "current {CURRENT_URL} forecast {FORECAST_URL} (units=metric, 3-hour slots)"
                     )
                 }),
-            },
+            ),
         })
     }
 }

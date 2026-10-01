@@ -41,7 +41,6 @@ use crate::model::units::{
     UnitStyle, format_precip, format_pressure, format_temp, format_visibility, format_wind,
 };
 use crate::model::{Current, DayForecast, DayPart, Report};
-use crate::provider::licence_line;
 
 /// The plain renderer.
 #[derive(Debug, Clone, Copy, Default)]
@@ -66,7 +65,7 @@ impl Renderer for Plain {
         if let Some(credit) = attribution_line(&report.location) {
             lines.push(credit.to_owned());
         }
-        if let Some(licence) = licence_line(&report.attribution.provider) {
+        if let Some(licence) = report.attribution.licence.as_deref() {
             lines.push(format!("{} {licence}", ctx.i18n.text(&keys::LABEL_DATA)));
         }
         lines.push(format!(
@@ -307,21 +306,30 @@ mod tests {
         }
     }
 
+    /// The provenance a provider-built report carries: the `open-meteo` row, spelled out because
+    /// the renderers may not import the provider registry (step 12's layering gate).
+    fn attribution() -> Attribution {
+        Attribution {
+            provider: "open-meteo".to_owned(),
+            display_name: "Open-Meteo".to_owned(),
+            licence: Some("Open-Meteo.com (CC BY 4.0)".to_owned()),
+            capabilities: Some(crate::model::ReportCapabilities::open_meteo_test()),
+            url: "https://api.open-meteo.com/v1/forecast?latitude=39.9042&longitude=116.4074"
+                .to_owned(),
+            fetched_at: Utc
+                .with_ymd_and_hms(2026, 9, 30, 4, 15, 0)
+                .single()
+                .expect("an instant"),
+            raw: None,
+        }
+    }
+
     fn report() -> Report {
         Report {
             location: location(),
             current: Some(current()),
             days: vec![day()],
-            attribution: Attribution {
-                provider: "open-meteo".to_owned(),
-                url: "https://api.open-meteo.com/v1/forecast?latitude=39.9042&longitude=116.4074"
-                    .to_owned(),
-                fetched_at: Utc
-                    .with_ymd_and_hms(2026, 9, 30, 4, 15, 0)
-                    .single()
-                    .expect("an instant"),
-                raw: None,
-            },
+            attribution: attribution(),
         }
     }
 

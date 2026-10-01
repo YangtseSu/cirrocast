@@ -34,14 +34,14 @@ use serde::{Deserialize, Deserializer};
 
 use super::dayparts::{HourSample, aggregate_day, covers_every_part};
 use super::{
-    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
-    requested_days,
+    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
+    local_today, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::geo::provisional_zone;
 use crate::http::HttpRequest;
-use crate::model::{Attribution, Condition, Current, Location, Report, resolve_local};
+use crate::model::{Condition, Current, Location, Report, resolve_local};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "worldweatheronline";
@@ -319,17 +319,17 @@ fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> 
         location: loc.clone(),
         current,
         days: forecasts,
-        attribution: Attribution {
-            provider: PROVIDER.to_owned(),
+        attribution: attribution(
+            ProviderId::WorldWeatherOnline,
             url,
-            fetched_at: env.cache.clock().now().into(),
-            raw: (env.verbose > 0).then(|| {
+            env.cache.clock().now().into(),
+            (env.verbose > 0).then(|| {
                 format!(
                     "{} day(s) of 3-hourly data, all values strings; local times only",
                     data.weather.len()
                 )
             }),
-        },
+        ),
     })
 }
 

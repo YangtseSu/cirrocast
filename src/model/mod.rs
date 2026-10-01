@@ -233,10 +233,25 @@ pub struct DayForecast {
 }
 
 /// Which backend produced a [`Report`], and when.
+///
+/// The registry-derived fields (`display_name`, `licence`, `capabilities`) travel *with the report*
+/// rather than being looked up from the provider id at render time: the renderers must shape their
+/// output from what the answering backend declared, and `src/render` may not import
+/// `src/provider`. A report built by hand (a fixture, a future non-registry source) leaves them
+/// empty, and the renderers then draw the neutral shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attribution {
     /// Registry id of the provider, e.g. `open-meteo`.
     pub provider: String,
+    /// Human-readable provider name (`Open-Meteo`), for the footers; empty for an unknown source.
+    #[serde(default)]
+    pub display_name: String,
+    /// The credit line the data licence requires, when the registry knows one.
+    #[serde(default)]
+    pub licence: Option<String>,
+    /// What the backend declared it offers; `None` for an unknown source.
+    #[serde(default)]
+    pub capabilities: Option<ReportCapabilities>,
     /// The request URL, without any API key.
     pub url: String,
     /// When the data was fetched (or read from cache).
@@ -244,6 +259,92 @@ pub struct Attribution {
     /// The provider's raw condition codes, only when `--verbose` asked for them; debug aid, never
     /// read by rendering.
     pub raw: Option<String>,
+}
+
+impl Attribution {
+    /// Provenance for a source the registry does not know: the provider id, the URL and the fetch
+    /// time, with the registry-derived fields empty.
+    ///
+    /// Hand-built reports (fixtures, future non-registry sources) use this, and the renderers then
+    /// draw the neutral shape: no capability-driven layout, no display-name substitution and no
+    /// credit line.
+    #[must_use]
+    pub fn unregistered(
+        provider: impl Into<String>,
+        url: impl Into<String>,
+        fetched_at: DateTime<Utc>,
+        raw: Option<String>,
+    ) -> Self {
+        Self {
+            provider: provider.into(),
+            display_name: String::new(),
+            licence: None,
+            capabilities: None,
+            url: url.into(),
+            fetched_at,
+            raw,
+        }
+    }
+}
+
+/// The capability flags of the backend behind a report, as the renderers see them.
+///
+/// Mirrors the registry row's shape: the provider module converts its `Capabilities` value into
+/// this one when it builds the [`Attribution`], and a test in that module keeps the two in step.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportCapabilities {
+    /// Current conditions are available.
+    pub current: bool,
+    /// Hourly data is available.
+    pub hourly: bool,
+    /// Daily data is available; `false` means `days` is empty by nature, not by request.
+    pub daily: bool,
+    /// Weather alerts are available.
+    pub alerts: bool,
+    /// Longest forecast the backend serves, in days (`0` = observations only).
+    pub max_days: u8,
+    /// Whether an API key is required.
+    pub requires_key: bool,
+    /// Environment variable that supplies the key, when there is one.
+    pub key_env: Option<String>,
+    /// Which location forms the backend accepts.
+    pub locations: ReportLocationKinds,
+}
+
+/// The location forms a backend accepts, mirrored for the renderers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportLocationKinds {
+    /// Resolved place names.
+    pub city: bool,
+    /// METAR station identifiers.
+    pub station: bool,
+    /// Raw `lat,lon` coordinates.
+    pub lat_lon: bool,
+}
+
+#[cfg(test)]
+impl ReportCapabilities {
+    /// An `Open-Meteo`-shaped capability set for unit tests in the renderers, which may not import
+    /// the provider registry (step 12's layering gate). `src/provider` has a test that mirrors the
+    /// real row onto [`crate::provider::Capabilities::report`], so the two cannot drift unnoticed.
+    #[must_use]
+    pub fn open_meteo_test() -> Self {
+        Self {
+            current: true,
+            hourly: true,
+            daily: true,
+            alerts: false,
+            max_days: 16,
+            requires_key: false,
+            key_env: None,
+            locations: ReportLocationKinds {
+                city: true,
+                station: false,
+                lat_lon: true,
+            },
+        }
+    }
 }
 
 /// Everything a renderer needs for one location.

@@ -35,14 +35,14 @@ use serde::Deserialize;
 
 use super::dayparts::{HourSample, aggregate_day};
 use super::{
-    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, fetch_json, local_today,
-    requested_days,
+    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
+    local_today, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
 use crate::model::{
-    Attribution, Condition, Current, DayForecast, Location, LocationSource, Report, resolve_local,
+    Condition, Current, DayForecast, Location, LocationSource, Report, resolve_local,
 };
 
 /// The provider id, as the registry and every error message spell it.
@@ -308,12 +308,12 @@ fn report(
         location,
         current,
         days: forecasts,
-        attribution: Attribution {
-            provider: PROVIDER.to_owned(),
+        attribution: attribution(
+            ProviderId::OpenMeteo,
             url,
-            fetched_at: env.cache.clock().now().into(),
-            raw: (env.verbose > 0).then(|| raw_pairs(response)),
-        },
+            env.cache.clock().now().into(),
+            (env.verbose > 0).then(|| raw_pairs(response)),
+        ),
     })
 }
 
