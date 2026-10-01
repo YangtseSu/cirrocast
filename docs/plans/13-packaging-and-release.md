@@ -53,15 +53,16 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `CARGO_REGISTRY_TOKEN`, gated on the build matrix succeeding and on a protected environment, skipping with an
   explicit notice while the token is not configured (so the first tag is not a red run); plus a documented
   dry-run path (`cargo publish --dry-run --locked`) that runs for every PR in `ci.yml`.
-- ⬜ `Cargo.toml` metadata: keep `license = "GPL-3.0-or-later"` with no `license-file` (cargo forbids both),
+- ✅ `Cargo.toml` metadata: keep `license = "GPL-3.0-or-later"` with no `license-file` (cargo forbids both),
   `repository`, `readme`, `keywords`, `categories` and `rust-version` present and correct; replace the blunt
   `exclude = ["docs/", ".github/"]` with an explicit `include` list (`src/**`, `locales/**`, `LICENSE`,
   `README.md`, `CHANGELOG.md`, `Cargo.toml`, `Cargo.lock`) so `docs/`, `.github/`, `tests/`, `examples/` and
   `packaging/` stay out of the crate; `Cargo.lock` must be committed because every release path uses `--locked`.
 - ⬜ crates.io checklist executed and recorded in `README.md#publishing`: name `cirrocast` still free,
-  `cargo package --list` shows no `docs/`, no `packaging/`, no `tests/fixtures/` and does show `LICENSE`/`README`,
-  `cargo publish --dry-run --locked` passes, `cargo doc --no-deps --all-features` builds (binary target only, so
-  module doc comments must carry the description), and `[package.metadata.docs.rs] all-features = true` is set.
+  `cargo package --list` shows no `docs/`, no `tests/`, no `examples/` and no `.github/`, and does show
+  `LICENSE`/`README.md`/`CHANGELOG.md`, `cargo publish --dry-run --locked` passes,
+  `cargo doc --no-deps --all-features` builds (the library target is the documented half, so its module doc
+  comments carry the description), and `[package.metadata.docs.rs] all-features = true` is set.
 - ⬜ AUR package `cirrocast` created in its own repository at `0.1.0`: `# Maintainer:` line with an obfuscated
   address, `# SPDX-License-Identifier: 0BSD` (the packaging licence the AUR asks for, separate from the project's
   GPL), `arch=('x86_64' 'aarch64')`, `license=('GPL-3.0-or-later')`, `depends=('gcc-libs' 'glibc')`,
@@ -104,8 +105,10 @@ and the licence; and documented install paths for source, `cargo install` and AU
 * Release archives ship `LICENSE`, `README.md` and `CHANGELOG.md` inside every tarball because GPL-3.0-or-later
   distribution requires the licence text alongside the binary, and the man page plus completions because a tarball
   user has no package manager to install them.
-* The crate is a binary-only package: docs.rs still builds and renders the binary target, so no `src/lib.rs` is
-  introduced (that would create a public API with its own stability promise we do not need).
+* The crate ships a library target as well as the binary: `src/lib.rs` has existed since step 07, because the
+  integration tests compile against the modules. It is published and documented as it is, but the contract the
+  project promises is the CLI plus the documented schemas — the module paths carry no stability promise of their
+  own, and `docs/schema.md` is where a consumer's guarantees live.
 * **AUR layout (decided 2026-10-01)**: the AUR repositories are the **only** home of the packaging files — this
   tree keeps no `packaging/aur/` copy. A release PKGBUILD's `sha256sums` can only be computed after the tag
   exists, so the file is written after the release; a copy here would mean a second post-release commit, a second
@@ -203,3 +206,7 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
   key was verified to fail the suite.
 - 2026-10-01 — `CHANGELOG.md` added: Keep a Changelog 1.1.0, an `Unreleased` placeholder and a dated `0.1.0`
   entry that names the CLI surface of every user-visible feature up to step 12.
+- 2026-10-01 — `Cargo.toml` publishes only `src/`, `locales/` and the five root files (46 files, no `docs/`,
+  `tests/`, `examples/` or `.github/`); `[package.metadata.docs.rs] all-features = true` added. Plan corrected in
+  the same commit: the crate is not binary-only — `src/lib.rs` has existed since step 07 for the integration
+  tests, so the docs.rs note and the checklist wording now say "library target".

@@ -12,7 +12,23 @@ repository = "https://github.com/YangtseSu/cirrocast"
 readme = "README.md"
 keywords = ["weather", "cli", "forecast", "terminal", "wttr"]
 categories = ["command-line-utilities"]
-exclude = ["docs/", ".github/"]
+# The published crate is exactly this: the sources, the embedded catalogs and the files a consumer
+# of the crate has to be able to read. Tests, fixtures, docs, CI and packaging stay out. The
+# lockfile is listed because every release path builds with `--locked`.
+include = [
+    "src/**",
+    "locales/**",
+    "/LICENSE",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/Cargo.toml",
+    "/Cargo.lock",
+]
+
+# docs.rs renders the library target (the modules the integration tests compile against) with every
+# feature enabled.
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 chrono = { version = "0.4.45", features = ["serde"] }
