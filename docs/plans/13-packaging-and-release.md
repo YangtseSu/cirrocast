@@ -60,7 +60,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `exclude = ["docs/", ".github/"]` with an explicit `include` list (`src/**`, `locales/**`, `LICENSE`,
   `README.md`, `CHANGELOG.md`, `Cargo.toml`, `Cargo.lock`) so `docs/`, `.github/`, `tests/`, `examples/` and
   `packaging/` stay out of the crate; `Cargo.lock` must be committed because every release path uses `--locked`.
-- ⬜ crates.io checklist executed and recorded in `README.md#publishing`: name `cirrocast` still free,
+- ✅ crates.io checklist executed and recorded in `README.md#publishing`: name `cirrocast` still free,
   `cargo package --list` shows no `docs/`, no `tests/`, no `examples/` and no `.github/`, and does show
   `LICENSE`/`README.md`/`CHANGELOG.md`, `cargo publish --dry-run --locked` passes,
   `cargo doc --no-deps --all-features` builds (the library target is the documented half, so its module doc
@@ -230,3 +230,9 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 - 2026-10-01 — `README.md#packaging` added: the install-path table, the native build matrix and the glibc floor
   of the Linux archives, the seven-step release checklist with the `updpkgsums`/`.SRCINFO` AUR bump and the
   clean-chroot verification commands.
+- 2026-10-01 — crates.io checklist executed and recorded in `README.md#publishing`: the name is free on the
+  registry API, `cargo package --list --locked` is 46 files with no `docs/`, `tests/`, `examples/` or `.github/`,
+  `cargo publish --dry-run --locked` built the packaged crate and stopped at the dry-run upload, and
+  `cargo doc --no-deps --all-features` is warning-free (the eight pre-existing rustdoc warnings are fixed in the
+  same commit). The `crates-io` environment and the `CARGO_REGISTRY_TOKEN` secret are the remaining manual step
+  before the workflow can publish, and the job skips with a notice until then.
