@@ -86,10 +86,11 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `cargo install --locked --path .` from a checkout), plus the two commands that install what the packages
   place for you — `cirrocast completion <bash|zsh|fish> > <completion path>` and `cirrocast man > <man path>` —
   with the exact target paths per shell.
-- ⬜ `README.md#packaging` documents all three install paths (source build, cargo, AUR), the files each one
-  installs, the release checklist (bump `Cargo.toml`, bump the AUR package with `updpkgsums`, regenerate
-  `.SRCINFO`, update `CHANGELOG.md`, push a signed `vX.Y.Z` tag, confirm the workflow's archives and the crates.io
-  publish) and how to verify a downloaded archive (`sha256sum -c`).
+- ✅ `README.md#packaging` documents all three install paths (source build / `cargo install`, the AUR
+  package, the release archive), the files each one installs, the release checklist (bump `Cargo.toml`, bump the
+  AUR package with `updpkgsums`, regenerate `.SRCINFO`, update `CHANGELOG.md`, push a signed `vX.Y.Z` tag,
+  confirm the workflow's archives and the crates.io publish) and how to verify a downloaded archive
+  (`sha256sum -c`), plus the glibc floor of the Linux archives and the clean-chroot verification commands.
 - ⬜ The pre-tag checklist is part of the step file: version bumped in `Cargo.toml`, `CHANGELOG.md` released
   section dated, `cargo package --list` reviewed, CI green on the tag's commit, archive contents inspected
   (`tar tzf`), the crates.io publish confirmed, and the AUR package bumped *after* the tag exists
@@ -226,3 +227,6 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 - 2026-10-01 — `README.md#install` rewritten around the four real paths (crates.io, checkout, AUR, release
   archive) with the `sha256sum -c` step and the exact per-shell completion targets `cargo install` cannot
   place.
+- 2026-10-01 — `README.md#packaging` added: the install-path table, the native build matrix and the glibc floor
+  of the Linux archives, the seven-step release checklist with the `updpkgsums`/`.SRCINFO` AUR bump and the
+  clean-chroot verification commands.
