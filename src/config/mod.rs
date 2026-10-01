@@ -1692,7 +1692,7 @@ mod tests {
         assert_eq!(names.len(), count, "two key specs share a name");
 
         for spec in KEY_TABLE {
-            assert!(!spec.doc.is_empty(), "{} has no description", spec.name);
+            assert_ne!(spec.doc, "", "{} has no description", spec.name);
         }
 
         let error = Config::default()
@@ -1912,20 +1912,18 @@ mod tests {
     fn unit_overrides_that_conflict_with_the_system_say_which_key_wins() {
         let mut config = Config::default();
         config.defaults.units = "us".to_owned();
-        assert!(
+        assert_eq!(
             config
                 .unit_override_notes()
-                .expect("no overrides, no notes")
-                .is_empty()
+                .expect("no overrides, no notes"),
+            Vec::<String>::new()
         );
 
         // Agreeing with the system is not a conflict.
         config.units.temp = Some("f".to_owned());
-        assert!(
-            config
-                .unit_override_notes()
-                .expect("agreement is silent")
-                .is_empty()
+        assert_eq!(
+            config.unit_override_notes().expect("agreement is silent"),
+            Vec::<String>::new()
         );
 
         // Disagreeing is: the note names the key, the value and the rule.

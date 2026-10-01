@@ -201,10 +201,11 @@ fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
 
     let missing: Vec<&String> = expected.difference(&paths).collect();
     let extra: Vec<&String> = paths.difference(&expected).collect();
-    assert!(missing.is_empty(), "keys disappeared: {missing:?}");
-    assert!(
-        extra.is_empty(),
-        "undocumented keys appeared (add them to docs/schema.md): {extra:?}"
+    assert_eq!(missing, Vec::<&String>::new(), "keys disappeared");
+    assert_eq!(
+        extra,
+        Vec::<&String>::new(),
+        "undocumented keys appeared (add them to docs/schema.md)"
     );
 
     for key in &documented {
@@ -234,8 +235,7 @@ fn a_missing_value_is_null_and_never_an_omitted_key() {
     // `current-only.json` has no days, and its `current` has no gust; both keep their keys.
     let document = document("current-only.json", UnitSystem::Metric);
     assert!(document["current"]["wind_gust_kmh"].is_null());
-    assert!(document["days"].as_array().expect("an array").is_empty());
-    assert!(document["days"].is_array());
+    assert_eq!(document["days"], serde_json::json!([]));
 
     // A coordinate location has no admin1 and no country code, and they are null, not absent.
     let mut report = report();

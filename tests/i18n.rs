@@ -137,8 +137,8 @@ fn every_catalog_carries_every_key_the_renderers_ask_for() {
         missing.sort();
         let mut orphan: Vec<&String> = catalog.difference(&english).collect();
         orphan.sort();
-        assert!(missing.is_empty(), "{tag} is missing {missing:?}");
-        assert!(orphan.is_empty(), "{tag} has unknown keys {orphan:?}");
+        assert_eq!(missing, Vec::<&String>::new(), "{tag} is missing");
+        assert_eq!(orphan, Vec::<&String>::new(), "{tag} has unknown keys");
 
         for key in every_renderer_key_name() {
             assert!(catalog.contains(&key), "{tag} has no message for `{key}`");
@@ -156,13 +156,13 @@ fn every_catalog_resolves_every_key_through_the_bundle() {
         for key in every_renderer_key() {
             let rendered = i18n.format(&key, &arguments);
             assert_ne!(rendered, key.as_str(), "{tag} is missing `{key}`");
-            assert!(!rendered.is_empty(), "{tag}: `{key}` renders empty");
+            assert_ne!(rendered, "", "{tag}: `{key}` renders empty");
             assert!(
                 !rendered.contains(['{', '}']),
                 "{tag}: `{key}` left an unformatted variable: {rendered}"
             );
         }
-        assert!(i18n.notes().is_empty(), "{tag}: {:?}", i18n.notes());
+        assert_eq!(i18n.notes(), Vec::<cirrocast::i18n::Note>::new(), "{tag}");
     }
 }
 

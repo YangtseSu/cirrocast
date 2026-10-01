@@ -247,9 +247,9 @@ mod tests {
 
         for row in CODES {
             assert_eq!(row.1, format!("cond.{}", row.0), "i18n key for {}", row.0);
-            assert!(!row.2.is_empty(), "empty description for {}", row.0);
+            assert_ne!(row.2, "", "empty description for {}", row.0);
             assert!(row.3 >= 1, "described codes rank at least 1: {}", row.0);
-            assert!(!row.4.is_empty(), "empty art key for {}", row.0);
+            assert_ne!(row.4, "", "empty art key for {}", row.0);
         }
         assert_eq!(CODES.first().map(|row| row.3), Some(1));
     }

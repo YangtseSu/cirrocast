@@ -237,7 +237,11 @@ mod tests {
         for body in [r#"{"generationtime_ms":0.4}"#, r#"{"results":[]}"#] {
             let response: Response = serde_json::from_str(body).expect("the envelope parses");
             let locations = response.into_locations().expect("no hits is not a failure");
-            assert!(locations.is_empty(), "`{body}` should hold no locations");
+            assert_eq!(
+                locations,
+                Vec::<super::Location>::new(),
+                "`{body}` should hold no locations"
+            );
         }
     }
 }

@@ -126,8 +126,9 @@ fn key_rm_removes_the_stored_key() {
         .stdout(predicate::str::contains("removed qweather API key"));
 
     let assert = sandbox.cirrocast().args(["key", "list"]).assert().success();
-    assert!(
-        assert.get_output().stdout.is_empty(),
+    assert_eq!(
+        assert.get_output().stdout,
+        Vec::<u8>::new(),
         "no keys are configured any more"
     );
 

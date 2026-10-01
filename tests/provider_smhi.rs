@@ -57,8 +57,9 @@ fn the_request_is_the_snow1g_point_path_with_lon_before_lat() {
         calls[0].url(),
         format!("{BASE}/geotype/point/lon/18.0600/lat/59.3300/data.json")
     );
-    assert!(
-        calls[0].query_pairs().is_empty(),
+    assert_eq!(
+        calls[0].query_pairs(),
+        [] as [(String, String); 0],
         "the `parameters` filter is deliberately not sent"
     );
 }

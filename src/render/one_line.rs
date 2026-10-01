@@ -687,6 +687,6 @@ mod tests {
             ],
             "one warning per occurrence, each with its own position"
         );
-        assert!(warnings("%c %t %%").is_empty());
+        assert_eq!(warnings("%c %t %%"), Vec::<String>::new());
     }
 }

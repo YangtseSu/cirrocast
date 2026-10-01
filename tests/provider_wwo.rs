@@ -153,7 +153,11 @@ fn a_provisional_zone_is_refused_before_any_request() {
         .expect_err("raw coordinates carry no zone");
     assert_eq!(error.exit_code(), 2);
     assert!(error.to_string().contains("pass a place name"), "{error}");
-    assert!(run.calls().is_empty(), "no request may be sent");
+    assert_eq!(
+        run.calls(),
+        Vec::<cirrocast::http::HttpRequest>::new(),
+        "no request may be sent"
+    );
 }
 
 #[test]

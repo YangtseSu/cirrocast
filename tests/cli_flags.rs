@@ -604,7 +604,7 @@ fn completions_and_the_man_page_come_from_the_same_command() {
             .assert()
             .success();
         let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
-        assert!(!stdout.is_empty(), "{shell} produced nothing");
+        assert_ne!(stdout, "", "{shell} produced nothing");
         assert!(
             stdout.contains("cirrocast"),
             "{shell} does not mention the program"
@@ -657,7 +657,7 @@ fn help_and_version_read_no_state_and_the_man_page_reuses_the_help_text() {
     for flag in ["--help", "--version"] {
         let assert = sandbox.cirrocast().arg(flag).assert().success();
         let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
-        assert!(stderr.is_empty(), "{flag} wrote to stderr: {stderr}");
+        assert_eq!(stderr, "", "{flag} wrote to stderr");
     }
     assert!(
         !sandbox.cache_dir().exists(),

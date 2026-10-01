@@ -190,7 +190,7 @@ fn an_unknown_token_is_reported_once_per_occurrence() {
             "note: unknown one-line token `%q` at position 7 is printed literally".to_owned(),
         ]
     );
-    assert!(warnings("%c %t %% %{x}").is_empty());
+    assert_eq!(warnings("%c %t %% %{x}"), Vec::<String>::new());
 }
 
 #[test]

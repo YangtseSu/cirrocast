@@ -94,8 +94,9 @@ fn the_request_on_the_wire_is_the_documented_one() {
         calls[0].full_url(),
         format!("{GEOCODE_URL}?name=Beijing&count=10&language=en&format=json")
     );
-    assert!(
-        calls[0].headers().is_empty(),
+    assert_eq!(
+        calls[0].headers(),
+        [] as [(String, String); 0],
         "the client's own User-Agent is the only header"
     );
 }
@@ -144,7 +145,11 @@ fn a_missing_results_key_is_an_empty_result_not_an_error() {
         .search("Zzyzxq", 10)
         .expect("nothing matched is a legitimate answer");
 
-    assert!(hits.is_empty(), "expected no hits, got {hits:?}");
+    assert_eq!(
+        hits,
+        Vec::<cirrocast::model::Location>::new(),
+        "expected no hits"
+    );
     assert_eq!(transport.calls().len(), 1);
 }
 
@@ -195,8 +200,9 @@ fn offline_without_an_entry_fails_before_the_transport_is_asked() {
         ),
         "{text}"
     );
-    assert!(
-        transport.calls().is_empty(),
+    assert_eq!(
+        transport.calls(),
+        Vec::<cirrocast::http::HttpRequest>::new(),
         "offline mode never reaches the transport"
     );
 }

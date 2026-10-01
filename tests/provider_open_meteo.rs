@@ -118,7 +118,7 @@ fn a_current_only_request_asks_for_neither_hourly_nor_daily() {
             "precipitation_unit",
         ]
     );
-    assert!(report.days.is_empty());
+    assert_eq!(report.days, Vec::<DayForecast>::new());
     let current = report.current.expect("the current block is present");
     assert_eq!(current.temp_c, 18.1);
     assert_eq!(current.weather, Condition::from_u8(0));
@@ -388,7 +388,11 @@ fn offline_without_an_entry_names_the_key_path() {
         "{text}"
     );
     assert!(text.contains("rerun without `--offline`"), "{text}");
-    assert!(run.calls().is_empty(), "offline never asks the transport");
+    assert_eq!(
+        run.calls(),
+        Vec::<cirrocast::http::HttpRequest>::new(),
+        "offline never asks the transport"
+    );
 }
 
 #[test]

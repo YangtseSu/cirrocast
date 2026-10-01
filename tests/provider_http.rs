@@ -170,7 +170,11 @@ fn offline_never_touches_the_network_and_names_the_missing_entry() {
     );
     assert!(text.contains("openweathermap-current-"), "{text}");
     assert!(text.contains("rerun without `--offline`"), "{text}");
-    assert!(run.calls().is_empty(), "offline mode must not fetch");
+    assert_eq!(
+        run.calls(),
+        Vec::<HttpRequest>::new(),
+        "offline mode must not fetch"
+    );
 }
 
 #[test]

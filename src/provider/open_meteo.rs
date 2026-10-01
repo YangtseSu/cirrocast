@@ -902,10 +902,9 @@ mod tests {
     fn a_null_required_value_drops_the_hour() {
         let mut block = hourly_block();
         block.temperature_2m = vec![None];
-        assert!(
-            hourly_samples(&block, berlin())
-                .expect("decodes")
-                .is_empty()
+        assert_eq!(
+            hourly_samples(&block, berlin()).expect("decodes"),
+            Vec::<HourSample>::new()
         );
     }
 

@@ -194,7 +194,11 @@ fn live_metar_station() {
         .expect("aviationweather.gov answers");
 
     assert_eq!(report.attribution.provider, "metar");
-    assert!(report.days.is_empty(), "an observation has no forecast");
+    assert_eq!(
+        report.days,
+        Vec::<cirrocast::model::DayForecast>::new(),
+        "an observation has no forecast"
+    );
     assert_eq!(report.location.station.as_deref(), Some("KJFK"));
     assert_eq!(report.location.tz, Tz::America__New_York);
     let current = report.current.as_ref().expect("current conditions");

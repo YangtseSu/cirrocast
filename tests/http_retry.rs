@@ -89,7 +89,7 @@ fn server_errors_retry_and_client_errors_do_not() {
     let (client, transport, clock) = harness(vec![StubReply::ok(400, error_envelope())]);
     let error = client.send(&request()).expect_err("a 400 is final");
     assert_eq!(transport.calls().len(), 1);
-    assert!(clock.sleeps().is_empty());
+    assert_eq!(clock.sleeps(), Vec::<Duration>::new());
     match error {
         Error::Upstream {
             provider,
@@ -164,7 +164,7 @@ fn permanent_transport_failures_do_not_retry() {
         "network error: GET https://example.invalid/v1/search?name=Beijing failed: TLS failure: certificate has expired"
     );
     assert_eq!(transport.calls().len(), 1);
-    assert!(clock.sleeps().is_empty());
+    assert_eq!(clock.sleeps(), Vec::<Duration>::new());
 }
 
 #[test]

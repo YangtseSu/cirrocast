@@ -230,8 +230,9 @@ fn a_cached_response_is_served_without_throttling() {
         1,
         "a cache hit sends nothing"
     );
-    assert!(
-        harness.clock.sleeps().is_empty(),
+    assert_eq!(
+        harness.clock.sleeps(),
+        Vec::<Duration>::new(),
         "a cache hit does not wait"
     );
     assert_eq!(
@@ -270,7 +271,7 @@ fn a_damaged_throttle_state_file_is_not_an_error() {
         .expect("a damaged state file means no recorded request");
 
     assert_eq!(hits.len(), 3);
-    assert!(harness.clock.sleeps().is_empty());
+    assert_eq!(harness.clock.sleeps(), Vec::<Duration>::new());
     let text = harness
         .cache
         .read_state(THROTTLE_STATE)

@@ -523,8 +523,9 @@ mod tests {
                 art(key).is_some(),
                 "code {code} maps to art key `{key}`, which has no block"
             );
-            assert!(
-                !one_line_art(key).is_empty(),
+            assert_ne!(
+                one_line_art(key),
+                "",
                 "code {code} maps to art key `{key}`, which has no one-line glyph"
             );
         }
@@ -614,7 +615,8 @@ mod tests {
         for deg in [0_u16, 45, 90, 135, 180, 225, 270, 315] {
             let label = compass_16(deg);
             let arrow = wind_arrow(deg, Charset::Unicode);
-            assert!(!label.is_empty() && !arrow.is_empty(), "{deg}");
+            assert_ne!(label, "", "{deg}");
+            assert_ne!(arrow, "", "{deg}");
         }
     }
 

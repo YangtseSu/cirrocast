@@ -165,7 +165,7 @@ pub fn assert_no_temporary_files(directory: &Path) {
         })
         .filter(|name| name.contains(".tmp."))
         .collect();
-    assert!(leftovers.is_empty(), "temporary files left: {leftovers:?}");
+    assert_eq!(leftovers, Vec::<String>::new(), "temporary files left");
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -353,7 +353,7 @@ fn the_geocoder_decoder_survives_the_sweep() {
     let body = fs::read_to_string(fixture_path("malformed/empty-object.json"))
         .expect("the fixture is readable");
     let hits = decode(&body).expect("an absent `results` key is no hits");
-    assert!(hits.is_empty(), "`{{}}` produced hits");
+    assert_eq!(hits, Vec::<Location>::new(), "`{{}}` produced hits");
 
     let body = fs::read_to_string(fixture_path("malformed/empty-array.json"))
         .expect("the fixture is readable");

@@ -325,7 +325,7 @@ fn no_fixture_carries_an_api_key() {
         .map(|(_, value)| value.trim().trim_matches('"'))
         .filter(|value| value.len() >= 8)
         .collect();
-    assert!(!secrets.is_empty(), "no keys to scan for");
+    assert_ne!(secrets, Vec::<&str>::new(), "no keys to scan for");
 
     scan(Path::new("tests/fixtures"), &secrets);
 }

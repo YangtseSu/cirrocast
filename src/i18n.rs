@@ -1129,7 +1129,7 @@ mod tests {
         ] {
             let i18n = I18n::load(&LanguageRequest::Auto, environment(&pairs));
             assert_eq!(i18n.lang().tag(), expected, "{pairs:?}");
-            assert!(i18n.warnings().is_empty(), "{pairs:?}");
+            assert_eq!(i18n.warnings(), Vec::<String>::new(), "{pairs:?}");
             assert!(i18n.report().starts_with("i18n:"), "{pairs:?}");
         }
     }
@@ -1221,10 +1221,11 @@ mod tests {
             let catalog = key_set(source);
             let missing: Vec<&String> = english.difference(&catalog).collect();
             let orphan: Vec<&String> = catalog.difference(&english).collect();
-            assert!(missing.is_empty(), "{tag} lacks {missing:?}");
-            assert!(
-                orphan.is_empty(),
-                "{tag} has keys en-US does not: {orphan:?}"
+            assert_eq!(missing, Vec::<&String>::new(), "{tag} lacks");
+            assert_eq!(
+                orphan,
+                Vec::<&String>::new(),
+                "{tag} has keys en-US does not:"
             );
         }
     }
@@ -1256,7 +1257,7 @@ mod tests {
         assert_eq!(i18n.direction(45), "NE");
         assert_eq!(i18n.uv_band(12.0), "extreme");
         assert_eq!(i18n.text(&keys::NA), "n/a");
-        assert!(i18n.notes().is_empty(), "{:?}", i18n.notes());
+        assert_eq!(i18n.notes(), Vec::<Note>::new());
     }
 
     #[test]
@@ -1270,7 +1271,7 @@ mod tests {
         assert_eq!(i18n.weekday(chrono::Weekday::Sun), "周日");
         assert_eq!(i18n.month(chrono::Month::January), "1月");
         assert_eq!(i18n.uv_band(7.0), "强");
-        assert!(i18n.notes().is_empty(), "{:?}", i18n.notes());
+        assert_eq!(i18n.notes(), Vec::<Note>::new());
     }
 
     #[test]
