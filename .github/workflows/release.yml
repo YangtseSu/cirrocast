@@ -1,0 +1,154 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The release pipeline, driven by a `vX.Y.Z` tag. It is deliberately plain `cargo build` in a
+# matrix rather than a release generator: the archives have to contain artefacts the *binary*
+# produces (`cirrocast man`, `cirrocast completion …`), which a static file list cannot express
+# (see docs/plans/13-packaging-and-release.md → design notes).
+#
+# Conventions, shared with ci.yml:
+# * every third-party action is pinned to a commit SHA (its tag is kept as a comment);
+# * the runner images are named explicitly, never `<os>-latest`: the Linux archives inherit the
+#   image's glibc floor, and `-latest` moves under the project's feet;
+# * `CIRROCAST_FORBID_NETWORK=1` is exported so the release test run is the same run CI makes;
+# * the publish job skips with a notice until the `crates-io` environment carries a token, so a
+#   tag that is cut before the secret exists is a green run with an explicit note rather than a
+#   red one (README.md#publishing documents the switch).
+#
+# `gh release create` is used for the release itself, so no third-party release action is needed.
+
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  # A release run must not be cancelled half-way: the archives may already be published.
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CIRROCAST_FORBID_NETWORK: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Every runner builds its target natively — no cross-compilation, no emulation.
+          - os: ubuntu-26.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-26.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-26
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: the tag names the crate version
+        run: |
+          set -eu
+          version="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version')"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml's version $version"
+            exit 1
+          fi
+
+      - name: build and test the release profile
+        run: |
+          set -eu
+          cargo build --release --locked
+          cargo test --release --locked
+
+      - name: pack the archive
+        run: |
+          set -eu
+          archive="cirrocast-$GITHUB_REF_NAME-${{ matrix.target }}"
+          mkdir -p "dist/$archive/completions"
+          cp target/release/cirrocast README.md LICENSE CHANGELOG.md "dist/$archive/"
+          target/release/cirrocast man > "dist/$archive/cirrocast.1"
+          for shell in bash zsh fish; do
+            target/release/cirrocast completion "$shell" > "dist/$archive/completions/cirrocast.$shell"
+          done
+          tar -C dist -czf "dist/$archive.tar.gz" "$archive"
+          rm -rf "dist/$archive"
+          # `shasum` ships on both images and writes the `<hash>  <name>` format `sha256sum -c` reads.
+          (cd dist && shasum -a 256 "$archive.tar.gz" > "$archive.tar.gz.sha256")
+          tar tzf "dist/$archive.tar.gz"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish the GitHub release
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: create the release with every archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag \
+            dist/*.tar.gz dist/*.sha256
+
+  publish:
+    name: publish to crates.io
+    needs: build
+    runs-on: ubuntu-26.04
+    # The protected environment is the gate. Create `crates-io` in the repository settings, add the
+    # required reviewers, and store CARGO_REGISTRY_TOKEN there as a secret (README.md#publishing).
+    # An environment referenced but not yet configured is created implicitly by GitHub Actions.
+    environment: crates-io
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: review the packaged file set
+        run: cargo package --list --locked
+
+      - name: cargo publish, unless there is nothing to do
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CURL_USER_AGENT: cirrocast-release-workflow (+https://github.com/YangtseSu/cirrocast)
+        run: |
+          set -eu
+          version="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version')"
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::notice::CARGO_REGISTRY_TOKEN is not configured for the crates-io environment; skipping the publish (README.md#publishing)"
+            exit 0
+          fi
+          if curl -sSf -A "$CURL_USER_AGENT" "https://crates.io/api/v1/crates/cirrocast/$version" > /dev/null; then
+            echo "::notice::cirrocast $version is already on crates.io; nothing to publish"
+            exit 0
+          fi
+          cargo publish --locked
