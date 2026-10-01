@@ -69,7 +69,7 @@ ships no new features: defects found are fixed in the step that owns the code, n
   15–24 `not-started`; `CHANGELOG.md` carries the dated `1.0.0` entry; `Cargo.toml` reads `1.0.0`;
   `grep -rn 'TODO\|FIXME\|unimplemented!\|todo!()' src/ locales/` is empty; every flag in `--help` appears in at
   least one transcript (no dead flags).
-- ⬜ Full gate run on the release commit: the four tool gates plus `cargo deny check`, `cargo audit` and CI green
+- ✅ Full gate run on the release commit: the four tool gates plus `cargo deny check`, `cargo audit` and CI green
   on the tag commit (record the run URL); release archives from the step 13 workflow, the crates.io publish
   completed, AUR packages updated to `1.0.0`, and `v1.0.0` tagged with the changelog as release notes.
 - ✅ Defect handling policy applied: a defect found here is fixed in the step that owns the code (with a
@@ -463,6 +463,20 @@ $HOME/.cache/cirrocast/geocode/<sha256(query)>.json
   Pushed as `49697b7`. The clean-chroot leg (`sudo pkgctl build`) and the `pacman -U` smoke run on
   the maintainer's machine are recorded in §13 below.
 
+### §13 The release commit: gates, CI, archives, publish
+
+| item | command / source | observed |
+|---|---|---|
+| CI on the tag commit | `gh run list` | **run 36899920715 green on `fe6fee9`**, which is what `v1.0.0` points at |
+| local gates | `cargo fmt --check`; `cargo clippy --all-targets --locked -- -D warnings`; `CIRROCAST_FORBID_NETWORK=1 cargo test --locked`; `reuse lint`; `cargo deny check`; `cargo audit` | fmt 0; clippy 0 (no warnings); 36 test targets ok, 0 failures; REUSE 3.3 compliant; `advisories ok, bans ok, licenses ok, sources ok`; audit 0 vulnerabilities (advisory DB refreshed via the proxy). Run on `24fb2da`, whose only difference from the tag is this file (`git diff --stat v1.0.0 HEAD` → one docs file) |
+| tag | `git tag -s v1.0.0 -m "cirrocast v1.0.0"` | SSH-signed tag object (`BEGIN SSH SIGNATURE` present); `git tag -v` cannot verify here because `gpg.ssh.allowedSignersFile` is unset — the same as `v0.1.0` |
+| release workflow | `gh run view 36900351916` | three native builds (`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `aarch64-apple-darwin`), each archive + `.sha256` attached to the release; the `publish` job skipped with its notice: `CARGO_REGISTRY_TOKEN is not configured for the crates-io environment; skipping the publish` |
+| archive check | `gh release download v1.0.0 … && sha256sum -c … && tar tzf …` | checksum `OK`; contents `cirrocast`, `cirrocast.1`, `completions/cirrocast.bash`, `completions/cirrocast.zsh`, `completions/cirrocast.fish`, `README.md`, `LICENSE`, `CHANGELOG.md`; the extracted binary prints `cirrocast 1.0.0` and a live Beijing forecast |
+| release notes | `gh release edit v1.0.0 --notes-file <changelog section>` | the GitHub release body is the CHANGELOG's dated `1.0.0` section |
+| crates.io | `cargo publish --locked` | `Published cirrocast v1.0.0 at registry crates-io`; the registry reports `{"newest":"1.0.0"}` |
+| AUR | §12 | `upgpkg: cirrocast 1.0.0-1` pushed as `49697b7` |
+| clean chroot | `sudo pkgctl build` then `sudo pacman -U`, `cirrocast --version`, `man -w cirrocast`, `pacman -Ql` count | pending — needs root; the maintainer runs it after this run (transcript below) |
+
 ## Progress log
 
 - 2026-09-30 — step file written (status: not-started); requirement mapping and the "basically formed" checklist
@@ -485,3 +499,10 @@ $HOME/.cache/cirrocast/geocode/<sha256(query)>.json
   pristine `cargo install`, AUR 1.0.0 package build and contents). Appendix sections now carry the requirement
   numbers the sign-off table points at; bullets 1, 4–8 and 12 flipped. The clean-chroot leg and the release/tag
   row are the remaining ones.
+- 2026-10-02 — release half recorded: `v1.0.0` tag (SSH-signed) pushed from the green CI commit
+  `fe6fee9` (run 36899920715), the release workflow `36900351916` built the three native archives with the
+  `publish` job skipping on the unset environment secret, the x86_64 archive verified by checksum and by
+  running the extracted binary, the release body set to the CHANGELOG's `1.0.0` section, `cargo publish
+  --locked` published `cirrocast 1.0.0` to crates.io, and the AUR package bumped to `1.0.0-1` and pushed
+  (`49697b7`). All six gates were re-run on the release content (§13). Remaining: the maintainer's
+  `sudo pkgctl build` clean-chroot leg and the sign-off table.

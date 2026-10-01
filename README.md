@@ -93,7 +93,7 @@ surface it proves is now frozen — phases D and E build on it.
 ## Install
 
 ```bash
-cargo install --locked cirrocast            # from crates.io, once the publish has run (see Publishing)
+cargo install --locked cirrocast            # from crates.io (1.0.0 is published; see Publishing)
 cargo install --locked --path .             # from this checkout
 
 paru -S cirrocast                           # Arch: the AUR package (yay, or a manual git clone +
@@ -622,6 +622,11 @@ Checklist, executed 2026-10-01 before the first release:
   `[package.metadata.docs.rs] all-features = true` is set;
 * `license = "GPL-3.0-or-later"` with no `license-file` (cargo forbids both);
 * `Cargo.lock` is committed, because every release path builds with `--locked`.
+
+`cirrocast 1.0.0` was published on 2026-10-02 with `cargo publish --locked` from the tagged tree
+(the `v1.0.0` release workflow's `publish` job had skipped with its explicit notice, because the
+`crates-io` environment has no `CARGO_REGISTRY_TOKEN` yet — the token lives in the maintainer's
+`~/.cargo/credentials.toml`). The registry then reports `1.0.0` as the newest version.
 
 To let the release workflow publish: Settings → Environments → `crates-io`, add required reviewers,
 and store `CARGO_REGISTRY_TOKEN` there as an environment secret. Until the token exists the job
