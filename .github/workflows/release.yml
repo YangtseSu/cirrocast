@@ -110,7 +110,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          # `--repo` is explicit: this job does not check the tree out, and `gh` otherwise tries to
+          # read the repository from a git remote that is not there.
           gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             --verify-tag \
