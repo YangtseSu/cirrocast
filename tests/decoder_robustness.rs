@@ -384,11 +384,14 @@ fn the_ip_locator_decoder_survives_the_sweep() {
                 continue;
             }
             if let Err(error) = decode(&body[..end]) {
-                // Both services refused: the chain reports the last failure, which is an upstream
-                // error. A location error would mean the body decoded into a place, which a
-                // truncated body cannot honestly do.
+                // Both services refused, so the chain reports one attempt per service. A location
+                // error would mean the body decoded into a place, which a truncated body cannot
+                // honestly do.
                 assert!(
-                    matches!(error, Error::Upstream { .. } | Error::Network(_)),
+                    matches!(
+                        error,
+                        Error::Chain { .. } | Error::Upstream { .. } | Error::Network(_)
+                    ),
                     "{fixture} truncated to {end}: {error:?}"
                 );
             }

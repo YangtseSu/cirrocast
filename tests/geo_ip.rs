@@ -183,18 +183,23 @@ fn a_refused_address_falls_through_to_the_next_service() {
     );
 }
 
-/// With both services refusing, the last failure reaches the caller unchanged.
+/// With both services refusing, the failure names every attempt instead of only the last one.
 #[test]
-fn both_services_failing_reports_the_last_error_unchanged() {
+fn both_services_failing_names_every_attempt() {
     let harness = Harness::new(vec![
         reply("ipwho_is_failure.json"),
         reply("ipapi_co_error.json"),
     ]);
     let error = harness.auto().locate().expect_err("both services refuse");
 
-    assert!(matches!(error, Error::Upstream { .. }), "{error}");
+    assert!(matches!(error, Error::Chain { .. }), "{error}");
     assert_eq!(error.exit_code(), 3);
     let text = error.to_string();
+    assert!(
+        text.starts_with("all IP location services failed:"),
+        "{text}"
+    );
+    assert!(text.contains("ipwho.is"), "{text}");
     assert!(text.contains("ipapi.co"), "{text}");
     // The short `reason` wins over the longer `message` sentence.
     assert!(text.contains("RateLimited"), "{text}");
@@ -231,14 +236,14 @@ fn a_cached_answer_is_served_until_it_expires() {
 
 /// A zone the parser does not know is an error, never a silent `UTC`.
 #[test]
-fn an_unusable_timezone_is_an_upstream_error() {
+fn an_unusable_timezone_names_the_zone_and_the_service() {
     let harness = Harness::new(vec![reply("ipwho_is_bad_timezone.json")]);
     let chain = harness.chain(IpService::chain("ipwhois").expect("`ipwhois` is a known setting"));
     let error = chain
         .locate()
         .expect_err("`Mars/Olympus` is not an IANA zone");
 
-    assert!(matches!(error, Error::Upstream { .. }), "{error}");
+    assert!(matches!(error, Error::Chain { .. }), "{error}");
     assert_eq!(error.exit_code(), 3);
     let text = error.to_string();
     assert!(text.contains("Mars/Olympus"), "{text}");
@@ -295,7 +300,7 @@ fn a_missing_required_field_names_the_service_and_the_field() {
         let chain = harness.chain(IpService::chain("ipwhois").expect("`ipwhois` is known"));
         let error = chain.locate().expect_err("a missing field is a failure");
 
-        assert!(matches!(error, Error::Upstream { .. }), "{error}");
+        assert!(matches!(error, Error::Chain { .. }), "{error}");
         assert_eq!(error.exit_code(), 3);
         let text = error.to_string();
         assert!(text.contains("ipwho.is"), "{text}");

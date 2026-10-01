@@ -897,10 +897,10 @@ fn fetch_chain_with(
                 {
                     eprintln!(
                         "warning: {id} failed ({}); falling back to {next}",
-                        chain_reason(&error)
+                        error.chain_reason()
                     );
                 }
-                attempts.push(format!("{id} ({})", chain_reason(&error)));
+                attempts.push(format!("{id} ({})", error.chain_reason()));
             }
             Err(error) => return Err(error),
         }
@@ -911,16 +911,10 @@ fn fetch_chain_with(
             "no provider could answer; pass `--provider <id>`".to_owned(),
         ));
     }
-    Err(Error::Chain { attempts })
-}
-
-/// The short classifier a fallback warning names: `network: …` or `upstream: …`.
-fn chain_reason(error: &Error) -> String {
-    match error {
-        Error::Network(message) => format!("network: {message}"),
-        Error::Upstream { message, .. } => format!("upstream: {message}"),
-        other => other.to_string(),
-    }
+    Err(Error::Chain {
+        subject: "providers",
+        attempts,
+    })
 }
 
 #[cfg(test)]

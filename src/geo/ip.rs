@@ -142,10 +142,11 @@ impl<'a> IpLocatorChain<'a> {
     ///
     /// The caller needs the service for the privacy disclosure line, which is why it comes back
     /// here rather than being pushed into a log. Services are tried in order and the next one is
-    /// only reached on [`Error::Network`] or [`Error::Upstream`]; with nothing left, the last error
-    /// is returned as it was, so exit codes and wording stay the last service's.
+    /// only reached on [`Error::Network`] or [`Error::Upstream`]; with nothing left, every attempt
+    /// is named in [`Error::Chain`] — a reader of the failure has to be able to tell which services
+    /// were tried, not only which one happened to fail last.
     pub fn locate_with_service(&self) -> Result<(Location, IpService)> {
-        let mut last: Option<Error> = None;
+        let mut attempts: Vec<String> = Vec::new();
         for &service in &self.services {
             match self.locate_via(service) {
                 Ok(location) => return Ok((location, service)),
@@ -155,13 +156,19 @@ impl<'a> IpLocatorChain<'a> {
                     if !matches!(error, Error::Network(_) | Error::Upstream { .. }) {
                         return Err(error);
                     }
-                    last = Some(error);
+                    attempts.push(format!("{} ({})", service.label(), error.chain_reason()));
                 }
             }
         }
-        Err(last.unwrap_or_else(|| {
-            Error::Usage(format!("no IP location service is configured ({ACCEPTED})"))
-        }))
+        if attempts.is_empty() {
+            return Err(Error::Usage(format!(
+                "no IP location service is configured ({ACCEPTED})"
+            )));
+        }
+        Err(Error::Chain {
+            subject: "IP location services",
+            attempts,
+        })
     }
 
     /// One service's answer: from the cache while it is fresh, from the network otherwise.

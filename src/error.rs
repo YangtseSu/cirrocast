@@ -75,10 +75,12 @@ pub enum Error {
         status: u16,
     },
 
-    /// Every backend of a chain failed; the message names each attempt in order.
-    #[error("all providers failed: {}", attempts.join("; "))]
+    /// Every entry of a fallback chain failed; the message names each attempt in order.
+    #[error("all {subject} failed: {}", attempts.join("; "))]
     Chain {
-        /// One `id (reason)` entry per attempt.
+        /// What the chain was made of, for the message: `providers`, `IP location services`.
+        subject: &'static str,
+        /// One `name (reason)` entry per attempt.
         attempts: Vec<String>,
     },
 
@@ -99,6 +101,17 @@ impl Error {
             Self::Config(_) => 4,
             Self::LocationNotFound(_) => 5,
             Self::MissingKey { .. } | Self::InvalidKey { .. } => 6,
+        }
+    }
+
+    /// The short classifier a fallback warning or a chain-attempt entry names: `network: …` or
+    /// `upstream: …`; anything else keeps its own wording.
+    #[must_use]
+    pub fn chain_reason(&self) -> String {
+        match self {
+            Self::Network(message) => format!("network: {message}"),
+            Self::Upstream { message, .. } => format!("upstream: {message}"),
+            other => other.to_string(),
         }
     }
 }
@@ -162,6 +175,7 @@ mod tests {
             ),
             (
                 Error::Chain {
+                    subject: "providers",
                     attempts: vec![
                         "open-meteo (network: timeout)".to_owned(),
                         "smhi (upstream: out of coverage)".to_owned(),
@@ -175,6 +189,7 @@ mod tests {
     #[test]
     fn a_chain_failure_names_every_attempt() {
         let error = Error::Chain {
+            subject: "providers",
             attempts: vec![
                 "open-meteo (network: timeout after 15s)".to_owned(),
                 "smhi (upstream: out of coverage: 39.90,116.40)".to_owned(),
@@ -185,6 +200,20 @@ mod tests {
             "all providers failed: open-meteo (network: timeout after 15s); \
              smhi (upstream: out of coverage: 39.90,116.40)"
         );
+
+        let error = Error::Chain {
+            subject: "IP location services",
+            attempts: vec![
+                "ipwho.is (network: timeout)".to_owned(),
+                "ipapi.co (upstream: RateLimited)".to_owned(),
+            ],
+        };
+        assert_eq!(
+            error.to_string(),
+            "all IP location services failed: ipwho.is (network: timeout); \
+             ipapi.co (upstream: RateLimited)"
+        );
+        assert_eq!(error.exit_code(), 3);
     }
 
     #[test]
