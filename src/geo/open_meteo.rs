@@ -178,6 +178,7 @@ impl Hit {
             elevation_m: self.elevation,
             population: self.population,
             source: LocationSource::Geocoder,
+            station: None,
         })
     }
 

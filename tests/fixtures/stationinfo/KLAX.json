@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KLAX",
+    "icaoId": "KLAX",
+    "iataId": "LAX",
+    "faaId": "LAX",
+    "wmoId": "72295",
+    "site": "Los Angeles Intl",
+    "lat": 33.93817,
+    "lon": -118.3866,
+    "elev": 30,
+    "state": "CA",
+    "country": "US",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

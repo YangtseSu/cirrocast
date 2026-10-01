@@ -48,20 +48,42 @@ $ cirrocast Beijing -f one-line --template @short
 *o* +18°C
 ```
 
+An observation instead of a forecast, keyless and station-based:
+
+```
+$ cirrocast --station KJFK
+Weather report: New York/JF Kennedy Intl, NY, US (40.64, -73.76)
+
+ ╭───╮  Overcast
+╭╯   ╰╮ +18°C
+(     ) ↘ 7.4km/h SE
+╰─────╯ 88% 1019hPa 16km 0.0mm
+observed 23:51Z · 54 min ago
+no forecast: METAR is an observation
+
+Data: aviationweather.gov (NOAA/NWS, public domain)
+```
+
+`--station` selects the `metar` backend when no `--provider` is given, resolves the identifier
+through the embedded 55-station table (or a 30-day cached `stationinfo` lookup for anything else),
+and decodes the report itself: wind in knots or m/s, visibility in metres or statute miles, present
+weather into WMO codes, cloud layers, temperature and dew point, altimeter in hPa or inHg. `-v`
+adds the raw METAR and, when the station issues one, its TAF.
+
 Those are real runs — 2026-09-30, 19:45 local, `COLUMNS=120`, `TERM=xterm-256color` — with the middle
 rows elided. When the name is ambiguous a `note: … 10 candidates …` line goes to stderr, so stdout
 stays pipeable; `-q` silences it and `:Beijing` demands an exact name.
 
 ## Status
 
-Steps 01–08 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
+Steps 01–11 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
 resolution, the provider registry, the typed configuration with its `config`/`key` subcommands, the
 canonical model, location resolution, the shared HTTP/cache layer, the Open-Meteo forecast, the
-wttr.in-style `art-table` renderer and the full flag matrix with the four other output formats
-(`one-line`, `plain`, `json`, `dumb`), shell completions and the man page. Localization (step 09),
-the remaining backends (10, 11) and the quality gates (12–14) are still ahead, so `--lang` accepts
-`auto`/`en-US` only and `--provider` only names implemented backends. See the plan index for live
-per-step progress.
+wttr.in-style `art-table` renderer, the full flag matrix with the four other output formats
+(`one-line`, `plain`, `json`, `dumb`), shell completions and the man page, localization (`en-US` +
+`zh-CN`) and eight selectable backends — three of them keyless, including the station-based `metar`
+observation. The quality gates (12–14) are still ahead. See the plan index for live per-step
+progress.
 
 ## Install
 
@@ -83,7 +105,7 @@ cirrocast [OPTIONS] [LOCATION]
       --lang <TAG>              BCP-47, or "auto"
       --lat <DEG> --lon <DEG>   coordinates instead of a location argument
       --ip                      locate from the public IP
-      --station <ICAO>          METAR station (needs --provider metar or auto)
+      --station <ICAO>          METAR station; selects --provider metar when no provider is given
       --template <TEMPLATE>     one-line template or @PRESET
       --no-cache | --refresh | --offline
       --timeout <SECS>
@@ -105,7 +127,10 @@ Location syntax: `Beijing` (fuzzy), `:Beijing` (exact name), `~Tsinghua` (OpenSt
 `@39.9,116.4` (coordinates), empty (config default, else public IP). A location argument,
 `--lat/--lon`, `--ip` and `--station` are mutually exclusive; when the argument comes from
 `CIRROCAST_LOCATION` instead of the command line, a flag on one of the other forms wins by
-precedence rather than conflicting.
+precedence rather than conflicting. `--station KJFK` (case-insensitive, four ICAO characters) makes
+the station the location and `[providers.metar] station` is the same thing for a bare `cirrocast`
+when `metar` answers it; a `@lat,lon` pair reaches the nearest embedded station, which `-v` names
+with its distance.
 
 ### Precedence
 
@@ -197,13 +222,16 @@ cirrocast man > cirrocast.1
 
 A query resolves the location first (the same four forms as `location search`, with the winning place
 echoed on stderr when the name was ambiguous), then walks the provider chain — `--provider` takes an
-ordered list, and `auto` expands to the implemented keyless backends (plus `metar` when `--station`
-is given) — and renders the first report that comes back. A chain entry that fails at the transport
+ordered list, and `auto` expands to the implemented keyless backends that answer for a resolved
+place (`metar` is never in it: a station has to be named, and `--station` selects the station
+backend — or is prepended to `auto`) — and renders the first report that comes back. A chain entry that fails at the transport
 or upstream level falls through to the next one with a `warning:` line; a usage, key or location
 error stops the walk. `--days` is clamped to the primary provider's horizon with one `warning:` line.
 Every forecast is cached for `cache.weather_ttl_secs` under
 `$XDG_CACHE_HOME/cirrocast/weather/<provider>-<lat>-<lon>-<days>-<local-date>.json`, keyed by the
-location's own calendar date. Providers are also requested in metric, and the renderer converts into
+location's own calendar date; a station-based backend keys the same namespace by identifier
+(`weather/metar-<ICAO>-current.json`) and keeps the station's metadata under
+`$XDG_CACHE_HOME/cirrocast/station/<ICAO>.json` for 30 days. Providers are also requested in metric, and the renderer converts into
 the display units, so a cache entry is unit-independent.
 
 The `one-line` format is a single line by contract, so the credits its licences require go to stderr;
@@ -305,6 +333,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [Open-Meteo](https://open-meteo.com/) geocoding | `Beijing`, `:Beijing` | free tier is **non-commercial**, < 10 000 calls/day, 5 000/hour, 600/minute; `name` needs ≥ 2 characters | data CC-BY-4.0; the CLI prints `Location data based on GeoNames (CC-BY-4.0) via Open-Meteo` with the service link |
 | [Open-Meteo](https://open-meteo.com/) forecast | every weather query | free tier is **non-commercial**, < 10 000 calls/day; `forecast_days` ≤ 16 | data CC-BY-4.0; the rendered report ends with `Data: Open-Meteo.com (CC BY 4.0)` |
 | [SMHI](https://opendata.smhi.se/metfcst/snow1gv1) open data | `-p smhi` (Nordics) | no published quota; SMHI's fair-use rules forbid mass downloads and re-fetching the same data | data CC BY 4.0 SE; the rendered report ends with `Data: SMHI (CC BY 4.0 SE)` |
+| [aviationweather.gov](https://aviationweather.gov/) (NOAA/NWS) | `-p metar`, `--station` | 100 requests/minute, at most 400 entries per response; an unknown station answers `204 No Content`; a custom `User-Agent` is required | US government work, public domain (no credit mandated); the report still names the source: `Data: aviationweather.gov (NOAA/NWS, public domain)` |
 | [OpenWeatherMap](https://openweathermap.org/) | `-p openweathermap` | free tier: 60 calls/minute, 1 000 000 calls/month; two calls per fetch (current + 5-day/3-hourly forecast); a fresh key needs up to 2 hours to activate | data ODbL 1.0; visible attribution required — the rendered report ends with `Data: OpenWeather (ODbL 1.0) — https://openweathermap.org/` |
 | [WeatherAPI.com](https://www.weatherapi.com/) | `-p weatherapi` | free tier: 100 000 calls/month, 3-day forecast; `lang=en` is pinned and translation is ours | data proprietary; free keys must credit WeatherAPI.com — the rendered report ends with `Data: WeatherAPI.com (free-tier attribution) — https://www.weatherapi.com/`; caching ceilings 60 min (current) / 24 h (forecast) |
 | [World Weather Online](https://www.worldweatheronline.com/) | `-p worldweatheronline` | free tier: 100 requests/day, up to 5 forecast days per its FAQ; `format=json` is sent explicitly | data proprietary; free keys must credit WorldWeatherOnline.com — the rendered report ends with `Data: WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/` |
@@ -335,7 +364,7 @@ is used for. The handful of recorded responses used as test fixtures keep their 
 |---|---|---|---|---|---|
 | `open-meteo` | none | global | yes | yes | 16 |
 | `smhi` | none | Nordics and adjacent seas | yes | yes | 10 |
-| `metar` | none | stations | yes | no | — |
+| `metar` | none | worldwide stations | yes | no | — (observation) |
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | global | yes | yes | 5 |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | global | yes | yes | 3 |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | global | yes | yes | 5 |

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KMSP",
+    "icaoId": "KMSP",
+    "iataId": "MSP",
+    "faaId": "MSP",
+    "wmoId": "72658",
+    "site": "Minneapolis-St Paul Intl",
+    "lat": 44.88523,
+    "lon": -93.23132,
+    "elev": 255,
+    "state": "MN",
+    "country": "US",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ZGGG",
+    "icaoId": "ZGGG",
+    "iataId": "CAN",
+    "faaId": null,
+    "wmoId": "59287",
+    "site": "Guangzhou/Baiyun Intl",
+    "lat": 23.392,
+    "lon": 113.307,
+    "elev": 11,
+    "state": "GD",
+    "country": "CN",
+    "priority": 3,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

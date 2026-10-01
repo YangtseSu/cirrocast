@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KLAS",
+    "icaoId": "KLAS",
+    "iataId": "LAS",
+    "faaId": "LAS",
+    "wmoId": "72386",
+    "site": "Las Vegas/Reid Intl",
+    "lat": 36.07188,
+    "lon": -115.16343,
+    "elev": 662,
+    "state": "NV",
+    "country": "US",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

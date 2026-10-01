@@ -126,6 +126,7 @@ fn beijing() -> Location {
         elevation_m: None,
         population: None,
         source: LocationSource::Geocoder,
+        station: None,
     }
 }
 
@@ -172,4 +173,38 @@ fn live_geocode_plus_forecast_at_coordinates() {
     let text = live.render(&report);
     println!("{text}");
     assert!(text.contains("Beijing"), "{text}");
+}
+
+#[test]
+#[ignore = "live network: set CIRROCAST_LIVE_TESTS=1 and run `cargo test --test live -- --ignored --nocapture`"]
+fn live_metar_station() {
+    if !enabled() {
+        return;
+    }
+
+    let live = Live::new();
+    let location = cirrocast::provider::metar::placeholder_location("KJFK");
+    let report = cirrocast::provider::provider_for(cirrocast::provider::ProviderId::Metar)
+        .expect("metar has a backend")
+        .fetch(
+            &location,
+            &FetchRequest::new(0, HourlyResolution::Hourly),
+            &live.env(),
+        )
+        .expect("aviationweather.gov answers");
+
+    assert_eq!(report.attribution.provider, "metar");
+    assert!(report.days.is_empty(), "an observation has no forecast");
+    assert_eq!(report.location.station.as_deref(), Some("KJFK"));
+    assert_eq!(report.location.tz, Tz::America__New_York);
+    let current = report.current.as_ref().expect("current conditions");
+    assert!((-60.0..=60.0).contains(&current.temp_c), "{current:?}");
+    assert!(current.visibility_km.is_some(), "{current:?}");
+
+    let text = live.render(&report);
+    println!("{text}");
+    assert!(
+        text.contains("aviationweather.gov (NOAA/NWS, public domain)"),
+        "{text}"
+    );
 }

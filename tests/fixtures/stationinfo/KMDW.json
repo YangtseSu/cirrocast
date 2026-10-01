@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KMDW",
+    "icaoId": "KMDW",
+    "iataId": "MDW",
+    "faaId": "MDW",
+    "wmoId": "72534",
+    "site": "Chicago/Midway Intl",
+    "lat": 41.78412,
+    "lon": -87.75515,
+    "elev": 186,
+    "state": "IL",
+    "country": "US",
+    "priority": 5,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

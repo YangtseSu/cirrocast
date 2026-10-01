@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ZBAA",
+    "icaoId": "ZBAA",
+    "iataId": "PEK",
+    "faaId": null,
+    "wmoId": "54511",
+    "site": "Beijing Intl",
+    "lat": 40.082,
+    "lon": 116.603,
+    "elev": 31,
+    "state": "BJ",
+    "country": "CN",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

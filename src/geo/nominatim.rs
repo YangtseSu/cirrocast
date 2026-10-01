@@ -38,7 +38,7 @@ pub const DEFAULT_URL: &str = "https://nominatim.openstreetmap.org";
 
 /// How long a recorded response is reused: the usage policy requires caching, OSM objects change
 /// slowly, and this is the retention the pipeline documents.
-pub const TTL: Duration = Duration::from_secs(2_592_000);
+pub const TTL: Duration = Duration::from_hours(720);
 
 /// Where the last request's timestamp lives, relative to the cache root.
 const THROTTLE_STATE: &str = "ratelimit/nominatim.json";
@@ -247,6 +247,7 @@ fn location_from_hit(hit: Hit) -> Result<Location> {
         elevation_m: None,
         population,
         source: LocationSource::Osm,
+        station: None,
     })
 }
 

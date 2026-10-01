@@ -245,6 +245,7 @@ mod tests {
             elevation_m: None,
             population: None,
             source: LocationSource::Geocoder,
+            station: None,
         }
     }
 

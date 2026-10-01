@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ESSA",
+    "icaoId": "ESSA",
+    "iataId": "ARN",
+    "faaId": null,
+    "wmoId": "02460",
+    "site": "Stockholm/Arlanda Arpt",
+    "lat": 59.664,
+    "lon": 17.92,
+    "elev": 36,
+    "state": "AB",
+    "country": "SE",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

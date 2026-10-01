@@ -1,0 +1,20 @@
+[
+  {
+    "id": "PASC",
+    "icaoId": "PASC",
+    "iataId": "SCC",
+    "faaId": "SCC",
+    "wmoId": null,
+    "site": "Deadhorse Arpt",
+    "lat": 70.191,
+    "lon": -148.48,
+    "elev": 17,
+    "state": "AK",
+    "country": "US",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

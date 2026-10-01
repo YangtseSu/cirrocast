@@ -1,0 +1,20 @@
+[
+  {
+    "id": "CYQB",
+    "icaoId": "CYQB",
+    "iataId": "YQB",
+    "faaId": null,
+    "wmoId": "71708",
+    "site": "Quebec/Lesage Intl",
+    "lat": 46.791,
+    "lon": -71.396,
+    "elev": 73,
+    "state": "QC",
+    "country": "CA",
+    "priority": 2,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

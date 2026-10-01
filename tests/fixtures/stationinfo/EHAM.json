@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EHAM",
+    "icaoId": "EHAM",
+    "iataId": "AMS",
+    "faaId": null,
+    "wmoId": "06240",
+    "site": "Amsterdam/Schiphol Arpt",
+    "lat": 52.315,
+    "lon": 4.79,
+    "elev": -2,
+    "state": "NH",
+    "country": "NL",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

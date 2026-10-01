@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KDTW",
+    "icaoId": "KDTW",
+    "iataId": "DTW",
+    "faaId": "DTW",
+    "wmoId": "72537",
+    "site": "Detroit/Metro Wayne Cnty",
+    "lat": 42.23112,
+    "lon": -83.33122,
+    "elev": 192,
+    "state": "MI",
+    "country": "US",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

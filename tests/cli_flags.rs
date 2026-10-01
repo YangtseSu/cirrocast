@@ -205,32 +205,71 @@ fn every_conflict_rule_exits_two_with_its_message() {
 fn a_station_needs_the_station_backend() {
     let sandbox = Sandbox::new();
 
+    // An explicit chain without a station-capable entry is a usage error naming both flags, and it
+    // is decided before any request is sent.
     sandbox
         .cirrocast()
-        .args(["--station", "ZBAA"])
+        .args(["--station", "ZBAA", "-p", "open-meteo"])
         .assert()
         .code(2)
+        .stderr(
+            predicate::str::contains("--station ZBAA needs a station-capable provider")
+                .and(predicate::str::contains("--provider metar")),
+        );
+
+    // A chain that *contains* `metar` passes the rule, wherever the entry sits.
+    sandbox
+        .cirrocast()
+        .args(["--station", "ZBAA", "-p", "open-meteo,metar", "--offline"])
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("offline mode"));
+
+    // Without `--provider`, `--station` selects `metar` itself; the same offline miss proves the
+    // run reached the station backend rather than failing on the flag combination.
+    sandbox
+        .cirrocast()
+        .args(["--station", "ZBAA", "--offline"])
+        .assert()
+        .code(3)
         .stderr(predicate::str::contains(
-            "--station requires --provider metar (or auto)",
+            "offline mode: no cached entry for weather/metar-ZBAA-current.json",
         ));
 
-    // The rule is about the chain, so a `metar`-first chain passes it and fails later, on the
-    // backend that step 11 has not implemented yet.
+    // `auto` gains `metar` for a station run; the station backend is tried first.
     sandbox
         .cirrocast()
-        .args(["--station", "ZBAA", "-p", "metar"])
+        .args(["--station", "ZBAA", "-p", "auto", "--offline"])
         .assert()
-        .code(2)
-        .stderr(predicate::str::contains(
-            "provider `metar` is not implemented yet",
-        ));
+        .code(3)
+        .stderr(predicate::str::contains("metar-ZBAA-current.json"));
+}
 
+#[test]
+fn a_station_identifier_must_be_an_icao_code() {
+    let sandbox = Sandbox::new();
+
+    // Three letters (an IATA code) and five digits (a WMO number) are other vocabularies.
+    for value in ["12", "JFK", "KJFKX", "1234", "K-1"] {
+        sandbox
+            .cirrocast()
+            .args(["--station", value, "-p", "metar"])
+            .assert()
+            .code(2)
+            .stderr(
+                predicate::str::contains("is not an ICAO station identifier")
+                    .and(predicate::str::contains("--station EGLL")),
+            );
+    }
+
+    // A lower case identifier is normalised, not rejected: the offline miss names the upper case
+    // spelling, which is what the cache key and the upstream request use.
     sandbox
         .cirrocast()
-        .args(["--station", "ZBAA", "-p", "auto"])
+        .args(["--station", "kjfk", "-p", "metar", "--offline"])
         .assert()
-        .code(2)
-        .stderr(predicate::str::contains("not implemented yet"));
+        .code(3)
+        .stderr(predicate::str::contains("metar-KJFK-current.json"));
 }
 
 #[test]

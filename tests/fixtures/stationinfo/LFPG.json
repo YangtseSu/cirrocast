@@ -1,0 +1,20 @@
+[
+  {
+    "id": "LFPG",
+    "icaoId": "LFPG",
+    "iataId": "CDG",
+    "faaId": null,
+    "wmoId": "07157",
+    "site": "Paris/De Gaulle Arpt",
+    "lat": 49.015,
+    "lon": 2.534,
+    "elev": 107,
+    "state": "ID",
+    "country": "FR",
+    "priority": 5,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

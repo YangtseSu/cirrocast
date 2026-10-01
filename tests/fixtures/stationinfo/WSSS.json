@@ -1,0 +1,20 @@
+[
+  {
+    "id": "WSSS",
+    "icaoId": "WSSS",
+    "iataId": "SIN",
+    "faaId": null,
+    "wmoId": "48698",
+    "site": "Singapore/Changi Intl",
+    "lat": 1.368,
+    "lon": 103.982,
+    "elev": 17,
+    "state": "4",
+    "country": "SG",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

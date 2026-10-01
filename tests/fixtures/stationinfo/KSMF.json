@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KSMF",
+    "icaoId": "KSMF",
+    "iataId": "SMF",
+    "faaId": "SMF",
+    "wmoId": null,
+    "site": "Sacramento Intl",
+    "lat": 38.70069,
+    "lon": -121.59479,
+    "elev": 7,
+    "state": "CA",
+    "country": "US",
+    "priority": 2,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

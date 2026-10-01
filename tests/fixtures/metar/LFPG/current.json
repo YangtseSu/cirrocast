@@ -1,0 +1,29 @@
+[
+  {
+    "icaoId": "LFPG",
+    "receiptTime": "2026-10-01T00:02:19.152Z",
+    "obsTime": 1790812800,
+    "reportTime": "2026-10-01T00:00:00.000Z",
+    "temp": 18,
+    "dewp": 16,
+    "wdir": "VRB",
+    "wspd": 2,
+    "visib": "6+",
+    "altim": 1018,
+    "qcField": 16,
+    "metarType": "METAR",
+    "rawOb": "METAR LFPG 010000Z VRB02KT 9999 BKN016 18/16 Q1018 NOSIG",
+    "lat": 49.015,
+    "lon": 2.534,
+    "elev": 107,
+    "name": "Paris/De Gaulle Arpt, ID, FR",
+    "cover": "BKN",
+    "clouds": [
+      {
+        "cover": "BKN",
+        "base": 1600
+      }
+    ],
+    "fltCat": "MVFR"
+  }
+]

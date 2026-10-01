@@ -1020,10 +1020,10 @@ impl Config {
     /// Optional unit overrides read as an empty string when they are unset.
     pub fn get_key(&self, key: &str) -> Result<String> {
         let spec = key_spec(key)?;
-        if let Some(env) = spec.env {
-            if let Some(value) = env_value(env) {
-                return Ok(value);
-            }
+        if let Some(env) = spec.env
+            && let Some(value) = env_value(env)
+        {
+            return Ok(value);
         }
         Ok(match spec.name {
             "schema_version" => self.schema_version.to_string(),

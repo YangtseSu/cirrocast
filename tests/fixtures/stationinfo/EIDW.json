@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EIDW",
+    "icaoId": "EIDW",
+    "iataId": "DUB",
+    "faaId": null,
+    "wmoId": "03969",
+    "site": "Dublin Arpt",
+    "lat": 53.422,
+    "lon": -6.298,
+    "elev": 75,
+    "state": "L",
+    "country": "IE",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -1,0 +1,31 @@
+[
+  {
+    "icaoId": "YPDN",
+    "receiptTime": "2026-10-01T00:08:05.966Z",
+    "obsTime": 1790812800,
+    "reportTime": "2026-10-01T00:00:00.000Z",
+    "temp": 28,
+    "dewp": 24,
+    "wdir": 80,
+    "wspd": 7,
+    "altim": 1018,
+    "qcField": 2,
+    "metarType": "METAR",
+    "rawOb": "METAR YPDN 010000Z AUTO 08007KT 040V100 //// // SCT021 BKN025 28/24 Q1018",
+    "lat": -12.424,
+    "lon": 130.893,
+    "elev": 32,
+    "name": "Darwin Intl, NT, AU",
+    "cover": "BKN",
+    "clouds": [
+      {
+        "cover": "SCT",
+        "base": 2100
+      },
+      {
+        "cover": "BKN",
+        "base": 2500
+      }
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "OMDB",
+    "icaoId": "OMDB",
+    "iataId": "DXB",
+    "faaId": null,
+    "wmoId": "41194",
+    "site": "Dubai Intl",
+    "lat": 25.254,
+    "lon": 55.366,
+    "elev": 5,
+    "state": "DU",
+    "country": "AE",
+    "priority": 3,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

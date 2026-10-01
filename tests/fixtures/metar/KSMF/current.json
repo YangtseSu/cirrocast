@@ -1,0 +1,28 @@
+[
+  {
+    "icaoId": "KSMF",
+    "receiptTime": "2026-09-30T23:56:28.446Z",
+    "obsTime": 1790812380,
+    "reportTime": "2026-10-01T00:00:00.000Z",
+    "temp": 33.3,
+    "dewp": 8.3,
+    "wdir": 0,
+    "wspd": 0,
+    "visib": "10+",
+    "altim": 1007.2,
+    "slp": 1006.9,
+    "qcField": 12,
+    "presTend": -1.4,
+    "maxT": 33.3,
+    "minT": 26.1,
+    "metarType": "METAR",
+    "rawOb": "METAR KSMF 302353Z 00000KT 10SM CLR 33/08 A2974 RMK AO2 SLP069 T03330083 10333 20261 56014 $",
+    "lat": 38.7007,
+    "lon": -121.5948,
+    "elev": 7,
+    "name": "Sacramento Intl, CA, US",
+    "cover": "CLR",
+    "clouds": [],
+    "fltCat": "VFR"
+  }
+]

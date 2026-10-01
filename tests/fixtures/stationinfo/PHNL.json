@@ -1,0 +1,20 @@
+[
+  {
+    "id": "PHNL",
+    "icaoId": "PHNL",
+    "iataId": "HNL",
+    "faaId": "HNL",
+    "wmoId": "91182",
+    "site": "Honolulu Intl",
+    "lat": 21.31505,
+    "lon": -157.924,
+    "elev": 2,
+    "state": "HI",
+    "country": "US",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

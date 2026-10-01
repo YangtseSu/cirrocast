@@ -66,7 +66,7 @@ use crate::model::units::{
     format_visibility, format_wind,
 };
 use crate::model::{Current, DayForecast, DayPart, DayPartKind, LocationSource, Report};
-use crate::provider::licence_line;
+use crate::provider::{capabilities_of, display_name_of, licence_line};
 
 /// Columns between an art block and the metrics of the same line.
 pub const GAP: usize = 1;
@@ -126,6 +126,17 @@ impl Renderer for ArtTable {
             lines.push(String::new());
             lines.extend(current_block(current, ctx, charset, depth));
         }
+        // An observation-only backend has no day table to show: the current block states when it
+        // was taken, and a footer says why nothing follows. Both are capability-driven — the
+        // renderer never looks at the provider id.
+        let observation_only = capabilities_of(&report.attribution.provider)
+            .is_some_and(|capabilities| capabilities.current && !capabilities.daily);
+        if observation_only {
+            if let Some(current) = &report.current {
+                lines.push(observed_line(current, ctx, charset));
+            }
+            lines.push(no_forecast_footer(report, ctx));
+        }
         if !report.days.is_empty() {
             if ctx.width < STACKED_BELOW {
                 lines.extend(stacked(&report.days, ctx, charset, depth));
@@ -148,6 +159,58 @@ impl Renderer for ArtTable {
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+/// `observed 23:51Z · 12 min ago`: when the observation was taken and how old it is.
+///
+/// The clock is UTC — that is how the aviation world reads a METAR — while the age comes from the
+/// injected `ctx.now`, so the line is deterministic in tests. A report dated in the future (a clock
+/// skew, or a station's own clock) clamps to "0 min ago" rather than printing a negative age.
+fn observed_line(current: &Current, ctx: &RenderContext<'_>, charset: Charset) -> String {
+    let minutes = (ctx.now - current.observed_at).num_minutes().max(0);
+    let age = if minutes < 60 {
+        ctx.i18n.format(
+            &keys::FORMAT_AGE_MINUTES,
+            &[(
+                "minutes",
+                fluent_bundle::FluentValue::from(minutes.to_string()),
+            )],
+        )
+    } else {
+        ctx.i18n.format(
+            &keys::FORMAT_AGE_HOURS,
+            &[(
+                "hours",
+                fluent_bundle::FluentValue::from((minutes / 60).to_string()),
+            )],
+        )
+    };
+    // The separator is part of the charset: `·` has no ASCII form the fold could pick that reads
+    // as a separator (it folds to `.`), so a dumb terminal gets a `|` instead.
+    let separator = match charset {
+        Charset::Unicode => '·',
+        Charset::Ascii => '|',
+    };
+    format!(
+        "{} {}Z {separator} {age}",
+        ctx.i18n.text(&keys::LABEL_OBSERVED),
+        current
+            .observed_at
+            .with_timezone(&chrono::Utc)
+            .format("%H:%M")
+    )
+}
+
+/// `no forecast: METAR is an observation`: why an observation-only report has no day table.
+fn no_forecast_footer(report: &Report, ctx: &RenderContext<'_>) -> String {
+    let provider = display_name_of(&report.attribution.provider)
+        .map_or_else(|| report.attribution.provider.clone(), str::to_owned);
+    ctx.i18n
+        .format(
+            &keys::NOTE_NO_FORECAST,
+            &[("provider", fluent_bundle::FluentValue::from(provider))],
+        )
+        .into_owned()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -825,6 +888,7 @@ mod tests {
             elevation_m: None,
             population: None,
             source: LocationSource::Geocoder,
+            station: None,
         }
     }
 

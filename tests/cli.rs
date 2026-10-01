@@ -171,7 +171,7 @@ fn cache_stat_and_clean_report_an_empty_cache() {
         .assert()
         .success()
         .stdout(predicate::eq(
-            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\n",
+            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\nstation      0 entries       0 B\n",
         ));
 
     sandbox
@@ -298,17 +298,17 @@ fn an_unknown_provider_is_a_usage_error() {
 }
 
 #[test]
-fn a_planned_provider_is_a_usage_error() {
+fn metar_is_selectable_and_reaches_the_fetch() {
     let sandbox = common::Sandbox::new();
-    // `metar` has no backend yet, so this is decided before any request is sent.
+    // `metar` has a backend now, so this run gets past selection and fails on the offline cache
+    // miss (exit 3) rather than on a usage error: the station table answers the metadata without a
+    // request, and the observation is what is missing.
     sandbox
         .cirrocast()
-        .args(["-p", "metar", "@39.9,116.4"])
+        .args(["-p", "metar", "--station", "ZBAA", "--offline"])
         .assert()
-        .code(2)
-        .stderr(predicate::str::contains(
-            "provider `metar` is not implemented yet",
-        ));
+        .code(3)
+        .stderr(predicate::str::contains("offline mode: no cached entry"));
 }
 
 #[test]

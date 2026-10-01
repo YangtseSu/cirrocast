@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ENGM",
+    "icaoId": "ENGM",
+    "iataId": "OSL",
+    "faaId": null,
+    "wmoId": "01384",
+    "site": "Oslo/Gardermoen Arpt",
+    "lat": 60.201,
+    "lon": 11.08,
+    "elev": 204,
+    "state": "AK",
+    "country": "NO",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

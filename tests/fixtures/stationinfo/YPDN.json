@@ -1,0 +1,20 @@
+[
+  {
+    "id": "YPDN",
+    "icaoId": "YPDN",
+    "iataId": "DRW",
+    "faaId": null,
+    "wmoId": "94120",
+    "site": "Darwin Intl",
+    "lat": -12.424,
+    "lon": 130.893,
+    "elev": 32,
+    "state": "NT",
+    "country": "AU",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

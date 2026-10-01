@@ -27,7 +27,7 @@ fn english() -> I18n {
 }
 
 /// Every key path the schema documents, in `serde_json`'s own spelling (`[]` = array element).
-const EXPECTED_KEYS: [&str; 89] = [
+const EXPECTED_KEYS: [&str; 102] = [
     "schema_version",
     "location",
     "location.name",
@@ -39,6 +39,7 @@ const EXPECTED_KEYS: [&str; 89] = [
     "location.timezone",
     "location.elevation_m",
     "location.source",
+    "location.station",
     "current",
     "current.time",
     "current.condition",
@@ -111,6 +112,18 @@ const EXPECTED_KEYS: [&str; 89] = [
     "days[].parts.night.visibility_km",
     "days[].parts.night.wind_kmh",
     "days[].parts.night.wind_dir_deg",
+    "capabilities",
+    "capabilities.current",
+    "capabilities.hourly",
+    "capabilities.daily",
+    "capabilities.alerts",
+    "capabilities.max_days",
+    "capabilities.requires_key",
+    "capabilities.key_env",
+    "capabilities.locations",
+    "capabilities.locations.city",
+    "capabilities.locations.station",
+    "capabilities.locations.lat_lon",
     "attribution",
     "attribution.provider",
     "attribution.url",

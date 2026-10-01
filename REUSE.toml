@@ -117,3 +117,16 @@ path = [
 precedence = "override"
 SPDX-FileCopyrightText = "OpenStreetMap contributors"
 SPDX-License-Identifier = "ODbL-1.0"
+
+# Recorded aviation weather: METAR/SPECI observations (the raw report and the `format=json` body
+# the provider decodes) and `stationinfo` metadata rows. NOAA/NWS is US government material and
+# therefore public domain, which is why these directories are annotated per path with a
+# `LicenseRef` instead of falling under the GPL override for first-party fixtures.
+[[annotations]]
+path = [
+    "tests/fixtures/metar/**",
+    "tests/fixtures/stationinfo/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "NOAA/NWS (aviationweather.gov)"
+SPDX-License-Identifier = "LicenseRef-US-Government-Public-Domain"

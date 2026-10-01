@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EDDF",
+    "icaoId": "EDDF",
+    "iataId": "FRA",
+    "faaId": null,
+    "wmoId": "10637",
+    "site": "Frankfurt/Main Arpt",
+    "lat": 50.045,
+    "lon": 8.598,
+    "elev": 113,
+    "state": "HE",
+    "country": "DE",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "RKSI",
+    "icaoId": "RKSI",
+    "iataId": "ICN",
+    "faaId": null,
+    "wmoId": null,
+    "site": "Seoul/Incheon Intl",
+    "lat": 37.469,
+    "lon": 126.451,
+    "elev": 7,
+    "state": "28",
+    "country": "KR",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

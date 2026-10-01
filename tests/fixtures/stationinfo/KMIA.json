@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KMIA",
+    "icaoId": "KMIA",
+    "iataId": "MIA",
+    "faaId": "MIA",
+    "wmoId": "72202",
+    "site": "Miami Intl",
+    "lat": 25.78806,
+    "lon": -80.31692,
+    "elev": 1,
+    "state": "FL",
+    "country": "US",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

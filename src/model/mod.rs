@@ -48,6 +48,9 @@ pub enum LocationSource {
     Ip,
     /// Taken from the configured default location.
     Config,
+    /// A METAR station identifier (`--station`, `[providers.metar] station`), resolved by the
+    /// station table or the `stationinfo` endpoint.
+    Station,
 }
 
 /// A place a forecast is for.
@@ -73,6 +76,14 @@ pub struct Location {
     pub population: Option<u64>,
     /// Which resolver produced this location.
     pub source: LocationSource,
+    /// The METAR station identifier this location stands for, when it came from a station.
+    ///
+    /// A station has no other way to carry its identity: the display name is the site name and the
+    /// coordinates are the airport's, so a backend that needs the identifier (`metar`, for its
+    /// cache key and its request) reads it here. `None` for every non-station location, and
+    /// `#[serde(default)]` so documents written before this field still deserialise.
+    #[serde(default)]
+    pub station: Option<String>,
 }
 
 /// Current conditions at the location.

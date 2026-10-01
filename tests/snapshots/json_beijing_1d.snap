@@ -13,7 +13,8 @@ expression: "render(&report(), UnitSystem::Metric)"
     "lon": 116.4074,
     "timezone": "Asia/Shanghai",
     "elevation_m": 44.0,
-    "source": "geocoder"
+    "source": "geocoder",
+    "station": null
   },
   "current": {
     "time": "2026-09-30T12:15:00+08:00",
@@ -101,6 +102,20 @@ expression: "render(&report(), UnitSystem::Metric)"
       }
     }
   ],
+  "capabilities": {
+    "current": true,
+    "hourly": true,
+    "daily": true,
+    "alerts": false,
+    "max_days": 16,
+    "requires_key": false,
+    "key_env": null,
+    "locations": {
+      "city": true,
+      "station": false,
+      "lat_lon": true
+    }
+  },
   "attribution": {
     "provider": "open-meteo",
     "url": "https://api.open-meteo.com/v1/forecast",

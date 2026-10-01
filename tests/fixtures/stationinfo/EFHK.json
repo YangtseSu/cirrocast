@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EFHK",
+    "icaoId": "EFHK",
+    "iataId": "HEL",
+    "faaId": null,
+    "wmoId": "02974",
+    "site": "Helsinki/Vantaa Arpt",
+    "lat": 60.327,
+    "lon": 24.957,
+    "elev": 56,
+    "state": "UU",
+    "country": "FI",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

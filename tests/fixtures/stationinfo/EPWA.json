@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EPWA",
+    "icaoId": "EPWA",
+    "iataId": "WAW",
+    "faaId": null,
+    "wmoId": "12375",
+    "site": "Warsaw/Chopin Arpt",
+    "lat": 52.163,
+    "lon": 20.961,
+    "elev": 107,
+    "state": "MZ",
+    "country": "PL",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+Recorded US government weather data, used as test fixtures
+==========================================================
+
+The payload files under the paths annotated with this identifier in REUSE.toml are verbatim
+responses from the National Weather Service / NOAA data API at <https://aviationweather.gov/>:
+METAR/SPECI observations, the raw reports they carry, and station metadata rows.
+
+Works of the US federal government are not subject to copyright in the United States (17 U.S.C.
+§ 105), so these files carry no copyright and are redistributed here as recorded test fixtures.
+They are deliberately *not* relicensed under this repository's GPL-3.0-or-later: the annotation
+records their provenance, and the client code (`src/provider/metar.rs`) prints the source line
+`aviationweather.gov (NOAA/NWS, public domain)` next to the data it serves.
+
+No test in this repository opens a network connection; the fixtures exist so the decoder and the
+backend can be exercised offline. See `docs/providers.md` for the licence note per provider.

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "VHHH",
+    "icaoId": "VHHH",
+    "iataId": "HKG",
+    "faaId": null,
+    "wmoId": "45007",
+    "site": "Hong Kong Intl",
+    "lat": 22.309,
+    "lon": 113.922,
+    "elev": 9,
+    "state": "HK",
+    "country": "HK",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

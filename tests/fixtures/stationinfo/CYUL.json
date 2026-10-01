@@ -1,0 +1,20 @@
+[
+  {
+    "id": "CYUL",
+    "icaoId": "CYUL",
+    "iataId": "YUL",
+    "faaId": null,
+    "wmoId": "71627",
+    "site": "Montreal/Trudeau Intl",
+    "lat": 45.468,
+    "lon": -73.742,
+    "elev": 31,
+    "state": "QC",
+    "country": "CA",
+    "priority": 3,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

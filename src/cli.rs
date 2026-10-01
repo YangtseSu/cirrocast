@@ -205,8 +205,8 @@ pub struct QueryArgs {
     #[arg(long, conflicts_with = "station")]
     pub ip: bool,
 
-    /// METAR station identifier (ICAO); needs `--provider metar` or `auto`.
-    #[arg(long, value_name = "ICAO")]
+    /// METAR station identifier (ICAO, four characters); without `--provider` it selects `metar`.
+    #[arg(long, value_name = "ICAO", value_parser = parse_station)]
     pub station: Option<String>,
 
     /// Template for `--format one-line`: a literal `%`-token string, or `@PRESET`. The presets
@@ -240,6 +240,28 @@ pub struct QueryArgs {
 /// the same three spellings and share one error message.
 fn parse_units(value: &str) -> Result<UnitSystem, Error> {
     value.parse()
+}
+
+/// `--station`: an ICAO identifier, four characters, first a letter, then letters or digits.
+///
+/// The value is upper-cased before use, so `kjfk` and `KJFK` are the same station. Anything else is
+/// a usage error that names the offending value and the accepted form — a three-letter IATA code or
+/// a five-digit WMO number is a different vocabulary this backend does not speak.
+fn parse_station(value: &str) -> Result<String, Error> {
+    let station = value.trim();
+    let mut characters = station.chars();
+    let first = characters.next();
+    let rest: Vec<char> = characters.collect();
+    let valid = first.is_some_and(|first| first.is_ascii_alphabetic())
+        && rest.len() == 3
+        && rest.iter().all(char::is_ascii_alphanumeric);
+    if valid {
+        Ok(station.to_ascii_uppercase())
+    } else {
+        Err(Error::Usage(format!(
+            "`{station}` is not an ICAO station identifier; expected four characters starting with a letter, e.g. `--station EGLL`"
+        )))
+    }
 }
 
 /// `--lat`: degrees in `-90..=90`, the same range and wording the `@lat,lon` argument uses.
@@ -656,38 +678,72 @@ fn validate_query(query: &QueryArgs, sources: Sources, settings: &Settings) -> R
             }
         }
     }
-    if query.station.is_some() && !station_chain(&settings.provider) {
-        return Err(Error::Usage(
-            "--station requires --provider metar (or auto)".to_owned(),
-        ));
+    if let Some(station) = &query.station
+        && sources.provider != Source::Default
+        && !station_chain(&settings.provider)
+    {
+        return Err(Error::Usage(format!(
+            "--station {station} needs a station-capable provider: use `--provider metar` (or a chain containing it), or drop `--provider`"
+        )));
     }
     Ok(())
 }
 
 /// Whether a provider chain can answer a station identifier: `auto` (which gains `metar` for the
-/// run) or a chain whose first entry is `metar`.
+/// run) or any chain that names `metar`, wherever it sits in the chain.
 fn station_chain(spec: &str) -> bool {
     let spec = spec.trim();
     if spec.eq_ignore_ascii_case("auto") {
         return true;
     }
-    spec.split(',')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .parse::<ProviderId>()
-        .is_ok_and(|id| id == ProviderId::Metar)
+    spec.split(',').any(|entry| {
+        entry
+            .trim()
+            .parse::<ProviderId>()
+            .is_ok_and(|id| id == ProviderId::Metar)
+    })
 }
 
 /// The chain this run fetches from.
 ///
-/// `--station` is what makes `auto` pick up `metar`: without one, the station-only backend can
-/// never answer a resolved place, and [`select`] keeps it out of the keyless chain.
-fn provider_chain(settings: &Settings, station: Option<&str>) -> Result<Vec<ProviderId>> {
-    if station.is_some() && settings.provider.trim().eq_ignore_ascii_case("auto") {
-        return select(&format!("{},metar", settings.provider.trim()));
+/// A station identifier needs a station-capable backend, so the chain is arranged around one:
+///
+/// * `--station` with no `--provider`/`CIRROCAST_PROVIDER` value (the provider comes from the
+///   configuration or the built-in default) selects `metar` alone — the user asked for an
+///   observation, and no coordinate backend is silently chained after it;
+/// * `--station` with `auto` prepends `metar` to the keyless chain, because a station-only backend
+///   is never part of `auto` on its own;
+/// * an explicit chain is used as written; [`validate_query`] has already refused one without a
+///   station-capable entry.
+fn provider_chain(
+    settings: &Settings,
+    station: Option<&str>,
+    source: Source,
+) -> Result<Vec<ProviderId>> {
+    match station {
+        Some(_) if source == Source::Default => select("metar"),
+        Some(_) if settings.provider.trim().eq_ignore_ascii_case("auto") => {
+            select(&format!("metar,{}", settings.provider.trim()))
+        }
+        _ => select(&settings.provider),
     }
-    select(&settings.provider)
+}
+
+/// The station `[providers.metar] station` configures, when this run is answered by `metar`.
+///
+/// A station configured while another backend is the default has no effect on that backend (the
+/// registry's location forms say a station is not a city), and a configured `location.default`
+/// outranks it: a station is the aviation backend's *fallback* location, not a global one.
+fn configured_station(config: &Config, ids: &[ProviderId]) -> Option<String> {
+    if ids.first() != Some(&ProviderId::Metar) {
+        return None;
+    }
+    let station = config.providers.metar.station.trim();
+    if station.is_empty() {
+        None
+    } else {
+        Some(station.to_ascii_uppercase())
+    }
 }
 
 /// The forecast days to request, clamped to what the first provider of the chain serves, plus the
@@ -697,11 +753,19 @@ fn provider_chain(settings: &Settings, station: Option<&str>) -> Result<Vec<Prov
 /// CLI's own vocabulary, and the cache key is built for the horizon that is really fetched. The
 /// caller silences the warning with `-q`; an observations-only backend (`max_days == 0`) clamps
 /// everything to zero, which is what a station forecast is.
-fn request_days(requested: u8, ids: &[ProviderId]) -> (u8, Option<String>) {
+fn request_days(requested: u8, ids: &[ProviderId], days_explicit: bool) -> (u8, Option<String>) {
     let Some(primary) = ids.first() else {
         return (requested, None);
     };
     let max_days = primary.metadata().max_days;
+    if max_days == 0 && requested > 0 {
+        // An observation-only backend has nothing to clamp *to*: the days value is dropped, and
+        // only a `--days` the user actually typed is worth a warning about — the configured or
+        // built-in default is not a request for a forecast.
+        let warning = days_explicit
+            .then(|| format!("warning: {primary} reports observations only; --days is ignored"));
+        return (0, warning);
+    }
     if requested > max_days {
         return (
             max_days,
@@ -757,8 +821,16 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     )?;
     validate_query(query, sources, &settings)?;
 
-    let ids = provider_chain(&settings, query.station.as_deref())?;
-    let (days, warning) = request_days(settings.days, &ids);
+    let ids = provider_chain(&settings, query.station.as_deref(), sources.provider)?;
+    // A station is the location: `--station` when it is given, else `[providers.metar] station`
+    // when the run is answered by `metar` and nothing else named a location.
+    let station = query.station.clone().or_else(|| {
+        (settings.location.is_none() && !query.ip)
+            .then(|| configured_station(&config, &ids))
+            .flatten()
+    });
+    let days_explicit = matches!(sources.days, Source::CommandLine | Source::Environment);
+    let (days, warning) = request_days(settings.days, &ids, days_explicit);
     if let Some(warning) = warning
         && !cli.quiet
     {
@@ -789,7 +861,17 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     );
     let keys = KeyStore::new(&paths);
 
-    let location = query_location(query, &settings, &config, &http, &cache, cli)?;
+    let location = match station.as_deref() {
+        // The provider resolves the station (table, then cached stationinfo) and replaces this
+        // provisional location with the real one before anything is rendered.
+        Some(icao) => {
+            if cli.verbose > 0 {
+                eprintln!("location: station {icao}");
+            }
+            crate::provider::metar::placeholder_location(icao)
+        }
+        None => query_location(query, &settings, &config, &http, &cache, cli)?,
+    };
 
     let env = Env {
         http: &http,
@@ -803,19 +885,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     let report = fetch_chain(&ids, &location, &request, &env)?;
 
     if cli.verbose > 0 {
-        // The credit the terms require, plus the exact request that produced the answer, so a
-        // bug report can name the upstream call without a packet capture.
-        let credit = licence_line(&report.attribution.provider).unwrap_or("no credit line");
-        eprintln!("attribution: {credit} ({})", report.attribution.url);
-        if report.days.is_empty() {
-            // A backend with `daily == false` (or one that answered with observations only) still
-            // renders: `art-table` falls back to the current-conditions block and the record
-            // formats keep their keys, but the user should know why no day section is there.
-            eprintln!(
-                "note: {} reports no forecast days; rendering current conditions only",
-                report.attribution.provider
-            );
-        }
+        verbose_report(&report);
     }
 
     let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
@@ -844,6 +914,40 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     }
     print_line(format_args!("{}", setup.renderer.render(&report, &ctx)?))?;
     Ok(())
+}
+
+/// What `-v` says about the report that came back: its credit and request, the raw upstream text
+/// when the provider kept it, and why a day section is missing when there is none.
+///
+/// A backend with `daily == false` (or one that answered with observations only) still renders:
+/// `art-table` falls back to the current-conditions block and the record formats keep their keys,
+/// but the user should know why no day section is there.
+fn verbose_report(report: &crate::model::Report) {
+    // The credit the terms require, plus the exact request that produced the answer, so a bug
+    // report can name the upstream call without a packet capture.
+    let credit = licence_line(&report.attribution.provider).unwrap_or("no credit line");
+    eprintln!("attribution: {credit} ({})", report.attribution.url);
+    if let Some(raw) = &report.attribution.raw {
+        // The provider puts the raw upstream text here when `-v` asked for it (the METAR report
+        // and its TAF); indentation inside a multi-line product is preserved.
+        for line in raw.lines() {
+            eprintln!("{}: {line}", report.attribution.provider);
+        }
+    }
+    if report.days.is_empty() {
+        let capabilities = crate::provider::capabilities_of(&report.attribution.provider);
+        if capabilities.is_some_and(|capabilities| !capabilities.daily) {
+            eprintln!(
+                "note: {} reports observations only; for a forecast use a forecast backend such as `--provider open-meteo`",
+                report.attribution.provider
+            );
+        } else {
+            eprintln!(
+                "note: {} reports no forecast days; rendering current conditions only",
+                report.attribution.provider
+            );
+        }
+    }
 }
 
 /// The location a weather query forecasts for, with the commentary a user needs to trust it.
@@ -1633,8 +1737,8 @@ mod tests {
     use clap::{CommandFactory as _, FromArgMatches as _, Parser as _};
 
     use super::{
-        Cli, Source, Sources, location_arg, provider_chain, request_days, station_chain,
-        validate_query,
+        Cli, Source, Sources, configured_station, location_arg, provider_chain, request_days,
+        station_chain, validate_query,
     };
     use crate::config::{CliOverrides, Config, Settings};
     use crate::provider::ProviderId;
@@ -1679,63 +1783,107 @@ mod tests {
     #[test]
     fn the_days_clamp_is_reported_once_and_silenceable() {
         // Open-Meteo's 16 days are beyond the flag's own 0..=14, so the clamp cannot bite here.
-        let (days, warning) = request_days(14, &[ProviderId::OpenMeteo]);
+        let (days, warning) = request_days(14, &[ProviderId::OpenMeteo], true);
         assert_eq!(days, 14);
         assert_eq!(warning, None);
 
-        // A station-only backend has no forecast at all: everything clamps to zero.
-        let max = ProviderId::Metar.metadata().max_days;
-        let (days, warning) = request_days(14, &[ProviderId::Metar]);
-        assert_eq!(days, max);
+        // A station-only backend has no forecast at all: everything clamps to zero, with the
+        // observation-specific wording rather than "supports at most 0 days".
+        let (days, warning) = request_days(14, &[ProviderId::Metar], true);
+        assert_eq!(days, 0);
         assert_eq!(
             warning.expect("the clamp is reported"),
-            format!("warning: metar supports at most {max} days; --days 14 clamped to {max}")
+            "warning: metar reports observations only; --days is ignored"
         );
 
+        // A days value that came from the configuration or the built-in default is not a request
+        // for a forecast, so dropping it is not worth a warning.
+        let (days, warning) = request_days(3, &[ProviderId::Metar], false);
+        assert_eq!(days, 0);
+        assert_eq!(warning, None);
+
         // The clamp follows the *first* entry: a fallback cannot widen the request.
-        let (days, warning) = request_days(14, &[ProviderId::Metar, ProviderId::OpenMeteo]);
-        assert_eq!(days, max);
+        let (days, warning) = request_days(14, &[ProviderId::Metar, ProviderId::OpenMeteo], true);
+        assert_eq!(days, 0);
         assert!(warning.is_some());
 
         // No chain at all is not a clamp case.
-        assert_eq!(request_days(3, &[]), (3, None));
+        assert_eq!(request_days(3, &[], true), (3, None));
     }
 
     #[test]
-    fn a_station_chain_is_metar_first_or_auto() {
+    fn a_station_chain_contains_metar_or_is_auto() {
         for spec in [
             "auto",
             "AUTO",
             "metar",
             "METAR",
             "metar,open-meteo",
+            "open-meteo,metar",
             " metar , smhi ",
         ] {
             assert!(station_chain(spec), "`{spec}` answers a station");
         }
-        for spec in ["open-meteo", "", "open-meteo,metar", "smhi"] {
+        for spec in ["open-meteo", "", "smhi", "open-meteo,smhi"] {
             assert!(!station_chain(spec), "`{spec}` does not answer a station");
         }
     }
 
     #[test]
-    fn the_auto_chain_gains_metar_only_for_a_station() {
+    fn a_station_selects_the_station_backend() {
+        // Without a station, `auto` is the keyless place chain and nothing else.
         assert_eq!(
-            provider_chain(&settings("auto"), None).expect("auto expands"),
+            provider_chain(&settings("auto"), None, Source::Default).expect("auto expands"),
             vec![ProviderId::OpenMeteo, ProviderId::Smhi]
         );
-        let error = provider_chain(&settings("auto"), Some("ZBAA"))
-            .expect_err("metar is not implemented yet");
-        assert!(
-            error
-                .to_string()
-                .contains("provider `metar` is not implemented yet")
+
+        // `--station` with the provider from the configuration or the built-in default selects
+        // `metar` alone: no coordinate backend is chained after an observation.
+        assert_eq!(
+            provider_chain(&settings("open-meteo"), Some("ZBAA"), Source::Default)
+                .expect("a station selects metar"),
+            vec![ProviderId::Metar]
         );
 
+        // An explicit `auto` gains `metar` in front, because `auto` never contains a
+        // station-only backend on its own.
         assert_eq!(
-            provider_chain(&settings("open-meteo"), None).expect("an explicit chain"),
+            provider_chain(&settings("auto"), Some("ZBAA"), Source::CommandLine)
+                .expect("auto gains metar"),
+            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::Smhi]
+        );
+
+        // An explicit chain is used as written — the user asked for that order.
+        assert_eq!(
+            provider_chain(
+                &settings("metar,open-meteo"),
+                Some("ZBAA"),
+                Source::CommandLine
+            )
+            .expect("an explicit chain"),
+            vec![ProviderId::Metar, ProviderId::OpenMeteo]
+        );
+        assert_eq!(
+            provider_chain(&settings("open-meteo"), None, Source::Default).expect("a place chain"),
             vec![ProviderId::OpenMeteo]
         );
+    }
+
+    #[test]
+    fn a_configured_station_only_affects_metar() {
+        let mut config = Config::default();
+        config.providers.metar.station = "kjfk".to_owned();
+        assert_eq!(
+            configured_station(&config, &[ProviderId::Metar]).as_deref(),
+            Some("KJFK")
+        );
+        assert_eq!(
+            configured_station(&config, &[ProviderId::OpenMeteo, ProviderId::Metar]),
+            None,
+            "another backend is the default, so the station is not the location"
+        );
+        config.providers.metar.station = String::new();
+        assert_eq!(configured_station(&config, &[ProviderId::Metar]), None);
     }
 
     #[test]
@@ -1775,16 +1923,27 @@ mod tests {
         sources.location = Source::Environment;
         validate_query(&cli.query, sources, &defaults).expect("the flag overrides the environment");
 
-        // `--station` needs a chain that can answer it.
+        // `--station` with the provider from the config or the default selects `metar`, so it is
+        // not a conflict; an *explicit* chain without a station-capable entry is one.
         let (cli, sources) = parse(&["cirrocast", "--station", "ZBAA"]);
-        let error = validate_query(&cli.query, sources, &defaults)
+        validate_query(&cli.query, sources, &defaults).expect("`--station` selects metar");
+
+        let (cli, sources) = parse(&["cirrocast", "--station", "ZBAA", "-p", "open-meteo"]);
+        let error = validate_query(&cli.query, sources, &settings("open-meteo"))
             .expect_err("open-meteo cannot answer a station");
-        assert_eq!(
-            error.to_string(),
-            "--station requires --provider metar (or auto)"
+        assert_eq!(error.exit_code(), 2);
+        assert!(
+            error
+                .to_string()
+                .contains("--station ZBAA needs a station-capable provider"),
+            "{error}"
         );
+
         let (cli, sources) = parse(&["cirrocast", "--station", "ZBAA", "-p", "metar"]);
         validate_query(&cli.query, sources, &settings("metar")).expect("metar answers a station");
+        let (cli, sources) = parse(&["cirrocast", "--station", "ZBAA", "-p", "open-meteo,metar"]);
+        validate_query(&cli.query, sources, &settings("open-meteo,metar"))
+            .expect("a chain containing metar answers a station");
     }
 
     #[test]

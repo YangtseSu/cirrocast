@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EGLL",
+    "icaoId": "EGLL",
+    "iataId": "LHR",
+    "faaId": null,
+    "wmoId": "03772",
+    "site": "London/Heathrow Intl",
+    "lat": 51.477,
+    "lon": -0.461,
+    "elev": 26,
+    "state": "EN",
+    "country": "GB",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

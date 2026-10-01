@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KPDX",
+    "icaoId": "KPDX",
+    "iataId": "PDX",
+    "faaId": "PDX",
+    "wmoId": "72698",
+    "site": "Portland Intl",
+    "lat": 45.59578,
+    "lon": -122.60917,
+    "elev": 7,
+    "state": "OR",
+    "country": "US",
+    "priority": 2,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

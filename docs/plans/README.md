@@ -47,7 +47,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 08 | B | [cli-surface-and-formats](08-cli-surface-and-formats.md) | ✅ done | 06, 07 |
 | 09 | B | [localization](09-localization.md) | ✅ done | 03, 07 |
 | 10 | B | [additional-providers](10-additional-providers.md) | ✅ done | 05, 06, 08 |
-| 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | ⬜ not-started | 05, 10 |
+| 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | ✅ done | 05, 10 |
 | 12 | C | [quality-hardening](12-quality-hardening.md) | ⬜ not-started | 08, 09, 10 |
 | 13 | C | [packaging-and-release](13-packaging-and-release.md) | ⬜ not-started | 08, 12 |
 | 14 | C | [v1-acceptance](14-v1-acceptance.md) | ⬜ not-started | all of A–C |
@@ -154,7 +154,13 @@ tests/               integration tests (CLI level), fixtures/ = recorded API res
   it; **the render layer is the only place that converts units**. Cache entries are therefore
   unit-independent.
 * `Report { location, current: Option<Current>, days: Vec<DayForecast>, attribution }`.
-  `days` is ordered oldest → newest and always starts at the location-local today.
+  `days` is ordered oldest → newest and always starts at the location-local today. A backend that
+  serves observations only (step 11's `metar`) answers with `current: Some(..)`, `days: []`, and the
+  renderers shape their output from the provider's declared capabilities, never from its id.
+* `Location` carries `station: Option<String>` (plus `LocationSource::Station`): a station-based
+  backend keys its cache, builds its request and names the place from the identifier, which the
+  display name cannot carry. It is `#[serde(default)]`, so documents written before the field exist
+  still parse, and it is `null` for every non-station location.
 * Day parts are exactly `Morning | Noon | Evening | Night` (wttr.in's four rows), each aggregated
   from hourly data by the provider module using the location timezone, never by the renderer.
 * Time is `chrono` with `chrono_tz::Tz` for the location; all artifacts carry the location offset.
@@ -184,7 +190,8 @@ pub trait Provider {
   `provider list`/`provider info` update. No CLI flag is added per provider.
 * Selection: `--provider a,b,c` is an explicit ordered chain; bare default comes from config
   (`defaults.provider`), whose built-in value is `open-meteo`. `auto` expands to the keyless chain
-  `open-meteo,smhi` (plus `metar` only when a station is given). A failure in a chain falls through
+  that answers for a resolved place (`open-meteo,smhi`); a station is never part of it — `--station`
+  selects `metar` when no provider is given, and prepends it to `auto` when one is. A failure in a chain falls through
   to the next entry only when the error is transport/upstream (`Error::Upstream`/`Network`), never
   when it is a usage, key or location error.
 
@@ -202,6 +209,10 @@ pub trait Renderer { fn render(&self, report: &Report, ctx: &RenderContext<'_>) 
 (never `Auto`) and `width` already clamped, so a renderer never consults the environment; `term`
 is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_pref`).
 
+* The `json` document carries a `capabilities` object (the registry row of the answering backend:
+  `current`, `hourly`, `daily`, `alerts`, `max_days`, `requires_key`, `key_env`, `locations`), so a
+  consumer can tell "no `days` because the backend is an observation" from "no `days` because the
+  request asked for none". Additive within `schema_version = 1`.
 * Formats: `art-table` (default, wttr.in's classic four-row coloured columns), `one-line`
   (wttr.in-compatible `%` tokens), `plain`, `json`. `dumb` is not a fourth layout: it is the
   art table in the ASCII character set (`+ - |`, ASCII art, no degree sign), selected by
@@ -260,7 +271,9 @@ schema_version = 1
   (`cirrocast key set/rm/list`) → OS keyring, only if the `keyring` feature is enabled (step 10+).
 * A `keys.toml` with any group/other permission bits is refused with `Error::Config`, not silently used.
 * Cache layout: `geocode/<sha256(query)>.json`, `ip/<service>.json`,
-  `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json`; writes are `tmp` + `rename`.
+  `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json`,
+  `weather/metar-<ICAO>-{current,taf}.json` for the station resources and `station/<ICAO>.json` for
+  30-day station metadata; writes are `tmp` + `rename`. `cache stat` reports all four namespaces.
 * `--no-cache`, `--refresh`, `--offline` (cache-only, never touches the network), `cache stat`,
   `cache clean`.
 
@@ -284,7 +297,7 @@ cirrocast [OPTIONS] [LOCATION]
       --lang <TAG>              BCP-47, or "auto"
       --lat <DEG> --lon <DEG>
       --ip                      locate from the public IP
-      --station <ICAO>          METAR station
+      --station <ICAO>          METAR station; selects `metar` when no provider is given
       --no-cache / --refresh / --offline
       --timeout <SECS>
       --color <auto|always|never>
@@ -331,7 +344,11 @@ provider order) and the chosen location is echoed in the header, never silently 
 
 ### Conventions
 
-* Rust 2024, MSRV 1.85, no async runtime, `ureq` + `rustls`, `serde` for all wire formats.
+* Rust 2024, MSRV 1.98 (the latest stable toolchain: the project tracks stable rather than holding
+  a floor below it), no async runtime, `ureq` + `rustls`, `serde` for all wire formats.
+  `tzf-rs` (step 11) is the one coordinate → IANA zone lookup; the manifest accepts any 2.x and
+  `Cargo.lock` records the resolved release — no dependency is pinned to a version the manifest
+  could not float past.
 * New dependencies require a one-line justification in the step doc's design notes; prefer std +
   already-present crates. `cargo deny`/`cargo audit` are introduced in step 12.
 * Every provider and renderer ships tests against **recorded fixtures** (`tests/fixtures/`). No test

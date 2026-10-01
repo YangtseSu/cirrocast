@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KBOS",
+    "icaoId": "KBOS",
+    "iataId": "BOS",
+    "faaId": "BOS",
+    "wmoId": "72509",
+    "site": "Boston/Logan Intl",
+    "lat": 42.36057,
+    "lon": -71.00974,
+    "elev": 4,
+    "state": "MA",
+    "country": "US",
+    "priority": 2,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

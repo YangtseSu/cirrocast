@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KPHX",
+    "icaoId": "KPHX",
+    "iataId": "PHX",
+    "faaId": "PHX",
+    "wmoId": "72278",
+    "site": "Phoenix/Sky Harbor Intl",
+    "lat": 33.42779,
+    "lon": -112.00366,
+    "elev": 338,
+    "state": "AZ",
+    "country": "US",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

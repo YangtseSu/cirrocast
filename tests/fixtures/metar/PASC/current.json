@@ -1,0 +1,35 @@
+[
+  {
+    "icaoId": "PASC",
+    "receiptTime": "2026-10-01T00:14:12.107Z",
+    "obsTime": 1790813460,
+    "reportTime": "2026-10-01T00:11:00.000Z",
+    "temp": -2.8,
+    "dewp": -3.3,
+    "wdir": 250,
+    "wspd": 3,
+    "visib": 0.5,
+    "altim": 1011.9,
+    "qcField": 6,
+    "wxString": "SN FZFG",
+    "precip": 0.005,
+    "metarType": "SPECI",
+    "rawOb": "SPECI PASC 010011Z AUTO 25003KT 1/2SM R06/4000VP6000FT SN FZFG FEW005 OVC011 M03/M03 A2988 RMK AO2 P0000 T10281033",
+    "lat": 70.191,
+    "lon": -148.48,
+    "elev": 17,
+    "name": "Deadhorse Arpt, AK, US",
+    "cover": "OVC",
+    "clouds": [
+      {
+        "cover": "FEW",
+        "base": 500
+      },
+      {
+        "cover": "OVC",
+        "base": 1100
+      }
+    ],
+    "fltCat": "LIFR"
+  }
+]

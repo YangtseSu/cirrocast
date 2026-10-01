@@ -1,0 +1,20 @@
+[
+  {
+    "id": "LOWW",
+    "icaoId": "LOWW",
+    "iataId": "VIE",
+    "faaId": null,
+    "wmoId": "11036",
+    "site": "Vienna Intl",
+    "lat": 48.117,
+    "lon": 16.582,
+    "elev": 179,
+    "state": "NE",
+    "country": "AT",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -20,7 +20,7 @@ use cirrocast::http::{HttpClient, StubReply, StubTransport};
 use cirrocast::model::LocationSource;
 
 /// The TTL the CLI passes: `cache.ip_ttl_secs`, one day.
-const TTL: Duration = Duration::from_secs(24 * 60 * 60);
+const TTL: Duration = Duration::from_hours(24);
 
 /// A fixed instant — 2026-01-01T00:00:00Z — so freshness never depends on the wall clock.
 fn fixed_now() -> SystemTime {

@@ -278,7 +278,7 @@ fn stat_and_clean_count_what_they_say() {
         .write(&stale, 200, "{\"b\":2}", Duration::from_secs(60))
         .expect("the write succeeds");
     cache
-        .write(&ip, 200, "{\"c\":3}", Duration::from_secs(86_400))
+        .write(&ip, 200, "{\"c\":3}", Duration::from_hours(24))
         .expect("the write succeeds");
     clock.advance(Duration::from_secs(120));
 
@@ -288,13 +288,15 @@ fn stat_and_clean_count_what_they_say() {
             .iter()
             .map(|namespace| namespace.name)
             .collect::<Vec<_>>(),
-        ["weather", "geocode", "ip"]
+        ["weather", "geocode", "ip", "station"]
     );
     assert_eq!(stat.namespaces[0].entries, 0);
     assert_eq!(stat.namespaces[0].bytes, 0);
     assert_eq!(stat.namespaces[1].entries, 2);
     assert!(stat.namespaces[1].bytes > 0);
     assert_eq!(stat.namespaces[2].entries, 1);
+    // The station namespace is empty in this fixture, and `cache clean` must not touch it.
+    assert_eq!(stat.namespaces[3].entries, 0);
     assert!(stat.namespaces[1].oldest.is_some());
     assert_eq!(stat.namespaces[1].newest, stat.namespaces[1].oldest);
 

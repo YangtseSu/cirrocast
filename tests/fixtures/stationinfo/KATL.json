@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KATL",
+    "icaoId": "KATL",
+    "iataId": "ATL",
+    "faaId": "ATL",
+    "wmoId": "72219",
+    "site": "Atlanta/Hartsfield-Jackson Intl",
+    "lat": 33.62972,
+    "lon": -84.44223,
+    "elev": 309,
+    "state": "GA",
+    "country": "US",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

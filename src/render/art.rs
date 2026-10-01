@@ -43,7 +43,7 @@ pub enum ArtStyle {
     Snow,
     /// A thunderstorm.
     Thunder,
-    /// Fog or rime.
+    /// Fog, mist, smoke, haze, dust or sand: anything that cuts visibility without falling.
     Fog,
     /// No phenomenon: the block for an undescribed code.
     Plain,
@@ -119,6 +119,14 @@ const ART: &[(&str, Block)] = &[
         },
     ),
     (
+        "dust",
+        Block {
+            unicode: [" · ─ ·", " ─ · ─", " · ─ ·", ""],
+            ascii: [" . - .", " - . -", " . - .", ""],
+            style: ArtStyle::Fog,
+        },
+    ),
+    (
         "fog",
         Block {
             unicode: [" ─────", "  ─────", " ─────", ""],
@@ -159,6 +167,22 @@ const ART: &[(&str, Block)] = &[
         },
     ),
     (
+        "haze",
+        Block {
+            unicode: ["   \\│/", "  ─(●)─", " ─────", "  ─────"],
+            ascii: ["   \\|/", "  -(o)-", " -----", "  -----"],
+            style: ArtStyle::Fog,
+        },
+    ),
+    (
+        "ice-pellets",
+        Block {
+            unicode: [" ╭───╮", "(     )", " ╰───╯", "  o o"],
+            ascii: [" .---.", "(     )", " '---'", "  o o"],
+            style: ArtStyle::Snow,
+        },
+    ),
+    (
         "mainly-clear",
         Block {
             unicode: ["   \\│/", "  ─(●)─", "   /│\\", "   ▁▁▁"],
@@ -172,6 +196,14 @@ const ART: &[(&str, Block)] = &[
             unicode: ["  · * ·", "   (●)", "  * · *", "   ▁▁▁"],
             ascii: ["  . * .", "   (o)", "  * . *", "   ___"],
             style: ArtStyle::Sun,
+        },
+    ),
+    (
+        "mist",
+        Block {
+            unicode: [" ─ ─ ─", "  ─ ─ ─", " ─ ─ ─", ""],
+            ascii: [" - - -", "  - - -", " - - -", ""],
+            style: ArtStyle::Fog,
         },
     ),
     (
@@ -231,6 +263,14 @@ const ART: &[(&str, Block)] = &[
         },
     ),
     (
+        "sand",
+        Block {
+            unicode: [" ─ ─ ─", "  ─ ─ ─", " / /", "  / /"],
+            ascii: [" - - -", "  - - -", " / /", "  / /"],
+            style: ArtStyle::Fog,
+        },
+    ),
+    (
         "showers-rain",
         Block {
             unicode: ["   \\│/", " ╭───╮", "(     )", "  / /"],
@@ -268,6 +308,14 @@ const ART: &[(&str, Block)] = &[
             unicode: ["   \\│/", " ╭───╮", "(     )", "   *"],
             ascii: ["   \\|/", " .---.", "(     )", "   *"],
             style: ArtStyle::Snow,
+        },
+    ),
+    (
+        "smoke",
+        Block {
+            unicode: ["  ∿ ∿", " ∿ ∿", "  ∿ ∿", ""],
+            ascii: ["  ~ ~", " ~ ~", "  ~ ~", ""],
+            style: ArtStyle::Fog,
         },
     ),
     (
@@ -361,6 +409,12 @@ pub fn one_line_art(key: &str) -> &'static str {
         "overcast" => "~~~",
         "fog" => "===",
         "rime-fog" => "=*=",
+        "mist" => "-.-",
+        "haze" => "-o-",
+        "smoke" => ",~,",
+        "dust" => ".:.",
+        "sand" => "/_/",
+        "ice-pellets" => "o*o",
         "drizzle-light" => "~.~",
         "drizzle" => "~,~",
         "drizzle-dense" => ".,.",

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KDFW",
+    "icaoId": "KDFW",
+    "iataId": "DFW",
+    "faaId": "DFW",
+    "wmoId": "72259",
+    "site": "Dallas-Ft Worth Intl",
+    "lat": 32.89744,
+    "lon": -97.02195,
+    "elev": 168,
+    "state": "TX",
+    "country": "US",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

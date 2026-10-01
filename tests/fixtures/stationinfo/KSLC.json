@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KSLC",
+    "icaoId": "KSLC",
+    "iataId": "SLC",
+    "faaId": "SLC",
+    "wmoId": "72572",
+    "site": "Salt Lake City Intl",
+    "lat": 40.7707,
+    "lon": -111.96503,
+    "elev": 1286,
+    "state": "UT",
+    "country": "US",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

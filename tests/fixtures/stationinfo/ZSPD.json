@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ZSPD",
+    "icaoId": "ZSPD",
+    "iataId": "PVG",
+    "faaId": null,
+    "wmoId": null,
+    "site": "Shanghai/Pudong Intl",
+    "lat": 31.146,
+    "lon": 121.8,
+    "elev": 4,
+    "state": "SH",
+    "country": "CN",
+    "priority": 6,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

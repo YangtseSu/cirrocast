@@ -91,10 +91,10 @@ impl KeyStore {
     /// Looks a key up: environment first, then the key file.
     pub fn get(&self, provider: &str) -> Result<Option<String>> {
         let id: ProviderId = provider.parse()?;
-        if let Some(env) = id.metadata().key_env {
-            if let Some(value) = super::env_value(env) {
-                return Ok(Some(value));
-            }
+        if let Some(env) = id.metadata().key_env
+            && let Some(value) = super::env_value(env)
+        {
+            return Ok(Some(value));
         }
         Ok(entry(&self.read()?.keys, id).cloned())
     }
@@ -139,15 +139,15 @@ impl KeyStore {
         let file = self.read()?;
         let mut summaries = Vec::new();
         for id in ProviderId::all() {
-            if let Some(env) = id.metadata().key_env {
-                if let Some(value) = super::env_value(env) {
-                    summaries.push(KeySummary {
-                        provider: id.as_str().to_owned(),
-                        masked: Self::mask(&value),
-                        source: KeySource::Env,
-                    });
-                    continue;
-                }
+            if let Some(env) = id.metadata().key_env
+                && let Some(value) = super::env_value(env)
+            {
+                summaries.push(KeySummary {
+                    provider: id.as_str().to_owned(),
+                    masked: Self::mask(&value),
+                    source: KeySource::Env,
+                });
+                continue;
             }
             if let Some(value) = entry(&file.keys, id) {
                 summaries.push(KeySummary {

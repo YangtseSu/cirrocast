@@ -13,6 +13,11 @@
 1	cond.1	Mainly clear	false	false	false	mainly-clear	1
 2	cond.2	Partly cloudy	false	false	false	partly-cloudy	2
 3	cond.3	Overcast	false	false	false	overcast	3
+4	cond.4	Smoke	false	false	false	smoke	4
+5	cond.5	Haze	false	false	false	haze	4
+6	cond.6	Widespread dust	false	false	false	dust	4
+7	cond.7	Dust or sand raised by wind	false	false	false	sand	4
+10	cond.10	Mist	false	false	false	mist	4
 45	cond.45	Fog	false	true	false	fog	4
 48	cond.48	Depositing rime fog	false	true	false	rime-fog	5
 51	cond.51	Light drizzle	true	false	false	drizzle-light	6
@@ -29,6 +34,7 @@
 73	cond.73	Moderate snow fall	true	false	false	snow	17
 75	cond.75	Heavy snow fall	true	false	false	snow-heavy	18
 77	cond.77	Snow grains	true	false	false	snow-grains	19
+79	cond.79	Ice pellets	true	false	false	ice-pellets	19
 80	cond.80	Slight rain showers	true	false	false	showers-rain-light	20
 81	cond.81	Moderate rain showers	true	false	false	showers-rain	21
 82	cond.82	Violent rain showers	true	false	false	showers-rain-violent	22

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "RJAA",
+    "icaoId": "RJAA",
+    "iataId": "NRT",
+    "faaId": null,
+    "wmoId": "47686",
+    "site": "Narita Intl",
+    "lat": 35.765,
+    "lon": 140.386,
+    "elev": 36,
+    "state": "12",
+    "country": "JP",
+    "priority": 4,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

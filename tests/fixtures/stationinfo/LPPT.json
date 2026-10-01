@@ -1,0 +1,20 @@
+[
+  {
+    "id": "LPPT",
+    "icaoId": "LPPT",
+    "iataId": "LIS",
+    "faaId": null,
+    "wmoId": "08536",
+    "site": "Lisbon Arpt",
+    "lat": 38.781,
+    "lon": -9.136,
+    "elev": 98,
+    "state": "LI",
+    "country": "PT",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

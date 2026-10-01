@@ -78,7 +78,7 @@ fn described_codes_match_the_fixture() {
         assert_eq!(condition.severity_rank(), rank, "{line}");
         rows += 1;
     }
-    assert_eq!(rows, 29, "every table row must have a fixture row");
+    assert_eq!(rows, 35, "every table row must have a fixture row");
 }
 
 #[test]

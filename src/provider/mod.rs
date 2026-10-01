@@ -22,6 +22,7 @@
 //! reached only after step 10 adds their modules.
 
 pub mod dayparts;
+pub mod metar;
 pub mod open_meteo;
 pub mod openweathermap;
 pub mod pirateweather;
@@ -273,16 +274,16 @@ impl ProviderId {
                 current: true,
                 hourly: false,
                 daily: false,
-                location_kinds: LocationKinds::STATION,
-                notes: "keyless, station observations only; 100 requests/minute",
+                location_kinds: LocationKinds::STATION_AND_LAT_LON,
+                notes: "keyless, station observations only; 100 requests/minute; `--station` selects it",
                 auth: "none (keyless)",
                 coverage: "worldwide stations",
                 granularity: "per observation (≈hourly)",
                 limits: "100 requests/minute; 400 entries per response",
-                verified: "2026-09-30",
-                implemented: false,
+                verified: "2026-10-01",
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some("aviationweather.gov (NOAA/NWS, public domain)"),
             },
         }
     }
@@ -413,6 +414,14 @@ impl LocationKinds {
         city: false,
         station: true,
         lat_lon: false,
+    };
+
+    /// Stations and raw coordinates — the aviation backend, which snaps a coordinate pair to its
+    /// nearest embedded station.
+    pub const STATION_AND_LAT_LON: Self = Self {
+        city: false,
+        station: true,
+        lat_lon: true,
     };
 
     /// Human readable summary of the accepted forms, e.g. `city, lat/lon`.
@@ -649,9 +658,7 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::Smhi => Ok(Box::new(smhi::Smhi)),
         ProviderId::WeatherApi => Ok(Box::new(weatherapi::WeatherApi)),
         ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),
-        ProviderId::Metar => Err(Error::Usage(
-            "provider `metar` is not implemented yet".to_owned(),
-        )),
+        ProviderId::Metar => Ok(Box::new(metar::Metar)),
     }
 }
 
@@ -665,6 +672,31 @@ pub fn licence_line(provider: &str) -> Option<&'static str> {
         .parse::<ProviderId>()
         .ok()
         .and_then(|id| id.metadata().licence)
+}
+
+/// What the backend behind a report says it offers, for the renderers that shape their output
+/// around it.
+///
+/// A renderer must never branch on the provider *id* (`metar` has no forecast, so a `days` table
+/// would be an empty box): it asks this function, which answers from the same registry row
+/// `provider list` prints. `None` for a provider string no registry row claims — a hand-written
+/// report or a backend removed in a later version — and the renderers then draw the neutral shape.
+#[must_use]
+pub fn capabilities_of(provider: &str) -> Option<Capabilities> {
+    provider
+        .parse::<ProviderId>()
+        .ok()
+        .filter(|id| id.metadata().implemented)
+        .map(|id| id.metadata().capabilities())
+}
+
+/// The name a message should use for a backend (`METAR`, `Open-Meteo`), from the registry row.
+#[must_use]
+pub fn display_name_of(provider: &str) -> Option<&'static str> {
+    provider
+        .parse::<ProviderId>()
+        .ok()
+        .map(|id| id.metadata().display_name)
 }
 
 /// The chain a `--provider` value names.
@@ -842,7 +874,7 @@ mod tests {
 
     use super::{
         Capabilities, Env, FetchRequest, HourlyResolution, LocationKinds, Provider, ProviderId,
-        fetch_chain_with, select,
+        fetch_chain_with, provider_for, select,
     };
     use crate::cache::{Cache, CacheMode, SystemClock};
     use crate::config::Config;
@@ -915,11 +947,14 @@ mod tests {
     }
 
     #[test]
-    fn metar_is_station_only_and_forecastless() {
+    fn metar_is_station_based_and_forecastless() {
         let meta = ProviderId::Metar.metadata();
         assert_eq!(meta.max_days, 0);
-        assert_eq!(meta.location_kinds, LocationKinds::STATION);
-        assert!(!meta.daily && !meta.hourly);
+        assert_eq!(meta.location_kinds, LocationKinds::STATION_AND_LAT_LON);
+        assert!(meta.current && !meta.daily && !meta.hourly);
+        assert!(meta.implemented && !meta.requires_key);
+        // A station-only backend never enters `auto`: it answers a station, not a place.
+        assert!(!meta.location_kinds.city);
     }
 
     #[test]
@@ -974,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_and_unimplemented_ids_are_usage_errors() {
+    fn unknown_ids_are_usage_errors_and_planned_ones_are_refused() {
         let unknown = select("does-not-exist").expect_err("unknown id");
         assert_eq!(unknown.exit_code(), 2);
         assert!(
@@ -983,12 +1018,14 @@ mod tests {
                 .contains("unknown provider `does-not-exist`")
         );
 
-        let planned = select("metar").expect_err("metar has no backend yet");
-        assert_eq!(planned.exit_code(), 2);
-        assert!(
-            planned
-                .to_string()
-                .contains("provider `metar` is not implemented yet")
+        // Every registry row is implemented now, so the "not implemented yet" arm is unreachable
+        // through `select`; the guard is still exercised by a row that is not implemented.
+        assert!(ProviderId::all().iter().all(|id| id.metadata().implemented));
+        assert_eq!(
+            provider_for(ProviderId::Metar)
+                .expect("metar has a backend")
+                .id(),
+            ProviderId::Metar
         );
     }
 
@@ -1122,6 +1159,7 @@ mod tests {
             elevation_m: None,
             population: None,
             source: LocationSource::Geocoder,
+            station: None,
         }
     }
 

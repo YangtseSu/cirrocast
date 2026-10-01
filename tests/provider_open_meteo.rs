@@ -356,7 +356,7 @@ fn a_day_rollover_misses_by_key_instead_of_by_ttl() {
 
     run.fetch(&fixture_location("beijing"), 3)
         .expect("the fixture parses");
-    clock.advance(Duration::from_secs(24 * 3600));
+    clock.advance(Duration::from_hours(24));
     run.fetch(&fixture_location("beijing"), 3)
         .expect("the fixture parses again");
 

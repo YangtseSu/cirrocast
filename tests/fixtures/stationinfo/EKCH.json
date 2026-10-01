@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EKCH",
+    "icaoId": "EKCH",
+    "iataId": "CPH",
+    "faaId": null,
+    "wmoId": "06180",
+    "site": "Kobenhavn Intl",
+    "lat": 55.618,
+    "lon": 12.656,
+    "elev": 4,
+    "state": "HO",
+    "country": "DK",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

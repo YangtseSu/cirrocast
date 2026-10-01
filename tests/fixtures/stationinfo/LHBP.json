@@ -1,0 +1,20 @@
+[
+  {
+    "id": "LHBP",
+    "icaoId": "LHBP",
+    "iataId": "BUD",
+    "faaId": null,
+    "wmoId": "12839",
+    "site": "Budapest/Liszt Intl",
+    "lat": 47.437,
+    "lon": 19.256,
+    "elev": 141,
+    "state": "BU",
+    "country": "HU",
+    "priority": 2,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

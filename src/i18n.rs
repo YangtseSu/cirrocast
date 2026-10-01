@@ -140,6 +140,14 @@ pub mod keys {
     pub const LABEL_SUNRISE: MessageKey = MessageKey::new("label-sunrise");
     /// The sunset label.
     pub const LABEL_SUNSET: MessageKey = MessageKey::new("label-sunset");
+    /// The observation line's label (`observed`).
+    pub const LABEL_OBSERVED: MessageKey = MessageKey::new("label-observed");
+    /// The age of an observation in minutes, for the observation line.
+    pub const FORMAT_AGE_MINUTES: MessageKey = MessageKey::new("format-age-minutes");
+    /// The age of an observation in hours, for the observation line.
+    pub const FORMAT_AGE_HOURS: MessageKey = MessageKey::new("format-age-hours");
+    /// The footer of an observation-only report (`no forecast: METAR is an observation`).
+    pub const NOTE_NO_FORECAST: MessageKey = MessageKey::new("note-no-forecast");
 
     /// `n/a`, for a value the provider does not report.
     pub const NA: MessageKey = MessageKey::new("na");
@@ -271,6 +279,10 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::LABEL_UV,
     keys::LABEL_SUNRISE,
     keys::LABEL_SUNSET,
+    keys::LABEL_OBSERVED,
+    keys::FORMAT_AGE_MINUTES,
+    keys::FORMAT_AGE_HOURS,
+    keys::NOTE_NO_FORECAST,
     keys::NA,
     keys::MOON_NA,
     keys::FORMAT_TEMP_C,
@@ -1149,7 +1161,7 @@ mod tests {
     fn the_keys_name_their_conditions_and_calendars() {
         assert_eq!(condition_key(Condition::from_u8(61)).as_str(), "cond-61");
         assert_eq!(condition_key(Condition::from_u8(95)).as_str(), "cond-95");
-        for code in [4_u8, 20, 46, 100, 255] {
+        for code in [8_u8, 20, 46, 100, 255] {
             assert_eq!(
                 condition_key(Condition::from_u8(code)).as_str(),
                 "cond-unknown",
@@ -1218,7 +1230,8 @@ mod tests {
         assert_eq!(i18n.text(&keys::LABEL_LOCATION), "location");
         assert_eq!(i18n.condition(Condition::from_u8(61)), "Slight rain");
         assert_eq!(i18n.condition(Condition::from_u8(95)), "Thunderstorm");
-        assert_eq!(i18n.condition(Condition::from_u8(4)), "Unknown");
+        assert_eq!(i18n.condition(Condition::from_u8(10)), "Mist");
+        assert_eq!(i18n.condition(Condition::from_u8(8)), "Unknown");
         assert_eq!(i18n.day_part(DayPartKind::Morning), "Morning");
         assert_eq!(i18n.weekday(chrono::Weekday::Wed), "Wed");
         assert_eq!(i18n.month(chrono::Month::September), "Sep");
@@ -1234,7 +1247,8 @@ mod tests {
         let i18n = catalog("zh-CN");
         assert_eq!(i18n.text(&keys::LABEL_REPORT), "天气报告：");
         assert_eq!(i18n.condition(Condition::from_u8(61)), "小雨");
-        assert_eq!(i18n.condition(Condition::from_u8(4)), "未知");
+        assert_eq!(i18n.condition(Condition::from_u8(10)), "轻雾");
+        assert_eq!(i18n.condition(Condition::from_u8(8)), "未知");
         assert_eq!(i18n.day_part(DayPartKind::Night), "夜间");
         assert_eq!(i18n.weekday(chrono::Weekday::Sun), "周日");
         assert_eq!(i18n.month(chrono::Month::January), "1月");

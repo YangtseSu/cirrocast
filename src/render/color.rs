@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(condition_fg(Condition::from_u8(73)), 255, "snow");
         assert_eq!(condition_fg(Condition::from_u8(95)), 129, "thunderstorm");
         assert_eq!(condition_fg(Condition::from_u8(45)), 245, "fog");
-        assert_eq!(condition_fg(Condition::from_u8(4)), FG_DEFAULT, "unknown");
+        assert_eq!(condition_fg(Condition::from_u8(8)), FG_DEFAULT, "unknown");
     }
 
     #[test]

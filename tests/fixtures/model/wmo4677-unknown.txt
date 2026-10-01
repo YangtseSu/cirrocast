@@ -5,7 +5,7 @@
 # rather than be clamped to a neighbour. One decimal code per line; the whole `0..=255` range is
 # additionally swept in tests/model_condition.rs.
 
-4
+8
 20
 46
 52

@@ -236,6 +236,7 @@ pub fn fixture_location(name: &str) -> Location {
         elevation_m: None,
         population: None,
         source: LocationSource::Geocoder,
+        station: None,
     }
 }
 

@@ -18,7 +18,7 @@ No new features: make everything already shipped trustworthy and continuously ve
 error names the offending value and the next command; `--verbose` explains a failure from cause to symptom
 without leaking key material; `--offline` provably never touches the network; contradictory config is rejected
 with the key path; `--help` documents precedence and exit codes; dependency licences are checked for
-GPL-3.0-or-later compatibility and advisories are tracked; the crate builds on its declared 1.85 MSRV; every
+GPL-3.0-or-later compatibility and advisories are tracked; the crate builds on its declared 1.98 MSRV; every
 upstream JSON decoder survives truncated and hostile input with `Error::Upstream`, not a panic; all gated by CI.
 
 ## Deliverables
@@ -62,9 +62,11 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   `deny.toml`; expected exceptions needing an allow-list entry are `Unicode-3.0` (through `idna`/`url`) and
   `CDLA-Permissive-2.0` (through `webpki-roots`); an incompatible dependency is a blocker with a chosen
   replacement, never a silent allow-list. `cargo audit` runs beside `cargo deny` since the sources disagree.
-- ⬜ MSRV at 1.85: `cargo +1.85.0 build --all-targets --locked` and `cargo +1.85.0 test --locked` pass locally
+- ⬜ MSRV at 1.98: `cargo +1.98.0 build --all-targets --locked` and `cargo +1.98.0 test --locked` pass locally
   and in a dedicated CI job; `cargo msrv verify` (cargo-msrv, optional) confirms the declared `rust-version`;
-  `rust-toolchain.toml` keeps pinning `stable` for development, the `+1.85.0` override wins in the job.
+  `rust-toolchain.toml` keeps pinning `stable` for development, the `+1.98.0` override wins in the job.
+  (The floor tracks the latest stable release rather than lagging behind it: step 11 raised 1.85 → 1.98 in
+  one move, which is also what `tzf-rs` 2.x and the crate's let-chains require.)
 - ⬜ `reuse lint` reaches 0 problems and stays there. The tree currently reports 1 invalid SPDX expression and
   1 file with no licensing information: `AGENTS.md` demonstrates a header with prose on the same line, so REUSE
   parses the prose as part of the licence expression (the value must sit alone on its line, or the example must

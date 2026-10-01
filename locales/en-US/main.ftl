@@ -24,13 +24,13 @@ cond-0 = Clear sky
 cond-1 = Mainly clear
 cond-2 = Partly cloudy
 cond-3 = Overcast
-cond-4 = Unknown
-cond-5 = Unknown
-cond-6 = Unknown
-cond-7 = Unknown
+cond-4 = Smoke
+cond-5 = Haze
+cond-6 = Widespread dust
+cond-7 = Dust or sand raised by wind
 cond-8 = Unknown
 cond-9 = Unknown
-cond-10 = Unknown
+cond-10 = Mist
 cond-11 = Unknown
 cond-12 = Unknown
 cond-13 = Unknown
@@ -99,7 +99,7 @@ cond-75 = Heavy snow fall
 cond-76 = Unknown
 cond-77 = Snow grains
 cond-78 = Unknown
-cond-79 = Unknown
+cond-79 = Ice pellets
 cond-80 = Slight rain showers
 cond-81 = Moderate rain showers
 cond-82 = Violent rain showers
@@ -163,6 +163,13 @@ date-today = Today, { $month } { $day }
 
 label-report = Weather report:
 label-data = Data:
+
+# The line an observation-only report prints under its current block, and the footer that says why
+# no day table follows.
+label-observed = observed
+format-age-minutes = { $minutes } min ago
+format-age-hours = { $hours } h ago
+note-no-forecast = no forecast: { $provider } is an observation
 
 # The `plain` record keys. Lower case is the format: `location:` is greppable, and step 08 fixed
 # it. A translation may change the word but not the shape of the line.

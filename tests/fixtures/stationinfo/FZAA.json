@@ -1,0 +1,20 @@
+[
+  {
+    "id": "FZAA",
+    "icaoId": "FZAA",
+    "iataId": "FIH",
+    "faaId": null,
+    "wmoId": "64210",
+    "site": "Kinshasa/NDjili Arpt",
+    "lat": -4.387,
+    "lon": 15.448,
+    "elev": 309,
+    "state": "KN",
+    "country": "CD",
+    "priority": 5,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -114,6 +114,9 @@ fn arguments() -> Vec<(&'static str, fluent_bundle::FluentValue<'static>)> {
         ("day", "01"),
         ("day-plain", "1"),
         ("year", "2026"),
+        ("minutes", "12"),
+        ("hours", "2"),
+        ("provider", "METAR"),
     ]
     .into_iter()
     .map(|(name, value)| (name, fluent_bundle::FluentValue::from(value)))
@@ -167,7 +170,7 @@ fn every_catalog_resolves_every_key_through_the_bundle() {
 fn an_unknown_condition_has_a_name_of_its_own() {
     let request = LanguageRequest::Tag("zh-CN".to_owned());
     let i18n = I18n::load(&request, |_| None);
-    assert_eq!(i18n.condition(Condition::from_u8(4)), "未知");
+    assert_eq!(i18n.condition(Condition::from_u8(8)), "未知");
     assert_eq!(i18n.condition(Condition::from_u8(72)), "未知");
     assert_eq!(
         i18n.condition(Condition::from_u8(61)),

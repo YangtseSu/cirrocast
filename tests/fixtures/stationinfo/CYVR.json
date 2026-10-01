@@ -1,0 +1,20 @@
+[
+  {
+    "id": "CYVR",
+    "icaoId": "CYVR",
+    "iataId": "YVR",
+    "faaId": null,
+    "wmoId": "71892",
+    "site": "Vancouver Intl",
+    "lat": 49.183,
+    "lon": -123.168,
+    "elev": 2,
+    "state": "BC",
+    "country": "CA",
+    "priority": 2,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

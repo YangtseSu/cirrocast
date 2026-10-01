@@ -41,7 +41,7 @@ use crate::paths::Paths;
 pub const CACHE_SCHEMA_VERSION: u32 = 1;
 
 /// The namespaces `cache stat` reports, always in this order.
-pub const NAMESPACES: [&str; 3] = ["weather", "geocode", "ip"];
+pub const NAMESPACES: [&str; 4] = ["weather", "geocode", "ip", "station"];
 
 /// File mode of a freshly written cache entry.
 const ENTRY_MODE: u32 = 0o644;
@@ -244,6 +244,30 @@ impl CacheKey {
         Self {
             path: PathBuf::from("weather").join(&name),
             normalised: format!("weather|{provider}|{part}|{lat:.2}|{lon:.2}|{days}|{date}"),
+        }
+    }
+
+    /// A weather key for one *resource of one station*, readable because it holds nothing but the
+    /// provider, the identifier and the resource: `weather/metar-KJFK-current.json`.
+    ///
+    /// A station-based backend has no coordinates to key on and no day count to vary: the
+    /// observation *is* the current conditions, and a second request (the TAF) is a resource of
+    /// the same station, so it gets its own key instead of overwriting the observation.
+    #[must_use]
+    pub fn station_resource(provider: &str, icao: &str, resource: &str) -> Self {
+        Self {
+            path: PathBuf::from("weather").join(format!("{provider}-{icao}-{resource}.json")),
+            normalised: format!("weather|{provider}|{icao}|{resource}"),
+        }
+    }
+
+    /// A station metadata key: one file per identifier under the `station/` namespace, so
+    /// `cache clean` can drop the 30-day metadata without touching the observations.
+    #[must_use]
+    pub fn station(icao: &str) -> Self {
+        Self {
+            path: PathBuf::from("station").join(format!("{icao}.json")),
+            normalised: format!("station|{icao}"),
         }
     }
 
@@ -754,6 +778,24 @@ mod tests {
         assert_ne!(
             part, weather,
             "a resource must not share the single-call key"
+        );
+
+        // A station has no coordinates to key on: the identifier and the resource are the key, and
+        // the two resources of one station must not overwrite each other.
+        let current = CacheKey::station_resource("metar", "KJFK", "current");
+        assert_eq!(
+            current.path().to_string_lossy(),
+            "weather/metar-KJFK-current.json"
+        );
+        let taf = CacheKey::station_resource("metar", "KJFK", "taf");
+        assert_eq!(taf.path().to_string_lossy(), "weather/metar-KJFK-taf.json");
+        assert_ne!(current, taf);
+
+        let station = CacheKey::station("KJFK");
+        assert_eq!(station.path().to_string_lossy(), "station/KJFK.json");
+        assert_eq!(
+            station.path().parent().and_then(|parent| parent.to_str()),
+            Some("station")
         );
     }
 

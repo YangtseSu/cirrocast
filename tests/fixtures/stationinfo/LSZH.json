@@ -1,0 +1,20 @@
+[
+  {
+    "id": "LSZH",
+    "icaoId": "LSZH",
+    "iataId": "ZRH",
+    "faaId": null,
+    "wmoId": "06670",
+    "site": "Z\u00fcrich Intl Arpt",
+    "lat": 47.48,
+    "lon": 8.536,
+    "elev": 424,
+    "state": "ZH",
+    "country": "CH",
+    "priority": 4,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -15,13 +15,13 @@ cond-0 = 晴
 cond-1 = 晴间多云
 cond-2 = 多云
 cond-3 = 阴
-cond-4 = 未知
-cond-5 = 未知
-cond-6 = 未知
-cond-7 = 未知
+cond-4 = 烟
+cond-5 = 霾
+cond-6 = 浮尘
+cond-7 = 扬沙
 cond-8 = 未知
 cond-9 = 未知
-cond-10 = 未知
+cond-10 = 轻雾
 cond-11 = 未知
 cond-12 = 未知
 cond-13 = 未知
@@ -90,7 +90,7 @@ cond-75 = 大雪
 cond-76 = 未知
 cond-77 = 米雪
 cond-78 = 未知
-cond-79 = 未知
+cond-79 = 冰粒
 cond-80 = 小阵雨
 cond-81 = 阵雨
 cond-82 = 暴雨
@@ -155,6 +155,12 @@ date-today = 今天 { $month }{ $day-plain }日
 
 label-report = 天气报告：
 label-data = 数据：
+
+# 观测类报告在当前实况下方打印的一行，以及说明为何没有逐日表格的页脚。
+label-observed = 观测
+format-age-minutes = { $minutes } 分钟前
+format-age-hours = { $hours } 小时前
+note-no-forecast = 无预报：{ $provider } 为实时观测数据
 
 # The `plain` record keys. They keep their meaning, and the line keeps its shape.
 label-location = 地点

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KSFO",
+    "icaoId": "KSFO",
+    "iataId": "SFO",
+    "faaId": "SFO",
+    "wmoId": "72494",
+    "site": "San Francisco Intl",
+    "lat": 37.61961,
+    "lon": -122.36561,
+    "elev": 2,
+    "state": "CA",
+    "country": "US",
+    "priority": 1,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

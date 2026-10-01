@@ -35,7 +35,7 @@ use super::{RenderContext, Renderer};
 use crate::error::{Error, Result};
 use crate::geo::attribution_line;
 use crate::model::{Attribution, Condition, Current, DayForecast, DayPart, Location, Report};
-use crate::provider::licence_line;
+use crate::provider::{capabilities_of, licence_line};
 
 /// The schema version this build emits; see the module documentation for what may change within
 /// one version.
@@ -64,6 +64,9 @@ struct Document<'a> {
     current: Option<CurrentJson<'a>>,
     /// Forecast days, oldest first.
     days: Vec<DayJson<'a>>,
+    /// What the backend offers, so a consumer can tell "no days because it is an observation"
+    /// from "no days because the request asked for none". `null` when the provider is unknown.
+    capabilities: Option<CapabilitiesJson>,
     /// Where the data came from and what has to be credited.
     attribution: AttributionJson<'a>,
 }
@@ -83,9 +86,66 @@ impl<'a> Document<'a> {
                 .iter()
                 .map(|day| DayJson::of(day, ctx))
                 .collect(),
+            capabilities: capabilities_of(&report.attribution.provider).map(CapabilitiesJson::of),
             attribution: AttributionJson::of(&report.attribution, &report.location),
         }
     }
+}
+
+/// What the backend behind the document offers.
+///
+/// The flags are deliberately flat rather than folded into enums: each one is independent, and a
+/// consumer reads `capabilities.daily` without unpacking a nested shape.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Serialize)]
+struct CapabilitiesJson {
+    /// Current conditions are available.
+    current: bool,
+    /// Hourly data is available.
+    hourly: bool,
+    /// Daily data is available; `false` means `days` is empty by nature, not by request.
+    daily: bool,
+    /// Weather alerts are available.
+    alerts: bool,
+    /// Longest forecast the backend serves, in days (`0` = observations only).
+    max_days: u8,
+    /// Whether an API key has to be present before the backend can be used.
+    requires_key: bool,
+    /// Environment variable that supplies the key, when there is one.
+    key_env: Option<&'static str>,
+    /// Which location forms the backend accepts.
+    locations: LocationsJson,
+}
+
+impl CapabilitiesJson {
+    /// Projects a registry row.
+    fn of(capabilities: crate::provider::Capabilities) -> Self {
+        Self {
+            current: capabilities.current,
+            hourly: capabilities.hourly,
+            daily: capabilities.daily,
+            alerts: capabilities.alerts,
+            max_days: capabilities.max_days,
+            requires_key: capabilities.requires_key,
+            key_env: capabilities.key_env,
+            locations: LocationsJson {
+                city: capabilities.location_kinds.city,
+                station: capabilities.location_kinds.station,
+                lat_lon: capabilities.location_kinds.lat_lon,
+            },
+        }
+    }
+}
+
+/// The location forms a backend accepts.
+#[derive(Debug, Serialize)]
+struct LocationsJson {
+    /// Resolved place names.
+    city: bool,
+    /// METAR station identifiers.
+    station: bool,
+    /// Raw `lat,lon` coordinates.
+    lat_lon: bool,
 }
 
 /// The place the report is for.
@@ -107,8 +167,11 @@ struct LocationJson<'a> {
     timezone: String,
     /// Elevation above sea level in metres, when known.
     elevation_m: Option<f64>,
-    /// Which resolver produced the location: `geocoder`, `osm`, `coordinates`, `ip` or `config`.
+    /// Which resolver produced the location: `geocoder`, `osm`, `coordinates`, `ip`, `config` or
+    /// `station`.
     source: &'static str,
+    /// The METAR station identifier, `null` for every non-station location.
+    station: Option<&'a str>,
 }
 
 impl<'a> LocationJson<'a> {
@@ -124,6 +187,7 @@ impl<'a> LocationJson<'a> {
             timezone: location.tz.name().to_owned(),
             elevation_m: location.elevation_m,
             source: source_name(location.source),
+            station: location.station.as_deref(),
         }
     }
 }
@@ -140,6 +204,7 @@ const fn source_name(source: crate::model::LocationSource) -> &'static str {
         LocationSource::Coordinates => "coordinates",
         LocationSource::Ip => "ip",
         LocationSource::Config => "config",
+        LocationSource::Station => "station",
     }
 }
 
@@ -422,6 +487,7 @@ mod tests {
                 elevation_m: Some(44.0),
                 population: None,
                 source: LocationSource::Geocoder,
+                station: None,
             },
             current,
             days,

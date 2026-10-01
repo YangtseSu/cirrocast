@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KDEN",
+    "icaoId": "KDEN",
+    "iataId": "DEN",
+    "faaId": "DEN",
+    "wmoId": "72565",
+    "site": "Denver Intl",
+    "lat": 39.84657,
+    "lon": -104.65623,
+    "elev": 1656,
+    "state": "CO",
+    "country": "US",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "EDDM",
+    "icaoId": "EDDM",
+    "iataId": "MUC",
+    "faaId": null,
+    "wmoId": "10866",
+    "site": "Munich Intl",
+    "lat": 48.348,
+    "lon": 11.813,
+    "elev": 445,
+    "state": "BY",
+    "country": "DE",
+    "priority": 2,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

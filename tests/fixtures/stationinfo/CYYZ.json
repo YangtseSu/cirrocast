@@ -1,0 +1,20 @@
+[
+  {
+    "id": "CYYZ",
+    "icaoId": "CYYZ",
+    "iataId": "YYZ",
+    "faaId": null,
+    "wmoId": "71624",
+    "site": "Toronto/Pearson Intl",
+    "lat": 43.679,
+    "lon": -79.629,
+    "elev": 171,
+    "state": "ON",
+    "country": "CA",
+    "priority": 3,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

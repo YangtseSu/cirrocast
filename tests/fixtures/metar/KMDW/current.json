@@ -1,0 +1,39 @@
+[
+  {
+    "icaoId": "KMDW",
+    "receiptTime": "2026-09-30T23:56:30.314Z",
+    "obsTime": 1790812380,
+    "reportTime": "2026-10-01T00:00:00.000Z",
+    "temp": 17.8,
+    "dewp": 16.7,
+    "wdir": 190,
+    "wspd": 7,
+    "visib": 9,
+    "altim": 1011.9,
+    "slp": 1011.4,
+    "qcField": 4,
+    "wxString": "-RA",
+    "maxT": 18.3,
+    "minT": 16.7,
+    "precip": 0.02,
+    "pcp6hr": 0.21,
+    "metarType": "METAR",
+    "rawOb": "METAR KMDW 302353Z 19007KT 9SM -RA BKN026 OVC095 18/17 A2988 RMK AO2 SLP114 P0002 60021 T01780167 10183 20167 56000",
+    "lat": 41.7841,
+    "lon": -87.7552,
+    "elev": 186,
+    "name": "Chicago/Midway Intl, IL, US",
+    "cover": "OVC",
+    "clouds": [
+      {
+        "cover": "BKN",
+        "base": 2600
+      },
+      {
+        "cover": "OVC",
+        "base": 9500
+      }
+    ],
+    "fltCat": "MVFR"
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "RJTT",
+    "icaoId": "RJTT",
+    "iataId": "HND",
+    "faaId": null,
+    "wmoId": "47671",
+    "site": "Tokyo/Haneda Intl",
+    "lat": 35.553,
+    "lon": 139.781,
+    "elev": 5,
+    "state": "13",
+    "country": "JP",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

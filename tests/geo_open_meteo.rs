@@ -26,7 +26,7 @@ use cirrocast::http::{HttpClient, StubReply, StubTransport};
 use cirrocast::model::LocationSource;
 
 /// The cache lifetime the tests use; the exact value only matters to the cache, not the geocoder.
-const TTL: Duration = Duration::from_secs(2_592_000);
+const TTL: Duration = Duration::from_hours(720);
 
 /// The primary hit of the recorded Beijing body: the one `GeoNames` reports a population for.
 const BEIJING: (f64, f64, u64, &str) = (39.9075, 116.39723, 18_960_744, "Beijing Municipality");

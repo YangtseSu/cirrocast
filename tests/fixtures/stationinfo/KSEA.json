@@ -1,0 +1,20 @@
+[
+  {
+    "id": "KSEA",
+    "icaoId": "KSEA",
+    "iataId": "SEA",
+    "faaId": "SEA",
+    "wmoId": "72793",
+    "site": "Seattle-Tacoma Intl",
+    "lat": 47.44467,
+    "lon": -122.31442,
+    "elev": 115,
+    "state": "WA",
+    "country": "US",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

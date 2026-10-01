@@ -1,0 +1,20 @@
+[
+  {
+    "id": "BIKF",
+    "icaoId": "BIKF",
+    "iataId": "KEF",
+    "faaId": null,
+    "wmoId": "04018",
+    "site": "Keflavik Intl",
+    "lat": 63.987,
+    "lon": -22.614,
+    "elev": 49,
+    "state": "SP",
+    "country": "IS",
+    "priority": 0,
+    "siteType": [
+      "METAR",
+      "TAF"
+    ]
+  }
+]

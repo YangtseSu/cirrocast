@@ -26,11 +26,19 @@ type Row = (u8, &'static str, &'static str, u8, &'static str);
 /// "higher means more significant weather", which is what the day-part aggregation needs when it
 /// picks a single code per part. Clear and mainly clear share rank 1, and unknown codes rank below
 /// both, so a described code always wins a tie.
-const CODES: [Row; 29] = [
+const CODES: [Row; 35] = [
     (0, "cond.0", "Clear sky", 1, "clear"),
     (1, "cond.1", "Mainly clear", 1, "mainly-clear"),
     (2, "cond.2", "Partly cloudy", 2, "partly-cloudy"),
     (3, "cond.3", "Overcast", 3, "overcast"),
+    // The obscurations a METAR names directly (step 11's decoder maps `FU`, `HZ`, `DU`, `SA`,
+    // `BR` and `PL` here). They share rank 4 with fog: each one reduces visibility without
+    // falling, and the day-part aggregation only needs "higher means more significant".
+    (4, "cond.4", "Smoke", 4, "smoke"),
+    (5, "cond.5", "Haze", 4, "haze"),
+    (6, "cond.6", "Widespread dust", 4, "dust"),
+    (7, "cond.7", "Dust or sand raised by wind", 4, "sand"),
+    (10, "cond.10", "Mist", 4, "mist"),
     (45, "cond.45", "Fog", 4, "fog"),
     (48, "cond.48", "Depositing rime fog", 5, "rime-fog"),
     (51, "cond.51", "Light drizzle", 6, "drizzle-light"),
@@ -71,6 +79,9 @@ const CODES: [Row; 29] = [
     (73, "cond.73", "Moderate snow fall", 17, "snow"),
     (75, "cond.75", "Heavy snow fall", 18, "snow-heavy"),
     (77, "cond.77", "Snow grains", 19, "snow-grains"),
+    // Ice pellets share rank 19 with snow grains: both are light solid precipitation, and the
+    // report decides which one it saw.
+    (79, "cond.79", "Ice pellets", 19, "ice-pellets"),
     (
         80,
         "cond.80",
@@ -178,10 +189,10 @@ impl Condition {
     }
 
     /// Whether precipitation reaches the ground: drizzle, rain, freezing rain, snow, snow grains,
-    /// rain and snow showers, and every thunderstorm code.
+    /// ice pellets, rain and snow showers, and every thunderstorm code.
     #[must_use]
     pub fn is_precipitation(self) -> bool {
-        self.is_known() && matches!(self.0, 51..=57 | 61..=67 | 71..=77 | 80..=86 | 95..=99)
+        self.is_known() && matches!(self.0, 51..=57 | 61..=67 | 71..=79 | 80..=86 | 95..=99)
     }
 
     /// Whether visibility is reduced by fog (including depositing rime fog).
@@ -245,7 +256,7 @@ mod tests {
 
     #[test]
     fn unknown_codes_are_inert() {
-        for code in [4_u8, 20, 46, 87, 100, 255] {
+        for code in [8_u8, 9, 20, 46, 87, 100, 255] {
             let condition = Condition::from_u8(code);
             assert!(!condition.is_known(), "{code} must be unknown");
             assert_eq!(condition.code(), code);

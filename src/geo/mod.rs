@@ -15,6 +15,7 @@
 pub mod ip;
 pub mod nominatim;
 pub mod open_meteo;
+pub mod tz;
 
 use std::fmt;
 use std::str::FromStr;
@@ -284,7 +285,13 @@ pub fn attribution_line(location: &Location) -> Option<&'static str> {
             "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
         ),
         LocationSource::Osm => Some("Location data © OpenStreetMap contributors (ODbL)"),
-        LocationSource::Coordinates | LocationSource::Ip | LocationSource::Config => None,
+        // A station's coordinates are US-government public-domain metadata, which asks for no
+        // credit line; the *weather* credit (`aviationweather.gov`) travels in the report's
+        // attribution instead.
+        LocationSource::Coordinates
+        | LocationSource::Ip
+        | LocationSource::Config
+        | LocationSource::Station => None,
     }
 }
 
@@ -320,6 +327,7 @@ pub fn from_coordinates(lat: f64, lon: f64) -> Location {
         elevation_m: None,
         population: None,
         source: LocationSource::Coordinates,
+        station: None,
     }
 }
 
@@ -408,6 +416,7 @@ mod tests {
             elevation_m: Some(49.0),
             population,
             source: LocationSource::Geocoder,
+            station: None,
         }
     }
 

@@ -38,7 +38,7 @@ registry re-verification of that step needs a written record of what was checked
 |---|---|---|---|---|---|---|
 | `open-meteo` | none | 10 000 calls/day, 5 000/hour, 600/minute; non-commercial | global | hourly | 16 days | implemented (step 06) |
 | `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | implemented |
-| `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | step 11 |
+| `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | implemented (step 11) |
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | 60 calls/minute, 1 000 000 calls/month | global | 3-hourly | 5 days (40 slots) | implemented |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | 100 000 calls/month; 3-day forecast (paid: 14) | global | hourly | 3 days free | implemented |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | 100 requests/day (free terms; a second page says 500/month) | global | 3-hourly (`tp=3`) | 5 days per FAQ, 14 per endpoint | implemented |
@@ -231,8 +231,9 @@ rate limit (none found); the multipoint grid endpoint (every probe returned 406)
 
 ### `metar` (aviationweather.gov)
 
-Keyless, station-based observations. Implemented in step 11, listed here because it shares the
-attribution and error surface.
+Keyless, station-based observations: the second keyless backend (step 11). The decoder reads the
+raw report rather than the JSON fields, the embedded station table answers the common identifiers
+without a request, and `stationinfo` extends that to any station at one cached request per 30 days.
 
 **Endpoints** (verified 2026-09-30, all GET, no key)
 
