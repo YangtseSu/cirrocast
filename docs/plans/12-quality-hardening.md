@@ -34,9 +34,10 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   `--format yaml`, `--station 12`), 4 (unreadable config, `keys.toml` at 0644), 6 (`--provider qweather`, no key,
   scratch config dir), 3 (`--refresh` with `CIRROCAST_FORBID_NETWORK=1`), 5 (unknown ICAO, stub stationinfo
   response). Asserts the code and that stderr names the offending value, never a full sentence.
-- ✅ `--verbose` review: `-v` prints one indented `caused by:` line per error source; `-vv` adds the request URL
-  (secrets redacted), HTTP status, retry attempt and cache decision; `--quiet` mutes warnings, never errors; no
-  log line ever contains a key or a `keys.toml` body.
+- ✅ `--verbose` review: `-v` prints the settings with their sources, the resolution notes, the upstream
+  request behind the answer (secrets redacted) and one indented `caused by:` line per error source; `-vv` adds
+  every HTTP attempt (status and backoff delay) and the cache decisions; `--quiet` mutes warnings, never
+  errors; no log line ever contains a key or a `keys.toml` body.
 - ✅ `--offline` correctness: with the guard on, `--offline` constructs no request at all; a warm cache renders
   identically to a run without the flag; a cold cache fails with exit 3 plus the rerun hint; `--no-cache
   --offline` and `--refresh --offline` are usage errors naming both flags; `cache stat` separates
@@ -431,3 +432,11 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   343 s in a debug build and 33 s after the bound; and the exact `+1.98.0` toolchain leg runs only in CI,
   because this machine has one system toolchain and no rustup. Step marked done: all deliverables and exit
   criteria are ✅.
+- 2026-10-02 — defect found by step 14's flag/help review and fixed here: this step's deliverable text and
+  `cirrocast --help` both said request URLs appear only at `-vv`, but `-v` has always printed the provider
+  request URL as part of `verbose_report` (the credit line a bug report needs). The wording now describes
+  what the split really is — `-v`: settings with sources, resolution notes, the upstream request behind the
+  answer (secrets redacted) and the error cause chain; `-vv`: every HTTP attempt with its status and backoff
+  delay plus the cache decisions — in `src/cli.rs`'s `--verbose` doc comment (and therefore the man page) and
+  in the deliverable line above. The historical log line below the split's own entry is left as written; this
+  entry is the correction.

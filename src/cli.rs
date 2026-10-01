@@ -98,8 +98,9 @@ impl std::io::Write for StdoutSink {
     propagate_version = true
 )]
 pub struct Cli {
-    /// Print more detail: settings, resolution notes and the error cause chain. Repeat (`-vv`) for
-    /// request URLs (secrets redacted), HTTP statuses, retry attempts and cache decisions.
+    /// Print more detail: settings, resolution notes, the upstream request behind the answer
+    /// (secrets redacted) and the error cause chain. Repeat (`-vv`) for every HTTP attempt, its
+    /// status, and the cache decisions as well.
     #[arg(global = true, short, long, action = ArgAction::Count)]
     pub verbose: u8,
 
