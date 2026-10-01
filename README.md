@@ -8,10 +8,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Terminal weather client. Pluggable weather backends, wttr.in-style output, city-name geocoding,
 optional IP-based location, configurable units and output language, XDG-compliant state.
 
-`cirrocast` is a from-scratch replacement for [`wego`](https://github.com/chubin/wego) (unmaintained,
-stale backends, docs that do not match the code). It takes [`wttr.in`](https://wttr.in) as the
-*output* reference and shares no code, art or data with either project.
-
 ```
 $ cirrocast Beijing
 Weather report: Beijing, Beijing Municipality, China (39.91, 116.40)
@@ -662,3 +658,8 @@ The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.gi
   named explicitly (`ubuntu-26.04`, `macos-26`, `ubuntu-26.04-arm`) instead of `<os>-latest`; the
   release matrix ([`.github/workflows/release.yml`](.github/workflows/release.yml)) follows the same
   rule and asserts that the tag equals the crate version.
+
+## Acknowledgements
+
+* [wttr.in](https://wttr.in)
+* [wego](https://github.com/schachmat/wego)
