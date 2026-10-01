@@ -92,7 +92,7 @@ is the gate that follows: it proves the whole surface by execution and cuts `1.0
 ## Install
 
 ```bash
-cargo install --locked cirrocast            # from crates.io
+cargo install --locked cirrocast            # from crates.io, once the publish has run (see Publishing)
 cargo install --locked --path .             # from this checkout
 
 paru -S cirrocast                           # Arch: the AUR package (yay, or a manual git clone +
