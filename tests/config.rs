@@ -387,3 +387,102 @@ fn edit_runs_the_editor_and_revalidates_the_result() {
         .code(1)
         .stderr(predicate::str::contains("cannot run"));
 }
+
+#[test]
+fn validate_accepts_the_shipped_document_and_names_a_misspelled_key() {
+    let sandbox = Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["config", "init"])
+        .assert()
+        .success();
+    sandbox
+        .cirrocast()
+        .args(["config", "validate"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("ok: "));
+
+    // A key the schema does not define: the message names the dotted path and the real keys, and
+    // the run exits 4 (configuration), not 2 (usage) — what is wrong is the file, not the command.
+    sandbox.write_config("[defaults]\ndayz = 3\n");
+    sandbox
+        .cirrocast()
+        .args(["config", "validate"])
+        .assert()
+        .code(4)
+        .stderr(
+            predicate::str::contains("unknown config key `defaults.dayz`").and(
+                predicate::str::contains("known keys in `defaults`: provider, format, units"),
+            ),
+        );
+}
+
+#[test]
+fn validate_rejects_the_documented_impossible_values() {
+    let cases = [
+        (
+            "[providers.metar]\nstation = \"ZBA\"\n",
+            "providers.metar.station: `ZBA` is not a four-character ICAO station identifier",
+        ),
+        (
+            "[location]\ndefault = \"@not,coordinates\"\n",
+            "location.default:",
+        ),
+        (
+            "[render]\nwidth = 12\n",
+            "render.width: 12 is not 0 or within 40..=500",
+        ),
+        (
+            "[cache]\nweather_ttl_secs = 0\n",
+            "cache.weather_ttl_secs: must be greater than 0",
+        ),
+        (
+            "[network]\ntimeout_secs = 0\n",
+            "network.timeout_secs: 0 is out of range 1..=300",
+        ),
+    ];
+
+    for (document, expected) in cases {
+        let sandbox = Sandbox::new();
+        sandbox.write_config(document);
+        sandbox
+            .cirrocast()
+            .args(["config", "validate"])
+            .assert()
+            .code(4)
+            .stderr(predicate::str::contains(expected));
+    }
+}
+
+#[test]
+fn validate_checks_the_offline_combination_and_explains_unit_overrides() {
+    let sandbox = Sandbox::new();
+    sandbox.write_config("[cache]\nenabled = false\n");
+    sandbox
+        .cirrocast()
+        .args(["config", "validate", "--offline"])
+        .assert()
+        .code(4)
+        .stderr(
+            predicate::str::contains("cache.enabled = false")
+                .and(predicate::str::contains("drop `--offline`")),
+        );
+    sandbox
+        .cirrocast()
+        .args(["config", "validate"])
+        .assert()
+        .success();
+
+    // An override that changes a quantity away from the system default says which key wins.
+    sandbox.write_config("[defaults]\nunits = \"us\"\n[units]\ntemp = \"c\"\n");
+    sandbox
+        .cirrocast()
+        .args(["config", "validate"])
+        .assert()
+        .success()
+        .stderr(
+            predicate::str::contains("units.temp = \"c\"")
+                .and(predicate::str::contains("the per-quantity key wins")),
+        );
+}

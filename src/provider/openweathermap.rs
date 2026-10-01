@@ -97,6 +97,7 @@ impl Provider for OpenWeatherMap {
         let current_request = request(CURRENT_URL, loc, &key);
         let current: CurrentResponse = fetch_json(
             env,
+            loc,
             &JsonFetch {
                 provider: ProviderId::OpenWeatherMap,
                 request: current_request.clone(),
@@ -113,6 +114,7 @@ impl Provider for OpenWeatherMap {
             let forecast_request = request(FORECAST_URL, loc, &key);
             let forecast: ForecastResponse = fetch_json(
                 env,
+                loc,
                 &JsonFetch {
                     provider: ProviderId::OpenWeatherMap,
                     request: forecast_request.clone(),

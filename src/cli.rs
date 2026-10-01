@@ -249,13 +249,7 @@ fn parse_units(value: &str) -> Result<UnitSystem, Error> {
 /// a five-digit WMO number is a different vocabulary this backend does not speak.
 fn parse_station(value: &str) -> Result<String, Error> {
     let station = value.trim();
-    let mut characters = station.chars();
-    let first = characters.next();
-    let rest: Vec<char> = characters.collect();
-    let valid = first.is_some_and(|first| first.is_ascii_alphabetic())
-        && rest.len() == 3
-        && rest.iter().all(char::is_ascii_alphanumeric);
-    if valid {
+    if crate::provider::metar::is_icao_station(station) {
         Ok(station.to_ascii_uppercase())
     } else {
         Err(Error::Usage(format!(
@@ -470,7 +464,12 @@ pub enum ConfigCommand {
     Edit,
 
     /// Parse and check the configuration file.
-    Validate,
+    Validate {
+        /// Also check the run combination `cache.enabled = false` + `--offline`, which could never
+        /// be served.
+        #[arg(long)]
+        offline: bool,
+    },
 }
 
 /// Arguments of `cirrocast key`.
@@ -1336,11 +1335,13 @@ fn run_cache(command: &CacheCommand, cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-/// One `cache stat` line per namespace: name, entry count, size, then the fetch window.
+/// One `cache stat` line per namespace: name, entry count, size, how many of the entries are past
+/// their TTL, then the fetch window.
 ///
 /// Fixed column widths (13/9/10) rather than computed ones, because the layout is documented in the
 /// step file and in `--help` output: the three namespaces always fit and a user comparing two runs
-/// sees the same columns.
+/// sees the same columns. The expired count is printed only when it is non-zero, so a healthy cache
+/// reads exactly as it always did and `0 expired` never implies "delete me".
 fn cache_stat_lines(stat: &CacheStat) -> Vec<String> {
     stat.namespaces
         .iter()
@@ -1350,6 +1351,11 @@ fn cache_stat_lines(stat: &CacheStat) -> Vec<String> {
             } else {
                 format!("{} entries", namespace.entries)
             };
+            let expired = match namespace.expired {
+                0 => String::new(),
+                1 => "   1 expired".to_owned(),
+                expired => format!("   {expired} expired"),
+            };
             let window = match (namespace.oldest, namespace.newest) {
                 (Some(oldest), Some(newest)) => {
                     format!("   oldest {}   newest {}", rfc3339(oldest), rfc3339(newest))
@@ -1357,7 +1363,7 @@ fn cache_stat_lines(stat: &CacheStat) -> Vec<String> {
                 _ => String::new(),
             };
             format!(
-                "{:<13}{entries:<9}{:>10}{window}",
+                "{:<13}{entries:<9}{:>10}{expired}{window}",
                 namespace.name,
                 human_bytes(namespace.bytes)
             )
@@ -1418,6 +1424,7 @@ fn ip_ttl(config: &Config, verbose: u8) -> Duration {
 
 /// The cache mode of this run: the flags win, then `[cache] enabled`.
 fn cache_mode(config: &Config, flags: CacheFlags) -> Result<CacheMode> {
+    config.check_offline(flags.offline)?;
     if !flags.no_cache && !flags.refresh && !flags.offline && !config.cache.enabled {
         return Ok(CacheMode::NoCache);
     }
@@ -1494,9 +1501,22 @@ fn run_config(command: &ConfigCommand) -> Result<()> {
             Ok(())
         }
         ConfigCommand::Edit => edit_config(&paths),
-        ConfigCommand::Validate => {
-            let (config, source) = Config::load_with_source(&paths)?;
+        ConfigCommand::Validate { offline } => {
+            let (config, document) = Config::load_document(&paths)?;
+            // Strict key check first: a typo is the most common problem and its message names the
+            // key path, not whatever type error the unknown key happens to cause downstream.
+            let source = match document {
+                Some((path, document)) => {
+                    crate::config::check_known_keys(&document)?;
+                    Some(path)
+                }
+                None => None,
+            };
             config.validate()?;
+            config.check_offline(*offline)?;
+            for note in config.unit_override_notes()? {
+                eprintln!("{note}");
+            }
             print_line(format_args!(
                 "ok: {}",
                 source

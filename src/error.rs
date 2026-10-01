@@ -51,7 +51,9 @@ pub enum Error {
     LocationNotFound(String),
 
     /// A provider that needs an API key did not find one.
-    #[error("missing API key for {provider}: set {env}")]
+    #[error(
+        "missing API key for {provider}: run `cirrocast key set {provider}` or set {env} in the environment"
+    )]
     MissingKey {
         /// Provider id, e.g. `qweather`.
         provider: String,
@@ -236,7 +238,8 @@ mod tests {
                 env: "CIRROCAST_QWEATHER_KEY".into(),
             }
             .to_string(),
-            "missing API key for qweather: set CIRROCAST_QWEATHER_KEY"
+            "missing API key for qweather: run `cirrocast key set qweather` or set \
+             CIRROCAST_QWEATHER_KEY in the environment"
         );
         assert_eq!(
             Error::LocationNotFound("Atlantis".into()).to_string(),

@@ -60,17 +60,21 @@ impl Geocoder for OpenMeteoGeocoder<'_> {
     fn search(&self, query: &str, limit: u8) -> Result<Vec<Location>> {
         let language = query_language(query);
         let key = cache_key(query, limit, language);
-        let response: Response =
-            self.cache
-                .read_or_fetch_json(&key, self.ttl, "open-meteo", || {
-                    let request = HttpRequest::get(GEOCODE_URL)
-                        .query("name", query)
-                        .query("count", limit.to_string())
-                        .query("language", language)
-                        .query("format", "json");
-                    let response = self.http.send(&request)?;
-                    Ok((response.status(), response.body().to_owned()))
-                })?;
+        let response: Response = self.cache.read_or_fetch_json(
+            &key,
+            self.ttl,
+            "open-meteo",
+            &format!("the query `{query}`"),
+            || {
+                let request = HttpRequest::get(GEOCODE_URL)
+                    .query("name", query)
+                    .query("count", limit.to_string())
+                    .query("language", language)
+                    .query("format", "json");
+                let response = self.http.send(&request)?;
+                Ok((response.status(), response.body().to_owned()))
+            },
+        )?;
         response.into_locations()
     }
 }

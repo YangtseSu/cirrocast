@@ -92,6 +92,7 @@ impl Provider for PirateWeather {
 
         let response: Forecast = fetch_json(
             env,
+            loc,
             &JsonFetch {
                 provider: ProviderId::PirateWeather,
                 request: request.clone(),

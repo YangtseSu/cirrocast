@@ -189,6 +189,7 @@ fn station_rows(icao: &str, env: &Env<'_>) -> Result<Vec<StationInfo>> {
         &CacheKey::station(icao),
         STATION_TTL,
         "station metadata",
+        &format!("station {icao}"),
         |body| {
             if body.trim().is_empty() {
                 return Ok(Vec::new());
@@ -215,6 +216,7 @@ fn cached_json<T>(
     key: &CacheKey,
     ttl: Duration,
     what: &str,
+    place: &str,
     parse: impl Fn(&str) -> Result<T>,
 ) -> Result<T> {
     if env.verbose > 0 {
@@ -237,7 +239,8 @@ fn cached_json<T>(
     }
     if env.cache.mode() == CacheMode::Offline {
         return Err(Error::Network(format!(
-            "offline mode: no cached entry for {}",
+            "offline mode: no cached {PROVIDER} {what} for {place} at {}; \
+             rerun without `--offline` to fetch it",
             key.path().display()
         )));
     }
@@ -256,6 +259,22 @@ fn unknown_station(icao: &str) -> Error {
     ))
 }
 
+/// Whether `value` is an ICAO station identifier: exactly four characters, the first a letter, the
+/// rest letters or digits.
+///
+/// One rule shared by `--station`, `[providers.metar] station` and the backend, so the CLI cannot
+/// accept an identifier the station lookup would then refuse (a three-letter IATA code or a
+/// five-digit WMO number is a different vocabulary).
+#[must_use]
+pub fn is_icao_station(value: &str) -> bool {
+    let mut characters = value.chars();
+    let first = characters.next();
+    let rest: Vec<char> = characters.collect();
+    first.is_some_and(|first| first.is_ascii_alphabetic())
+        && rest.len() == 3
+        && rest.iter().all(char::is_ascii_alphanumeric)
+}
+
 /// The current observation for a station, served from the cache when it is fresh.
 ///
 /// The body is the upstream JSON array; a station that exists but has no current report comes back
@@ -269,6 +288,7 @@ fn observation(icao: &str, env: &Env<'_>) -> Result<MetarReport> {
         &CacheKey::station_resource(PROVIDER, icao, "current"),
         Duration::from_secs(u64::from(env.config.cache.weather_ttl_secs)),
         "current observation",
+        &format!("station {icao}"),
         |body| {
             if body.trim().is_empty() {
                 return Ok(Vec::new());

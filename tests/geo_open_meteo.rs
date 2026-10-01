@@ -190,7 +190,9 @@ fn offline_without_an_entry_fails_before_the_transport_is_asked() {
     assert_eq!(error.exit_code(), 3);
     let text = error.to_string();
     assert!(
-        text.contains("offline mode: no cached entry for geocode/"),
+        text.contains(
+            "offline mode: no cached open-meteo answer for the query `Beijing` at geocode/"
+        ),
         "{text}"
     );
     assert!(

@@ -18,11 +18,16 @@
 //! * [`HttpRequest::normalized`] is the cache key input: query pairs sorted and encoded, header
 //!   names lower-cased, so two spellings of the same request hash to one cache entry;
 //! * [`HttpRequest::secret`] marks a credential so that no log line, error message or cache
-//!   envelope can contain it — the redacted spellings are the only ones printed anywhere.
+//!   envelope can contain it — the redacted spellings are the only ones printed anywhere;
+//! * `CIRROCAST_FORBID_NETWORK` is enforced by [`UreqTransport`] before DNS or connect, so the
+//!   CLI's test suite can prove that no test reaches the network; loopback stays reachable so a
+//!   test can aim a provider's base URL at an in-process stub;
+//! * [`MAX_BODY_BYTES`] caps one response body, so a broken or hostile upstream cannot make the
+//!   client allocate without bound.
 
 use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -52,6 +57,54 @@ const BACKOFF_STEP: Duration = Duration::from_millis(500);
 
 /// Upper bound for an upstream `Retry-After`, so a hostile header cannot hang the CLI.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
+
+/// The most bytes one response body may occupy. Every upstream this project talks to answers in
+/// kilobytes; the cap turns a runaway or hostile body into a typed error instead of an allocation
+/// the process cannot survive. (It also replaces `ureq`'s implicit 10 MiB default with a named,
+/// tested one.)
+pub const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The environment variable that disables outbound traffic for a whole run.
+const FORBID_NETWORK_ENV: &str = "CIRROCAST_FORBID_NETWORK";
+
+/// Whether this process must not open outbound connections.
+///
+/// Read once ([`LazyLock`]): the switch exists so CI and the test suite can prove that nothing
+/// reaches the network, and a per-request toggle would let a late read flip it back on.
+/// A non-empty value other than `0` enables the guard; `0` and the empty string leave it off.
+static FORBIDDEN: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var(FORBID_NETWORK_ENV).is_ok_and(|value| {
+        let value = value.trim();
+        !value.is_empty() && value != "0"
+    })
+});
+
+/// Whether [`FORBIDDEN`] is on, as a function so call sites read as intent rather than as a deref.
+fn network_forbidden() -> bool {
+    *FORBIDDEN
+}
+
+/// Whether `url` addresses the local machine, and therefore stays reachable with the network guard
+/// on. Loopback is exempt so a test can point a provider's base URL at an in-process stub; anything
+/// else — including a name that would need DNS — is refused before a socket is opened.
+fn is_loopback_url(url: &str) -> bool {
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    // Bracketed IPv6 literals (`[::1]:8080`) take precedence over the `:`-splitting.
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split(']').next().unwrap_or_default()
+    } else {
+        authority.split(':').next().unwrap_or_default()
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|address| address.is_loopback())
+}
 
 /// Characters left unescaped in a query string: the RFC 3986 unreserved set.
 const QUERY_SET: &AsciiSet = &NON_ALPHANUMERIC
@@ -347,6 +400,13 @@ pub enum TransportError {
     /// The TLS handshake or certificate check failed.
     #[error("TLS failure: {0}")]
     Tls(String),
+    /// A non-loopback connection was refused because `CIRROCAST_FORBID_NETWORK` is set: no DNS
+    /// query, no socket.
+    #[error("outbound network access is disabled by CIRROCAST_FORBID_NETWORK")]
+    Blocked,
+    /// The response body is larger than [`MAX_BODY_BYTES`].
+    #[error("the response body exceeds the {MAX_BODY_BYTES} byte cap")]
+    TooLarge,
     /// Any other I/O or protocol failure.
     #[error("I/O failure: {0}")]
     Io(String),
@@ -355,8 +415,8 @@ pub enum TransportError {
 impl TransportError {
     /// Whether trying again can plausibly succeed.
     ///
-    /// Transient conditions retry; a broken TLS setup or a protocol error does not, because the
-    /// next attempt would fail identically.
+    /// Transient conditions retry; a broken TLS setup, a blocked connection or a protocol error
+    /// does not, because the next attempt would fail identically.
     #[must_use]
     pub const fn is_retryable(&self) -> bool {
         matches!(
@@ -421,6 +481,12 @@ impl UreqTransport {
 
 impl Transport for UreqTransport {
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, TransportError> {
+        // The guard runs first, so a forbidden request is refused before DNS resolution or a
+        // connect attempt — `strace` on a guarded run shows no `socket(` call at all.
+        if network_forbidden() && !is_loopback_url(&request.full_url()) {
+            return Err(TransportError::Blocked);
+        }
+
         let mut builder = match request.method() {
             Method::Get => self.agent.get(request.full_url()),
         };
@@ -444,7 +510,13 @@ impl Transport for UreqTransport {
             })
             .collect();
         let url = response.get_uri().to_string();
-        let body = response.body_mut().read_to_string().map_err(ureq_error)?;
+        let body = response
+            .body_mut()
+            .with_config()
+            .limit(MAX_BODY_BYTES)
+            .lossy_utf8(true)
+            .read_to_string()
+            .map_err(ureq_error)?;
         Ok(HttpResponse {
             status,
             headers,
@@ -731,6 +803,7 @@ fn ureq_error(error: ureq::Error) -> TransportError {
             TransportError::Connect("no connection could be made".to_owned())
         }
         ureq::Error::Tls(detail) => TransportError::Tls(detail.to_owned()),
+        ureq::Error::BodyExceedsLimit(_) => TransportError::TooLarge,
         ureq::Error::Io(error) => match error.kind() {
             std::io::ErrorKind::TimedOut => TransportError::Timeout,
             std::io::ErrorKind::ConnectionReset
@@ -917,5 +990,37 @@ mod tests {
         assert!(TransportError::Dns("nx".into()).is_retryable());
         assert!(!TransportError::Tls("bad cert".into()).is_retryable());
         assert!(!TransportError::Io("frame".into()).is_retryable());
+        assert!(
+            !TransportError::Blocked.is_retryable() && !TransportError::TooLarge.is_retryable(),
+            "the guard and the body cap fail the same way on every attempt"
+        );
+    }
+
+    #[test]
+    fn only_loopback_targets_survive_the_network_guard() {
+        for url in [
+            "http://127.0.0.1:8080/v1/forecast",
+            "http://127.5.6.7/",
+            "http://localhost:1234/x?y=1",
+            "http://[::1]:8080/v1/forecast",
+            "https://LOCALHOST/x",
+        ] {
+            assert!(
+                super::is_loopback_url(url),
+                "{url} is the local machine and stays reachable"
+            );
+        }
+        for url in [
+            "https://api.open-meteo.com/v1/forecast",
+            "https://127.0.0.1.example.com/v1",
+            "http://10.0.0.1/",
+            "ftp://example.invalid/x",
+            "not-a-url",
+        ] {
+            assert!(
+                !super::is_loopback_url(url),
+                "{url} needs a socket and must be blocked"
+            );
+        }
     }
 }

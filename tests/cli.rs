@@ -163,6 +163,45 @@ fn location_search_help_and_error_messages_share_the_accepted_forms() {
 }
 
 #[test]
+fn cache_stat_separates_expired_entries_from_valid_ones() {
+    let sandbox = common::Sandbox::new();
+    let weather = sandbox.cache_dir().join("weather");
+    std::fs::create_dir_all(&weather).expect("the cache directory is writable");
+
+    let entry = |key: &str, fetched_at: &str, ttl_secs: u64| {
+        format!(
+            r#"{{"cache_schema_version":1,"key":"{key}","fetched_at":"{fetched_at}","ttl_secs":{ttl_secs},"status":200,"body":"{{}}"}}"#
+        )
+    };
+    let now = chrono::Utc::now();
+    std::fs::write(
+        weather.join("fresh.json"),
+        entry("weather|fresh", &now.to_rfc3339(), 600),
+    )
+    .expect("the fresh entry is written");
+    std::fs::write(
+        weather.join("stale.json"),
+        entry(
+            "weather|stale",
+            &(now - chrono::Duration::days(30)).to_rfc3339(),
+            600,
+        ),
+    )
+    .expect("the stale entry is written");
+
+    sandbox
+        .cirrocast()
+        .args(["cache", "stat"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("weather      2 entries")
+                .and(predicate::str::contains("1 expired"))
+                .and(predicate::str::contains("geocode      0 entries")),
+        );
+}
+
+#[test]
 fn cache_stat_and_clean_report_an_empty_cache() {
     let sandbox = common::Sandbox::new();
     sandbox
@@ -308,7 +347,7 @@ fn metar_is_selectable_and_reaches_the_fetch() {
         .args(["-p", "metar", "--station", "ZBAA", "--offline"])
         .assert()
         .code(3)
-        .stderr(predicate::str::contains("offline mode: no cached entry"));
+        .stderr(predicate::str::contains("offline mode: no cached metar"));
 }
 
 #[test]

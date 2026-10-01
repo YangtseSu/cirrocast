@@ -575,7 +575,11 @@ pub struct JsonFetch<'a> {
 /// * `429`, `5xx` and transport failures keep their taxonomy ([`Error::Upstream`] /
 ///   [`Error::Network`]), which is what lets a chain fall through to the next backend;
 /// * decoding happens here, so a schema change names the provider rather than the cache.
-pub fn fetch_json<T: DeserializeOwned>(env: &Env<'_>, fetch: &JsonFetch<'_>) -> Result<T> {
+pub fn fetch_json<T: DeserializeOwned>(
+    env: &Env<'_>,
+    loc: &Location,
+    fetch: &JsonFetch<'_>,
+) -> Result<T> {
     if env.verbose > 0 {
         eprintln!(
             "provider: {} {} (cache {})",
@@ -584,11 +588,18 @@ pub fn fetch_json<T: DeserializeOwned>(env: &Env<'_>, fetch: &JsonFetch<'_>) -> 
             env.cache.mode().name()
         );
     }
+    let place = format!("{} ({:.2}, {:.2})", loc.name, loc.lat, loc.lon);
     env.cache
-        .read_or_fetch_json(&fetch.key, fetch.ttl, fetch.provider.as_str(), || {
-            let response = env.http.send(&fetch.request)?;
-            Ok((response.status(), response.body().to_owned()))
-        })
+        .read_or_fetch_json(
+            &fetch.key,
+            fetch.ttl,
+            fetch.provider.as_str(),
+            &place,
+            || {
+                let response = env.http.send(&fetch.request)?;
+                Ok((response.status(), response.body().to_owned()))
+            },
+        )
         .map_err(|error| rejected_key(error, fetch.provider))
 }
 

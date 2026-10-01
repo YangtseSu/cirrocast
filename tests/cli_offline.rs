@@ -18,6 +18,7 @@ use std::path::Path;
 
 use chrono::Utc;
 use chrono_tz::Tz;
+use predicates::prelude::*;
 
 use cirrocast::cache::{CACHE_SCHEMA_VERSION, CacheKey};
 use common::{Sandbox, fixture_path};
@@ -296,6 +297,105 @@ fn scan(directory: &Path, secrets: &[&str]) {
                 !text.contains(secret),
                 "{} contains an API key",
                 path.display()
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// `--offline` correctness: same output as a warm run, no socket, a hint on a miss
+// ---------------------------------------------------------------------------------------------
+
+/// A sandbox whose cache already holds the geocode answer and the Beijing forecast.
+fn warm_sandbox() -> Sandbox {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    seed(
+        &sandbox,
+        &CacheKey::weather("open-meteo", LAT, LON, DAYS, today()),
+        &body("open_meteo/forecast_beijing_2026-07-15.json"),
+    );
+    sandbox
+}
+
+/// The plain-format forecast line for `Beijing`, with `flags` in front of the location.
+fn plain_run(sandbox: &Sandbox, flags: &[&str]) -> std::process::Output {
+    let mut args: Vec<&str> = flags.to_vec();
+    args.extend(["-p", "open-meteo", "-d", "3", "Beijing", "-f", "plain"]);
+    sandbox
+        .cirrocast()
+        .args(&args)
+        .assert()
+        .success()
+        .get_output()
+        .clone()
+}
+
+#[test]
+fn a_warm_cache_renders_identically_with_and_without_offline() {
+    let sandbox = warm_sandbox();
+    let offline = plain_run(&sandbox, &["--offline"]);
+    let online = plain_run(&sandbox, &[]);
+    assert_eq!(offline.stdout, online.stdout, "offline changed the output");
+    assert_eq!(offline.stderr, online.stderr, "offline changed the notes");
+}
+
+#[test]
+fn offline_never_asks_for_a_socket_even_with_the_guard_on() {
+    // The guard turns any real connection attempt into a distinct error, so a successful run
+    // proves that `--offline` served everything from disk. A warm cache cannot be a false pass:
+    // the run would not fail if it refetched, it would merely print fresh data.
+    let sandbox = warm_sandbox();
+    let guarded = sandbox
+        .cirrocast()
+        .args([
+            "--offline",
+            "-p",
+            "open-meteo",
+            "-d",
+            "3",
+            "Beijing",
+            "-f",
+            "plain",
+        ])
+        .env("CIRROCAST_FORBID_NETWORK", "1")
+        .assert()
+        .success();
+    assert_eq!(
+        guarded.get_output().stdout,
+        plain_run(&sandbox, &["--offline"]).stdout
+    );
+}
+
+#[test]
+fn a_cold_cache_with_offline_exits_three_and_names_the_rerun() {
+    let sandbox = Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["--offline", "Beijing", "-f", "plain"])
+        .assert()
+        .code(3)
+        .stderr(
+            predicate::str::contains("offline mode: no cached open-meteo answer for")
+                .and(predicate::str::contains("rerun without `--offline`")),
+        );
+}
+
+#[test]
+fn offline_conflicts_name_both_flags() {
+    let sandbox = Sandbox::new();
+    for other in ["--no-cache", "--refresh"] {
+        let assert = sandbox
+            .cirrocast()
+            .args(["--offline", other, "Beijing"])
+            .assert()
+            .code(2);
+        let stderr =
+            String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8");
+        for flag in ["--offline", other] {
+            assert!(
+                stderr.contains(flag),
+                "{flag} is not named in the conflict: {stderr}"
             );
         }
     }

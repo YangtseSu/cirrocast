@@ -233,7 +233,7 @@ fn a_station_needs_the_station_backend() {
         .assert()
         .code(3)
         .stderr(predicate::str::contains(
-            "offline mode: no cached entry for weather/metar-ZBAA-current.json",
+            "offline mode: no cached metar current observation for station ZBAA at weather/metar-ZBAA-current.json",
         ));
 
     // `auto` gains `metar` for a station run; the station backend is tried first.
@@ -494,7 +494,7 @@ fn the_exit_code_table_is_reachable_end_to_end() {
         .assert()
         .code(3)
         .stderr(predicate::str::contains(
-            "offline mode: no cached entry for",
+            "offline mode: no cached open-meteo answer for",
         ));
 
     // 4 — configuration: a file that does not parse.

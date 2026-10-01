@@ -30,6 +30,11 @@ fn key(part: &str) -> CacheKey {
     CacheKey::weather_part("openweathermap", part, 39.9042, 116.4074, 5, date)
 }
 
+/// The location the requests in these tests are for; what the offline miss message spells out.
+fn place() -> cirrocast::model::Location {
+    common::fixture_location("beijing")
+}
+
 /// The request one fetch in these tests uses: the key travels in a query parameter, as it does for
 /// `OpenWeatherMap`, `WeatherAPI` and `WWO`.
 fn request() -> HttpRequest {
@@ -48,6 +53,7 @@ fn run(
     let run = ProviderRun::new(replies, provider_clock(2026, 9, 30), mode);
     let result = fetch_json(
         &run.env(),
+        &place(),
         &JsonFetch {
             provider: ProviderId::OpenWeatherMap,
             request: request(),
@@ -136,6 +142,7 @@ fn a_second_fetch_is_served_from_the_cache() {
 
     let again: serde_json::Value = fetch_json(
         &run.env(),
+        &place(),
         &JsonFetch {
             provider: ProviderId::OpenWeatherMap,
             request: request(),
@@ -155,8 +162,14 @@ fn offline_never_touches_the_network_and_names_the_missing_entry() {
     let error = result.expect_err("a miss in offline mode is an error");
     assert_eq!(error.exit_code(), 3);
     let text = error.to_string();
-    assert!(text.contains("offline mode: no cached entry for"), "{text}");
+    assert!(
+        text.contains(
+            "offline mode: no cached openweathermap answer for Beijing (39.90, 116.41) at"
+        ),
+        "{text}"
+    );
     assert!(text.contains("openweathermap-current-"), "{text}");
+    assert!(text.contains("rerun without `--offline`"), "{text}");
     assert!(run.calls().is_empty(), "offline mode must not fetch");
 }
 
@@ -196,6 +209,7 @@ fn the_cache_envelope_never_stores_the_key() {
     );
     fetch_json::<serde_json::Value>(
         &run.env(),
+        &place(),
         &JsonFetch {
             provider: ProviderId::OpenWeatherMap,
             request: request(),

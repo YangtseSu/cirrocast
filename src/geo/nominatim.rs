@@ -144,9 +144,13 @@ impl<'a> Nominatim<'a> {
 impl Geocoder for Nominatim<'_> {
     fn search(&self, query: &str, limit: u8) -> Result<Vec<Location>> {
         let key = self.cache_key(query, limit);
-        let hits: Vec<Hit> = self
-            .cache
-            .read_or_fetch_json(&key, self.ttl, "nominatim", || self.fetch(query, limit))?;
+        let hits: Vec<Hit> = self.cache.read_or_fetch_json(
+            &key,
+            self.ttl,
+            "nominatim",
+            &format!("the OSM query `{query}`"),
+            || self.fetch(query, limit),
+        )?;
         hits.into_iter().map(location_from_hit).collect()
     }
 }

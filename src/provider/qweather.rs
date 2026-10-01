@@ -98,6 +98,7 @@ impl Provider for QWeather {
         let current_request = request(&host, "current", loc, &key);
         let current: CurrentResponse = fetch_json(
             env,
+            loc,
             &JsonFetch {
                 provider: ProviderId::QWeather,
                 request: current_request.clone(),
@@ -117,6 +118,7 @@ impl Provider for QWeather {
                 .query("hours", hours.min(MAX_HOURS).to_string());
             let hourly: HourlyResponse = fetch_json(
                 env,
+                loc,
                 &JsonFetch {
                     provider: ProviderId::QWeather,
                     request: hourly_request.clone(),

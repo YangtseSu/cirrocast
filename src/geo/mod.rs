@@ -186,7 +186,7 @@ pub fn resolve(
     let mut ranked = rank(candidates, query, limit);
     if ranked.is_empty() {
         return Err(Error::LocationNotFound(format!(
-            "no location found for {spec}"
+            "no location found for {spec}; check the spelling or run `cirrocast location search <query>` to see the candidates"
         )));
     }
     let chosen = ranked.remove(0);

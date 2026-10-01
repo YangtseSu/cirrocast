@@ -86,6 +86,7 @@ impl Provider for OpenMeteo {
 
         let response: ForecastResponse = fetch_json(
             env,
+            loc,
             &JsonFetch {
                 provider: ProviderId::OpenMeteo,
                 request: request.clone(),

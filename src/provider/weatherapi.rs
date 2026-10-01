@@ -82,6 +82,7 @@ impl Provider for WeatherApi {
 
         let response: Forecast = fetch_json(
             env,
+            loc,
             &JsonFetch {
                 provider: ProviderId::WeatherApi,
                 request: request.clone(),

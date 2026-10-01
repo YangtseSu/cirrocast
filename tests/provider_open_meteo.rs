@@ -380,12 +380,14 @@ fn offline_without_an_entry_names_the_key_path() {
         .fetch(&fixture_location("beijing"), 3)
         .expect_err("nothing is cached yet");
     assert_eq!(error.exit_code(), 3);
+    let text = error.to_string();
     assert!(
-        error.to_string().contains(
-            "offline mode: no cached entry for weather/open-meteo-39.90-116.41-3-2026-07-15.json"
+        text.contains(
+            "offline mode: no cached open-meteo answer for Beijing (39.90, 116.41) at weather/open-meteo-39.90-116.41-3-2026-07-15.json"
         ),
-        "{error}"
+        "{text}"
     );
+    assert!(text.contains("rerun without `--offline`"), "{text}");
     assert!(run.calls().is_empty(), "offline never asks the transport");
 }
 

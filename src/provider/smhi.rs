@@ -83,6 +83,7 @@ impl Provider for Smhi {
 
         let response: PointResponse = fetch_json(
             env,
+            loc,
             &JsonFetch {
                 provider: ProviderId::Smhi,
                 request: request.clone(),

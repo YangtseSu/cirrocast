@@ -18,10 +18,13 @@ pub mod keys;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::str::FromStr as _;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::{Error, Result};
+use crate::geo::LocationSpec;
+use crate::model::units::UnitSystem;
 use crate::paths::Paths;
 use crate::provider::ProviderId;
 
@@ -292,31 +295,52 @@ impl Config {
 
     /// [`Config::load`], plus the file the configuration came from (`None` = built-in defaults).
     pub fn load_with_source(paths: &Paths) -> Result<(Self, Option<PathBuf>)> {
-        let mut source = None;
+        let Some(path) = Self::source(paths)? else {
+            return Ok((Self::default(), None));
+        };
+        let text = fs::read_to_string(&path)
+            .map_err(|error| Error::Config(format!("{}: {error}", path.display())))?;
+        Ok((Self::parse(&text, &path)?, Some(path)))
+    }
+
+    /// [`Config::load`], plus the raw TOML document the typed value was built from.
+    ///
+    /// The typed value has already forgotten the keys this build does not know — that is what makes
+    /// a document written by a newer release keep working — so `config validate`, whose job is to
+    /// point at what the user wrote, needs the document itself. Only that command pays the second
+    /// copy.
+    pub fn load_document(paths: &Paths) -> Result<(Self, Option<(PathBuf, toml::Value)>)> {
+        let Some(path) = Self::source(paths)? else {
+            return Ok((Self::default(), None));
+        };
+        let text = fs::read_to_string(&path)
+            .map_err(|error| Error::Config(format!("{}: {error}", path.display())))?;
+        let document = Self::document(&text, &path)?;
+        let config = Self::from_value(document.clone(), &path)?;
+        Ok((config, Some((path, document))))
+    }
+
+    /// The first configuration file that exists in the XDG search order.
+    fn source(paths: &Paths) -> Result<Option<PathBuf>> {
         for candidate in paths.config_file_candidates() {
             match fs::symlink_metadata(&candidate) {
-                Ok(_) => {
-                    source = Some(candidate);
-                    break;
-                }
+                Ok(_) => return Ok(Some(candidate)),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
                     return Err(Error::Config(format!("{}: {error}", candidate.display())));
                 }
             }
         }
-
-        let Some(path) = source else {
-            return Ok((Self::default(), None));
-        };
-
-        let text = fs::read_to_string(&path)
-            .map_err(|error| Error::Config(format!("{}: {error}", path.display())))?;
-        Ok((Self::parse(&text, &path)?, Some(path)))
+        Ok(None)
     }
 
-    /// Parses and migrates one configuration document.
+    /// Parses one configuration document.
     fn parse(text: &str, path: &Path) -> Result<Self> {
+        Self::from_value(Self::document(text, path)?, path)
+    }
+
+    /// Parses and migrates one configuration document into a TOML value.
+    fn document(text: &str, path: &Path) -> Result<toml::Value> {
         let mut document: toml::Value =
             toml::from_str(text).map_err(|error| Error::Config(positioned(path, text, &error)))?;
 
@@ -334,7 +358,11 @@ impl Config {
         };
         let version = migrate(version, &mut document)?;
         debug_assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        Ok(document)
+    }
 
+    /// Converts a migrated document into the typed configuration.
+    fn from_value(document: toml::Value, path: &Path) -> Result<Self> {
         document
             .try_into()
             .map_err(|error| Error::Config(format!("{}: {error}", path.display())))
@@ -397,11 +425,83 @@ impl Config {
     pub fn validate(&self) -> Result<()> {
         self.validate_schema_version()?;
         self.validate_defaults()?;
+        self.validate_location()?;
         self.validate_units()?;
         self.validate_network()?;
         self.validate_cache()?;
         self.validate_render()?;
         self.validate_providers()
+    }
+
+    /// Rejects a run that asks for something the configuration forbids.
+    ///
+    /// Today that is one combination: `cache.enabled = false` with `--offline` asks the cache to
+    /// serve an answer it was told never to store. The message names the key and both ways out.
+    pub fn check_offline(&self, offline: bool) -> Result<()> {
+        if offline && !self.cache.enabled {
+            return Err(Error::Config(
+                "cache.enabled = false, so `--offline` could never be served: \
+                 set cache.enabled = true or drop `--offline`"
+                    .to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// One note per `[units]` override that changes the quantity away from what `defaults.units`
+    /// alone would select, spelling out the precedence rule.
+    ///
+    /// Overriding a single quantity is the documented behaviour, so these are notes, not errors:
+    /// the text exists so that a reader who sees both `defaults.units = "us"` and `units.temp = "c"`
+    /// is told which key the renderer actually applies.
+    pub fn unit_override_notes(&self) -> Result<Vec<String>> {
+        let system = UnitSystem::from_str(&self.defaults.units)?;
+        let defaults = system.resolve(&UnitOverrides::default())?;
+        let resolved = system.resolve(&self.units)?;
+        let mut notes = Vec::new();
+        for (key, value, matches_system_default, quantity) in [
+            (
+                "units.temp",
+                self.units.temp.as_deref(),
+                resolved.temp == defaults.temp,
+                "temperature",
+            ),
+            (
+                "units.wind",
+                self.units.wind.as_deref(),
+                resolved.wind == defaults.wind,
+                "wind",
+            ),
+            (
+                "units.pressure",
+                self.units.pressure.as_deref(),
+                resolved.pressure == defaults.pressure,
+                "pressure",
+            ),
+            (
+                "units.distance",
+                self.units.distance.as_deref(),
+                resolved.distance == defaults.distance,
+                "distance",
+            ),
+            (
+                "units.precip",
+                self.units.precip.as_deref(),
+                resolved.precip == defaults.precip,
+                "precipitation",
+            ),
+        ] {
+            if let Some(value) = value
+                && !matches_system_default
+            {
+                notes.push(format!(
+                    "note: {key} = \"{value}\" overrides defaults.units = \"{}\" for {quantity}; \
+                     the per-quantity key wins",
+                    self.defaults.units
+                ));
+            }
+        }
+        Ok(notes)
     }
 
     fn validate_schema_version(&self) -> Result<()> {
@@ -422,6 +522,18 @@ impl Config {
         check_range("defaults.days", u32::from(self.defaults.days), DAYS_RANGE)?;
         check_language("defaults.language", &self.defaults.language)?;
         Ok(())
+    }
+
+    /// `location.default` must be a location argument the resolver would accept, checked with the
+    /// same parser the command line uses so the two cannot drift.
+    fn validate_location(&self) -> Result<()> {
+        let text = self.location.default.trim();
+        if text.is_empty() {
+            return Ok(());
+        }
+        LocationSpec::parse_arg(Some(text))
+            .map(|_| ())
+            .map_err(|error| Error::Config(format!("location.default: {error}")))
     }
 
     fn validate_units(&self) -> Result<()> {
@@ -484,12 +596,9 @@ impl Config {
 
     fn validate_providers(&self) -> Result<()> {
         let station = self.providers.metar.station.trim();
-        let station_ok = station.is_empty()
-            || ((3..=5).contains(&station.len())
-                && station.chars().all(|c| c.is_ascii_alphanumeric()));
-        if !station_ok {
+        if !station.is_empty() && !crate::provider::metar::is_icao_station(station) {
             return Err(Error::Config(format!(
-                "providers.metar.station: `{station}` is not a 3-5 character station identifier"
+                "providers.metar.station: `{station}` is not a four-character ICAO station identifier (a letter followed by three letters or digits, e.g. `ZBAA`)"
             )));
         }
 
@@ -626,6 +735,86 @@ fn is_service_url(value: &str) -> bool {
         return false;
     };
     matches!(scheme, "http" | "https") && !rest.trim_matches('/').is_empty()
+}
+
+// ---------------------------------------------------------------------------------------------
+// Strict document check (`config validate` only)
+// ---------------------------------------------------------------------------------------------
+
+/// The keys the schema defines, per table path.
+///
+/// The empty path is the document root. A path that is not listed is a value, not a table, and has
+/// no allowed children. Kept next to [`KEY_TABLE`], which is the same schema flattened for the
+/// `config get`/`set` vocabulary; a test proves the two agree.
+fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
+    Some(match table {
+        "" => &[
+            "schema_version",
+            "defaults",
+            "location",
+            "units",
+            "network",
+            "cache",
+            "render",
+            "providers",
+        ],
+        "defaults" => &["provider", "format", "units", "days", "language"],
+        "location" => &["default"],
+        "units" => &["temp", "wind", "pressure", "distance", "precip"],
+        "network" => &["timeout_secs", "retries", "proxy", "nominatim_url"],
+        "cache" => &[
+            "enabled",
+            "weather_ttl_secs",
+            "ip_ttl_secs",
+            "geocode_ttl_secs",
+        ],
+        "render" => &["color", "width"],
+        "providers" => &["metar", "qweather"],
+        "providers.metar" => &["station"],
+        "providers.qweather" => &["host"],
+        _ => return None,
+    })
+}
+
+/// Rejects the first key the schema does not define, naming its dotted path and the sibling keys
+/// the table does accept.
+///
+/// This is stricter than loading on purpose: a running build ignores unknown keys so a document
+/// written by a newer release keeps working, while `config validate` exists to tell the user that
+/// the key they typed will never be read — the likely causes being a typo or a key from a version
+/// they are not running.
+pub fn check_known_keys(document: &toml::Value) -> Result<()> {
+    check_table("", document)
+}
+
+/// [`check_known_keys`] for one table, recursing into the tables it allows.
+fn check_table(path: &str, value: &toml::Value) -> Result<()> {
+    let Some(table) = value.as_table() else {
+        return Ok(());
+    };
+    let Some(allowed) = allowed_keys(path) else {
+        return Ok(());
+    };
+    for (key, child) in table {
+        let child_path = if path.is_empty() {
+            key.clone()
+        } else {
+            format!("{path}.{key}")
+        };
+        if !allowed.contains(&key.as_str()) {
+            let known = allowed.join(", ");
+            let scope = if path.is_empty() {
+                "known keys".to_owned()
+            } else {
+                format!("known keys in `{path}`")
+            };
+            return Err(Error::Config(format!(
+                "unknown config key `{child_path}`; {scope}: {known}"
+            )));
+        }
+        check_table(&child_path, child)?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1464,7 +1653,7 @@ mod tests {
             (
                 "providers.metar.station",
                 |config| config.providers.metar.station = "ZZ Z".to_owned(),
-                "providers.metar.station: `ZZ Z` is not a 3-5 character station identifier",
+                "providers.metar.station: `ZZ Z` is not a four-character ICAO station identifier",
             ),
         ];
 
@@ -1577,5 +1766,182 @@ mod tests {
         let mut invalid = Config::default();
         invalid.defaults.days = 99;
         assert!(super::Settings::resolve(&invalid, &CliOverrides::default()).is_err());
+    }
+
+    #[test]
+    fn unknown_keys_are_rejected_with_their_dotted_path() {
+        let document = |text: &str| {
+            toml::from_str::<toml::Value>(text).expect("the test document parses as TOML")
+        };
+
+        // The shipped document is exactly the schema.
+        super::check_known_keys(&document(DEFAULT_DOCUMENT))
+            .expect("the default document defines no unknown key");
+
+        // A whole unknown table at the root.
+        let error = super::check_known_keys(&document("[future]\nx = 1\n"))
+            .expect_err("an unknown table is rejected");
+        assert!(
+            error.to_string().contains("unknown config key `future`"),
+            "{error}"
+        );
+        assert!(error.to_string().contains("schema_version"), "{error}");
+
+        // A typo inside a known table names the table's real keys.
+        let error = super::check_known_keys(&document("[defaults]\ndayz = 3\n"))
+            .expect_err("a typo inside a known table is rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("unknown config key `defaults.dayz`"),
+            "{error}"
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("known keys in `defaults`: provider, format, units, days, language"),
+            "{error}"
+        );
+
+        // A value where a table is expected is a type error at load time, not an unknown key.
+        super::check_known_keys(&document("defaults = 3\n"))
+            .expect("a scalar where a table belongs is left to serde");
+    }
+
+    #[test]
+    fn the_strict_schema_and_the_dotted_key_table_agree() {
+        // Every documented dotted key is reachable through `allowed_keys`, and every allowed key
+        // has a row in `KEY_TABLE`: the two halves of the same schema cannot drift apart.
+        let mut table_paths: Vec<String> =
+            KEY_TABLE.iter().map(|spec| spec.name.to_owned()).collect();
+        table_paths.sort();
+
+        let mut schema_paths = Vec::new();
+        collect_schema_paths("", &mut schema_paths);
+        schema_paths.sort();
+
+        assert_eq!(schema_paths, table_paths);
+    }
+
+    /// Every leaf key the strict schema defines, as dotted paths.
+    fn collect_schema_paths(table: &str, paths: &mut Vec<String>) {
+        for key in super::allowed_keys(table).unwrap_or_default() {
+            let path = if table.is_empty() {
+                (*key).to_owned()
+            } else {
+                format!("{table}.{key}")
+            };
+            if super::allowed_keys(&path).is_some() {
+                collect_schema_paths(&path, paths);
+            } else {
+                paths.push(path);
+            }
+        }
+    }
+
+    #[test]
+    fn location_default_must_parse_as_a_location_argument() {
+        let mut config = Config::default();
+        for accepted in ["", "Beijing", ":Beijing", "~Tsinghua", "@39.9042,116.4074"] {
+            config.location.default = accepted.to_owned();
+            config
+                .validate()
+                .unwrap_or_else(|error| panic!("`{accepted}` should validate: {error}"));
+        }
+
+        for rejected in [":", "~", "@not,numbers", "a"] {
+            config.location.default = rejected.to_owned();
+            let error = config
+                .validate()
+                .expect_err(&format!("`{rejected}` should be rejected"));
+            assert_eq!(error.exit_code(), 4);
+            assert!(
+                error.to_string().contains("location.default:"),
+                "{rejected}: {error}"
+            );
+            assert!(
+                error.to_string().contains("accepted forms:"),
+                "{rejected}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_metar_station_must_be_an_icao_identifier() {
+        let mut config = Config::default();
+        for accepted in ["", "ZBAA", "kjfk"] {
+            config.providers.metar.station = accepted.to_owned();
+            config
+                .validate()
+                .unwrap_or_else(|error| panic!("`{accepted}` should validate: {error}"));
+        }
+        for rejected in ["ZB", "ZBA", "ZBAAA", "1BAA", "ZB A"] {
+            config.providers.metar.station = rejected.to_owned();
+            let error = config
+                .validate()
+                .expect_err(&format!("`{rejected}` should be rejected"));
+            assert_eq!(error.exit_code(), 4);
+            assert!(
+                error.to_string().contains("providers.metar.station: "),
+                "{rejected}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn offline_needs_an_enabled_cache() {
+        let mut config = Config::default();
+        config
+            .check_offline(true)
+            .expect("an enabled cache serves offline");
+
+        config.cache.enabled = false;
+        config.check_offline(false).expect("no flags, no problem");
+        let error = config
+            .check_offline(true)
+            .expect_err("--offline and cache.enabled = false cannot be served");
+        assert_eq!(error.exit_code(), 4);
+        assert!(
+            error.to_string().contains("cache.enabled = false"),
+            "{error}"
+        );
+        assert!(error.to_string().contains("drop `--offline`"), "{error}");
+    }
+
+    #[test]
+    fn unit_overrides_that_conflict_with_the_system_say_which_key_wins() {
+        let mut config = Config::default();
+        config.defaults.units = "us".to_owned();
+        assert!(
+            config
+                .unit_override_notes()
+                .expect("no overrides, no notes")
+                .is_empty()
+        );
+
+        // Agreeing with the system is not a conflict.
+        config.units.temp = Some("f".to_owned());
+        assert!(
+            config
+                .unit_override_notes()
+                .expect("agreement is silent")
+                .is_empty()
+        );
+
+        // Disagreeing is: the note names the key, the value and the rule.
+        config.units.temp = Some("c".to_owned());
+        let notes = config.unit_override_notes().expect("notes are built");
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].contains("units.temp = \"c\""), "{}", notes[0]);
+        assert!(
+            notes[0].contains("overrides defaults.units = \"us\""),
+            "{}",
+            notes[0]
+        );
+        assert!(
+            notes[0].contains("the per-quantity key wins"),
+            "{}",
+            notes[0]
+        );
     }
 }

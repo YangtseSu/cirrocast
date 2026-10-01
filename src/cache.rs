@@ -321,6 +321,8 @@ pub struct NamespaceStat {
     pub name: &'static str,
     /// Number of entry files.
     pub entries: u64,
+    /// How many of those entries are past their TTL at the clock's now.
+    pub expired: u64,
     /// Total size of those files.
     pub bytes: u64,
     /// Oldest `fetched_at` among the entries that parse.
@@ -488,13 +490,15 @@ impl Cache {
     ///
     /// A cached body that no longer parses counts as a miss and is fetched again (so a provider
     /// schema change heals itself instead of failing forever); a miss in [`CacheMode::Offline`] is
-    /// [`Error::Network`] naming the exact key path. `provider` is only the name a decode failure
+    /// [`Error::Network`] naming the provider, the place the answer was for and the exact key
+    /// path, plus the one command that can fix it. `provider` is only the name a decode failure
     /// reports, so the error points at the upstream that changed rather than at the cache.
     pub fn read_or_fetch_json<T: DeserializeOwned>(
         &self,
         key: &CacheKey,
         ttl: Duration,
         provider: &str,
+        place: &str,
         fetch: impl FnOnce() -> Result<(u16, String)>,
     ) -> Result<T> {
         if let Some(entry) = self.read(key)? {
@@ -508,7 +512,8 @@ impl Cache {
         }
         if self.mode == CacheMode::Offline {
             return Err(Error::Network(format!(
-                "offline mode: no cached entry for {}",
+                "offline mode: no cached {provider} answer for {place} at {}; \
+                 rerun without `--offline` to fetch it",
                 key.path().display()
             )));
         }
@@ -551,12 +556,14 @@ impl Cache {
 
     /// Counts and sizes the known namespaces.
     pub fn stat(&self) -> Result<CacheStat> {
+        let now = self.clock.now();
         let mut namespaces = Vec::with_capacity(NAMESPACES.len());
         for name in NAMESPACES {
             let directory = self.root.join(name);
             let mut namespace = NamespaceStat {
                 name,
                 entries: 0,
+                expired: 0,
                 bytes: 0,
                 oldest: None,
                 newest: None,
@@ -573,6 +580,9 @@ impl Cache {
                 if let Ok(text) = fs::read_to_string(&path)
                     && let Ok(entry) = serde_json::from_str::<CacheEntry>(&text)
                 {
+                    if !entry.is_fresh(now) {
+                        namespace.expired += 1;
+                    }
                     namespace.oldest = Some(
                         namespace
                             .oldest

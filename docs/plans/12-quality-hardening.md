@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 12 — Quality hardening
 
-Status: ⬜ not-started
+Status: 🚧 in-progress
 Depends on: 08 (cli-surface-and-formats), 09 (localization), 10 (additional-providers)
 Touches: `src/**/*.rs` (error text and logging only), `src/http.rs` (network guard), `src/config/mod.rs`
 (validation), `src/cli.rs` (help text), `deny.toml` (new), `.github/workflows/ci.yml` (new),
@@ -36,11 +36,11 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
 - ⬜ `--verbose` review: `-v` prints one indented `caused by:` line per error source; `-vv` adds the request URL
   (secrets redacted), HTTP status, retry attempt and cache decision; `--quiet` mutes warnings, never errors; no
   log line ever contains a key or a `keys.toml` body.
-- ⬜ `--offline` correctness: with the guard on, `--offline` constructs no request at all; a warm cache renders
+- ✅ `--offline` correctness: with the guard on, `--offline` constructs no request at all; a warm cache renders
   identically to a run without the flag; a cold cache fails with exit 3 plus the rerun hint; `--no-cache
   --offline` and `--refresh --offline` are usage errors naming both flags; `cache stat` separates
   expired-but-present from valid entries.
-- ⬜ `cirrocast config validate` returns 0 on the shipped template and 4 with the key path for: unknown keys,
+- ✅ `cirrocast config validate` returns 0 on the shipped template and 4 with the key path for: unknown keys,
   unknown enum values, a non-ICAO `[providers.metar] station`, `render.width` below the minimum,
   zero/negative timeouts and TTLs, a `location.default` that fails the location grammar, and
   `cache.enabled = false` combined with `--offline`; the precedence rule `[units] <key> > defaults.units` is
@@ -170,3 +170,12 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
 
 - 2026-09-30 — step file written (status: not-started); `reuse lint` state (1 invalid expression, 1 headerless
   file) and the symlink-versus-copy behaviour recorded while drafting.
+- 2026-10-01 — step opened (status: in-progress). Landed: the `CIRROCAST_FORBID_NETWORK` guard and the 8 MiB
+  body cap in `src/http.rs` (blocked before DNS; loopback exempt for in-process stubs); the offline-miss error
+  now names provider, place, key path and the rerun hint (`Cache::read_or_fetch_json` gained the `place`
+  argument, so `fetch_json` takes the `Location` and metar its station); `cache stat` counts expired entries
+  separately; `config validate` got the strict key check (`check_known_keys`), the ICAO station rule
+  (`provider::metar::is_icao_station`, shared with `--station`), the `location.default` grammar check, the
+  `cache.enabled = false` + `--offline` combination (also enforced on a weather run) and the `[units]` override
+  precedence notes; `MissingKey` and `LocationNotFound` name their next command. Two deliverables ticked;
+  the verbose review and the message audit are still open.

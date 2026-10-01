@@ -93,6 +93,7 @@ impl Provider for WorldWeatherOnline {
 
         let response: Envelope = fetch_json(
             env,
+            loc,
             &JsonFetch {
                 provider: ProviderId::WorldWeatherOnline,
                 request: request.clone(),
