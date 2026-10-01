@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The `json` format: one snapshot, the complete key set, and the unit-independence promise.
+//! The `json` format: one snapshot, the doc-checked key set, and the unit-independence promise.
 //!
-//! The snapshot is the hand-reviewed document; the key-set test is what makes a rename or a
-//! removal fail loudly, because a reviewer skimming a diff would not notice `min_c` becoming
-//! `temp_min_c`. Both exist for the same reason the module doc states the stability promise:
-//! consumers are scripts, and a silently renamed key breaks them.
+//! The snapshot is the hand-reviewed document. The key set is *not* a second copy in this file:
+//! it is read out of the machine-checked index in `docs/schema.md`, so a rename, a removal, a
+//! retyping or an undocumented addition fails this suite instead of only drifting the document
+//! away from the code. Both exist for the same reason the module doc states the stability
+//! promise: consumers are scripts, and a silently renamed key breaks them.
 
 mod common;
 
@@ -26,111 +27,98 @@ fn english() -> I18n {
     I18n::load(&LanguageRequest::Auto, |_| None)
 }
 
-/// Every key path the schema documents, in `serde_json`'s own spelling (`[]` = array element).
-const EXPECTED_KEYS: [&str; 102] = [
-    "schema_version",
-    "location",
-    "location.name",
-    "location.admin1",
-    "location.country",
-    "location.country_code",
-    "location.lat",
-    "location.lon",
-    "location.timezone",
-    "location.elevation_m",
-    "location.source",
-    "location.station",
-    "current",
-    "current.time",
-    "current.condition",
-    "current.condition.code",
-    "current.condition.text",
-    "current.temp_c",
-    "current.feels_like_c",
-    "current.humidity_pct",
-    "current.precip_mm",
-    "current.pressure_hpa",
-    "current.visibility_km",
-    "current.wind_kmh",
-    "current.wind_dir_deg",
-    "current.wind_gust_kmh",
-    "current.cloud_cover_pct",
-    "current.uv_index",
-    "current.is_day",
-    "days",
-    "days[].date",
-    "days[].parts",
-    "days[].sunrise",
-    "days[].sunset",
-    "days[].min_c",
-    "days[].max_c",
-    "days[].parts.morning",
-    "days[].parts.morning.condition",
-    "days[].parts.morning.condition.code",
-    "days[].parts.morning.condition.text",
-    "days[].parts.morning.temp_c",
-    "days[].parts.morning.feels_like_c",
-    "days[].parts.morning.precip_mm",
-    "days[].parts.morning.precip_prob_pct",
-    "days[].parts.morning.humidity_pct",
-    "days[].parts.morning.visibility_km",
-    "days[].parts.morning.wind_kmh",
-    "days[].parts.morning.wind_dir_deg",
-    "days[].parts.noon",
-    "days[].parts.noon.condition",
-    "days[].parts.noon.condition.code",
-    "days[].parts.noon.condition.text",
-    "days[].parts.noon.temp_c",
-    "days[].parts.noon.feels_like_c",
-    "days[].parts.noon.precip_mm",
-    "days[].parts.noon.precip_prob_pct",
-    "days[].parts.noon.humidity_pct",
-    "days[].parts.noon.visibility_km",
-    "days[].parts.noon.wind_kmh",
-    "days[].parts.noon.wind_dir_deg",
-    "days[].parts.evening",
-    "days[].parts.evening.condition",
-    "days[].parts.evening.condition.code",
-    "days[].parts.evening.condition.text",
-    "days[].parts.evening.temp_c",
-    "days[].parts.evening.feels_like_c",
-    "days[].parts.evening.precip_mm",
-    "days[].parts.evening.precip_prob_pct",
-    "days[].parts.evening.humidity_pct",
-    "days[].parts.evening.visibility_km",
-    "days[].parts.evening.wind_kmh",
-    "days[].parts.evening.wind_dir_deg",
-    "days[].parts.night",
-    "days[].parts.night.condition",
-    "days[].parts.night.condition.code",
-    "days[].parts.night.condition.text",
-    "days[].parts.night.temp_c",
-    "days[].parts.night.feels_like_c",
-    "days[].parts.night.precip_mm",
-    "days[].parts.night.precip_prob_pct",
-    "days[].parts.night.humidity_pct",
-    "days[].parts.night.visibility_km",
-    "days[].parts.night.wind_kmh",
-    "days[].parts.night.wind_dir_deg",
-    "capabilities",
-    "capabilities.current",
-    "capabilities.hourly",
-    "capabilities.daily",
-    "capabilities.alerts",
-    "capabilities.max_days",
-    "capabilities.requires_key",
-    "capabilities.key_env",
-    "capabilities.locations",
-    "capabilities.locations.city",
-    "capabilities.locations.station",
-    "capabilities.locations.lat_lon",
-    "attribution",
-    "attribution.provider",
-    "attribution.url",
-    "attribution.notice",
-    "attribution.location_notice",
-    "attribution.retrieved_at",
-];
+/// One row of the machine-checked key index in `docs/schema.md`.
+struct DocumentedKey {
+    /// Key path, `[]` marking an array element.
+    path: String,
+    /// The JSON type the document promises (`integer`, `number`, `string`, `boolean`, `object`,
+    /// `array`).
+    json_type: String,
+    /// Whether the value may be `null`; every key is always present.
+    nullable: bool,
+}
+
+/// Reads the key index out of `docs/schema.md`.
+///
+/// The document is the single source of the key list: a change to the renderer that is not made
+/// in the document fails the suite below, and a change to the document that is not made in the
+/// renderer fails it just the same. Parsing is deliberately strict — a row that does not have the
+/// documented shape panics with its line number.
+fn documented_keys() -> Vec<DocumentedKey> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/schema.md");
+    let text = std::fs::read_to_string(&path).expect("docs/schema.md is readable");
+    let body = text
+        .split_once("<!-- schema-key-index:begin -->")
+        .and_then(|(_, rest)| rest.split_once("<!-- schema-key-index:end -->"))
+        .map(|(body, _)| body)
+        .expect("docs/schema.md carries the machine-checked key index");
+
+    let mut keys = Vec::new();
+    for (index, line) in body.lines().enumerate() {
+        let line = line.trim();
+        if !line.starts_with("| `") {
+            continue;
+        }
+        let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+        let fail = |why: &str| -> ! {
+            panic!("docs/schema.md key index line {} {why}: {line}", index + 1)
+        };
+        if cells.len() != 5 {
+            fail("does not have five columns");
+        }
+        let path = cells[0]
+            .strip_prefix('`')
+            .and_then(|cell| cell.strip_suffix('`'))
+            .unwrap_or_else(|| fail("starts with something that is not a backticked key"));
+        let json_type = cells[1];
+        let nullable = match cells[3] {
+            "yes" => true,
+            "no" => false,
+            _ => fail("does not say `yes` or `no` in its Null column"),
+        };
+        keys.push(DocumentedKey {
+            path: path.to_owned(),
+            json_type: json_type.to_owned(),
+            nullable,
+        });
+    }
+    assert!(
+        keys.len() > 50,
+        "the key index parsed as {} rows; the markers or the table shape changed",
+        keys.len()
+    );
+    keys
+}
+
+/// The JSON type name of a value, in the vocabulary of the key index.
+fn json_type(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(number) => {
+            if number.is_i64() || number.is_u64() {
+                "integer"
+            } else {
+                "number"
+            }
+        }
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+/// The value a documented key path points at, the first element of an array for `[]`.
+fn value_at<'a>(document: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut current = document;
+    for segment in path.split('.') {
+        current = match segment.strip_suffix("[]") {
+            Some(name) => current.get(name)?.as_array()?.first()?,
+            None => current.get(segment)?,
+        };
+    }
+    Some(current)
+}
 
 /// The fixture every case renders.
 fn report() -> Report {
@@ -203,22 +191,42 @@ fn the_schema_version_leads_the_document_and_is_the_documented_one() {
 }
 
 #[test]
-fn every_documented_key_is_present() {
+fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
+    let documented = documented_keys();
+    let document = document("beijing-1d.json", UnitSystem::Metric);
+
     let mut paths = BTreeSet::new();
-    key_paths(
-        &document("beijing-1d.json", UnitSystem::Metric),
-        "",
-        &mut paths,
-    );
-    let expected: BTreeSet<String> = EXPECTED_KEYS.into_iter().map(str::to_owned).collect();
+    key_paths(&document, "", &mut paths);
+    let expected: BTreeSet<String> = documented.iter().map(|key| key.path.clone()).collect();
 
     let missing: Vec<&String> = expected.difference(&paths).collect();
     let extra: Vec<&String> = paths.difference(&expected).collect();
     assert!(missing.is_empty(), "keys disappeared: {missing:?}");
     assert!(
         extra.is_empty(),
-        "undocumented keys appeared (add them to the schema doc): {extra:?}"
+        "undocumented keys appeared (add them to docs/schema.md): {extra:?}"
     );
+
+    for key in &documented {
+        let value = value_at(&document, &key.path)
+            .unwrap_or_else(|| panic!("`{}` is documented but the fixture has no value", key.path));
+        if value.is_null() {
+            assert!(
+                key.nullable,
+                "`{}` is documented as never null but rendered as null",
+                key.path
+            );
+            continue;
+        }
+        assert_eq!(
+            json_type(value),
+            key.json_type,
+            "`{}` is documented as {} but rendered as {}",
+            key.path,
+            key.json_type,
+            json_type(value)
+        );
+    }
 }
 
 #[test]

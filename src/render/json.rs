@@ -9,8 +9,9 @@
 //! **additive only**: new keys may appear, and an existing key keeps its name, its type and its
 //! unit. A consumer must ignore keys it does not know — that is what makes adding one a
 //! non-breaking change. Removing a key, renaming one, changing a unit or a nullability is a
-//! breaking change: it bumps `schema_version`, and the release notes say so (the changelog file
-//! itself arrives with step 13, `docs/schema.md` with it).
+//! breaking change: it bumps `schema_version`, and the release notes say so. Every field is
+//! written out in `docs/schema.md`, whose key index the test suite checks against the rendered
+//! document.
 //!
 //! The rules that make the document usable by a script:
 //!

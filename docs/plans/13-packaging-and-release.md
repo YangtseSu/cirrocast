@@ -33,7 +33,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   additive fields are a schema-minor change while removing, renaming or retyping a field is a schema-major change
   that bumps `schema_version`; a worked example document for each. Its key index table is the machine-checked list
   the next bullet reads, so the document and the code cannot drift apart unnoticed.
-- ⬜ `src/render/json.rs` + `tests/render_json.rs`: the top-level `"schema_version": 1` and the stable field names
+- ✅ `src/render/json.rs` + `tests/render_json.rs`: the top-level `"schema_version": 1` and the stable field names
   and units are pinned by tests that read the *parsed* document (round-trip through `serde_json`, not a text
   snapshot) and compare it with the key index of `docs/schema.md`; the hand-maintained `EXPECTED_KEYS` array is
   deleted rather than kept as a second list that can drift.
@@ -198,3 +198,6 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
   while the AUR repository is mandatory anyway. Step 14's clean-chroot deliverable now builds the AUR package.
 - 2026-10-01 — `docs/schema.md` written: the JSON v1 key index (the machine-checked list), the config v1 keys
   with their migration hooks, and a real `-f json` document plus the `config init` document as worked examples.
+- 2026-10-01 — `tests/render_json.rs` now reads the documented key index and checks every value's JSON type and
+  the never-null claims against it; the duplicated `EXPECTED_KEYS` array is gone, and a knowingly renamed doc
+  key was verified to fail the suite.
