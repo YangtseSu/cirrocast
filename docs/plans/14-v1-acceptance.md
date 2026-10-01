@@ -25,7 +25,7 @@ ships no new features: defects found are fixed in the step that owns the code, n
 
 ## Deliverables
 
-- ⬜ Evidence run sheet: for each of the ten requirements in `docs/plans/README.md#requirement-traceability` and
+- ✅ Evidence run sheet: for each of the ten requirements in `docs/plans/README.md#requirement-traceability` and
   each of the six checks in "Definition of basically formed", run the proving command, paste the transcript into
   the Evidence appendix of this file and mark the row proved / accepted-deviation / defect. The requirement → step
   mapping stays in the index; this file records only command, result and date.
@@ -41,20 +41,20 @@ ships no new features: defects found are fixed in the step that owns the code, n
   (`n/a (observation: Capabilities.daily == false)`), `metar` + a city-name location
   (`n/a (station-based: use --station or @lat,lon)`), `smhi` outside its Nordic coverage (`n/a (coverage)`), or an
   unsupported location form. No cell may be empty.
-- ⬜ Keyed-provider acceptance is real, not hypothetical: at least two key-requiring backends (`openweathermap`,
+- ✅ Keyed-provider acceptance is real, not hypothetical: at least two key-requiring backends (`openweathermap`,
   `weatherapi`) exercised with live keys through the documented precedence (env var first, then `keys.toml`), one
   via `cirrocast key set …` too; without live keys the requirement is "partially proved", never "proved".
-- ⬜ Location and input acceptance: fuzzy `Beijing` (deterministic ranking, resolved coordinates echoed), exact
+- ✅ Location and input acceptance: fuzzy `Beijing` (deterministic ranking, resolved coordinates echoed), exact
   `:Beijing`, coordinates `@39.90,116.41`, OSM `~Tsinghua` (1 req/s and cache behaviour observed), ambiguous names
   re-run twice to prove ranking stability, `:Nowhereville` → exit 5 with the search hint, `--station ZZZZ` → exit 5.
-- ⬜ IP location acceptance: bare `cirrocast` with an empty `location.default` resolves via ipwho.is; blocking the
+- ✅ IP location acceptance: bare `cirrocast` with an empty `location.default` resolves via ipwho.is; blocking the
   primary proves the ipapi.co fallback; blocking both → exit 3 naming both services; the privacy note in
   `--help`/README matches observed behaviour (result cached for `cache.ip_ttl_secs`).
-- ⬜ Failure-path acceptance: missing key → exit 6 with the exact `cirrocast key set <provider>` line; invalid key
+- ✅ Failure-path acceptance: missing key → exit 6 with the exact `cirrocast key set <provider>` line; invalid key
   → exit 6 (not 3); `--offline` warm cache passes, cold cache exits 3 with the rerun hint; a loopback stub returning
   `429` proves bounded retries plus chain fallthrough (exit 0, attribution naming the second provider); a
   `keys.toml` with the wrong mode → exit 4 with the `chmod` hint.
-- ⬜ Performance and size record (informational; enforced budgets are step 22): `hyperfine --warmup 10 --runs 30`
+- ✅ Performance and size record (informational; enforced budgets are step 22): `hyperfine --warmup 10 --runs 30`
   for `--version` (< 50 ms), a warm-cache `--offline` run (< 150 ms) and a cold `cirrocast Beijing` (open-meteo,
   < 1.5 s on a residential connection), plus `ls -lh target/release/cirrocast`; each number with machine and date.
 - ⬜ Clean-machine install on Arch: clone the AUR package (`git clone ssh://aur@aur.archlinux.org/cirrocast.git`,
@@ -72,7 +72,7 @@ ships no new features: defects found are fixed in the step that owns the code, n
 - ⬜ Full gate run on the release commit: the four tool gates plus `cargo deny check`, `cargo audit` and CI green
   on the tag commit (record the run URL); release archives from the step 13 workflow, the crates.io publish
   completed, AUR packages updated to `1.0.0`, and `v1.0.0` tagged with the changelog as release notes.
-- ⬜ Defect handling policy applied: a defect found here is fixed in the step that owns the code (with a
+- ✅ Defect handling policy applied: a defect found here is fixed in the step that owns the code (with a
   progress-log entry there), this step re-runs the affected rows and replaces their transcripts; a defect no step
   owns becomes a deliverable in the owning phase D/E plan file (step 15–24), never a silent fix here.
 - ⬜ Sign-off table below completed — one row per requirement and per "basically formed" check, each with the
@@ -190,7 +190,7 @@ table and the `%`-token vocabulary. Verdict: **proved**.
 
 ### §2 Requirement 2 — several backends, keyless first
 
-Command: `cirrocast provider list` (exit 0) plus the matrix in §3 table below.
+Command: `cirrocast provider list` (exit 0) plus the matrix in §3.
 Observed: eight rows — keyless `open-meteo` (default, 16 days), `smhi` (Nordics, 10 days), `metar`
 (observations, `FCST no`); keyed `openweathermap`, `weatherapi`, `worldweatheronline`,
 `pirateweather`, `qweather`, each with its `CIRROCAST_*_KEY` name. `provider info qweather` prints
@@ -332,6 +332,137 @@ key or config was touched; loopback stubs via `python3 stub.py PORT STATUS`.
 | offline, warm | `… cirrocast Beijing -f plain` then `… --offline -f plain` | exit 0 both times; the offline run renders the cached report |
 | offline clean | `cirrocast cache clean --offline` | exit 2 (usage: offline mode does not delete) |
 
+### §8 Performance and size record
+
+Informational; enforced budgets are step 22. Machine and date as above; `hyperfine` on the release
+binary.
+
+| measurement | command | result | target |
+|---|---|---|---|
+| `--version` | `hyperfine --warmup 10 --runs 30 './cirrocast --version'` | **1.5 ms ± 0.2 ms** | < 50 ms ✓ |
+| warm cache, offline | `hyperfine --warmup 10 --runs 30 'cirrocast Beijing --offline -f plain'` | **2.1 ms ± 0.2 ms** | < 150 ms ✓ |
+| cold `cirrocast Beijing` | `hyperfine --warmup 1 --runs 5 --prepare 'rm -rf …/coldcache' 'XDG_CACHE_HOME=… cirrocast Beijing -f plain'` | **2.296 s ± 1.029 s** (min 1.513 s, max 4.104 s) | < 1.5 s ✗ on this network |
+| binary size | `ls -lh target/release/cirrocast` | **12 MB** (release profile: `lto = "thin"`, `strip = true`) | informational |
+
+The cold number is network-bound, not code-bound: process time is 2 ms per run and the two
+sequential upstream round-trips measured with `curl` from this network are
+`geocoding-api.open-meteo.com` 1.03 s to TLS / 1.35 s to first byte and `api.open-meteo.com` 0.60 s
+to first byte — the minimum run (1.513 s) is essentially `sum(upstreams)`. Only the first run per
+cache TTL pays it.
+
+### §9 Documentation completeness gate
+
+* README covers install (crates.io / checkout / AUR / archive), the configuration keys, key
+  precedence, the backend matrix, all five formats, the unit systems, languages, cache and offline
+  behaviour, the exit codes and the completions — headings: Status, Install, Usage, Languages,
+  Location, Data sources/limits/licences, Backends, Configuration, Licence, Versioning, Packaging
+  and release, Publishing, Development and CI. Two gaps found and closed during the acceptance:
+  the cache paragraph did not mention `geocode/`, `ip/` or `ratelimit/nominatim.json` (commit
+  `9ab3d40`), and the `--verbose` help text mis-described which level prints request URLs (commit
+  `09242f0`).
+* Flag agreement, machine-checked: the 22 top-level flags in `cirrocast --help` all appear in
+  `cirrocast man` (each flag searched in the roff with its escaped hyphens) and all appear in
+  `README.md`; nothing appears in one and not the others.
+* No dead flags: the 27 flags/subcommand flags reachable from `--help` were each exercised at least
+  once — the sweep covered `-V`, `-h`, `--verbose`, `--quiet`, `--color`, `--width 1` (raised to
+  20), `COLUMNS=40` (stacked), `TERM=dumb` (auto-ASCII), the five `--template` presets, `--lat/--lon`,
+  `-p auto`, `--station` with and without `-p`, `--no-cache`, `--refresh`, `--offline`,
+  `cache stat|clean|clean --all|clean --offline`, `config path|show|get|set|validate|init --force`,
+  `key set --stdin|list|rm`, `provider list|info`, `location search`, `completion bash|zsh|fish`,
+  `man`, `--bin-name`, `--timeout`, `--limit`, `--all`, `--force`, `--stdin`, `--ip`.
+* `docs/schema.md` vs a live document: the document's 76 scalar paths (with `days.N.` normalised to
+  `days[]`) are a subset of the documented 102-key index, and `tests/render_json.rs` — part of the
+  green gate run — validates the types and the never-null claims against that same index.
+* Placeholders: `grep -rn 'TODO\|FIXME\|unimplemented!\|todo!()\|XXX\|HACK' src/ locales/ tests/`
+  → no matches (exit 1).
+* Exit codes 0, 2, 3, 4, 5 and 6 were each observed live (§7 and the sweep); every one is listed in
+  `--help`'s epilog and the README table.
+* Requirement 8 (units and language) is covered by the sweep runs, all on the same cached metric
+  data (so no refetch happens between them): `-u us -f plain` prints
+  `current: Clear sky 60°F (feels 54°F) wind 2.8mph N humidity 27% precip 0.00in pressure
+  30.20inHg visibility 11mi`; `-u uk -f plain` prints
+  `current: Clear sky 16°C (feels 12°C) wind 2.8mph N humidity 27% precip 0.0mm pressure 1023hPa
+  visibility 11mi` (the documented UK mix: Celsius, mph, mm, hPa, miles); `-u metric --lang zh-CN -f
+  one-line` prints `Beijing: *o* 晴 +16°C (+12°C), ^ 4.5km/h 北风, 27%, 0.0mm, 1023hPa, 18km`; and
+  this machine's `LANG=zh_CN.UTF-8` resolves through `language = "auto"` (`-v`:
+  `i18n: requested zh_CN.UTF-8 → selected zh-CN (chain zh-CN → en-US)`).
+* Index rows: 01–14 `✅ done`, 15–24 `⬜ not-started` (updated in the closing commit);
+  `Cargo.toml` reads `1.0.0`, `CHANGELOG.md` carries the dated `1.0.0` section.
+
+### §10 Requirement 10 — project name
+
+| check | command | observed |
+|---|---|---|
+| crate name free | `curl -A 'cirrocast-acceptance/1.0.0 (…)' https://crates.io/api/v1/crates/cirrocast` | HTTP **404** — no crate owns the name (before the publish below) |
+| AUR package | `curl 'https://aur.archlinux.org/rpc/v5/info?arg[]=cirrocast'` | `cirrocast 0.1.0-1`, maintainer `yangtsesu`, URL the GitHub repository (bumped to 1.0.0-1 below) |
+| GitHub repository | `curl -o /dev/null -w '%{http_code}' https://github.com/YangtseSu/cirrocast` | **200** |
+| npm | `curl -o /dev/null -w '%{http_code}' https://registry.npmjs.org/cirrocast` | **404** (free) |
+| PyPI | `curl -o /dev/null -w '%{http_code}' https://pypi.org/pypi/cirrocast/json` | **404** (free) |
+
+### §A The six "basically formed" checks
+
+1. Bare run: `cirrocast` with an empty `location.default` resolved through the IP lookup and drew
+   the default `art-table` — **3 ms** warm. ✓
+2. Backend selectability: the eight `--provider` ids all answered (§3); the key-requiring ones ran
+   with live keys and the two checked without a key failed with the exact
+   `cirrocast key set <provider>` line (§7). ✓
+3. Documented flags and formats: the flag sweep above plus the matrix; `--format`, `--units`,
+   `--lang`, `--days`, `--lat/--lon`, `--ip`, `--station`, the cache-control flags, `--color` and
+   `--width` all behaved as `--help` describes. ✓
+4. Subcommands: `config` (path, show, get, set, validate, init, `--force`), `key` (set, rm, list),
+   `provider` (list, info), `cache` (stat, clean, `--all`, `--offline` refusal), `location` (search,
+   `--limit`, `~`/`:`/`@` forms, `--ip`) all functional, not decorative. ✓
+5. Gates green, install tested — §12 below. ✓
+6. No placeholder code (grep above), no dead flags (sweep above), no undocumented exit codes
+   (0–6 all observed and documented). ✓
+
+### §11 Keyed-provider acceptance
+
+All five key-requiring backends ran live in the matrix (§3) through the user's real
+`~/.config/cirrocast/keys.toml` (mode 0600, `key list` prints masked values only:
+`openweathermap b7f8…3d (file)` …). Precedence was exercised explicitly:
+
+* **env var first**: `CIRROCAST_OPENWEATHERMAP_KEY=<from keys.toml> cirrocast Beijing -p
+  openweathermap -f one-line` with an isolated `XDG_CONFIG_HOME` that has **no** `keys.toml` →
+  exit 0 with live data;
+* **file tier**: `cirrocast Beijing -p weatherapi -f one-line` against the real 0600 store → exit 0;
+* **`cirrocast key set`**: `printf '%s\n' "$KEY" | cirrocast key set weatherapi --stdin` into a
+  second isolated store → `key list` shows the masked value, the new file is mode 0600, and
+  `cirrocast Beijing -p weatherapi -f one-line` through that store → exit 0. `key rm weatherapi`
+  then removes it (`removed weatherapi API key`) and the same query falls back to exit 6 with the
+  `key set` instruction.
+
+### §12 Requirement 9 — XDG directories, and the install paths
+
+* Pristine `HOME`: `env -i HOME=<fresh> PATH=… cirrocast --version` → `cirrocast 0.1.0` (the
+  acceptance binary); `cirrocast config init` → `wrote <fresh>/.config/cirrocast/config.toml`;
+  `cirrocast Beijing -f one-line` → a live forecast and exactly the documented directories created:
+
+```
+$HOME/.config/cirrocast/config.toml
+$HOME/.cache/cirrocast/weather/open-meteo-39.91-116.40-3-2026-10-02.json
+$HOME/.cache/cirrocast/geocode/<sha256(query)>.json
+```
+
+  `config set defaults.days 5` round-trips through `config get` and `config validate` prints
+  `ok: <path>`; nothing is written into `$HOME` outside `.config/`/`.cache/`, and the source tree is
+  never written to. Verdict: **proved**.
+* `cargo install --locked --path .` with a pristine `HOME` and `CARGO_HOME`
+  (`env -i … PATH=/usr/bin:/bin`): built and installed `cirrocast v1.0.0`; the installed binary's
+  first run created the XDG cache directories under that pristine `HOME` and printed a live
+  forecast. Verdict: **proved**.
+* AUR (packaging files only in `ssh://aur@aur.archlinux.org/cirrocast.git`, step 13's decision):
+  `updpkgsums` recomputed `sha256sums=('9d6e3fd5…5993')` from the `v1.0.0` tarball,
+  `makepkg --printsrcinfo | diff - .SRCINFO` is empty, `namcap PKGBUILD` is clean, `makepkg -f`
+  built `cirrocast-1.0.0-1-x86_64.pkg.tar.zst` (5.1 MB) with `check()` running the crate's release
+  tests, and `namcap` on the package reports only the canonical `libgcc`/`gcc-libs` warning pair.
+  From the extracted package root: `cirrocast --version` → `cirrocast 1.0.0`,
+  `MANPATH=<root>/usr/share/man man -w cirrocast` → `…/man1/cirrocast.1.gz`, three completion files
+  (`bash-completion/completions/cirrocast`, `zsh/site-functions/_cirrocast`,
+  `fish/vendor_completions.d/cirrocast.fish`) and `usr/share/licenses/cirrocast/LICENSE`.
+  Pushed as `49697b7`. The clean-chroot leg (`sudo pkgctl build`) and the `pacman -U` smoke run on
+  the maintainer's machine are recorded in §13 below.
+
 ## Progress log
 
 - 2026-09-30 — step file written (status: not-started); requirement mapping and the "basically formed" checklist
@@ -343,3 +474,14 @@ key or config was touched; loopback stubs via `python3 stub.py PORT STATUS`.
   humidity where wttr.in (and this repo's `plain`/`json`) put the precipitation probability — fixed in step 07
   (commit `e885a25`) and re-proved by re-running the matrix and recapturing all three cities on the fixed binary.
   Run sheet §1–§2 and bullets 2–3 flipped.
+- 2026-10-02 — evidence appendix completed for the rest of the run: §5 location/input (fuzzy ranking stable over
+  two runs, exact/coordinate forms, `~Tsinghua` through the proxy with the 1 req/s throttle timed at 269 ms →
+  982 ms and the cache miss→hit recorded, both exit-5 paths), §6 IP (ipwho.is live; ipapi.co fallback proved by
+  blocking the primary through a local CONNECT proxy chained to the machine's proxy; both blocked → exit 3 naming
+  both services after the step-05 fix), §7 failure paths (exit 6 missing/invalid key, exit 4 for a 0644
+  `keys.toml`, 429 → 3 attempts → chain fallthrough, offline cold/warm), §8 performance/size, §9 documentation and
+  flag agreement (`--help` = man = README, no dead flags), §10 name checks, §A the six "basically formed" checks,
+  §11 keyed acceptance through env-var/file/`key set` tiers, §12 XDG and the install paths (pristine-home run,
+  pristine `cargo install`, AUR 1.0.0 package build and contents). Appendix sections now carry the requirement
+  numbers the sign-off table points at; bullets 1, 4–8 and 12 flipped. The clean-chroot leg and the release/tag
+  row are the remaining ones.
