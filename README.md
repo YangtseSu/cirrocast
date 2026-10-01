@@ -76,17 +76,18 @@ stays pipeable; `-q` silences it and `:Beijing` demands an exact name.
 
 ## Status
 
-Steps 01–12 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
+Steps 01–13 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
 resolution, the provider registry, the typed configuration with its `config`/`key` subcommands, the
 canonical model, location resolution, the shared HTTP/cache layer, the Open-Meteo forecast, the
 wttr.in-style `art-table` renderer, the full flag matrix with the four other output formats
 (`one-line`, `plain`, `json`, `dumb`), shell completions and the man page, localization (`en-US` +
 `zh-CN`) and eight selectable backends — three of them keyless, including the station-based `metar`
 observation. Step 12 hardened the error contract, the `--offline` and XDG behaviour, the network
-guard and the decoder paths, and grew the CI matrix. Step 13 (packaging and release) is in progress:
-[Versioning](#versioning), [Packaging and release](#packaging-and-release) and
-[Publishing](#publishing) are the parts of it that show; [`CHANGELOG.md`](CHANGELOG.md) and the plan
-index carry the rest.
+guard and the decoder paths; step 13 made it releasable: `v0.1.0` is tagged, the release workflow
+ships three native archives, the AUR package is published, and the JSON and config schemas are
+written out in [`docs/schema.md`](docs/schema.md) with the versioning policy in
+[Versioning](#versioning) and the history in [`CHANGELOG.md`](CHANGELOG.md). Step 14 (v1 acceptance)
+is the gate that follows: it proves the whole surface by execution and cuts `1.0.0`.
 
 ## Install
 
@@ -582,8 +583,12 @@ git commit -am "upgpkg: cirrocast X.Y.Z-1" && git push
 # what a bump is verified with, on a clean machine or in a chroot
 pkgctl build                         # devtools clean chroot; makechrootpkg -c does the same
 sudo pacman -U cirrocast-0.1.0-1-x86_64.pkg.tar.zst
-cirrocast --version && man -w cirrocast && pacman -Ql cirrocast | grep -c completions   # expect 3
+cirrocast --version && man -w cirrocast
+pacman -Ql cirrocast | grep -E 'completions/cirrocast$|site-functions/_cirrocast$|vendor_completions\.d/cirrocast\.fish$' | wc -l   # 3
 ```
+
+(A plain `pacman -Ql cirrocast | grep -c completions` prints 4: the two completion *directories* match
+as well, which is why the three file paths are matched explicitly.)
 
 The AUR repository is the only home of the packaging files — this tree keeps no copy, which is why
 the checklist edits them there (the reasoning is in

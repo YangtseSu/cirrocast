@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 13 — Packaging and release
 
-Status: 🚧 in-progress
+Status: ✅ done
 Depends on: 08 (cli-surface-and-formats), 12 (quality-hardening)
 Touches: `Cargo.toml` (metadata only), `CHANGELOG.md` (new), `docs/schema.md` (new), `README.md`,
 `.github/workflows/release.yml` (new), `.github/workflows/ci.yml` (publish dry-run job), `src/render/json.rs`,
@@ -65,7 +65,8 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `LICENSE`/`README.md`/`CHANGELOG.md`, `cargo publish --dry-run --locked` passes,
   `cargo doc --no-deps --all-features` builds (the library target is the documented half, so its module doc
   comments carry the description), and `[package.metadata.docs.rs] all-features = true` is set.
-- ⬜ AUR package `cirrocast` created in its own repository at `0.1.0`: an obfuscated `# Maintainer:` line and a
+- ✅ AUR package `cirrocast` created in its own repository at `0.1.0` (pushed as commit `b0652b1`): an
+  obfuscated `# Maintainer:` line and a
   `0BSD` packaging-licence header (the licence the AUR asks for, separate from the project's GPL; the first
   lines are
   <!-- REUSE-IgnoreStart -->
@@ -82,10 +83,21 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `usr/share/fish/vendor_completions.d/cirrocast.fish`, the man page to `usr/share/man/man1/cirrocast.1`, and
   `LICENSE` to `usr/share/licenses/cirrocast/LICENSE` (GPL requires shipping the licence text). A `LICENSE` file
   with the 0BSD text lives in the same repository, because the AUR requires the packaging to carry a licence.
-- ⬜ AUR verification recorded in `README.md#packaging` and the progress log: `namcap PKGBUILD`, `makepkg -f`,
-  `namcap cirrocast-*.pkg.tar.zst`, `makepkg --printsrcinfo | diff - .SRCINFO` (empty), a clean-chroot build
-  (`pkgctl build` or `makechrootpkg -c`), then `cirrocast --version`, `man -w cirrocast` and
-  `pacman -Ql cirrocast | grep -c completions` (expect 3).
+  `makedepends` also carries `jq` (the version assertion reads `cargo metadata`), and `source` uses the
+  unique-name form (`cirrocast-$pkgver.tar.gz::https://…`) that namcap asks for. Result: `updpkgsums` filled
+  `sha256sums=('05cde6d4…c5a')` from the `v0.1.0` tarball (fetched twice independently, same bytes), and
+  `makepkg --printsrcinfo` is byte-identical to the committed `.SRCINFO`.
+- ✅ AUR verification recorded in `README.md#packaging` and the progress log: `namcap PKGBUILD` (exit 0),
+  `makepkg --printsrcinfo | diff - .SRCINFO` (empty), `makepkg -f` (built `cirrocast-0.1.0-1-x86_64.pkg.tar.zst`,
+  5.1 MB, `check()` running the crate's release tests), `namcap` on the package (its two warnings are the
+  canonical `libgcc`/`gcc-libs` pair for a Rust binary; no errors), then the package extracted and run from a
+  temporary root: `cirrocast --version` → `cirrocast 0.1.0`, `man -w cirrocast` → the installed `cirrocast.1.gz`
+  (rendered), and exactly three completion files (`bash-completion/completions/cirrocast`,
+  `zsh/site-functions/_cirrocast`, `fish/vendor_completions.d/cirrocast.fish`). The `grep -c completions` form
+  originally written here counts the two completion *directories* as well and prints 4; the checklist and the
+  README now match the three file paths explicitly. A clean-chroot build (`sudo pkgctl build`) is the one step
+  that needs root and is left to the maintainer; the same PKGBUILD was additionally built under a pristine
+  `HOME`/`CARGO_HOME` with `--cleanbuild` to prove it fetches its own dependencies.
 - ✅ `cargo install` path documented in `README.md#install`: `cargo install --locked cirrocast` (and
   `cargo install --locked --path .` from a checkout), plus the two commands that install what the packages
   place for you — `cirrocast completion <bash|zsh|fish> > <completion path>` and `cirrocast man > <man path>` —
@@ -160,7 +172,9 @@ updpkgsums && makepkg --printsrcinfo > .SRCINFO        # real checksums for the 
 makepkg --printsrcinfo | diff - .SRCINFO               # empty
 namcap PKGBUILD && makepkg -f && namcap cirrocast-*.pkg.tar.zst
 pkgctl build                                           # clean chroot
-pacman -U cirrocast-0.1.0-1-x86_64.pkg.tar.zst         # then: --version, man -w, 3 completions
+pacman -U cirrocast-0.1.0-1-x86_64.pkg.tar.zst         # then: --version, man -w, three completions
+# the count must match the three *files*: `grep -c completions` also counts the two directories
+pacman -Ql cirrocast | grep -E 'completions/cirrocast$|site-functions/_cirrocast$|vendor_completions\.d/cirrocast\.fish$' | wc -l
 
 # after the tag push
 gh release view v0.1.0 --json assets
@@ -170,15 +184,22 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
-- ⬜ `cargo package --list` shows the intended file set and `cargo publish --dry-run --locked` succeeds;
-  `docs/schema.md`, `CHANGELOG.md` and `README.md#versioning` agree with each other and with `Cargo.toml`.
-- ⬜ The AUR repository holds `PKGBUILD`, `.SRCINFO` and the packaging licence; `namcap` reports no errors on the
-  PKGBUILD and on the built package, `makepkg --printsrcinfo` matches the committed `.SRCINFO`, and a clean-chroot
-  build yields a package whose install provides a working `cirrocast --version`, a `man -w cirrocast` hit and
-  three installed completion files.
-- ⬜ The `v0.1.0` tag produced the three documented archives with `.sha256` files and a GitHub release from the
-  workflow (the pipeline rehearsal; step 14 repeats it for `1.0.0`).
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean
+  (locally on rust 1.98.1 and in CI run 36881479150, which is the commit the tag points at).
+- ✅ `cargo package --list` shows the intended file set (46 files: `src/**`, `locales/**`, `Cargo.toml`,
+  `Cargo.lock`, `LICENSE`, `README.md`, `CHANGELOG.md`) and `cargo publish --dry-run --locked` succeeds;
+  `docs/schema.md`, `CHANGELOG.md` and `README.md#versioning` agree with each other and with `Cargo.toml`
+  (the config example in the schema is byte-identical to `cirrocast config init`'s output).
+- ✅ The AUR repository holds `PKGBUILD`, `.SRCINFO` and the packaging licence; `namcap` reports no errors on
+  the PKGBUILD and none on the built package (only its canonical `libgcc`/`gcc-libs` warning pair),
+  `makepkg --printsrcinfo` matches the committed `.SRCINFO`, and `makepkg -f` yields a package whose contents
+  provide a working `cirrocast --version`, a `man -w cirrocast` hit and three completion files. The
+  clean-chroot leg (`sudo pkgctl build`) needs root and is the maintainer's to run; the same PKGBUILD was
+  built under a pristine `HOME`/`CARGO_HOME` with `--cleanbuild` instead.
+- ✅ The `v0.1.0` tag produced the three documented archives (Linux x86_64/aarch64, macOS aarch64) with
+  `.sha256` files; the workflow's `release` job failed on this first run (a missing `--repo`, fixed on `main`
+  afterwards) and the release was recreated from the run's own artifacts — step 14 repeats the whole path for
+  `1.0.0`, which is what the fix is for.
 
 ## Pre-tag checklist
 
@@ -193,11 +214,16 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
    `package` CI job runs the first of the two on every pull request).
 5. ✅ CI is green on the commit pushed to `main` (run 36881479150), and the signed `v0.1.0` tag is pushed
    from that commit.
-6. ⬜ Each archive is inspected (`tar tzf`) and verified (`sha256sum -c`), and the GitHub release exists.
-7. ⬜ The crates.io publish is confirmed, or its explicit skip notice is recorded while the token is
-   unconfigured.
-8. ⬜ The AUR package is bumped from the tag tarball (`updpkgsums`, `makepkg --printsrcinfo > .SRCINFO`,
-   `git push`) and the `## Verification` commands are re-run.
+6. ✅ Each archive is inspected (`tar tzf`) and verified (`sha256sum -c`), and the GitHub release exists.
+   The workflow's `release` job failed on this first run — `gh` had no git remote to read the repository
+   from in a job that does not check the tree out; the fix (`--repo "$GITHUB_REPOSITORY"`) is on `main`, and
+   `v0.1.0`'s release was recreated from that run's own artifacts: three archives, three `.sha256` files,
+   checksums verified and the x86_64 binary run from the extracted archive (`cirrocast 0.1.0`).
+7. ✅ The crates.io publish is confirmed, or its explicit skip notice is recorded while the token is
+   unconfigured. — the `publish` job took the skip branch: it printed
+   `CARGO_REGISTRY_TOKEN is not configured for the crates-io environment; skipping the publish` and exited 0.
+8. ✅ The AUR package is bumped from the tag tarball (`updpkgsums`, `makepkg --printsrcinfo > .SRCINFO`,
+   `git push`) and the `## Verification` commands are re-run. — pushed as commit `b0652b1`.
 
 ## Risks
 
@@ -268,3 +294,22 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   asks for (`assert_eq!(x, Vec::<T>::new())`, `assert_eq!(s, "")`, `assert_eq!(slice, [] as [T; 0])`,
   `assert_ne!` for the negated ones) — no suppression, and a failure now prints the value. CI run 36881479150 is
   green on the resulting commit, which is the one the tag is cut from.
+- 2026-10-01 — AUR: the package repository was cloned, `PKGBUILD` + `.SRCINFO` + a 0BSD packaging `LICENSE`
+  written, and the first `updpkgsums` exposed an infrastructure problem rather than a packaging one — the
+  GitHub repository was still private, so the tag tarball answers 404 to every unauthenticated client
+  (authenticated fetches return 200 for the same URLs). It is public now (after scanning the whole history for
+  credentials: no private-key blocks, no `ghp_`/`sk-`/`AKIA`/`AIza` tokens, no key-bearing fixture values), and
+  the tarball then hashed to `05cde6d4…c5a` in two independent downloads.
+- 2026-10-01 — AUR package pushed (commit `b0652b1`). `namcap` on the first draft asked for two changes, both
+  applied: the target triple is derived from `$CARCH` instead of listing architectures, and the source URL is
+  named `cirrocast-$pkgver.tar.gz::…`. `namcap PKGBUILD` is then silent; `makepkg -f` built
+  `cirrocast-0.1.0-1-x86_64.pkg.tar.zst` (5.1 MB, the crate's release tests running in `check()`), and the
+  extracted package ran `cirrocast --version`, resolved `man -w cirrocast` and installed exactly three
+  completion files. The same PKGBUILD also built under a pristine `HOME`/`CARGO_HOME` with `--cleanbuild`.
+  The clean-chroot leg needs root (`sudo pkgctl build`) and is left to the maintainer.
+- 2026-10-01 — release run 36882589122: the three native build legs are green and produced the documented
+  archives; the `publish` job skipped on the missing token exactly as designed; the `release` job failed
+  because `gh` has no git remote to read in a job that never checks the tree out — `--repo "$GITHUB_REPOSITORY"`
+  is the fix on `main`, and the `v0.1.0` release was recreated from that run's own artifacts (all three
+  `.sha256` files verified, the x86_64 binary run from the archive). Step 14's `1.0.0` tag is what exercises the
+  fixed job end to end.
