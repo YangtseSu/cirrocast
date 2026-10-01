@@ -259,7 +259,9 @@ Every forecast is cached for `cache.weather_ttl_secs` under
 `$XDG_CACHE_HOME/cirrocast/weather/<provider>-<lat>-<lon>-<days>-<local-date>.json`, keyed by the
 location's own calendar date; a station-based backend keys the same namespace by identifier
 (`weather/metar-<ICAO>-current.json`) and keeps the station's metadata under
-`$XDG_CACHE_HOME/cirrocast/station/<ICAO>.json` for 30 days. Providers are also requested in metric, and the renderer converts into
+`$XDG_CACHE_HOME/cirrocast/station/<ICAO>.json` for 30 days. Geocoder answers live under `geocode/`
+and `ip/`, and the OSM one-request-per-second stamp under `ratelimit/nominatim.json` — `cache stat`
+reports the four data namespaces. Providers are also requested in metric, and the renderer converts into
 the display units, so a cache entry is unit-independent.
 
 The `one-line` format is a single line by contract, so the credits its licences require go to stderr;

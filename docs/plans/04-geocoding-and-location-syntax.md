@@ -181,3 +181,8 @@ cargo run -- location search 'Beijing, Mars'             # error: location not f
   ipapi.co's terms (§5) require (`ip_ttl()` clamps with a `-v` note). The findings are written up in
   the README's licences section and in the rendering contract of `docs/plans/README.md`, so steps 06+
   carry the weather credit the same way.
+- 2026-10-02 — documentation follow-up closed during step 14's completeness gate: the README's cache
+  paragraph enumerated `weather/` and `station/` but not the `ratelimit/nominatim.json` stamp this step
+  introduced, so a user listing `$XDG_CACHE_HOME/cirrocast/` met an unexplained fifth directory. The
+  paragraph now names `geocode/`, `ip/` and `ratelimit/nominatim.json` next to the four namespaces
+  `cache stat` reports. No code change: `cache clean --all` already deletes the stamp.
