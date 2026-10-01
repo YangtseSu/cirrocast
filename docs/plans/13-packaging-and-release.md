@@ -28,7 +28,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   cut in step 14, phase D releases are `1.1.0`–`1.2.0` (steps 15–19) and phase E is `2.0.0` (steps 20–24),
   matching `docs/plans/README.md`; the crate version, the JSON schema version and the config schema version move
   independently.
-- ⬜ `docs/schema.md` (new): the JSON output schema v1 (every field, its type, its canonical unit, optionality,
+- ✅ `docs/schema.md` (new): the JSON output schema v1 (every field, its type, its canonical unit, optionality,
   `schema_version`) and the config schema v1 (every key, default, accepted values, migration hooks); the rule that
   additive fields are a schema-minor change while removing, renaming or retyping a field is a schema-major change
   that bumps `schema_version`; a worked example document for each. Its key index table is the machine-checked list
@@ -196,3 +196,5 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
   `publish` job skips with a notice until a token is configured. Reason: a copy of a release PKGBUILD cannot be
   complete before the tag exists (the sums), so the copy only adds a post-release commit and a drift surface,
   while the AUR repository is mandatory anyway. Step 14's clean-chroot deliverable now builds the AUR package.
+- 2026-10-01 — `docs/schema.md` written: the JSON v1 key index (the machine-checked list), the config v1 keys
+  with their migration hooks, and a real `-f json` document plus the `config init` document as worked examples.
