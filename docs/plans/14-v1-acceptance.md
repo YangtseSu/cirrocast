@@ -29,12 +29,12 @@ ships no new features: defects found are fixed in the step that owns the code, n
   each of the six checks in "Definition of basically formed", run the proving command, paste the transcript into
   the Evidence appendix of this file and mark the row proved / accepted-deviation / defect. The requirement → step
   mapping stays in the index; this file records only command, result and date.
-- ⬜ `wttr.in` side-by-side for `Beijing`, `Shanghai`, `London`: `curl -s 'wttr.in/<city>?lang=en'` and
+- ✅ `wttr.in` side-by-side for `Beijing`, `Shanghai`, `London`: `curl -s 'wttr.in/<city>?lang=en'` and
   `cirrocast <city>` captured in the same minute on the same machine, plus a mechanical `diff` of the `-f dumb`
   variants so layouts compare without ANSI noise. One row per difference, classified as accepted (with a
   user-legible reason) or as a defect (with the owning step), covering the header lines, the four day-part rows,
   condition art keys, the temperature ramp, wind/pressure/precipitation columns and units.
-- ⬜ Backend × format acceptance matrix: rows `open-meteo`, `openweathermap`, `weatherapi`, `worldweatheronline`,
+- ✅ Backend × format acceptance matrix: rows `open-meteo`, `openweathermap`, `weatherapi`, `worldweatheronline`,
   `pirateweather`, `qweather`, `smhi`, `metar`; columns `art-table`, `one-line`, `plain`, `json`, `dumb`. Each cell
   is `pass` (transcript in the appendix) or `n/a` with one documented reason: no key in the environment
   (`n/a (BYOK)`, and that provider must still pass the key-missing path), `metar` + any forecast need
@@ -166,7 +166,180 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && 
   reason column exists so a reader can tell "not applicable" from "not tested".
 * Time-of-day and locale dependence rules out byte-identical comparison: local time and locale are recorded.
 
+## Evidence appendix
+
+Machine: `Linux 7.2.8-1-cachyos x86_64`, 12 cores, `cargo 1.98.1 (Arch Linux rust 1:1.98.1-2)`;
+release binary `target/release/cirrocast` (12 MB, `ls -lh` §8). All times +08:00, dates 2026-10-02.
+Network facts that shaped the run: most upstreams are reachable directly; TLS to
+`geocoding-api.open-meteo.com` measured 1.03 s and its first byte 1.35 s from this network (§8);
+`nominatim.openstreetmap.org` and `github.com` are unreachable directly (a proxy at
+`127.0.0.1:2080` was used for those rows only, with `NO_PROXY` keeping the weather hosts direct);
+`ipapi.co` answers non-browser clients with a Cloudflare interstitial from every path tried (§6).
+Every command below was run against the binary built from the commit this file's step closes
+(`cargo build --release --locked`, `install -m755 target/release/cirrocast …`); `cirrocast` in the
+transcripts is that binary, with `$PATH` pointing at it and the user's real `~/.config/cirrocast`
+(config + five BYOK keys) unless a row says otherwise.
+
+### §1 Requirement 1 — Rust + clap toolchain
+
+Command: `cargo --version; rustc --version; cirrocast --version; cirrocast --help`
+Observed (2026-10-02T00:11): `cargo 1.98.1 (797e8a9bc 2026-08-05) (Arch Linux rust 1:1.98.1-2)`,
+`rustc 1.98.1 (48a229cea 2026-09-01)`, `cirrocast 0.1.0` (the acceptance binary; the release commit
+prints `cirrocast 1.0.0`, §10), `--help` exits 0 and documents the precedence ladder, the exit-code
+table and the `%`-token vocabulary. Verdict: **proved**.
+
+### §2 Requirement 2 — several backends, keyless first
+
+Command: `cirrocast provider list` (exit 0) plus the matrix in §3 table below.
+Observed: eight rows — keyless `open-meteo` (default, 16 days), `smhi` (Nordics, 10 days), `metar`
+(observations, `FCST no`); keyed `openweathermap`, `weatherapi`, `worldweatheronline`,
+`pirateweather`, `qweather`, each with its `CIRROCAST_*_KEY` name. `provider info qweather` prints
+the capability block (auth header, limits, credit, docs). Verdict: **proved**.
+
+### §3 Backend × format matrix
+
+Method: `for p in …; for f in art-table one-line plain json dumb; cirrocast -p $p … -f $f` — 40 runs,
+each captured to a file with the command, the timestamp, the output and `# exit=… elapsed_ms=…`.
+`smhi` used `Stockholm` (its coverage is the Nordics); `metar` used `--station ZBAA` (station-based);
+every other row used `Beijing`. After the step-07 fix (below) the whole matrix was re-run.
+
+| provider | art-table | one-line | plain | json | dumb |
+|---|---|---|---|---|---|
+| open-meteo | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+| openweathermap | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+| weatherapi | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+| worldweatheronline | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+| pirateweather | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+| qweather | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+| smhi | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+| metar | pass (0) | pass (0) | pass (0) | pass (0) | pass (0) |
+
+No `n/a` cell was needed: every backend ran live for its own location form and answered all five
+formats with exit 0. Sample transcripts (one per backend, `plain` unless noted; each is the head of
+that cell's captured output):
+
+```
+open-meteo        Beijing     当前: 晴 16°C (体感 12°C) 风 4.5km/h 北风 湿度 27% … 气压 1023hPa 能见度 18km
+openweathermap    Beijing     当前: 晴 8°C (体感 7°C) 风 5.6km/h 北风 … 能见度 10km
+weatherapi        Beijing     当前: 雾 16°C (体感 12°C) … 能见度 6.9km
+worldweatheronline Beijing    当前: 雾 16°C (体感 12°C) … 能见度 7.0km
+pirateweather     Beijing     当前: 阴 11°C (体感 9°C) … 湿度 61% 能见度 16km
+qweather          Beijing     当前: 晴 12°C (体感 11°C) … 湿度 55% 能见度 26km
+smhi              Stockholm   当前: 晴 16°C 风 16km/h 南东南风 湿度 74% 气压 1033hPa
+metar             --station ZBAA   地点: Beijing Intl, BJ, CN (40.08, 116.60) 当前: 晴 8°C … 来源: metar …
+```
+
+`json` cells parse as schema v1 documents: open-meteo `{schema_version:1, provider:open-meteo,
+temp:15.8, days:3}`, smhi `… days:3`, qweather `… temp:11.72, days:3`, metar
+`{provider:metar, days:0, caps:{current:true,daily:false,max_days:0}}` — the observation/forecast
+distinction the contract asks the `capabilities` object to carry.
+
+### §4 wttr.in side by side (Beijing, Shanghai, London)
+
+Method: `curl -s 'wttr.in/<city>?lang=en'` and `cirrocast <city> -f art-table --lang en-US`
+captured within the same minute (00:00–01:20 local, 2026-10-02), then `diff -u` of the ANSI-stripped
+`wttr.in` output against our `-f dumb` (and against the Unicode table rendered with
+`TERM=xterm-256color --color never`). Note: this environment's `TERM` is `dumb`, so the plain
+`cirrocast` runs here draw the ASCII table automatically; the coloured table was captured with an
+explicit `TERM`/`--color always`.
+
+Every difference, classified (colour-ramp row verified by extracting the SGR codes):
+
+| # | difference | wttr.in | cirrocast | verdict |
+|---|---|---|---|---|
+| 1 | header line | `Weather report: Beijing` | `Weather report: Beijing, Beijing Municipality, China (39.91, 116.40)` | accepted — the resolved place and coordinates are echoed on purpose (README, `--help`) |
+| 2 | grid orientation | the four day parts as columns, days stacked | days as columns, the four parts as rows inside each day, same part order and same fields | accepted — step 07's documented layout (`cells_per_row`); byte-identity is explicitly not the bar |
+| 3 | condition art | `\   /`, `.-.`, `(   )` glyphs | re-authored `\│/`, `─(●)─`, `╭───╮` glyph set | accepted — art is re-authored in this repo (AGENTS rule 3) |
+| 4 | condition text inside the day cells | `Sunny`, `Smoky haze` | the part label plus art; the localized text is in `plain`/`json`/`one-line` and in the current block | accepted — the cell's metrics field is 13 columns; documented in step 07 |
+| 5 | per-part visibility | `8 km` | not shown per part (the current block carries `18km`) | accepted — the field is in the model and in `plain`/`json` per part; step 07's cell contract lists its four lines |
+| 6 | per-part precipitation slot | `0.0 mm | 0%` (probability) | `0.0mm 0%` (probability) | **defect, fixed** — before the fix this slot showed humidity; step 07 commit `e885a25`, re-run recorded below |
+| 7 | temperature field | `17 °C` | `+17°C (+13°C)` — apparent temperature added | accepted — the model carries `feels_like_c`; wttr.in shows it only in the current block |
+| 8 | wind field | `↘ 19-27 km/h` (hourly min–max) | `↑ 6.1km/h NNE` (representative value + cardinal) | accepted — one canonical `wind_kmh` per part (step 03); the cardinal is step 07's documented addition |
+| 9 | current-conditions block | condition, temp(+feels), wind, visibility, precip | same plus humidity and pressure on one extra line | accepted — superset, all values in their canonical units |
+| 10 | footer | `Location: 北京市, 东城区, … [39.9059631,116.391248]` + `Follow @igor_chubin` | `Location data based on GeoNames (CC-BY-4.0) via Open-Meteo` / `Data: Open-Meteo.com (CC BY 4.0)`, clipped at the resolved width | accepted — the credits are licence-required; below ~86 columns the URL is clipped, and `plain`/`json` carry the full text |
+| 11 | first day at capture | `Thu 01 Oct` (captured 00:00:30) | `Today, Oct 02` (the run started after local midnight) | accepted — timing artefact; `days` always starts at the location-local today (contract) |
+| 12 | units | metric: °C, km/h, km, mm, hPa | identical | match |
+| 13 | temperature ramp | wttr.in's own 256-colour mapping | re-authored ramp (`38;5;118` at +15…+17 °C, `38;5;220` art, 16-colour fold below 256 colours) | accepted — the palette is re-authored by contract |
+
+The dumb-vs-dumb `diff -u` (39 vs 33 lines) reports 63 changed lines for each city: every line is
+touched by rows 2/3/5/6/7/8/10 above, which is why the table classifies differences instead of
+counting them. Row 6 was the only defect; its fix was re-proved by re-running the matrix (§3) and
+recapturing all three cities (day-cell tails now read `0.0mm 0%`, `0.7mm 42%`).
+
+One-line token semantics were compared with `wttr.in/Beijing?format=%l:+%c+%t+%w+%h+%p+%P+%v`
+against `cirrocast Beijing -f one-line --template '%l: %c %t %w %h %p %P %v'`:
+
+```
+wttr.in   Beijing: ✨  +15°C ↓6km/h 24% 0.0mm 1023hPa %v
+cirrocast Beijing: *o* +16°C ^ 4.5km/h N 27% 0.0mm 1023hPa 18km
+```
+
+`%l`/`%h`/`%p`/`%P` match textually; `%c` differs in glyphs (re-authored art, row 3); `%w` is the
+same arrow+speed with our cardinal appended (row 8); `%v` is substituted here and not by wttr.in in
+this context (extension, not a mismatch); temperatures differ by the sources' own observation times.
+
+### §5 Location and input acceptance
+
+All commands exit 0 unless stated. Transcript at 2026-10-02T00:01–01:20.
+
+* fuzzy `Beijing`: `note: 10 candidates for Beijing; using Beijing, Beijing Municipality, China
+  (population 18960744) — pass ':Beijing' to require an exact name match`, with `-v` listing
+  candidates 1/10 … 10/10 in ranking order; the second run of an ambiguous name (`San Jose`, twice,
+  `--refresh`) resolved to `San Jose, California, United States (population 997368)` both times —
+  ranking is deterministic.
+* exact `:Beijing`: resolves without the ambiguity note and prints the one place.
+* coordinates `@39.90,116.41` and `--lat 39.90 --lon 116.41`: both render `39.9, 116.41`.
+* OSM `~Tsinghua` (through the proxy; direct Nominatim is unreachable from this network):
+  `note: 7 candidates for Tsinghua; using Tsinghua University, China`, candidates listed at `-v`,
+  `Location data © OpenStreetMap contributors (ODbL)` on stderr, and the geocode entry written
+  (`cache: … miss` → `wrote 9522 bytes`, second run `hit`). The 1 req/s throttle was observed by
+  timing two consecutive `location search '~Tsinghua' --no-cache` runs: 269 ms (no stamp yet) then
+  982 ms (waited out the window); the stamp lives in `ratelimit/nominatim.json`.
+* `:Nowhereville` → exit 5, `error: location not found: no location found for ':Nowhereville'; check
+  the spelling or run 'cirrocast location search <query>' to see the candidates`.
+* `--station ZZZZ` → exit 5, `error: location not found: unknown station 'ZZZZ'; check the
+  identifier or find a nearby one with 'cirrocast location search <place>'`.
+
+### §6 IP location acceptance
+
+* bare `cirrocast` (empty `location.default`) → `ip: located from the public IP via ipwho.is
+  Zhengzhou, Henan Sheng, China (34.76, 113.65)`, full forecast, exit 0. The answer is cached
+  (`ip/ipwho-is.json`, 1.3 kB, `cache stat` shows the `ip` namespace), matching `--help`'s
+  "cached for 24 hours" and `cache.ip_ttl_secs = 86400`.
+* primary blocked, fallback reachable (local CONNECT proxy blocking `ipwho.is` and chaining to the
+  machine's proxy for the rest): `ip: located from the public IP via ipapi.co`, forecast for the
+  proxy's exit address, exit 0 — the fallback is **proved live**. Proxy log shows
+  `CONNECT ipwho.is:443` then `CONNECT ipapi.co:443`. (Direct `ipapi.co` access from this network is
+  challenged by Cloudflare — `curl` gets the same interstitial — which is why the machine's proxy
+  was chained in.)
+* both blocked: exit 3,
+  `error: all IP location services failed: ipwho.is (network: GET https://ipwho.is/ failed: …);
+  ipapi.co (network: GET https://ipapi.co/json/ failed: …)` — names both services (the step-05 fix,
+  commit `ab89fb0`).
+
+### §7 Failure-path acceptance
+
+Transcript 2026-10-02T00:05, isolated `XDG_CONFIG_HOME` (`/tmp/evidence14/iso/config`) so no real
+key or config was touched; loopback stubs via `python3 stub.py PORT STATUS`.
+
+| scenario | command | observed |
+|---|---|---|
+| missing key | `cirrocast Beijing -p openweathermap -f plain` | exit 6, `error: missing API key for openweathermap: run 'cirrocast key set openweathermap' or set CIRROCAST_OPENWEATHERMAP_KEY in the environment` (same for `weatherapi`) |
+| invalid key | `-p qweather` against a loopback stub returning `401` | exit 6, `error: provider qweather rejected the API key (HTTP 401): replace it with 'cirrocast key set qweather'`; the stub log shows one request — no retry on a key error |
+| rate limit + chain | `-p qweather,open-meteo` with the same host answering `429` | exit 0 after 2 s; stub log shows 3 attempts (bounded by `network.retries = 3`); stderr `warning: qweather failed (upstream: …); falling back to open-meteo`, attribution and `来源:` line name `open-meteo` |
+| `keys.toml` mode | `chmod 644 keys.toml` then any keyed run | exit 4, `error: config error: …/keys.toml is readable by group/other (mode 0644); run 'chmod 600 …/keys.toml'` |
+| offline, cold | `XDG_CACHE_HOME=… cirrocast Beijing --offline` (fresh cache) | exit 3, `error: network error: offline mode: no cached open-meteo answer for the query 'Beijing' at geocode/…json; rerun without '--offline' to fetch it` |
+| offline, warm | `… cirrocast Beijing -f plain` then `… --offline -f plain` | exit 0 both times; the offline run renders the cached report |
+| offline clean | `cirrocast cache clean --offline` | exit 2 (usage: offline mode does not delete) |
+
 ## Progress log
 
 - 2026-09-30 — step file written (status: not-started); requirement mapping and the "basically formed" checklist
   cross-referenced from `docs/plans/README.md` instead of duplicated here.
+- 2026-10-02 — acceptance run started. Evidence appendix added with the requirement rows §1–§2, the 8 × 5
+  backend × format matrix §3 (all 40 cells pass live, no `n/a` needed: `smhi` ran for Stockholm and `metar`
+  through `--station ZBAA`) and the `wttr.in` side-by-side §4 for the three cities, whose 13 difference rows
+  classify every layout/field/art/palette deviation; one row was a defect — the day-cell percentage slot showed
+  humidity where wttr.in (and this repo's `plain`/`json`) put the precipitation probability — fixed in step 07
+  (commit `e885a25`) and re-proved by re-running the matrix and recapturing all three cities on the fixed binary.
+  Run sheet §1–§2 and bullets 2–3 flipped.
