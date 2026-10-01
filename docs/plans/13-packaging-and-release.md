@@ -191,7 +191,8 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
    `.github/`.
 4. ✅ `cargo publish --dry-run --locked` and `cargo doc --no-deps --all-features` pass on that commit (the
    `package` CI job runs the first of the two on every pull request).
-5. ⬜ CI is green on the commit pushed to `main`, and the signed tag is pushed.
+5. ✅ CI is green on the commit pushed to `main` (run 36881479150), and the signed `v0.1.0` tag is pushed
+   from that commit.
 6. ⬜ Each archive is inspected (`tar tzf`) and verified (`sha256sum -c`), and the GitHub release exists.
 7. ⬜ The crates.io publish is confirmed, or its explicit skip notice is recorded while the token is
    unconfigured.
@@ -261,3 +262,9 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
 - 2026-10-01 — `## Pre-tag checklist` added to this file (items 1–4 already satisfied locally: the five gates,
   the 46-file package listing, the passing dry run and the warning-free doc build); the release tag is the next
   step, then the AUR package, which is the part that needs the tag tarball.
+- 2026-10-01 — the first `main` push went red in the clippy job: stable had moved to 1.99, whose pedantic
+  `assert_is_empty` fires on all 48 `assert!(x.is_empty())` sites (Arch ships rust 1.98.1, so it could not be
+  reproduced locally; the lint is unknown to 0.1.98). The sites now use the element-typed comparison the lint
+  asks for (`assert_eq!(x, Vec::<T>::new())`, `assert_eq!(s, "")`, `assert_eq!(slice, [] as [T; 0])`,
+  `assert_ne!` for the negated ones) — no suppression, and a failure now prints the value. CI run 36881479150 is
+  green on the resulting commit, which is the one the tag is cut from.
