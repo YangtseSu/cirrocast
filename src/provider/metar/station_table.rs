@@ -6,8 +6,8 @@
 //! Every METAR request needs the station's name, coordinates, elevation and time zone before it
 //! can build a [`crate::model::Location`]. The upstream `stationinfo` endpoint serves all of that,
 //! but only over the network: a lookup here answers the common identifiers without a request, and
-//! [`super::stationinfo`] extends the same answers to every other station in the world, one cached
-//! request per station per thirty days.
+//! the `stationinfo` endpoint extends the same answers to every other station in the world, one
+//! cached request per station per thirty days.
 //!
 //! **Provenance.** `name`, `state`, `country`, `lat`, `lon` and `elev_m` are transcribed from the
 //! `stationinfo` responses recorded under `tests/fixtures/stationinfo/` — NOAA/NWS station

@@ -5,7 +5,8 @@
 //!
 //! A renderer reads the canonical [`Report`] — metric/SI, WMO conditions, location-local times —
 //! and turns it into the bytes a user sees. Nothing else in the crate formats a value for display,
-//! which is why the cache never has to care which [`UnitSystem`] a user prefers.
+//! which is why the cache never has to care which [`UnitSystem`](crate::model::units::UnitSystem) a
+//! user prefers.
 //!
 //! This module also owns the three questions a renderer must not answer for itself, because
 //! answering them twice is how output becomes untestable:

@@ -153,7 +153,7 @@ impl Condition {
         self.0
     }
 
-    /// Whether this code has a description in [`CODES`].
+    /// Whether this code has a description in the `CODES` table.
     #[must_use]
     pub fn is_known(self) -> bool {
         self.row().is_some()

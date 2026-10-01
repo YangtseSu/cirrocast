@@ -40,13 +40,13 @@
 //!
 //! A day cell is those four blocks stacked, headed by the localized date (`Today, Sep 30`). Cells
 //! are joined horizontally with `│`; the header row, the part blocks and the bottom of the box are
-//! separated by `├───┼───┤` runs. Below [`STACKED_BELOW`] columns the horizontal joining is
+//! separated by `├───┼───┤` runs. Below `STACKED_BELOW` columns the horizontal joining is
 //! dropped: one section per day, one line per part, with the 3-column glyph from
 //! [`art::one_line_art`] where a block would be.
 //!
 //! # The width invariant
 //!
-//! Every line leaves through [`fit`], which measures display columns (escape sequences take none)
+//! Every line leaves through `fit`, which measures display columns (escape sequences take none)
 //! and truncates with an ellipsis. Metrics are sized to their column *before* the row is built, so
 //! a truncation can only ever drop a table border at widths below the layout's own minimum — never
 //! half of an art block.
@@ -79,7 +79,7 @@ pub const METRICS_W_NARROW: usize = 10;
 /// Width of one day cell: art, gap, metrics.
 pub const CELL_W: usize = ART_W + GAP + METRICS_W;
 
-/// Width of one day cell below [`WIDE_FROM`].
+/// Width of one day cell below `WIDE_FROM`.
 pub const CELL_W_NARROW: usize = ART_W + GAP + METRICS_W_NARROW;
 
 /// Spaces between a cell's content and its border.

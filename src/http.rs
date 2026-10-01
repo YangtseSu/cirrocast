@@ -11,7 +11,7 @@
 //! The pieces that make retries testable rather than timing-dependent:
 //!
 //! * the retry count is fixed by the caller (`min(1 + network.retries, 3)` attempts) and every
-//!   wait is requested from an injected [`Clock`](crate::cache::Clock), so a test asserts the
+//!   wait is requested from an injected [`crate::cache::Clock`], so a test asserts the
 //!   schedule instead of sleeping through it;
 //! * `http_status_as_error(false)` keeps the status *and* the body of a 4xx/5xx response, which is
 //!   what lets the policy retry `429`/`5xx` and report the upstream's own `reason` text;

@@ -27,7 +27,7 @@
 //!
 //! A METAR names a station, so the location is a station: `--station KJFK`,
 //! `[providers.metar] station`, or `@lat,lon` (the nearest row of
-//! [`station_table::STATIONS`]). The order is documented on [`resolve_station`].
+//! [`station_table::STATIONS`]). The order is documented on `resolve_station`.
 //!
 //! # Licence
 //!
