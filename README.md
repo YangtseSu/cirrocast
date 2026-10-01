@@ -76,15 +76,17 @@ stays pipeable; `-q` silences it and `:Beijing` demands an exact name.
 
 ## Status
 
-Steps 01–11 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
+Steps 01–12 of 24 in [`docs/plans/`](docs/plans/README.md) are in place: the CLI skeleton, XDG path
 resolution, the provider registry, the typed configuration with its `config`/`key` subcommands, the
 canonical model, location resolution, the shared HTTP/cache layer, the Open-Meteo forecast, the
 wttr.in-style `art-table` renderer, the full flag matrix with the four other output formats
 (`one-line`, `plain`, `json`, `dumb`), shell completions and the man page, localization (`en-US` +
 `zh-CN`) and eight selectable backends — three of them keyless, including the station-based `metar`
-observation. Step 12 (quality hardening) is in progress: the error contract, the `--offline` and
-XDG audits, the network guard, the decoder sweeps, `deny.toml` and the CI matrix are in place; see
-[Development and CI](#development-and-ci) and the plan index for live per-step progress.
+observation. Step 12 hardened the error contract, the `--offline` and XDG behaviour, the network
+guard and the decoder paths, and grew the CI matrix. Step 13 (packaging and release) is in progress:
+[Versioning](#versioning), [Packaging and release](#packaging-and-release) and
+[Publishing](#publishing) are the parts of it that show; [`CHANGELOG.md`](CHANGELOG.md) and the plan
+index carry the rest.
 
 ## Install
 
@@ -202,7 +204,8 @@ numbers are canonical metric with the unit in the key (`temp_c`, `wind_kmh`, `pr
 `pressure_hpa`, `visibility_km`), timestamps carry the location's offset, and `attribution` carries
 the credits. Within `schema_version: 1` changes are additive only — new keys may appear and existing
 ones keep their name, type and unit — so a consumer must ignore keys it does not know; a breaking
-change bumps the version (the changelog lands with step 13).
+change bumps the version and is named in [`CHANGELOG.md`](CHANGELOG.md). Every key, its type and its
+unit are listed in [`docs/schema.md`](docs/schema.md).
 
 ### Weather
 
