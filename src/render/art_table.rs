@@ -36,7 +36,7 @@
 //! | 0 | the localized part label (`Morning`) |
 //! | 1 | `+22°C (+23°C)` — temperature and apparent temperature |
 //! | 2 | `↗ 12km/h NE` — wind arrow, speed and cardinal direction |
-//! | 3 | `0.0mm 56%` — precipitation and humidity |
+//! | 3 | `0.0mm 56%` — precipitation and its probability |
 //!
 //! A day cell is those four blocks stacked, headed by the localized date (`Today, Sep 30`). Cells
 //! are joined horizontally with `│`; the header row, the part blocks and the bottom of the box are
@@ -474,12 +474,16 @@ fn cell_line(
     line
 }
 
-/// `0.0mm 56%` — a part's precipitation, and its humidity when the provider reports one and the
-/// caller has room for it.
-fn part_tail(part: &DayPart, units: ResolvedUnits, with_humidity: bool) -> String {
+/// `0.0mm 56%` — a part's precipitation, and its precipitation probability when the provider
+/// reports one and the caller has room for it.
+///
+/// The probability, not the humidity: this slot pairs with the precipitation amount, exactly as
+/// the `plain` document's `0.0mm (0%)` and wttr.in's `0.0 mm | 0%` do. Humidity is a current
+/// reading and stays in the conditions block above the table.
+fn part_tail(part: &DayPart, units: ResolvedUnits, with_probability: bool) -> String {
     let mut text = format_precip(part.precip_mm, units.precip, UnitStyle::Compact);
-    if let Some(humidity) = part.humidity_pct.filter(|_| with_humidity) {
-        let _ = write!(text, " {humidity}%");
+    if let Some(probability) = part.precip_prob_pct.filter(|_| with_probability) {
+        let _ = write!(text, " {probability}%");
     }
     text
 }
@@ -524,10 +528,11 @@ fn stacked_part(
     let separator = format!(" {} ", vertical(charset));
 
     // The degradation ladder of a narrow terminal. Apparent temperature, cardinal direction (the
-    // arrow already names the sector) and humidity are dropped in that order — all three are
-    // second readings of something already on the line — before the line is clipped at all.
+    // arrow already names the sector) and precipitation probability are dropped in that order — all
+    // three are second readings of something already on the line — before the line is clipped at
+    // all.
     let mut line = String::new();
-    for (with_glyph, feels_like, cardinal, humidity) in [
+    for (with_glyph, feels_like, cardinal, probability) in [
         (true, true, true, true),
         (true, true, true, false),
         (true, false, true, false),
@@ -542,7 +547,7 @@ fn stacked_part(
             charset,
         );
         let wind = wind_text(part.wind_kmh, part.wind_dir_deg, ctx, charset, cardinal);
-        let tail = part_tail(part, ctx.units, humidity);
+        let tail = part_tail(part, ctx.units, probability);
 
         let mut text = format!("  {label}");
         if with_glyph {
@@ -1055,7 +1060,7 @@ mod tests {
         assert!(morning[0].contains("Morning"), "{text}");
         assert!(morning[1].contains("+18°C (+19°C)"), "{text}");
         assert!(morning[2].contains("→ 9.0km/h E"), "{text}");
-        assert!(morning[3].contains("0.4mm 61%"), "{text}");
+        assert!(morning[3].contains("0.4mm 20%"), "{text}");
     }
 
     #[test]
@@ -1134,7 +1139,7 @@ mod tests {
             "no columns below the stacked threshold:\n{text}"
         );
         assert!(
-            text.contains("  Morning │ ~~~ │ +18°C (+19°C) │ → 9.0km/h E │ 0.4mm 61%"),
+            text.contains("  Morning │ ~~~ │ +18°C (+19°C) │ → 9.0km/h E │ 0.4mm 20%"),
             "{text}"
         );
         assert!(text.contains("Tue 01 Sep"), "{text}");

@@ -92,13 +92,14 @@ wider than the resolved terminal width. The step also lands the `Renderer`/`Rend
       by `├───┼───┤` runs of `─` sized from the same cell width.
 - ✅ `src/render/art_table.rs`: day-part cell contract (documented in the module doc comment and asserted by
       a unit test) — exactly four lines per part: `art[k]` in columns `0..7`, then the localized part label
-      (`part-morning`), `+22°C (+23°C)`, `↗ 12km/h NE`, `0.0mm 56%`; the one-line day header above the four
+      (`part-morning`), `+22°C (+23°C)`, `↗ 12km/h NE`, `0.0mm 56%` (precipitation and its probability, the
+      pair wttr.in's `0.0 mm | 0%` and the `plain` document carry); the one-line day header above the four
       rows is the localized `date-short` message (`Tue 30 Sep`, `Today, Sep 30` for day 0).
 - ✅ `src/render/art_table.rs`: stacked layout for `width < 60` — one section per day (blank line, day
       heading, then four `Morning │ <art> │ <temp> │ <wind> │ <precip>` lines), same content, no horizontal
-      joining. It degrades by value rather than by luck: the ladder drops the humidity, the apparent temperature,
-      the cardinal direction (the arrow already names the sector) and finally the glyph before anything is
-      truncated.
+      joining. It degrades by value rather than by luck: the ladder drops the precipitation probability, the
+      apparent temperature, the cardinal direction (the arrow already names the sector) and finally the glyph
+      before anything is truncated.
 - ✅ `src/render/art_table.rs`: `dumb` mode = ASCII charset + box drawing `+ - |` + forced `ColorMode::Never`;
       selected explicitly by `Format::Dumb` and automatically (with a `--verbose` note) when
       `caps.term == TermKind::Dumb` or `!caps.utf8`.
@@ -225,3 +226,12 @@ cargo test --test render_snapshots -- --nocapture                               
   `I18n::date_short` with `chrono`'s English names, but by `I18n::format_date`/`format_day_heading`
   from the Fluent catalogs (`Wed 30 Sep` / `9月30日 周三`). The rendered bytes for `en-US` are
   unchanged, which the step 09 snapshot check pins.
+- 2026-10-02 — defect found by step 14's wttr.in side-by-side and fixed here: the day-cell tail showed
+  the part's *humidity* where wttr.in's table (and this repo's own `plain`/`json` documents) put the
+  precipitation probability. The slot pairs with the precipitation amount, so the % next to `0.4mm` has
+  to be the probability — humidity stays in the current-conditions block above the table. `part_tail`
+  now reads `precip_prob_pct` (the degradation ladder drops it first, where it dropped humidity), the
+  module doc and this file's deliverable wording say so, and the 14 art-table snapshots plus the two
+  unit assertions (`0.4mm 61%` → `0.4mm 20%`, the fixture deliberately carries 61 % humidity against
+  20 % probability) were reviewed line by line and updated. Step 14 re-ran the affected matrix rows and
+  the side-by-side afterwards.
