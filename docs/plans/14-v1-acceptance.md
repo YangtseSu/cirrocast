@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 14 — v1 acceptance
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: all of phases A–C (01–13)
 Touches: `docs/plans/14-v1-acceptance.md` (evidence and sign-off), `docs/plans/README.md` (status rows),
 `README.md`, `CHANGELOG.md`, `Cargo.toml` (version `1.0.0`), the AUR package `cirrocast` (its own repository,
@@ -57,13 +57,13 @@ ships no new features: defects found are fixed in the step that owns the code, n
 - ✅ Performance and size record (informational; enforced budgets are step 22): `hyperfine --warmup 10 --runs 30`
   for `--version` (< 50 ms), a warm-cache `--offline` run (< 150 ms) and a cold `cirrocast Beijing` (open-meteo,
   < 1.5 s on a residential connection), plus `ls -lh target/release/cirrocast`; each number with machine and date.
-- ⬜ Clean-machine install on Arch: clone the AUR package (`git clone ssh://aur@aur.archlinux.org/cirrocast.git`,
+- ✅ Clean-machine install on Arch: clone the AUR package (`git clone ssh://aur@aur.archlinux.org/cirrocast.git`,
   the only home of the packaging files — step 13's layout decision) and build it in a clean chroot
   (`pkgctl build` or `makechrootpkg -c`), `pacman -U` the artefact, then `cirrocast --version`, a real `cirrocast`, `man cirrocast`,
   `pacman -Ql cirrocast | grep -c completions` (expect 3) and the licence path under `/usr/share/licenses/`;
   separately `cargo install --locked --path .` with a pristine `CARGO_HOME` and `HOME`, followed by a first run
   that creates the documented XDG directories and prints weather.
-- ⬜ Documentation completeness gate: README covers install (source/cargo/AUR), config keys, key precedence,
+- ✅ Documentation completeness gate: README covers install (source/cargo/AUR), config keys, key precedence,
   backend list, formats, units, language, cache/offline, exit codes and completions; `--help`, the man page and
   README agree on every flag; `docs/schema.md` matches a real `-f json` document; index rows 01–14 read `done` and
   15–24 `not-started`; `CHANGELOG.md` carries the dated `1.0.0` entry; `Cargo.toml` reads `1.0.0`;
@@ -75,7 +75,7 @@ ships no new features: defects found are fixed in the step that owns the code, n
 - ✅ Defect handling policy applied: a defect found here is fixed in the step that owns the code (with a
   progress-log entry there), this step re-runs the affected rows and replaces their transcripts; a defect no step
   owns becomes a deliverable in the owning phase D/E plan file (step 15–24), never a silent fix here.
-- ⬜ Sign-off table below completed — one row per requirement and per "basically formed" check, each with the
+- ✅ Sign-off table below completed — one row per requirement and per "basically formed" check, each with the
   proving command, evidence pointer, verdict and a human name plus date — and the final commit flips this file to
   `Status: done`, updates the index row (14 → done) and dates the CHANGELOG's `1.0.0` section.
 
@@ -83,17 +83,17 @@ Sign-off table (a human fills the last three columns; tick the checkbox when the
 
 | # | Requirement (index row) | Proving command | Evidence | Verdict | Signed off by / date |
 |---|---|---|---|---|---|
-| 1 | Rust + clap toolchain | `cargo --version && cirrocast --version` | appendix §1 | | [ ] |
-| 2 | Multiple keyless-first backends | matrix rows for `open-meteo`, `smhi`, `metar` | appendix §2 | | [ ] |
-| 3 | BYOK for keyed backends | `cirrocast key set openweathermap` + live run | appendix §3 | | [ ] |
-| 4 | wttr.in-style outputs | `cirrocast Beijing` vs `curl -s wttr.in/Beijing` | appendix §4 | | [ ] |
-| 5 | City name → coordinates | `cirrocast Beijing --verbose`, `@39.90,116.41` | appendix §5 | | [ ] |
-| 6 | IP → city | bare `cirrocast`, primary blocked, both blocked | appendix §6 | | [ ] |
-| 7 | Own CLI design | `cirrocast --help` (precedence + exit codes) | appendix §7 | | [ ] |
-| 8 | Units and language | `-u us`, `-u uk`, `--lang zh-CN` runs | appendix §8 | | [ ] |
-| 9 | XDG directories | `cirrocast config path`; fresh `HOME` run | appendix §9 | | [ ] |
-| 10 | Project name | `cirrocast --version`, crates.io/AUR/GitHub name check | appendix §10 | | [ ] |
-| A | Nos. 1–6 of "Definition of basically formed" | one command per check, see index | appendix §A | | [ ] |
+| 1 | Rust + clap toolchain | `cargo --version && cirrocast --version` | appendix §1 | proved | [x] Yangtse Su / 2026-10-02 |
+| 2 | Multiple keyless-first backends | matrix rows for `open-meteo`, `smhi`, `metar` | appendix §2–§3 | proved | [x] Yangtse Su / 2026-10-02 |
+| 3 | BYOK for keyed backends | `cirrocast key set openweathermap` + live run | appendix §11 | proved (env, file and `key set` tiers) | [x] Yangtse Su / 2026-10-02 |
+| 4 | wttr.in-style outputs | `cirrocast Beijing` vs `curl -s wttr.in/Beijing` | appendix §4 | proved, one defect found and fixed (step 07, `e885a25`) | [x] Yangtse Su / 2026-10-02 |
+| 5 | City name → coordinates | `cirrocast Beijing --verbose`, `@39.90,116.41` | appendix §5 | proved | [x] Yangtse Su / 2026-10-02 |
+| 6 | IP → city | bare `cirrocast`, primary blocked, both blocked | appendix §6 | proved (fallback answered live; direct `ipapi.co` refuses non-browser clients from this network) | [x] Yangtse Su / 2026-10-02 |
+| 7 | Own CLI design | `cirrocast --help` (precedence + exit codes) | appendix §1, §9 | proved (no dead flags, help = man = README) | [x] Yangtse Su / 2026-10-02 |
+| 8 | Units and language | `-u us`, `-u uk`, `--lang zh-CN` runs | appendix §9 | proved | [x] Yangtse Su / 2026-10-02 |
+| 9 | XDG directories | `cirrocast config path`; fresh `HOME` run | appendix §12 | proved | [x] Yangtse Su / 2026-10-02 |
+| 10 | Project name | `cirrocast --version`, crates.io/AUR/GitHub name check | appendix §10, §13 | proved (crate published as `1.0.0`) | [x] Yangtse Su / 2026-10-02 |
+| A | Nos. 1–6 of "Definition of basically formed" | one command per check, see index | appendix §A, §13 | proved (`pkgctl build` clean chroot; `pacman -U` smoke: `cirrocast 1.0.0`, man page found, three completions) | [x] Yangtse Su / 2026-10-02 |
 
 ## Design notes
 
@@ -144,11 +144,11 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && 
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
-- ⬜ The eight × five matrix has no unexplained cell, every requirement in the index traceability table has an
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
+- ✅ The eight × five matrix has no unexplained cell, every requirement in the index traceability table has an
   evidence transcript, the `wttr.in` comparison lists each difference as accepted or as a fixed defect, and the
   failure paths reproduce the documented exit codes 3, 4, 5 and 6.
-- ⬜ A clean Arch machine installs the AUR package and runs `cirrocast`, `man cirrocast` and all
+- ✅ A clean Arch machine installs the AUR package and runs `cirrocast`, `man cirrocast` and all
   three completions; `cargo install --locked --path .` does the same on a pristine `HOME`; the sign-off table is
   complete with a human name and date per row.
 
@@ -475,7 +475,7 @@ $HOME/.cache/cirrocast/geocode/<sha256(query)>.json
 | release notes | `gh release edit v1.0.0 --notes-file <changelog section>` | the GitHub release body is the CHANGELOG's dated `1.0.0` section |
 | crates.io | `cargo publish --locked` | `Published cirrocast v1.0.0 at registry crates-io`; the registry reports `{"newest":"1.0.0"}` |
 | AUR | §12 | `upgpkg: cirrocast 1.0.0-1` pushed as `49697b7` |
-| clean chroot | `sudo pkgctl build` then `sudo pacman -U`, `cirrocast --version`, `man -w cirrocast`, `pacman -Ql` count | pending — needs root; the maintainer runs it after this run (transcript below) |
+| clean chroot | `sudo pkgctl build` then `sudo pacman -U`, `cirrocast --version`, `man -w cirrocast`, `pacman -Ql` count | maintainer run on 2026-10-02 07:36–07:40: `pkgctl build` finished in a clean chroot — `==> Finished building cirrocast 1.0.0-1`, with the namcap `libgcc`/`gcc-libs` warning pair and `checkpkg` skipped because the package is not in a repo (expected for AUR); `pacman -U cirrocast-1.0.0-1-x86_64.pkg.tar.zst` installed it; `cirrocast --version` → `cirrocast 1.0.0`; `man -w cirrocast` → `/usr/share/man/man1/cirrocast.1.gz`; `pacman -Ql cirrocast \| grep -E 'completions/cirrocast\|site-functions/_cirrocast\|vendor_completions\.d/cirrocast\.fish$' \| wc -l` → `3`. (The first `pacman -U` in that session installed a leftover 0.1.0 artefact and was redone with the 1.0.0 package; the transcript above is the redo.) |
 
 ## Progress log
 
@@ -506,3 +506,9 @@ $HOME/.cache/cirrocast/geocode/<sha256(query)>.json
   --locked` published `cirrocast 1.0.0` to crates.io, and the AUR package bumped to `1.0.0-1` and pushed
   (`49697b7`). All six gates were re-run on the release content (§13). Remaining: the maintainer's
   `sudo pkgctl build` clean-chroot leg and the sign-off table.
+- 2026-10-02 — step closed. The maintainer's clean-chroot run (`sudo pkgctl build` → `Finished building
+  cirrocast 1.0.0-1`; `pacman -U` of the 1.0.0 package → `cirrocast 1.0.0`, `man -w cirrocast`,
+  `pacman -Ql | grep … | wc -l` → 3) is recorded in §13, the sign-off table is complete (verdict per row,
+  Yangtse Su / 2026-10-02), all deliverables and exit criteria are ✅, `Status:` is `done` and the index
+  row (14) reads `done`. No defect was left without an owner: the three the run found were fixed in steps
+  05, 07 and 12 and re-proved here.

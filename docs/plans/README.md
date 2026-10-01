@@ -50,7 +50,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 11 | B | [metar-and-aviation](11-metar-and-aviation.md) | ✅ done | 05, 10 |
 | 12 | C | [quality-hardening](12-quality-hardening.md) | ✅ done | 08, 09, 10 |
 | 13 | C | [packaging-and-release](13-packaging-and-release.md) | ✅ done | 08, 12 |
-| 14 | C | [v1-acceptance](14-v1-acceptance.md) | ⬜ not-started | all of A–C |
+| 14 | C | [v1-acceptance](14-v1-acceptance.md) | ✅ done | all of A–C |
 | 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | ⬜ not-started | 10, 12 |
 | 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ⬜ not-started | 03, 08 |
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ⬜ not-started | 03, 08 |
