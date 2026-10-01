@@ -82,7 +82,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `namcap cirrocast-*.pkg.tar.zst`, `makepkg --printsrcinfo | diff - .SRCINFO` (empty), a clean-chroot build
   (`pkgctl build` or `makechrootpkg -c`), then `cirrocast --version`, `man -w cirrocast` and
   `pacman -Ql cirrocast | grep -c completions` (expect 3).
-- ⬜ `cargo install` path documented in `README.md#install`: `cargo install --locked cirrocast` (and
+- ✅ `cargo install` path documented in `README.md#install`: `cargo install --locked cirrocast` (and
   `cargo install --locked --path .` from a checkout), plus the two commands that install what the packages
   place for you — `cirrocast completion <bash|zsh|fish> > <completion path>` and `cirrocast man > <man path>` —
   with the exact target paths per shell.
@@ -223,3 +223,6 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 - 2026-10-01 — `README.md#versioning` added: the four independent version numbers (crate, JSON schema, config
   schema, cache envelope), the release schedule matching the plan index, and the minor/major rule for schema
   changes.
+- 2026-10-01 — `README.md#install` rewritten around the four real paths (crates.io, checkout, AUR, release
+  archive) with the `sha256sum -c` step and the exact per-shell completion targets `cargo install` cannot
+  place.
