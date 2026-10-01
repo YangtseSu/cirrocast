@@ -37,7 +37,10 @@ const PROBES: [(&str, &str); 24] = [
     ("render.color", "never"),
     ("render.width", "100"),
     ("providers.metar.station", "ZBAA"),
-    ("providers.qweather.host", "https://api.qweather.com"),
+    (
+        "providers.qweather.host",
+        "https://abc123.re.qweatherapi.com",
+    ),
 ];
 
 fn get(sandbox: &Sandbox, key: &str) -> Command {

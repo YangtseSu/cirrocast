@@ -232,7 +232,7 @@ impl ProviderId {
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "global coverage; v1 endpoints, metric-only measures; per-account API host required",
+                notes: "global coverage; v1 endpoints, metric-only measures; API host from https://console.qweather.com/setting",
                 auth: "API key in the `X-QW-Api-Key` header (or `key=` query)",
                 coverage: "global",
                 granularity: "hourly (up to 240 h) and daily (up to 10 days)",

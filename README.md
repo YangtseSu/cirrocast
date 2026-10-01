@@ -396,7 +396,7 @@ write and the first one read — and `config validate` reports the file that was
 | `render.color` | `auto` | `auto`, `always`, `never` |
 | `render.width` | `0` | `0` (detect from the terminal) or `40..=500` |
 | `providers.metar.station` | empty | ICAO identifier, e.g. `ZBAA` |
-| `providers.qweather.host` | empty | your QWeather API host |
+| `providers.qweather.host` | empty | your QWeather API host, from <https://console.qweather.com/setting> (e.g. `https://<account-id>.re.qweatherapi.com`) |
 
 The `[units]` overrides are per quantity and optional: an absent (or empty) key follows
 `defaults.units`, so switching that one value to `us` moves every quantity that was not pinned.

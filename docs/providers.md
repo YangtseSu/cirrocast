@@ -560,8 +560,8 @@ host the console issues.
 | Hourly | `https://<host>/weather/v1/hourly/<lat>/<lon>` | `hours` (1–240; probed: `241` → `400`), `lang` |
 | Daily | `https://<host>/weather/v1/daily/<lat>/<lon>` | `days` (1–10; probed: `11` → `400`), `lang` |
 
-The host is **per account** (`<account-id>.re.qweatherapi.com` in the verified account) and is part of
-the authentication ("even if a developer's credentials are leaked, an attacker cannot request data
+The host is **per account** (`<account-id>.re.qweatherapi.com` in the verified account; the console
+shows it at <https://console.qweather.com/setting>) and is part of the authentication ("even if a developer's credentials are leaked, an attacker cannot request data
 without knowing the API Host"). The legacy shared domains (`api.qweather.com`, `devapi.qweather.com`,
 `geoapi.qweather.com`) answer `403` with `"title": "Invalid Host"` — probed with a valid key on
 2026-10-01 — so `<host>` has no default and comes from `[providers.qweather].host`.
@@ -612,8 +612,10 @@ rather than a silent conversion; the day extremes come from the samples. Finding
 * The `days[]` block is **not consumed**: its `daytime`/`nighttime` split does not map onto the four
   canonical parts, and the extremes are derivable from the hourly series.
 
-Credit line: `QWeather — https://www.qweather.com/`. A missing host is `Error::Config` (exit 4) with
-`set providers.qweather.host (see cirrocast provider info qweather)`.
+Credit line: `QWeather — https://www.qweather.com/`. A missing host with a key present is
+`Error::Config` (exit 4) with `set providers.qweather.host (see
+https://console.qweather.com/setting, or cirrocast provider info qweather)`; with no key either, the
+chain reports the missing key first (exit 6).
 
 **Unverified.** The Developers License text (403) and every rendered `dev.qweather.com` page (403 —
 the v1 facts above come from live responses and the public docs repository); the exact QPM scope

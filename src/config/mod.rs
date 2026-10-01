@@ -204,7 +204,8 @@ pub struct MetarConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct QWeatherConfig {
-    /// API host, assigned to your `QWeather` account.
+    /// API host, assigned to your `QWeather` account; the console shows it at
+    /// <https://console.qweather.com/setting>.
     pub host: String,
 }
 
@@ -779,7 +780,8 @@ width = 0                # 0 = detect from the terminal, or 40..=500 columns
 station = ""             # default ICAO identifier, e.g. "ZBAA"
 
 [providers.qweather]
-host = ""                # your QWeather API host, e.g. "https://api.qweather.com"
+host = ""                # API host from https://console.qweather.com/setting,
+                         # e.g. "https://<account-id>.re.qweatherapi.com"
 "#;
 
 // ---------------------------------------------------------------------------------------------
@@ -1488,7 +1490,7 @@ mod tests {
         config.render.width = 80;
         config.render.color = "never".to_owned();
         config.providers.metar.station = "ZBAA".to_owned();
-        config.providers.qweather.host = "https://api.qweather.com".to_owned();
+        config.providers.qweather.host = "https://abc123.re.qweatherapi.com".to_owned();
         config.validate().expect("every value is in range");
     }
 

@@ -24,8 +24,9 @@
 //! 6. **`hours` is capped at 240 and `days` at 10** (probed: 241 and 11 both answer `400`).
 //! 7. **Errors are RFC 7807** (`application/problem+json`): a bad key is `401` (mapped to
 //!    [`Error::InvalidKey`] by the shared helper), a bad parameter or location is `400`.
-//! 8. **The host is per account** and comes from `[providers.qweather].host`; a missing host is a
-//!    configuration error with the `provider info` hint, never a guessed default.
+//! 8. **The host is per account** and comes from `[providers.qweather].host` (the console shows it
+//!    at <https://console.qweather.com/setting>); a missing host is a configuration error naming
+//!    that page, never a guessed default.
 //!
 //! Licence: proprietary (`QWeather` Developers License). The docs require the name `QWeather` plus
 //! <https://www.qweather.com> wherever data is shown; the registry row carries the line the
@@ -160,7 +161,7 @@ fn host(env: &Env<'_>) -> Result<String> {
     if host.is_empty() {
         return Err(Error::Config(format!(
             "provider `{PROVIDER}` needs its account API host: set providers.qweather.host \
-             (see `cirrocast provider info {PROVIDER}`)"
+             (see https://console.qweather.com/setting, or `cirrocast provider info {PROVIDER}`)"
         )));
     }
     if !host.starts_with("http://") && !host.starts_with("https://") {
