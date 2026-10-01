@@ -997,6 +997,20 @@ mod tests {
     }
 
     #[test]
+    fn a_body_over_the_cap_is_a_transport_failure() {
+        // The limit is installed on the body reader; what is testable without a server is the
+        // mapping: ureq's `BodyExceedsLimit` becomes our own non-retryable variant, which the
+        // client reports as a network failure (exit 3) instead of allocating without bound.
+        let error = super::ureq_error(ureq::Error::BodyExceedsLimit(super::MAX_BODY_BYTES));
+        assert!(matches!(error, TransportError::TooLarge));
+        assert!(!error.is_retryable());
+        assert!(
+            error.to_string().contains("byte cap"),
+            "the message must name the cap: {error}"
+        );
+    }
+
+    #[test]
     fn only_loopback_targets_survive_the_network_guard() {
         for url in [
             "http://127.0.0.1:8080/v1/forecast",

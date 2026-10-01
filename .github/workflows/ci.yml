@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The CI gate. Every check here is one a contributor can reproduce locally with the same command
+# (see AGENTS.md → Commands); CI adds nothing a solo machine cannot run, it only makes the result
+# binding.
+#
+# Conventions:
+# * every third-party action is pinned to a commit SHA (the tag is kept as a comment);
+# * the runner images are named explicitly (`ubuntu-26.04`, `macos-26`) rather than through
+#   `<os>-latest`, whose meaning changes under the project's feet;
+# * `CIRROCAST_FORBID_NETWORK=1` is exported for the whole test job, so an accidentally
+#   network-dependent test fails loudly instead of quietly passing on a machine with a network;
+# * there is no Windows job: v1 ships no Windows artefact and has no Windows-specific code path.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+          components: rustfmt
+      - run: cargo fmt --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo clippy --all-targets --locked -- -D warnings
+
+  test:
+    name: cargo test (${{ matrix.os }}, ${{ matrix.rust }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-26]
+        rust: [stable, "1.98.0"]
+    env:
+      CIRROCAST_FORBID_NETWORK: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo test --locked
+
+  gates:
+    name: repository gates
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The render layer must not reach into the transport, the cache or the provider registry:
+      # the renderers shape their output from what the report carries (step 12's render-path audit).
+      - name: no render/model dependency on http, provider or cache
+        run: |
+          if grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model; then
+            echo "::error::src/render and src/model must not import http, provider or cache"
+            exit 1
+          fi
+      # LICENSES/GPL-3.0-or-later.txt is a real copy (a Windows checkout cannot rely on symlinks),
+      # so it must not drift from the root LICENSE GitHub detects.
+      - name: LICENSE copy matches LICENSES/GPL-3.0-or-later.txt
+        run: cmp -s LICENSE LICENSES/GPL-3.0-or-later.txt
+
+  reuse:
+    name: reuse lint
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # `cargo audit` beside `cargo deny`: mirrored advisory databases can lag behind the live
+      # RUSTSEC data, so the two checks are independent signals.
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

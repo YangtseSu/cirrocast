@@ -82,8 +82,9 @@ canonical model, location resolution, the shared HTTP/cache layer, the Open-Mete
 wttr.in-style `art-table` renderer, the full flag matrix with the four other output formats
 (`one-line`, `plain`, `json`, `dumb`), shell completions and the man page, localization (`en-US` +
 `zh-CN`) and eight selectable backends — three of them keyless, including the station-based `metar`
-observation. The quality gates (12–14) are still ahead. See the plan index for live per-step
-progress.
+observation. Step 12 (quality hardening) is in progress: the error contract, the `--offline` and
+XDG audits, the network guard, the decoder sweeps, `deny.toml` and the CI matrix are in place; see
+[Development and CI](#development-and-ci) and the plan index for live per-step progress.
 
 ## Install
 
@@ -475,3 +476,30 @@ configuration namespace: `config set keys.openweathermap …` fails as an unknow
 GPL-3.0-or-later — see [`LICENSE`](LICENSE). The repository is
 [REUSE](https://reuse.software/)-compliant; per-file copyright and licence information lives in
 SPDX headers and in [`REUSE.toml`](REUSE.toml).
+
+## Development and CI
+
+The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+
+| Job | Command | Notes |
+|---|---|---|
+| `fmt` | `cargo fmt --check` | stable toolchain |
+| `clippy` | `cargo clippy --all-targets --locked -- -D warnings` | warnings are errors |
+| `test` | `cargo test --locked` | `ubuntu-26.04` + `macos-26` × `stable` + `1.98.0`, with `CIRROCAST_FORBID_NETWORK=1` |
+| `gates` | render-layer import gate, `cmp LICENSE LICENSES/GPL-3.0-or-later.txt` | repository invariants that no compiler enforces |
+| `reuse` | `reuse lint` | every file carries SPDX information |
+| `deny` | `cargo deny check` | licences, advisories, bans, sources |
+| `audit` | `cargo audit` | independent advisory check beside `deny` |
+
+* **MSRV** is `1.98` (`rust-version` in `Cargo.toml`); the floor tracks the latest stable release
+  rather than lagging behind it, and the CI matrix builds the floor explicitly.
+* **No test may open a network connection.** `CIRROCAST_FORBID_NETWORK=1` makes `src/http.rs`
+  refuse every non-loopback request before DNS or connect, and the test job exports it for the
+  whole suite, so a network-dependent test fails loudly. Live smoke tests are `#[ignore]`d and run
+  manually (`CIRROCAST_LIVE_TESTS=1 cargo test -- --ignored`).
+* **Dependency policy** lives in [`deny.toml`](deny.toml): an audited licence allow list (GPL-3.0-or-later
+  admits the permissive licences, MPL-2.0 and the data licences `Unicode-3.0`, `CDLA-Permissive-2.0`
+  and `ODbL-1.0`), duplicate versions and wildcard requirements denied, crates.io as the only
+  source, and every advisory ignore carrying a reason plus an expiry date.
+* **Reproducibility**: every third-party action is pinned to a commit SHA and the runner images are
+  named explicitly (`ubuntu-26.04`, `macos-26`) instead of `<os>-latest`.

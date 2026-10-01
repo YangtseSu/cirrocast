@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 12 — Quality hardening
 
-Status: 🚧 in-progress
+Status: ✅ done
 Depends on: 08 (cli-surface-and-formats), 09 (localization), 10 (additional-providers)
 Touches: `src/**/*.rs` (error text and logging only), `src/http.rs` (network guard), `src/config/mod.rs`
 (validation), `src/cli.rs` (help text), `src/model/mod.rs` + `src/provider/mod.rs` (the attribution mirror the
@@ -49,9 +49,11 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
 - ✅ Help-text review: `--help`/`--version` read no config, XDG or cache state; a `CONFIG PRECEDENCE` block
   states CLI flag > `CIRROCAST_*` env var > `config.toml` > built-in default; an `EXIT CODES` block lists all
   seven codes with triggers; the man page renders from the same `cli.rs` text.
-- ⬜ Startup gate recheck: `hyperfine --warmup 10 --runs 50 'target/release/cirrocast --version'` under 50 ms,
+- ✅ Startup gate recheck: `hyperfine --warmup 10 --runs 50 'target/release/cirrocast --version'` under 50 ms,
   and `strace -f -e trace=network target/release/cirrocast --version` with no `socket(` (enforced budgets with
-  CI thresholds are step 22).
+  CI thresholds are step 22). Measured locally: 1.4 ms ± 0.2 ms mean, `socket(` count 0 for `--version`; the
+  guarded fetch path opens no socket either (`CIRROCAST_FORBID_NETWORK=1 … Beijing` also counts 0, which is the
+  guard's "before DNS" promise seen from outside).
 - ✅ `deny.toml` + `cargo deny check` green: `[licenses]` allow-list (MIT, Apache-2.0, ISC, BSD-2-Clause,
   BSD-3-Clause, Zlib, Unicode-3.0, CDLA-Permissive-2.0, CC0-1.0, MPL-2.0, each with a one-line justification),
   deny list for licences that cannot combine with GPL-3.0-or-later (`GPL-2.0-only`, pre-3.0 `OpenSSL`,
@@ -63,46 +65,62 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   `deny.toml`; expected exceptions needing an allow-list entry are `Unicode-3.0` (through `idna`/`url`) and
   `CDLA-Permissive-2.0` (through `webpki-roots`); an incompatible dependency is a blocker with a chosen
   replacement, never a silent allow-list. `cargo audit` runs beside `cargo deny` since the sources disagree.
-- ⬜ MSRV at 1.98: `cargo +1.98.0 build --all-targets --locked` and `cargo +1.98.0 test --locked` pass locally
+- ✅ MSRV at 1.98: `cargo +1.98.0 build --all-targets --locked` and `cargo +1.98.0 test --locked` pass locally
   and in a dedicated CI job; `cargo msrv verify` (cargo-msrv, optional) confirms the declared `rust-version`;
   `rust-toolchain.toml` keeps pinning `stable` for development, the `+1.98.0` override wins in the job.
   (The floor tracks the latest stable release rather than lagging behind it: step 11 raised 1.85 → 1.98 in
-  one move, which is also what `tzf-rs` 2.x and the crate's let-chains require.)
-- ⬜ `reuse lint` reaches 0 problems and stays there. The tree currently reports 1 invalid SPDX expression and
+  one move, which is also what `tzf-rs` 2.x and the crate's let-chains require.) This machine has a single
+  system toolchain (1.98.1) and no rustup, so the local verification is `cargo build --all-targets --locked` +
+  `cargo test --locked` on 1.98.1 — same minor as the floor, patch above it — while the `1.98.0` matrix leg in
+  CI is the exact-pin check; the earlier `1.85.0` placeholders in this file's Verification/Exit-criteria blocks
+  were stale and are corrected to `1.98.0`.
+- ✅ `reuse lint` reaches 0 problems and stays there. The tree currently reports 1 invalid SPDX expression and
   1 file with no licensing information: `AGENTS.md` demonstrates a header with prose on the same line, so REUSE
   parses the prose as part of the licence expression (the value must sit alone on its line, or the example must
   be wrapped in `REUSE-IgnoreStart`/`REUSE-IgnoreEnd`), and `src/main.rs` needs its header. Fixture licensing
   follows the upstream rule — exact-path annotations with the upstream licence (CC-BY-4.0, ODbL-1.0, a
   public-domain `LicenseRef` for NOAA data) — so no blanket `tests/fixtures/**` override may remain. Windows
   checkout decision (Design notes): replace the `LICENSES/GPL-3.0-or-later.txt` symlink with a real copy of
-  `LICENSE` and gate the pair with `cmp -s LICENSE LICENSES/GPL-3.0-or-later.txt` in CI.
+  `LICENSE` and gate the pair with `cmp -s LICENSE LICENSES/GPL-3.0-or-later.txt` in CI. (Both earlier problems
+  were fixed in steps 09–11: `reuse lint` reports 0 problems for 260 files, the symlink is replaced by the copy,
+  the `cmp` gate is in the `gates` CI job, and `tests/fixtures/malformed/**` is annotated as first-party.)
 - ✅ `tests/no_network.rs`: the `CIRROCAST_FORBID_NETWORK=1` guard is enforced in `src/http.rs` before DNS and
   connect; the test proves the guard intercepts (a cold-cache request to a real upstream exits 3 with the guard
   message) and, on Linux, reruns the CLI under `unshare -rn` to prove no external DNS is required.
-- ⬜ Decoder robustness: new malformed fixtures plus a sweep over every upstream JSON decoder (open-meteo, the
+- ✅ Decoder robustness: new malformed fixtures plus a sweep over every upstream JSON decoder (open-meteo, the
   six key-requiring providers, metar, geocoding, IP location, config) feeding a truncation sweep at every byte
   offset, empty/`{}`/`[]`/`null` bodies, wrong types (`"temp": "abc"`) and single-byte mutations — each input
   yields `Error::Upstream`/`Error::Config` with a cause chain and never panics, hangs or allocates unboundedly
-  (payload cap enforced in `http.rs`).
+  (payload cap enforced in `http.rs`). Implemented in `tests/decoder_robustness.rs` with
+  `tests/fixtures/malformed/**`; the sweep is exhaustive (every byte offset) for payloads up to 8 KiB and uses
+  a bounded stride (at most 2048 offsets per fixture) for the larger recordings, because a debug-build decode
+  costs about a millisecond and the exhaustive form of an 84 KiB payload alone took minutes — the deviation, and
+  its reason, are recorded in the progress log. `Error` variants carry their full text inline (no `source()`), so "cause chain" means the
+  message names the provider and the defect rather than an empty `caused by:` chain; the taxonomy assertions
+  check the variant class and the provider name.
 - ✅ Render-path audit: `src/render/**` and `src/model/**` import nothing from `http`, `provider` or `cache`,
-  enforced by a CI grep gate (`! grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model`), with
-  `cargo tree` confirming only `serde`/`serde_json`/`chrono`/locale data beyond std. (The three registry
-  lookups the renderers used — capabilities, display name, licence credit — moved into
-  `model::Attribution`: every provider fills them through `provider::attribution(...)`, and
-  `the_report_mirror_carries_every_registry_field` proves the copy is complete. The hand-written report
-  fixtures carry the same fields, so every renderer snapshot is byte-identical.)
+  enforced by a CI grep gate (`! grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model`). Beyond
+  `std` and crate-internal modules, the two trees use only `serde`, `serde_json`, `chrono`, `chrono-tz`,
+  `clap` (the `ValueEnum` derives on the format/colour enums), `unicode-width` and `fluent-bundle` — no
+  transport, no cache, no registry. (The three registry lookups the renderers used — capabilities, display
+  name, licence credit — moved into `model::Attribution`: every provider fills them through
+  `provider::attribution(...)`, and `the_report_mirror_carries_every_registry_field` proves the copy is
+  complete. The hand-written report fixtures carry the same fields, so every renderer snapshot is
+  byte-identical.)
 - ✅ XDG audit: no write outside `$XDG_{CONFIG,CACHE,DATA}_HOME/cirrocast` (verified by running with all three
   pointed at a temporary tree and diffing it), `XDG_CONFIG_DIRS` honoured for reads, and `--offline`/`--no-cache`
   creating no cache directory.
 - ✅ Secret-handling audit: keys never land in `config.toml`, `key list` masks values, `keys.toml` is written
   0600 and refused when wider, and a test greps captured `-vv` stderr for the fake key it exported and finds
   nothing.
-- ⬜ `.github/workflows/ci.yml`: jobs `fmt`, `clippy --all-targets -- -D warnings`, `test` (matrix
-  ubuntu-26.04 + macos-latest × stable + 1.98.0, `CIRROCAST_FORBID_NETWORK=1`, `--locked`), `reuse`
+- ✅ `.github/workflows/ci.yml`: jobs `fmt`, `clippy --all-targets -- -D warnings`, `test` (matrix
+  ubuntu-26.04 + macos-26 × stable + 1.98.0, `CIRROCAST_FORBID_NETWORK=1`, `--locked`), `reuse`
   (`fsfe/reuse-action`), `deny` (`EmbarkStudios/cargo-deny-action`), `audit` (`rustsec/audit-check`), plus the
   layer and `cmp` gates; every third-party action pinned to a commit SHA, `concurrency` cancelling superseded
   runs, no Windows job. README/AGENTS document the matrix, MSRV, deny policy, the no-network rule and the
-  resulting CI summary.
+  resulting CI summary. (Runner labels are explicit — `ubuntu-26.04` and `macos-26`, never `<os>-latest`: the
+  `ubuntu-latest` alias still resolves to 24.04 while 26.04 is the current GA image, so the alias would silently
+  pin an older distribution than the project targets.)
 
 ## Design notes
 
@@ -355,11 +373,15 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
-- ⬜ `cargo deny check` and `cargo audit` green, `cargo +1.98.0 build --all-targets --locked` green, and the
-  dependency licence verdict table filled in with no unresolved GPL-3.0-or-later incompatibility.
-- ⬜ `CIRROCAST_FORBID_NETWORK=1 cargo test` passes, the guard test shows a blocked request exiting 3 with the
-  guard message, and `hyperfine` reports `--version` under 50 ms with no socket opened.
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` all clean.
+- ✅ `cargo deny check` and `cargo audit` green, `cargo +1.98.0 build --all-targets --locked` green, and the
+  dependency licence verdict table filled in with no unresolved GPL-3.0-or-later incompatibility. (Locally the
+  single system toolchain 1.98.1 ran `cargo build --all-targets --locked` and `cargo test --locked`; the exact
+  `1.98.0` pin is the CI matrix leg. `cargo audit` needs `--no-yanked` behind this machine's mirror, which
+  answers the crates.io API with 403; CI runs the full check.)
+- ✅ `CIRROCAST_FORBID_NETWORK=1 cargo test` passes (206 unit + 43 integration binaries green), the guard test
+  shows a blocked request exiting 3 with the guard message, and `hyperfine` reports `--version` at 1.4 ms mean
+  with no socket opened.
 
 ## Risks
 
@@ -398,3 +420,14 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   (the deny list is allow-list-by-omission; `cargo-deny` has no separate deny list) plus the 174-crate verdict
   table above; `cargo deny check` and `cargo audit --no-yanked` are green (the yank check needs the crates.io
   API, which this mirror refuses with 403 — CI runs it against the real API).
+- 2026-10-01 — final batch: `tests/decoder_robustness.rs` (every provider, the geocoder, the IP chain and the
+  config parser over truncation, empty/`{}`/`[]`/`null`, wrong-typed and byte-flipped bodies, with
+  `tests/fixtures/malformed/**`), `tests/xdg.rs`, the render-layer refactor (registry metadata now travels in
+  `model::Attribution`), `.github/workflows/ci.yml` on explicit `ubuntu-26.04`/`macos-26` images with
+  SHA-pinned actions, README/AGENTS CI documentation, the startup gate (1.4 ms, no `socket(`), the MSRV
+  recheck on the system 1.98.1 and the `LICENSES/GPL-3.0-or-later.txt` copy (`cmp` gate in CI).
+  Deliberate deviations, both recorded above and in the deliverable text: the decoder sweep is exhaustive for
+  payloads up to 8 KiB and strided (≤ 2048 offsets per fixture) beyond it, because the exhaustive form cost
+  343 s in a debug build and 33 s after the bound; and the exact `+1.98.0` toolchain leg runs only in CI,
+  because this machine has one system toolchain and no rustup. Step marked done: all deliverables and exit
+  criteria are ✅.

@@ -84,16 +84,27 @@ No GUI/TUI, no daemon or server mode, no telemetry or analytics, no account syst
 ```bash
 cargo run -q -- Beijing                 # run the CLI
 cargo fmt                               # required before every commit
-cargo clippy --all-targets -- -D warnings
-cargo test                              # unit + integration, no network
-cargo test -- --ignored                 # live smoke tests, manual only
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked                     # unit + integration, no network
+CIRROCAST_FORBID_NETWORK=1 cargo test   # what CI runs: any socket attempt fails loudly
+cargo test -- --ignored                 # live smoke tests, manual only (CIRROCAST_LIVE_TESTS=1)
 reuse lint                              # licence/SPDX gate
-cargo deny check                        # licence + advisory gate (step 12+)
+cargo deny check                        # licence, advisory, ban and source gate
+cargo audit                             # independent advisory check beside cargo deny
 ```
 
 A change is not done until: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
 `cargo test` and `reuse lint` are clean **and** the changed surface was actually run and observed
 (for a CLI change, that means executing `cirrocast` and looking at the output, not only tests).
+
+CI (`.github/workflows/ci.yml`) runs exactly those commands on `ubuntu-26.04` and `macos-26` — the
+images are named explicitly, never `<os>-latest` — with the test matrix spanning `stable` and the
+MSRV `1.98.0`, every third-party action pinned to a commit SHA, and `CIRROCAST_FORBID_NETWORK=1`
+exported for the whole test job. The `gates` job additionally enforces the render-layer import rule
+(`src/render` and `src/model` may not import `http`, `provider` or `cache`) and that
+`LICENSES/GPL-3.0-or-later.txt` is byte-identical to `LICENSE`. Dependency policy lives in
+`deny.toml`: an audited licence allow list, duplicates and wildcards denied, crates.io as the only
+source, and no advisory ignore without a reason and an expiry date.
 
 ## Plan-driven workflow
 

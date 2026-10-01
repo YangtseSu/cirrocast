@@ -23,6 +23,7 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 [[annotations]]
 path = [
     "tests/fixtures/config/**",
+    "tests/fixtures/malformed/**",
     "tests/fixtures/model/**",
     "tests/fixtures/http/**",
     "tests/fixtures/ip/**",

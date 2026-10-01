@@ -1,0 +1,14 @@
+{
+  "latitude": "39.9",
+  "longitude": 116.4,
+  "current": {
+    "time": 1752580800,
+    "temperature_2m": "abc",
+    "wind_speed_10m": null
+  },
+  "hourly": {
+    "time": "soon",
+    "temperature_2m": [1.0, "2.0"]
+  },
+  "daily": 3
+}
