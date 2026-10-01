@@ -65,9 +65,13 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `LICENSE`/`README.md`/`CHANGELOG.md`, `cargo publish --dry-run --locked` passes,
   `cargo doc --no-deps --all-features` builds (the library target is the documented half, so its module doc
   comments carry the description), and `[package.metadata.docs.rs] all-features = true` is set.
-- ⬜ AUR package `cirrocast` created in its own repository at `0.1.0`: `# Maintainer:` line with an obfuscated
-  address, `# SPDX-License-Identifier: 0BSD` (the packaging licence the AUR asks for, separate from the project's
-  GPL), `arch=('x86_64' 'aarch64')`, `license=('GPL-3.0-or-later')`, `depends=('gcc-libs' 'glibc')`,
+- ⬜ AUR package `cirrocast` created in its own repository at `0.1.0`: an obfuscated `# Maintainer:` line and a
+  `0BSD` packaging-licence header (the licence the AUR asks for, separate from the project's GPL; the first
+  lines are
+  <!-- REUSE-IgnoreStart -->
+  `# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>` and `# SPDX-License-Identifier: 0BSD`),
+  <!-- REUSE-IgnoreEnd -->
+  `arch=('x86_64' 'aarch64')`, `license=('GPL-3.0-or-later')`, `depends=('gcc-libs' 'glibc')`,
   `makedepends=('cargo' 'rust')`, `options=('!lto' '!debug')`, source
   `https://github.com/YangtseSu/cirrocast/archive/refs/tags/v$pkgver.tar.gz` with the real `sha256sums` produced
   by `updpkgsums`; `build()` maps `CARCH` (`x86_64` → `x86_64-unknown-linux-gnu`, `aarch64` →
@@ -91,7 +95,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   AUR package with `updpkgsums`, regenerate `.SRCINFO`, update `CHANGELOG.md`, push a signed `vX.Y.Z` tag,
   confirm the workflow's archives and the crates.io publish) and how to verify a downloaded archive
   (`sha256sum -c`), plus the glibc floor of the Linux archives and the clean-chroot verification commands.
-- ⬜ The pre-tag checklist is part of the step file: version bumped in `Cargo.toml`, `CHANGELOG.md` released
+- ✅ The pre-tag checklist is part of the step file (`## Pre-tag checklist`): version bumped in `Cargo.toml`, `CHANGELOG.md` released
   section dated, `cargo package --list` reviewed, CI green on the tag's commit, archive contents inspected
   (`tar tzf`), the crates.io publish confirmed, and the AUR package bumped *after* the tag exists
   (`updpkgsums`, `makepkg --printsrcinfo > .SRCINFO`, `git push`).
@@ -176,6 +180,24 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 - ⬜ The `v0.1.0` tag produced the three documented archives with `.sha256` files and a GitHub release from the
   workflow (the pipeline rehearsal; step 14 repeats it for `1.0.0`).
 
+## Pre-tag checklist
+
+In order, on the commit that will carry the tag. Items 6–8 can only be checked after it:
+
+1. ✅ `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, `cargo test --locked`
+   (with `CIRROCAST_FORBID_NETWORK=1`), `reuse lint` and `cargo deny check` are clean locally.
+2. ✅ `Cargo.toml`'s `version` matches the tag (`vX.Y.Z`) and `CHANGELOG.md` carries the dated section for it.
+3. ✅ `cargo package --list --locked` shows the intended 46 files — no `docs/`, `tests/`, `examples/`,
+   `.github/`.
+4. ✅ `cargo publish --dry-run --locked` and `cargo doc --no-deps --all-features` pass on that commit (the
+   `package` CI job runs the first of the two on every pull request).
+5. ⬜ CI is green on the commit pushed to `main`, and the signed tag is pushed.
+6. ⬜ Each archive is inspected (`tar tzf`) and verified (`sha256sum -c`), and the GitHub release exists.
+7. ⬜ The crates.io publish is confirmed, or its explicit skip notice is recorded while the token is
+   unconfigured.
+8. ⬜ The AUR package is bumped from the tag tarball (`updpkgsums`, `makepkg --printsrcinfo > .SRCINFO`,
+   `git push`) and the `## Verification` commands are re-run.
+
 ## Risks
 
 * GitHub runner drift (an image being renamed or retired) would break one matrix entry: the matrix is a one-line
@@ -236,3 +258,6 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
   `cargo doc --no-deps --all-features` is warning-free (the eight pre-existing rustdoc warnings are fixed in the
   same commit). The `crates-io` environment and the `CARGO_REGISTRY_TOKEN` secret are the remaining manual step
   before the workflow can publish, and the job skips with a notice until then.
+- 2026-10-01 — `## Pre-tag checklist` added to this file (items 1–4 already satisfied locally: the five gates,
+  the 46-file package listing, the passing dry run and the warning-free doc build); the release tag is the next
+  step, then the AUR package, which is the part that needs the tag tarball.
