@@ -8,7 +8,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Status: ⬜ not-started
 Depends on: all of phases A–C (01–13)
 Touches: `docs/plans/14-v1-acceptance.md` (evidence and sign-off), `docs/plans/README.md` (status rows),
-`README.md`, `CHANGELOG.md`, `Cargo.toml` (version `1.0.0`), `packaging/aur/PKGBUILD` (version bump)
+`README.md`, `CHANGELOG.md`, `Cargo.toml` (version `1.0.0`), the AUR package `cirrocast` (its own repository,
+version bump)
 
 ## Goal
 
@@ -56,8 +57,9 @@ ships no new features: defects found are fixed in the step that owns the code, n
 - ⬜ Performance and size record (informational; enforced budgets are step 22): `hyperfine --warmup 10 --runs 30`
   for `--version` (< 50 ms), a warm-cache `--offline` run (< 150 ms) and a cold `cirrocast Beijing` (open-meteo,
   < 1.5 s on a residential connection), plus `ls -lh target/release/cirrocast`; each number with machine and date.
-- ⬜ Clean-machine install on Arch: build `packaging/aur/PKGBUILD` in a clean chroot (`pkgctl build` or
-  `makechrootpkg -c`), `pacman -U` the artefact, then `cirrocast --version`, a real `cirrocast`, `man cirrocast`,
+- ⬜ Clean-machine install on Arch: clone the AUR package (`git clone ssh://aur@aur.archlinux.org/cirrocast.git`,
+  the only home of the packaging files — step 13's layout decision) and build it in a clean chroot
+  (`pkgctl build` or `makechrootpkg -c`), `pacman -U` the artefact, then `cirrocast --version`, a real `cirrocast`, `man cirrocast`,
   `pacman -Ql cirrocast | grep -c completions` (expect 3) and the licence path under `/usr/share/licenses/`;
   separately `cargo install --locked --path .` with a pristine `CARGO_HOME` and `HOME`, followed by a first run
   that creates the documented XDG directories and prints weather.
@@ -146,7 +148,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && 
 - ⬜ The eight × five matrix has no unexplained cell, every requirement in the index traceability table has an
   evidence transcript, the `wttr.in` comparison lists each difference as accepted or as a fixed defect, and the
   failure paths reproduce the documented exit codes 3, 4, 5 and 6.
-- ⬜ A clean Arch machine installs from `packaging/aur/PKGBUILD` and runs `cirrocast`, `man cirrocast` and all
+- ⬜ A clean Arch machine installs the AUR package and runs `cirrocast`, `man cirrocast` and all
   three completions; `cargo install --locked --path .` does the same on a pristine `HOME`; the sign-off table is
   complete with a human name and date per row.
 

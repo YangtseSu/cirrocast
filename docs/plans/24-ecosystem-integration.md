@@ -119,9 +119,9 @@ the GPL-3.0-or-later text shipped in every package.
 * **Unsigned artifacts are stated, not hidden.** Notarisation needs a paid Apple account; the doc names the prompt to expect.
 ## Out of scope
 
-nixpkgs, Homebrew core, Debian/Ubuntu/Fedora official repositories (artifacts plus the step 13 PKGBUILD
-are the deliverable; distro inclusion is their process), container images, Snap/Flatpak, editor plugins,
-code-signing certificates, an auto-updater, and any usage telemetry (forbidden by the privacy rule).
+nixpkgs, Homebrew core, Debian/Ubuntu/Fedora official repositories (the artifacts plus the AUR package
+step 13 created are the deliverable; distro inclusion is their process), container images, Snap/Flatpak, editor
+plugins, code-signing certificates, an auto-updater, and any usage telemetry (forbidden by the privacy rule).
 
 ## Verification
 
