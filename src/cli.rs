@@ -98,7 +98,8 @@ impl std::io::Write for StdoutSink {
     propagate_version = true
 )]
 pub struct Cli {
-    /// Print more detail; repeat for the full error cause chain.
+    /// Print more detail: settings, resolution notes and the error cause chain. Repeat (`-vv`) for
+    /// request URLs (secrets redacted), HTTP statuses, retry attempts and cache decisions.
     #[arg(global = true, short, long, action = ArgAction::Count)]
     pub verbose: u8,
 
@@ -121,20 +122,23 @@ pub struct Cli {
 /// tool. The token and preset rows are duplicated from [`crate::render::one_line`] because clap
 /// takes a `&'static str` here; a unit test compares the two so they cannot drift.
 const HELP_EPILOG: &str = "\
-PRECEDENCE (highest first)
+CONFIG PRECEDENCE (highest first)
   command line flag > CIRROCAST_* environment variable > config.toml > built-in default
   --provider  CIRROCAST_PROVIDER   --days    CIRROCAST_DAYS     --timeout CIRROCAST_TIMEOUT
   --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    --location CIRROCAST_LOCATION
   --lang      CIRROCAST_LANG
   The configuration file is consulted only when neither the flag nor the variable is set, so an
   environment value is never overridden by config.toml. `config get <key>` prints the variable's
-  value when one is set.
+  value when one is set, and `config validate` checks the file without touching the network.
 
 EXIT CODES
-  0  success                 4  configuration or state on disk
-  1  generic failure         5  location not found
-  2  usage                   6  missing or invalid API key
-  3  network or upstream failure
+  0  success
+  1  generic failure: an unexpected error outside the classes below
+  2  usage: a flag or value the command line rejects, or mutually exclusive flags
+  3  network or upstream failure: no connection, a retryable status, an unusable body
+  4  configuration or state on disk: config.toml, keys.toml, the cache
+  5  location not found: an unresolvable name or station
+  6  missing or invalid API key: `cirrocast key set <id>` (or CIRROCAST_<ID>_KEY) fixes it
 
 ONE-LINE TOKENS (--format one-line)
   %c condition art    %C condition text   %t temp        %f feels-like

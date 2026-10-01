@@ -32,11 +32,11 @@ fn main() -> ExitCode {
     }
 }
 
-/// Walks the error cause chain, one `caused by:` line per level. Errors that carry no source
-/// (every `String` payload variant) print nothing.
+/// Walks the error cause chain, one indented `caused by:` line per level. Errors that carry no
+/// source (every `String` payload variant) print nothing.
 fn print_causes(mut source: Option<&(dyn StdError + 'static)>) {
     while let Some(cause) = source {
-        eprintln!("caused by: {cause}");
+        eprintln!("  caused by: {cause}");
         source = cause.source();
     }
 }

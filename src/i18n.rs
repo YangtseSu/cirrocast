@@ -512,7 +512,9 @@ impl Note {
     /// The note as one stderr line.
     ///
     /// A fallback and an unknown tag read the same way to the user — the request could not be
-    /// honoured — while the difference stays in the type for the verbose report.
+    /// honoured — while the difference stays in the type for the verbose report. Both name the
+    /// value that was asked for and the catalogs this build actually ships, so the message answers
+    /// "what can I write instead?" without a second command.
     #[must_use]
     pub fn text(&self) -> String {
         match self {
@@ -520,14 +522,29 @@ impl Note {
                 requested,
                 selected,
             } => {
-                format!("warning: unsupported language \"{requested}\", falling back to {selected}")
+                format!(
+                    "warning: unsupported language \"{requested}\", falling back to {selected} \
+                     (available: {})",
+                    available_tags()
+                )
             }
             Self::UnknownTag(requested) => format!(
-                "warning: unsupported language \"{requested}\", falling back to {DEFAULT_TAG}"
+                "warning: unsupported language \"{requested}\", falling back to {DEFAULT_TAG} \
+                 (available: {})",
+                available_tags()
             ),
             Self::MissingKey(key) => format!("warning: no message for key `{key}`"),
         }
     }
+}
+
+/// The catalog tags this build ships, for the "available" list of a language warning.
+fn available_tags() -> String {
+    CATALOGS
+        .iter()
+        .map(|(tag, _)| *tag)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 // ---------------------------------------------------------------------------------------------

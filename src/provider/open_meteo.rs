@@ -96,7 +96,7 @@ impl Provider for OpenMeteo {
             },
         )?;
 
-        report(&response, loc, request.full_url(), days, env)
+        report(&response, loc, request.redacted_url(), days, env)
     }
 }
 

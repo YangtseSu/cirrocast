@@ -648,9 +648,9 @@ impl Cache {
         Ok(CleanReport { removed })
     }
 
-    /// A `-v` line.
+    /// A `-vv` line: hit, miss, expiry, the read/write decision — the detail `-v` leaves out.
     fn log(&self, message: &str) {
-        if self.verbose > 0 {
+        if self.verbose > 1 {
             eprintln!("cache: {message}");
         }
     }

@@ -219,7 +219,7 @@ fn cached_json<T>(
     place: &str,
     parse: impl Fn(&str) -> Result<T>,
 ) -> Result<T> {
-    if env.verbose > 0 {
+    if env.verbose > 1 {
         eprintln!(
             "provider: {PROVIDER} {what} (cache {})",
             env.cache.mode().name()
@@ -228,7 +228,7 @@ fn cached_json<T>(
     if let Some(entry) = env.cache.read(key)? {
         match parse(&entry.body) {
             Ok(value) => return Ok(value),
-            Err(_) if env.verbose > 0 => {
+            Err(_) if env.verbose > 1 => {
                 eprintln!(
                     "{}: body no longer parses, fetching again",
                     key.path().display()

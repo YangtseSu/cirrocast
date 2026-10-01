@@ -580,7 +580,7 @@ pub fn fetch_json<T: DeserializeOwned>(
     loc: &Location,
     fetch: &JsonFetch<'_>,
 ) -> Result<T> {
-    if env.verbose > 0 {
+    if env.verbose > 1 {
         eprintln!(
             "provider: {} {} (cache {})",
             fetch.provider,
@@ -833,14 +833,14 @@ fn fetch_chain_with(
             }
         }
 
-        if env.verbose > 0 {
+        if env.verbose > 1 {
             eprintln!("provider: {id} attempt {}/{}", index + 1, ids.len());
         }
 
         match provider.fetch(loc, req, env) {
             Ok(report) => return Ok(report),
             Err(error) if matches!(error, Error::Network(_) | Error::Upstream { .. }) => {
-                if env.verbose > 0 {
+                if env.verbose > 1 {
                     eprintln!("provider: {id} failed: {error}");
                 }
                 if let Some(next) = ids.get(index + 1)

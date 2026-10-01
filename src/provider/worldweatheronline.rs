@@ -103,7 +103,7 @@ impl Provider for WorldWeatherOnline {
             },
         )?;
 
-        report(&response.data, loc, request.full_url(), days, env)
+        report(&response.data, loc, request.redacted_url(), days, env)
     }
 }
 
@@ -310,7 +310,7 @@ fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> 
             return Err(Error::Upstream {
                 provider: PROVIDER.to_owned(),
                 status: None,
-                message: "the response covers no complete local day".to_owned(),
+                message: format!("the response covers no complete local day in {tz}"),
             });
         }
     }

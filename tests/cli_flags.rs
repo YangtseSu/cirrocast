@@ -634,13 +634,52 @@ fn completions_and_the_man_page_come_from_the_same_command() {
 }
 
 #[test]
+fn help_and_version_read_no_state_and_the_man_page_reuses_the_help_text() {
+    let sandbox = Sandbox::new();
+    // A configuration file no other command could survive, and a world-readable key file: if
+    // `--help` or `--version` loaded either, they would fail or print a warning.
+    sandbox.install_fixture("config/bad-syntax.toml");
+    std::fs::create_dir_all(
+        sandbox
+            .keys_file()
+            .parent()
+            .expect("the key file has a parent"),
+    )
+    .expect("the config directory");
+    std::fs::write(sandbox.keys_file(), "[keys]\n").expect("the key file is written");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(sandbox.keys_file(), std::fs::Permissions::from_mode(0o644))
+            .expect("the key file is group readable");
+    }
+
+    for flag in ["--help", "--version"] {
+        let assert = sandbox.cirrocast().arg(flag).assert().success();
+        let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
+        assert!(stderr.is_empty(), "{flag} wrote to stderr: {stderr}");
+    }
+    assert!(
+        !sandbox.cache_dir().exists(),
+        "a help screen must not create the cache"
+    );
+
+    // The man page is rendered from the same clap command, so it carries the same two tables.
+    sandbox.cirrocast().arg("man").assert().success().stdout(
+        predicate::str::contains("CONFIG PRECEDENCE (highest first)")
+            .and(predicate::str::contains("EXIT CODES"))
+            .and(predicate::str::contains("missing or invalid API key")),
+    );
+}
+
+#[test]
 fn the_help_documents_the_flag_matrix_and_both_tables() {
     let sandbox = Sandbox::new();
     let assert = sandbox.cirrocast().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
 
     for fragment in [
-        "PRECEDENCE (highest first)",
+        "CONFIG PRECEDENCE (highest first)",
         "EXIT CODES",
         "ONE-LINE TOKENS",
         "--ip",

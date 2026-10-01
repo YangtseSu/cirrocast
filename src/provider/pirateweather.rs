@@ -298,7 +298,7 @@ fn days_of(response: &Forecast, tz: Tz, days: u8) -> Result<Vec<DayForecast>> {
         return Err(Error::Upstream {
             provider: PROVIDER.to_owned(),
             status: None,
-            message: "the response has no usable hourly entry".to_owned(),
+            message: format!("the response has no usable hourly entry in {tz}"),
         });
     }
 
@@ -341,7 +341,7 @@ fn days_of(response: &Forecast, tz: Tz, days: u8) -> Result<Vec<DayForecast>> {
         return Err(Error::Upstream {
             provider: PROVIDER.to_owned(),
             status: None,
-            message: "the response covers no complete local day".to_owned(),
+            message: format!("the response covers no complete local day in {tz}"),
         });
     }
     Ok(forecasts)

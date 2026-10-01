@@ -108,7 +108,7 @@ impl Provider for QWeather {
             },
         )?;
 
-        let mut url = current_request.full_url();
+        let mut url = current_request.redacted_url();
         let mut forecasts = Vec::new();
         if days > 0 {
             // The series starts at the next UTC midnight, so covering `days` location-local days
@@ -127,7 +127,7 @@ impl Provider for QWeather {
                     what: "hourly",
                 },
             )?;
-            url = hourly_request.full_url();
+            url = hourly_request.redacted_url();
             forecasts = days_of(&hourly, loc.tz, days)?;
         }
 
@@ -404,7 +404,7 @@ fn days_of(response: &HourlyResponse, tz: Tz, days: u8) -> Result<Vec<crate::mod
         return Err(Error::Upstream {
             provider: PROVIDER.to_owned(),
             status: None,
-            message: "the response has no usable hourly entry".to_owned(),
+            message: format!("the response has no usable hourly entry in {tz}"),
         });
     }
 
@@ -419,7 +419,7 @@ fn days_of(response: &HourlyResponse, tz: Tz, days: u8) -> Result<Vec<crate::mod
         return Err(Error::Upstream {
             provider: PROVIDER.to_owned(),
             status: None,
-            message: "the response covers no complete local day".to_owned(),
+            message: format!("the response covers no complete local day in {tz}"),
         });
     }
     Ok(forecasts)

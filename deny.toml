@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The dependency gate: licences, advisories, bans and sources.
+#
+# Policy (see docs/plans/12-quality-hardening.md):
+#
+# * The project is GPL-3.0-or-later, so every dependency's licence must be combinable with it.
+#   The allow list below is therefore an *audited* list: adding a licence is a deliberate act,
+#   and the comment above each entry is why that licence is acceptable here.
+# * `cargo audit` runs beside `cargo deny` because mirrored advisory databases can lag behind the
+#   live RUSTSEC data; the two checks disagree loudly or not at all.
+# * Every `[advisories] ignore` entry carries a reason and an expiry date. An expired entry is a
+#   red build, which is the point: an ignore is a temporary decision, not a policy change.
+
+[advisories]
+# The live database, so an ignore cannot hide a fix that has since shipped. An entry that is no
+# longer reported upstream is harmless; an entry that is still reported must be re-reviewed.
+db-urls = ["https://github.com/rustsec/advisory-db"]
+ignore = [
+    # No ignores today: nothing in the current lockfile is flagged. When one becomes unavoidable,
+    # the form is:
+    #   { id = "RUSTSEC-0000-0000", reason = "why it does not apply here", expires = "2027-01-01" },
+]
+
+[licenses]
+allow = [
+    # The project's own licence. cargo-deny checks the workspace member too, and our crate is
+    # deliberately GPL-3.0-or-later — this is not a dependency exception.
+    "GPL-3.0-or-later",
+    # Permissive code licences: GPL-3.0-or-later admits them all.
+    "MIT",                        # dominant Rust licence; attribution only
+    "Apache-2.0",                 # dominant Rust licence; attribution + patent grant
+    "Apache-2.0 WITH LLVM-exception", # rustix/windows shims; the exception is strictly more permissive
+    "ISC",                        # rustls, webpki; MIT-equivalent
+    "BSD-2-Clause",               # reserved for future use; MIT-equivalent
+    "BSD-3-Clause",               # subtle; MIT-equivalent plus non-endorsement
+    "Zlib",                       # zlib-rs; MIT-equivalent
+    "CC0-1.0",                    # public-domain dedication; no obligations
+    "0BSD",                       # adler2 alternative branch; no attribution required
+    "Unlicense",                  # aho-corasick/memchr alternative branch; public-domain dedication
+    "MPL-2.0",                    # weak copyleft, file-level; compatible with GPL-3.0-or-later
+    # Data and specification licences that appear in the dependency graph:
+    "Unicode-3.0",                # Unicode data tables (tinystr, zerovec, zerofrom); attribution only
+    "CDLA-Permissive-2.0",        # webpki-roots CA bundle; attribution only, explicitly permissive
+    "ODbL-1.0",                   # tzf-dist timezone polygons; the code stays MIT, the data asks for
+                                  # attribution/share-alike only when the database itself is derived
+]
+# The allow list is deliberately a superset of today's graph (it is the policy, not a snapshot),
+# so an allowance nothing uses yet is not a problem — it is the reviewed answer for the next crate
+# that needs it. `deny` would force a policy edit plus its review for every dependency change.
+unused-allowed-license = "allow"
+confidence-threshold = 0.9
+exceptions = [
+    # Per-crate exceptions would go here with their own justification. None are needed today:
+    # every licence in the graph is allowed globally above.
+]
+
+[bans]
+# A second copy of one crate is a bug waiting to happen (two types that should be one). The
+# current lockfile has three, each with a skip entry below naming why it cannot be unified.
+multiple-versions = "deny"
+wildcards = "deny"
+skip = [
+    # `syn` 2/3: proc-macro build-time only; the versions are chosen by our macro dependencies.
+    { crate = "syn@2.0.119", reason = "proc-macro dependency of clap/serde/nix; build-time only" },
+    { crate = "syn@3.0.6", reason = "proc-macro dependency of newer crates; build-time only" },
+    # `windows-sys` 0.52/0.61: Windows-only dependency trees, invisible on this platform.
+    { crate = "windows-sys@0.52.0", reason = "Windows-only; version chosen by etcetera's dependencies" },
+    { crate = "windows-sys@0.61.2", reason = "Windows-only; version chosen by tempfile/rustix" },
+]
+
+[sources]
+# Only crates.io: a git or path dependency would be an unreviewed, unreproducible input. A crate
+# from a fork must be published to crates.io (or vendored with a decision recorded here) first.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -259,6 +259,55 @@ fn qweather_renders_from_the_recorded_payloads() {
     assert!(stdout.contains("Clear sky"), "{stdout}");
 }
 
+#[test]
+fn no_run_output_or_cache_entry_carries_the_api_key() {
+    let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
+    let date = today();
+    seed(
+        &sandbox,
+        &CacheKey::weather_part("openweathermap", "current", LAT, LON, DAYS, date),
+        &body("owm/current.json"),
+    );
+    seed(
+        &sandbox,
+        &CacheKey::weather_part("openweathermap", "forecast", LAT, LON, DAYS, date),
+        &body("owm/forecast.json"),
+    );
+
+    // The key travels through the environment (the documented BYOK path); `-vv` is the most
+    // talkative mode, so it is where a leak would first show.
+    let secret = "sk-live-0123456789abcdef";
+    let assert = sandbox
+        .cirrocast()
+        .args([
+            "-vv",
+            "--offline",
+            "-p",
+            "openweathermap",
+            "-d",
+            "3",
+            "Beijing",
+            "-f",
+            "plain",
+        ])
+        .env("CIRROCAST_OPENWEATHERMAP_KEY", secret)
+        .assert()
+        .success();
+    let output = assert.get_output();
+    for (stream, bytes) in [("stdout", &output.stdout), ("stderr", &output.stderr)] {
+        let text = String::from_utf8(bytes.clone()).expect("UTF-8 output");
+        assert!(!text.contains(secret), "the key leaked to {stream}: {text}");
+    }
+
+    // Nothing written under the cache may carry it either.
+    scan(&sandbox.cache_dir(), &[secret]);
+    if sandbox.config_file().exists() {
+        let config = fs::read_to_string(sandbox.config_file()).expect("config.toml is readable");
+        assert!(!config.contains(secret), "the key leaked into config.toml");
+    }
+}
+
 /// The fixtures must not carry any of the recorded API keys.
 #[test]
 fn no_fixture_carries_an_api_key() {
@@ -379,6 +428,23 @@ fn a_cold_cache_with_offline_exits_three_and_names_the_rerun() {
             predicate::str::contains("offline mode: no cached open-meteo answer for")
                 .and(predicate::str::contains("rerun without `--offline`")),
         );
+}
+
+#[test]
+fn only_vv_prints_request_and_cache_detail() {
+    let sandbox = warm_sandbox();
+    let quiet = plain_run(&sandbox, &["--offline", "-v"]);
+    let chatty = plain_run(&sandbox, &["--offline", "-vv"]);
+    let quiet_stderr = String::from_utf8(quiet.stderr).expect("stderr is UTF-8");
+    let chatty_stderr = String::from_utf8(chatty.stderr).expect("stderr is UTF-8");
+
+    assert!(!quiet_stderr.contains("cache: "), "{quiet_stderr}");
+    assert!(
+        quiet_stderr.contains("provider: open-meteo (from "),
+        "-v still explains the resolved settings: {quiet_stderr}"
+    );
+    assert!(chatty_stderr.contains("cache: "), "{chatty_stderr}");
+    assert!(chatty_stderr.contains("hit"), "{chatty_stderr}");
 }
 
 #[test]

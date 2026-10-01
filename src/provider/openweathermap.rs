@@ -108,7 +108,7 @@ impl Provider for OpenWeatherMap {
         )?;
         let current = current_of(&current, loc.tz, env);
 
-        let mut url = current_request.full_url();
+        let mut url = current_request.redacted_url();
         let mut forecasts = Vec::new();
         if days > 0 {
             let forecast_request = request(FORECAST_URL, loc, &key);
@@ -125,7 +125,7 @@ impl Provider for OpenWeatherMap {
                     what: "forecast",
                 },
             )?;
-            url = forecast_request.full_url();
+            url = forecast_request.redacted_url();
             forecasts = days_of(&forecast, loc.tz, days)?;
         }
 
@@ -369,7 +369,7 @@ fn days_of(
         return Err(Error::Upstream {
             provider: PROVIDER.to_owned(),
             status: None,
-            message: "the response covers no complete local day".to_owned(),
+            message: format!("the response covers no complete local day in {tz}"),
         });
     }
     Ok(forecasts)

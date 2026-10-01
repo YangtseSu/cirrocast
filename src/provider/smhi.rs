@@ -94,7 +94,7 @@ impl Provider for Smhi {
         )
         .map_err(|error| out_of_coverage(error, loc))?;
 
-        report(&response, loc, request.full_url(), days, env)
+        report(&response, loc, request.redacted_url(), days, env)
     }
 }
 
@@ -241,7 +241,7 @@ fn report(
             return Err(Error::Upstream {
                 provider: PROVIDER.to_owned(),
                 status: None,
-                message: "the response covers no complete local day".to_owned(),
+                message: format!("the response covers no complete local day in {tz}"),
             });
         }
     }

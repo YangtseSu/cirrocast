@@ -700,9 +700,9 @@ impl HttpClient {
         self.transport.as_ref()
     }
 
-    /// One `-v` line per retry, on stderr.
+    /// One `-vv` line per retry, on stderr: request URL (redacted), attempt, reason, delay.
     fn log(&self, request: &HttpRequest, attempt: u32, reason: &str, delay: Duration) {
-        if self.verbose > 0 {
+        if self.verbose > 1 {
             eprintln!(
                 "http: {} {} attempt {}/{} after {reason}; sleeping {:.1} s",
                 request.method().as_str(),

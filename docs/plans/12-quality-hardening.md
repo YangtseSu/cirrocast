@@ -23,17 +23,17 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
 
 ## Deliverables
 
-- ⬜ Error-message audit across every module (`error.rs`, `cli.rs`, `config/`, `geo/`, `http.rs`, `cache.rs`,
+- ✅ Error-message audit across every module (`error.rs`, `cli.rs`, `config/`, `geo/`, `http.rs`, `cache.rs`,
   `provider/*`): every message names the offending value plus the accepted forms or the next command — missing
   key → `cirrocast key set openweathermap` and `CIRROCAST_OPENWEATHERMAP_KEY`; unknown provider/format/units/
   language → the accepted values; bad `--days` → the `0..=14` range and the provider's `max_days`; `keys.toml`
   wrong mode → `chmod 600 <path>`; config error → the key path; unknown location → `cirrocast location search
   <q>`; offline miss → provider, location, "rerun without `--offline`".
-- ⬜ `tests/exit_codes.rs`: one deterministic scenario per binding exit code — 0 (`--version`), 2 (`--days 99`,
+- ✅ `tests/exit_codes.rs`: one deterministic scenario per binding exit code — 0 (`--version`), 2 (`--days 99`,
   `--format yaml`, `--station 12`), 4 (unreadable config, `keys.toml` at 0644), 6 (`--provider qweather`, no key,
   scratch config dir), 3 (`--refresh` with `CIRROCAST_FORBID_NETWORK=1`), 5 (unknown ICAO, stub stationinfo
   response). Asserts the code and that stderr names the offending value, never a full sentence.
-- ⬜ `--verbose` review: `-v` prints one indented `caused by:` line per error source; `-vv` adds the request URL
+- ✅ `--verbose` review: `-v` prints one indented `caused by:` line per error source; `-vv` adds the request URL
   (secrets redacted), HTTP status, retry attempt and cache decision; `--quiet` mutes warnings, never errors; no
   log line ever contains a key or a `keys.toml` body.
 - ✅ `--offline` correctness: with the guard on, `--offline` constructs no request at all; a warm cache renders
@@ -45,19 +45,19 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   zero/negative timeouts and TTLs, a `location.default` that fails the location grammar, and
   `cache.enabled = false` combined with `--offline`; the precedence rule `[units] <key> > defaults.units` is
   stated in the message when an override conflicts.
-- ⬜ Help-text review: `--help`/`--version` read no config, XDG or cache state; a `CONFIG PRECEDENCE` block
+- ✅ Help-text review: `--help`/`--version` read no config, XDG or cache state; a `CONFIG PRECEDENCE` block
   states CLI flag > `CIRROCAST_*` env var > `config.toml` > built-in default; an `EXIT CODES` block lists all
   seven codes with triggers; the man page renders from the same `cli.rs` text.
 - ⬜ Startup gate recheck: `hyperfine --warmup 10 --runs 50 'target/release/cirrocast --version'` under 50 ms,
   and `strace -f -e trace=network target/release/cirrocast --version` with no `socket(` (enforced budgets with
   CI thresholds are step 22).
-- ⬜ `deny.toml` + `cargo deny check` green: `[licenses]` allow-list (MIT, Apache-2.0, ISC, BSD-2-Clause,
+- ✅ `deny.toml` + `cargo deny check` green: `[licenses]` allow-list (MIT, Apache-2.0, ISC, BSD-2-Clause,
   BSD-3-Clause, Zlib, Unicode-3.0, CDLA-Permissive-2.0, CC0-1.0, MPL-2.0, each with a one-line justification),
   deny list for licences that cannot combine with GPL-3.0-or-later (`GPL-2.0-only`, pre-3.0 `OpenSSL`,
   `SSPL-1.0`, `BUSL-1.1`, `Elastic-2.0`, `Commons-Clause`, `JSON`, `BSD-4-Clause`), `[bans]` denying duplicate
   versions and wildcard dependencies, `[sources]` restricted to crates.io, and `[advisories]` ignore entries
   each carrying a reason and a review date.
-- ⬜ Dependency licence audit: enumerate every crate with `cargo metadata --all-features` and commit the
+- ✅ Dependency licence audit: enumerate every crate with `cargo metadata --all-features` and commit the
   name/version/licence/GPL-3.0-or-later verdict table into this file's Design notes in the same commit as
   `deny.toml`; expected exceptions needing an allow-list entry are `Unicode-3.0` (through `idna`/`url`) and
   `CDLA-Permissive-2.0` (through `webpki-roots`); an incompatible dependency is a blocker with a chosen
@@ -75,7 +75,7 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   public-domain `LicenseRef` for NOAA data) — so no blanket `tests/fixtures/**` override may remain. Windows
   checkout decision (Design notes): replace the `LICENSES/GPL-3.0-or-later.txt` symlink with a real copy of
   `LICENSE` and gate the pair with `cmp -s LICENSE LICENSES/GPL-3.0-or-later.txt` in CI.
-- ⬜ `tests/no_network.rs`: the `CIRROCAST_FORBID_NETWORK=1` guard is enforced in `src/http.rs` before DNS and
+- ✅ `tests/no_network.rs`: the `CIRROCAST_FORBID_NETWORK=1` guard is enforced in `src/http.rs` before DNS and
   connect; the test proves the guard intercepts (a cold-cache request to a real upstream exits 3 with the guard
   message) and, on Linux, reruns the CLI under `unshare -rn` to prove no external DNS is required.
 - ⬜ Decoder robustness: new malformed fixtures plus a sweep over every upstream JSON decoder (open-meteo, the
@@ -86,10 +86,10 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
 - ⬜ Render-path audit: `src/render/**` and `src/model/**` import nothing from `http`, `provider` or `cache`,
   enforced by a CI grep gate (`! grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model`), with
   `cargo tree` confirming only `serde`/`serde_json`/`chrono`/locale data beyond std.
-- ⬜ XDG audit: no write outside `$XDG_{CONFIG,CACHE,DATA}_HOME/cirrocast` (verified by running with all three
+- ✅ XDG audit: no write outside `$XDG_{CONFIG,CACHE,DATA}_HOME/cirrocast` (verified by running with all three
   pointed at a temporary tree and diffing it), `XDG_CONFIG_DIRS` honoured for reads, and `--offline`/`--no-cache`
   creating no cache directory.
-- ⬜ Secret-handling audit: keys never land in `config.toml`, `key list` masks values, `keys.toml` is written
+- ✅ Secret-handling audit: keys never land in `config.toml`, `key list` masks values, `keys.toml` is written
   0600 and refused when wider, and a test greps captured `-vv` stderr for the fake key it exported and finds
   nothing.
 - ⬜ `.github/workflows/ci.yml`: jobs `fmt`, `clippy --all-targets -- -D warnings`, `test` (matrix
@@ -124,6 +124,208 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   the full dependency set is committed here together with `deny.toml`.
 * `cargo deny` gates licences, advisories, bans and sources; `cargo audit` stays as an independent advisory check
   because mirrored databases can lag behind live RUSTSEC data.
+* Dependency licence verdicts, generated 2026-10-01 from `cargo metadata --all-features` (174 crates in the
+  resolved graph, dev-dependencies included; `cargo deny check` is the enforced form of this table):
+
+  | expression | crates | verdict |
+  |---|---|---|
+  | `MIT OR Apache-2.0` (also spelled `Apache-2.0 OR MIT`, `MIT/Apache-2.0`, `Apache-2.0/MIT`) | 147 | compatible — the MIT branch is GPL-compatible |
+  | `MIT` | 16 | compatible |
+  | `Apache-2.0` | 5 | compatible |
+  | `Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT` (`rustix`, `linux-raw-sys`, `wasi`) | 3 | compatible — Apache-2.0 branch |
+  | `Unicode-3.0` (`tinystr`, `zerofrom`, `zerovec`) | 3 | compatible — permissive data licence, attribution only |
+  | `Unlicense OR MIT` (`aho-corasick`, `memchr`), `0BSD OR MIT OR Apache-2.0` (`adler2`), `MIT OR Zlib OR Apache-2.0` (`miniz_oxide`) | 4 | compatible — MIT branch |
+  | `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (`r-efi`, Windows-only) | 1 | compatible — MIT branch |
+  | `Apache-2.0 AND ISC` (`ring`) | 1 | compatible — both allowed |
+  | `Apache-2.0 OR ISC OR MIT` (`rustls`) | 1 | compatible |
+  | `Apache-2.0 OR GPL-2.0-only` (`self_cell`) | 1 | compatible — Apache-2.0 branch, `GPL-2.0-only` stays denied |
+  | `BSD-3-Clause` (`subtle`), `ISC` (`rustls-webpki`, `untrusted`), `Zlib` (`zlib-rs`) | 4 | compatible |
+  | `(MIT OR Apache-2.0) AND Unicode-3.0` (`unicode-ident`) | 1 | compatible — both terms permissive |
+  | `CDLA-Permissive-2.0` (`webpki-roots`) | 1 | compatible — permissive data licence, attribution only |
+  | `MIT AND ODbL-1.0` (`tzf-dist`) | 1 | compatible — the code is MIT; the timezone polygons are ODbL, used unmodified with the crate's own notice |
+
+  No dependency is GPL-3.0-or-later-incompatible, so no replacement was needed. The full per-crate list:
+
+  ```
+adler2 2.0.1 | 0BSD OR MIT OR Apache-2.0
+aho-corasick 1.1.5 | Unlicense OR MIT
+android_system_properties 0.1.6 | MIT OR Apache-2.0
+anstream 1.0.0 | MIT OR Apache-2.0
+anstyle 1.0.14 | MIT OR Apache-2.0
+anstyle-parse 1.0.0 | MIT OR Apache-2.0
+anstyle-query 1.1.5 | MIT OR Apache-2.0
+anstyle-wincon 3.0.11 | MIT OR Apache-2.0
+assert_cmd 2.2.2 | MIT OR Apache-2.0
+autocfg 1.5.1 | Apache-2.0 OR MIT
+base64 0.23.1 | MIT OR Apache-2.0
+bitflags 2.13.2 | MIT OR Apache-2.0
+block-buffer 0.12.1 | MIT OR Apache-2.0
+bstr 1.13.1 | MIT OR Apache-2.0
+bumpalo 3.20.3 | MIT OR Apache-2.0
+bytes 1.12.1 | MIT
+cc 1.5.1 | MIT OR Apache-2.0
+cfg-if 1.0.5 | MIT OR Apache-2.0
+chrono 0.4.45 | MIT OR Apache-2.0
+chrono-tz 0.10.4 | MIT OR Apache-2.0
+clap 4.6.7 | MIT OR Apache-2.0
+clap_builder 4.6.7 | MIT OR Apache-2.0
+clap_complete 4.6.11 | MIT OR Apache-2.0
+clap_derive 4.6.7 | MIT OR Apache-2.0
+clap_lex 1.1.1 | MIT OR Apache-2.0
+clap_mangen 0.3.3 | MIT OR Apache-2.0
+colorchoice 1.0.5 | MIT OR Apache-2.0
+console 0.16.6 | MIT
+const-oid 0.10.2 | Apache-2.0 OR MIT
+core-foundation-sys 0.8.7 | MIT OR Apache-2.0
+cpufeatures 0.3.1 | MIT OR Apache-2.0
+crc32fast 1.5.2 | MIT OR Apache-2.0
+crypto-common 0.2.2 | MIT OR Apache-2.0
+difflib 0.4.0 | MIT
+digest 0.11.3 | MIT OR Apache-2.0
+displaydoc 0.2.7 | MIT OR Apache-2.0
+encode_unicode 1.0.0 | Apache-2.0 OR MIT
+equivalent 1.0.2 | Apache-2.0 OR MIT
+errno 0.3.14 | MIT OR Apache-2.0
+etcetera 0.11.0 | MIT OR Apache-2.0
+fastrand 2.5.0 | Apache-2.0 OR MIT
+find-msvc-tools 0.1.14 | MIT OR Apache-2.0
+flate2 1.1.10 | MIT OR Apache-2.0
+float-cmp 0.10.0 | MIT
+fluent-bundle 0.16.0 | Apache-2.0 OR MIT
+fluent-langneg 0.13.1 | Apache-2.0 OR MIT
+fluent-syntax 0.12.0 | Apache-2.0 OR MIT
+futures-core 0.3.34 | MIT OR Apache-2.0
+futures-task 0.3.34 | MIT OR Apache-2.0
+futures-util 0.3.34 | MIT OR Apache-2.0
+geometry-rs 0.5.1 | MIT
+getrandom 0.2.17 | MIT OR Apache-2.0
+getrandom 0.4.3 | MIT OR Apache-2.0
+hashbrown 0.17.1 | MIT OR Apache-2.0
+heck 0.5.0 | MIT OR Apache-2.0
+http 1.5.0 | MIT OR Apache-2.0
+httparse 1.10.1 | MIT OR Apache-2.0
+hybrid-array 0.4.15 | MIT OR Apache-2.0
+iana-time-zone 0.1.65 | MIT OR Apache-2.0
+iana-time-zone-haiku 0.1.2 | MIT OR Apache-2.0
+indexmap 2.14.2 | Apache-2.0 OR MIT
+insta 1.48.0 | Apache-2.0
+intl-memoizer 0.5.3 | Apache-2.0 OR MIT
+intl_pluralrules 7.0.2 | Apache-2.0/MIT
+is_terminal_polyfill 1.70.2 | MIT OR Apache-2.0
+itoa 1.0.18 | MIT OR Apache-2.0
+js-sys 0.3.106 | MIT OR Apache-2.0
+libc 0.2.189 | MIT OR Apache-2.0
+linux-raw-sys 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+log 0.4.34 | MIT OR Apache-2.0
+memchr 2.8.3 | Unlicense OR MIT
+miniz_oxide 0.9.1 | MIT OR Zlib OR Apache-2.0
+normalize-line-endings 0.3.0 | Apache-2.0
+num-traits 0.2.19 | MIT OR Apache-2.0
+once_cell 1.21.4 | MIT OR Apache-2.0
+once_cell_polyfill 1.70.2 | MIT OR Apache-2.0
+percent-encoding 2.3.2 | MIT OR Apache-2.0
+phf 0.12.1 | MIT
+phf_shared 0.12.1 | MIT
+pin-project-lite 0.2.17 | Apache-2.0 OR MIT
+pqueue 0.1.0 | MIT
+predicates 3.1.4 | MIT OR Apache-2.0
+predicates-core 1.0.10 | MIT OR Apache-2.0
+predicates-tree 1.0.13 | MIT OR Apache-2.0
+proc-macro-hack 0.5.20+deprecated | MIT OR Apache-2.0
+proc-macro2 1.0.107 | MIT OR Apache-2.0
+quote 1.0.47 | MIT OR Apache-2.0
+r-efi 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later
+regex 1.13.1 | MIT OR Apache-2.0
+regex-automata 0.4.18 | MIT OR Apache-2.0
+regex-syntax 0.8.11 | MIT OR Apache-2.0
+ring 0.17.14 | Apache-2.0 AND ISC
+roff 1.1.1 | MIT OR Apache-2.0
+rpassword 7.5.4 | Apache-2.0
+rtoolbox 0.0.6 | Apache-2.0
+rtree_rs 0.1.4 | MIT
+rustc-hash 2.1.3 | Apache-2.0 OR MIT
+rustix 1.1.5 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+rustls 0.23.45 | Apache-2.0 OR ISC OR MIT
+rustls-pki-types 1.15.1 | MIT OR Apache-2.0
+rustls-webpki 0.103.15 | ISC
+rustversion 1.0.23 | MIT OR Apache-2.0
+self_cell 1.3.0 | Apache-2.0 OR GPL-2.0-only
+serde 1.0.229 | MIT OR Apache-2.0
+serde_core 1.0.229 | MIT OR Apache-2.0
+serde_derive 1.0.229 | MIT OR Apache-2.0
+serde_json 1.0.151 | MIT OR Apache-2.0
+serde_spanned 1.1.1 | MIT OR Apache-2.0
+sha2 0.11.0 | MIT OR Apache-2.0
+shlex 2.0.1 | MIT OR Apache-2.0
+simd-adler32 0.3.10 | MIT
+similar 2.7.0 | Apache-2.0
+siphasher 1.0.4 | MIT OR Apache-2.0
+slab 0.4.12 | MIT
+smallvec 1.16.2 | MIT OR Apache-2.0
+strsim 0.11.1 | MIT
+subtle 2.6.1 | BSD-3-Clause
+syn 2.0.119 | MIT OR Apache-2.0
+syn 3.0.6 | MIT OR Apache-2.0
+tempfile 3.27.0 | MIT OR Apache-2.0
+terminal_size 0.4.4 | MIT OR Apache-2.0
+termtree 0.5.1 | MIT
+thiserror 2.0.21 | MIT OR Apache-2.0
+thiserror-impl 2.0.21 | MIT OR Apache-2.0
+tinystr 0.8.4 | Unicode-3.0
+toml 1.1.6+spec-1.1.0 | MIT OR Apache-2.0
+toml_datetime 1.1.1+spec-1.1.0 | MIT OR Apache-2.0
+toml_parser 1.1.3+spec-1.1.0 | MIT OR Apache-2.0
+toml_writer 1.1.2+spec-1.1.0 | MIT OR Apache-2.0
+type-map 0.5.1 | MIT/Apache-2.0
+typenum 1.20.1 | MIT OR Apache-2.0
+tzf-dist 0.0.2026-d-fix1 | MIT AND ODbL-1.0
+tzf-rs 2.1.2 | MIT
+unic-langid 0.9.6 | MIT OR Apache-2.0
+unic-langid-impl 0.9.6 | MIT OR Apache-2.0
+unic-langid-macros 0.9.6 | MIT OR Apache-2.0
+unic-langid-macros-impl 0.9.6 | MIT OR Apache-2.0
+unicode-ident 1.0.26 | (MIT OR Apache-2.0) AND Unicode-3.0
+unicode-width 0.2.2 | MIT OR Apache-2.0
+untrusted 0.9.0 | ISC
+ureq 3.4.2 | MIT OR Apache-2.0
+ureq-proto 0.6.4 | MIT OR Apache-2.0
+utf8-zero 0.8.1 | MIT OR Apache-2.0
+utf8parse 0.2.2 | Apache-2.0 OR MIT
+wait-timeout 0.2.1 | MIT/Apache-2.0
+wasi 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+wasm-bindgen 0.2.129 | MIT OR Apache-2.0
+wasm-bindgen-macro 0.2.129 | MIT OR Apache-2.0
+wasm-bindgen-macro-support 0.2.129 | MIT OR Apache-2.0
+wasm-bindgen-shared 0.2.129 | MIT OR Apache-2.0
+webpki-roots 1.0.9 | CDLA-Permissive-2.0
+windows-core 0.62.2 | MIT OR Apache-2.0
+windows-implement 0.60.2 | MIT OR Apache-2.0
+windows-interface 0.59.3 | MIT OR Apache-2.0
+windows-link 0.2.1 | MIT OR Apache-2.0
+windows-result 0.4.1 | MIT OR Apache-2.0
+windows-strings 0.5.1 | MIT OR Apache-2.0
+windows-sys 0.52.0 | MIT OR Apache-2.0
+windows-sys 0.61.2 | MIT OR Apache-2.0
+windows-targets 0.52.6 | MIT OR Apache-2.0
+windows_aarch64_gnullvm 0.52.6 | MIT OR Apache-2.0
+windows_aarch64_msvc 0.52.6 | MIT OR Apache-2.0
+windows_i686_gnu 0.52.6 | MIT OR Apache-2.0
+windows_i686_gnullvm 0.52.6 | MIT OR Apache-2.0
+windows_i686_msvc 0.52.6 | MIT OR Apache-2.0
+windows_x86_64_gnu 0.52.6 | MIT OR Apache-2.0
+windows_x86_64_gnullvm 0.52.6 | MIT OR Apache-2.0
+windows_x86_64_msvc 0.52.6 | MIT OR Apache-2.0
+winnow 1.0.4 | MIT
+zerofrom 0.1.8 | Unicode-3.0
+zeroize 1.9.0 | Apache-2.0 OR MIT
+zerovec 0.11.8 | Unicode-3.0
+zlib-rs 0.6.8 | Zlib
+zmij 1.0.23 | MIT
+  ```
+* `cargo deny` bans: three duplicate versions exist in the graph and are skipped with a reason each (`syn` 2/3,
+  `windows-sys` 0.52/0.61); wildcard requirements and non-crates.io sources are denied outright. `cargo audit`
+  is clean; the yanked-crate check needs the crates.io API, which a mirror can refuse (`403`), so the CI job is
+  the place that runs it against the real API.
 * No Windows CI job in v1: no Windows packaging exists (step 13 ships Linux/macOS archives, ecosystem packaging
   is step 24), no Windows-specific code path exists, and the symlink trap would make lint platform-dependent.
 
@@ -179,3 +381,15 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   `cache.enabled = false` + `--offline` combination (also enforced on a weather run) and the `[units]` override
   precedence notes; `MissingKey` and `LocationNotFound` name their next command. Two deliverables ticked;
   the verbose review and the message audit are still open.
+- 2026-10-01 — second batch: `tests/exit_codes.rs` pins 0/2/3/4/5/6 with the offending value in the message;
+  `tests/no_network.rs` proves the guard blocks a cold-cache request and that a guarded `--offline` run works
+  inside `unshare -rn` (no DNS at all); the secret audit found and fixed a real leak — five providers put
+  `full_url()` (key included) into the report attribution, which `-vv` printed, so all of them now use
+  `redacted_url()` and `tests/cli_offline.rs` greps both streams and the cache tree for an exported fake key;
+  `-v`/`-vv` are split (request URLs, statuses, retries and cache decisions moved to `-vv`); `cache stat` prints
+  the expired count; the `--help` epilog gained `CONFIG PRECEDENCE` plus one-line exit-code triggers, and
+  `--help`/`--version` are proven state-free with `man` rendering the same tables. `tests/xdg.rs` walks the whole
+  throwaway tree after writes and checks `XDG_CONFIG_DIRS` reads. `deny.toml` lands with the audited allow list
+  (the deny list is allow-list-by-omission; `cargo-deny` has no separate deny list) plus the 174-crate verdict
+  table above; `cargo deny check` and `cargo audit --no-yanked` are green (the yank check needs the crates.io
+  API, which this mirror refuses with 403 — CI runs it against the real API).
