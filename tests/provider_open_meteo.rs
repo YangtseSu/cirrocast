@@ -25,7 +25,7 @@ use cirrocast::cache::{CacheKey, CacheMode};
 use cirrocast::error::Error;
 use cirrocast::http::StubReply;
 use cirrocast::model::{Condition, DayForecast, DayPart, DayPartKind, LocationSource};
-use common::{ProviderRun, fixture_location, provider_clock, provider_fixture};
+use common::{ProviderRun, fixture, fixture_location, provider_clock, provider_fixture};
 
 /// The four parts of `day`, in `DayPartKind::ALL` order.
 fn part(day: &DayForecast, kind: DayPartKind) -> &DayPart {
@@ -308,19 +308,51 @@ fn a_coordinate_location_takes_the_zone_from_the_response() {
 #[test]
 fn a_geocoded_location_keeps_the_zone_it_was_resolved_with() {
     let mut geocoded = fixture_location("lisbon");
+    // Deliberately different from the fixture's own response zone (Europe/Lisbon), and set before
+    // the fetch: a provider that discarded the geocoded zone would overwrite it with the
+    // response's.
+    geocoded.tz = chrono_tz::Tz::Asia__Shanghai;
 
     let run = ProviderRun::fixture(
-        "forecast_beijing_2026-07-15.json",
-        (2026, 7, 15),
+        "forecast_lisbon_2026-05-04.json",
+        (2026, 5, 4),
         CacheMode::Normal,
     );
     let report = run.fetch(&geocoded, 1).expect("the fixture parses");
-    geocoded.tz = chrono_tz::Tz::Europe__Lisbon;
     assert_eq!(
         report.location.tz,
-        chrono_tz::Tz::Europe__Lisbon,
+        chrono_tz::Tz::Asia__Shanghai,
         "a geocoded zone is authoritative and is not replaced"
     );
+}
+
+#[test]
+fn a_non_finite_reading_is_an_upstream_error() {
+    // `1e39` overflows `f32` to `inf`; it must be refused at the provider boundary and never
+    // reach the model, the cache or a renderer as if it were a measurement.
+    let body = fixture("open_meteo/forecast_beijing_2026-07-15.json")
+        .replace("\"temperature_2m\":18.1", "\"temperature_2m\":1e39");
+    assert!(body.contains("1e39"), "the payload carries the sentinel");
+
+    let run = ProviderRun::new(
+        vec![StubReply::ok(200, body)],
+        provider_clock(2026, 7, 15),
+        CacheMode::Normal,
+    );
+    let error = run
+        .fetch(&fixture_location("beijing"), 3)
+        .expect_err("a non-finite reading is rejected");
+    assert_eq!(error.exit_code(), 3);
+    match &error {
+        Error::Upstream {
+            provider, message, ..
+        } => {
+            assert_eq!(provider, "open-meteo");
+            // The guard sees canonical readings, so it names the canonical field.
+            assert!(message.contains("current.temp_c"), "{message}");
+        }
+        other => panic!("expected an upstream error, got {other:?}"),
+    }
 }
 
 #[test]

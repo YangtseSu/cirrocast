@@ -74,7 +74,7 @@ impl Provider for Smhi {
         ProviderId::Smhi.metadata().capabilities()
     }
 
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         let key = CacheKey::weather(PROVIDER, loc.lat, loc.lon, days, local_today(env, loc.tz));

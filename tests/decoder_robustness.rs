@@ -148,9 +148,8 @@ impl Harness {
                 .expect("the throwaway key is stored");
         }
         let mut config = Config::default();
-        // QWeather refuses to build a request without an account host.
-        "https://test-account.re.qweatherapi.example"
-            .clone_into(&mut config.providers.qweather.host);
+        // QWeather refuses to build a request without a valid account host.
+        "https://test-account.re.qweatherapi.com".clone_into(&mut config.providers.qweather.host);
         Self {
             _directory: directory,
             transport,

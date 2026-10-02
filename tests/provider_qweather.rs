@@ -29,7 +29,7 @@ use common::{ProviderRun, fixture, fixture_location, fixture_reply};
 const KEY: &str = "test-key-0123456789abcdef";
 
 /// The account host the tests configure.
-const HOST: &str = "https://example.qweatherapi.com";
+const HOST: &str = "https://example.re.qweatherapi.com";
 
 /// The instant the fixtures were recorded at (their first hour is `2026-10-01T00:00Z`).
 fn recording_clock() -> Arc<FakeClock> {
@@ -147,7 +147,8 @@ fn the_hourly_series_becomes_the_covered_local_days() {
     assert_eq!(part(first, DayPartKind::Morning).wind_kmh, 2.26 * 3.6);
     assert_eq!(part(first, DayPartKind::Morning).wind_dir_deg, Some(86));
     assert_eq!(part(first, DayPartKind::Morning).humidity_pct, Some(28));
-    assert_eq!(part(first, DayPartKind::Morning).precip_prob_pct, Some(0));
+    // A percentage stays a percentage: the fixture row reports 40 %, not a 0–1 fraction.
+    assert_eq!(part(first, DayPartKind::Morning).precip_prob_pct, Some(40));
     assert_eq!(
         part(first, DayPartKind::Morning).visibility_km,
         Some(20.835)

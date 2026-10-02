@@ -17,9 +17,8 @@
 //!
 //! The second half of the module is the behaviour contract: [`Provider`] is what one backend
 //! implements, [`select`] turns a `--provider` value into an ordered chain, and [`fetch_chain`]
-//! walks that chain with the documented fallback rule. Open-Meteo is the only backend implemented
-//! so far ([`open_meteo`]); the registry rows for the others carry `implemented: false` and are
-//! reached only after step 10 adds their modules.
+//! walks that chain with the documented fallback rule. Every backend module above implements the
+//! trait; the registry row's `implemented` flag is what [`select`] filters the chain by.
 
 pub mod dayparts;
 pub mod metar;
@@ -653,7 +652,20 @@ pub trait Provider {
     fn capabilities(&self) -> Capabilities;
 
     /// Fetches one forecast for `loc`.
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report>;
+    ///
+    /// This is the one path every backend's answer takes, so the finite-reading guard lives here:
+    /// a report that carries `inf` or `NaN` in a weather reading is refused as [`Error::Upstream`]
+    /// instead of being stored, cached and rendered as if it were a measurement.
+    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+        let report = self.fetch_report(loc, req, env)?;
+        validate_readings(self.id().as_str(), &report)?;
+        Ok(report)
+    }
+
+    /// Fetches one forecast for `loc`, without the finite-reading guard.
+    ///
+    /// Backends implement this; callers use [`Provider::fetch`], which adds the guard.
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report>;
 }
 
 /// The implementation behind a registry id.
@@ -762,8 +774,8 @@ pub fn display_name_of(provider: &str) -> Option<&'static str> {
 /// The chain a `--provider` value names.
 ///
 /// * `auto` expands to every implemented keyless backend that answers for a resolved place, in
-///   registry order — today `open-meteo` alone, `open-meteo,smhi` once step 10 lands, and never a
-///   station-only backend such as `metar` (a station has to be requested explicitly).
+///   registry order (the filter [`auto_chain`] applies), and never a station-only backend such as
+///   `metar` (a station has to be requested explicitly).
 /// * anything else is an explicit ordered chain: each entry must name a known, implemented
 ///   provider, and duplicates collapse to their first position.
 /// * an unknown id is [`Error::Usage`] listing the known ids; a known but unimplemented one is the
@@ -915,6 +927,84 @@ fn fetch_chain_with(
         subject: "providers",
         attempts,
     })
+}
+
+/// Rejects a report that carries a non-finite weather reading.
+///
+/// Every backend gets its numbers from upstream, and a value that is not finite (`inf`/`NaN`) is
+/// not a measurement: it prints as `inf°C` in the text formats, serialises as `null` in JSON (which
+/// the schema calls a non-nullable number) and would be cached as if it were data. The check runs in
+/// [`Provider::fetch`], the one path every backend's answer takes, so no backend can forget it; the
+/// message names the provider and the field, and the run treats it like any other upstream failure
+/// (a chain falls through to the next backend).
+fn validate_readings(provider: &str, report: &Report) -> Result<()> {
+    if let Some(current) = &report.current {
+        finite(provider, current.temp_c, || "current.temp_c".to_owned())?;
+        optional_finite(provider, current.feels_like_c, || {
+            "current.feels_like_c".to_owned()
+        })?;
+        finite(provider, current.precip_mm, || {
+            "current.precip_mm".to_owned()
+        })?;
+        finite(provider, current.pressure_hpa, || {
+            "current.pressure_hpa".to_owned()
+        })?;
+        finite(provider, current.wind_kmh, || "current.wind_kmh".to_owned())?;
+        optional_finite(provider, current.wind_gust_kmh, || {
+            "current.wind_gust_kmh".to_owned()
+        })?;
+        optional_finite(provider, current.visibility_km, || {
+            "current.visibility_km".to_owned()
+        })?;
+        optional_finite(provider, current.uv_index, || "current.uv_index".to_owned())?;
+    }
+    for (day_index, day) in report.days.iter().enumerate() {
+        finite(provider, day.temp_min_c, || {
+            format!("days[{day_index}].temp_min_c")
+        })?;
+        finite(provider, day.temp_max_c, || {
+            format!("days[{day_index}].temp_max_c")
+        })?;
+        for (part_index, part) in day.parts.iter().enumerate() {
+            finite(provider, part.temp_c, || {
+                format!("days[{day_index}].parts[{part_index}].temp_c")
+            })?;
+            optional_finite(provider, part.feels_like_c, || {
+                format!("days[{day_index}].parts[{part_index}].feels_like_c")
+            })?;
+            finite(provider, part.precip_mm, || {
+                format!("days[{day_index}].parts[{part_index}].precip_mm")
+            })?;
+            finite(provider, part.wind_kmh, || {
+                format!("days[{day_index}].parts[{part_index}].wind_kmh")
+            })?;
+            optional_finite(provider, part.visibility_km, || {
+                format!("days[{day_index}].parts[{part_index}].visibility_km")
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// One required reading through the finite check; `field` is named only when the check fails.
+fn finite(provider: &str, value: f32, field: impl FnOnce() -> String) -> Result<()> {
+    if value.is_finite() {
+        return Ok(());
+    }
+    Err(Error::Upstream {
+        provider: provider.to_owned(),
+        status: None,
+        message: format!("the reading `{}` is not finite ({value})", field()),
+    })
+}
+
+/// One optional reading: an absent value stays absent, a present one must be finite.
+fn optional_finite(
+    provider: &str,
+    value: Option<f32>,
+    field: impl FnOnce() -> String,
+) -> Result<()> {
+    value.map_or(Ok(()), |value| finite(provider, value, field))
 }
 
 #[cfg(test)]
@@ -1200,7 +1290,7 @@ mod tests {
             self.id.metadata().capabilities()
         }
 
-        fn fetch(
+        fn fetch_report(
             &self,
             _loc: &Location,
             _req: &FetchRequest,

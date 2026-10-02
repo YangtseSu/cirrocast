@@ -74,7 +74,7 @@ impl Provider for Metar {
         ProviderId::Metar.metadata().capabilities()
     }
 
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         // An observation-only backend serves no forecast: the request is clamped to zero days and
         // the CLI has already warned about `--days` (this call keeps a hand-built request honest).
         let _days = requested_days(req.days, self.capabilities().max_days, PROVIDER, env.quiet);
@@ -158,8 +158,8 @@ fn station_of(loc: &Location, env: &Env<'_>) -> Result<String> {
 /// 3. the live `stationinfo` endpoint.
 ///
 /// An identifier none of the three knows is [`Error::LocationNotFound`] (exit 5), naming the
-/// identifier and pointing at `cirrocast location search` — the station is a location the user has
-/// to fix, not an upstream failure a chain could fall through.
+/// identifier and pointing at coordinates — the station is a location the user has to fix, not an
+/// upstream failure a chain could fall through.
 fn resolve_station(icao: &str, env: &Env<'_>) -> Result<Location> {
     if let Some(station) = station_table::lookup(icao) {
         if env.verbose > 0 {
@@ -255,7 +255,7 @@ fn cached_json<T>(
 /// The rejection for an identifier no station metadata describes.
 fn unknown_station(icao: &str) -> Error {
     Error::LocationNotFound(format!(
-        "unknown station `{icao}`; check the identifier or find a nearby one with `cirrocast location search <place>`"
+        "unknown station `{icao}`; check the identifier or pass coordinates (`cirrocast -p metar @lat,lon`) to use the nearest station"
     ))
 }
 

@@ -58,7 +58,7 @@ impl Provider for WeatherApi {
         ProviderId::WeatherApi.metadata().capabilities()
     }
 
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         let variable = self

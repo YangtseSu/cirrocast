@@ -71,7 +71,7 @@ impl Provider for QWeather {
         ProviderId::QWeather.metadata().capabilities()
     }
 
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         if provisional_zone(loc) {
@@ -166,12 +166,34 @@ fn host(env: &Env<'_>) -> Result<String> {
              (see https://console.qweather.com/setting, or `cirrocast provider info {PROVIDER}`)"
         )));
     }
-    if !host.starts_with("http://") && !host.starts_with("https://") {
-        return Err(Error::Config(format!(
-            "providers.qweather.host: `{host}` must start with http:// or https://"
-        )));
-    }
+    validate_host(host)?;
     Ok(host.to_owned())
+}
+
+/// Whether `host` is the HTTPS account authority the `QWeather` console shows.
+///
+/// The key travels in the `X-QW-Api-Key` header, so a plain `http://` authority would leak it in
+/// cleartext and any other authority would send it to a third party; the legacy shared domains also
+/// answer `403 Invalid Host`. The authority (everything up to the first `/`) must end with
+/// `.re.qweatherapi.com` and carry a non-empty account label before it.
+fn validate_host(host: &str) -> Result<()> {
+    let rejection = || {
+        Error::Config(format!(
+            "providers.qweather.host: `{host}` must be the HTTPS account host from \
+             https://console.qweather.com/setting, e.g. `https://<account-id>.re.qweatherapi.com`"
+        ))
+    };
+    let Some(rest) = host.strip_prefix("https://") else {
+        return Err(rejection());
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    let Some(account) = authority.strip_suffix(".re.qweatherapi.com") else {
+        return Err(rejection());
+    };
+    if account.is_empty() {
+        return Err(rejection());
+    }
+    Ok(())
 }
 
 /// One endpoint's URL for a location, with the key in the documented header.
@@ -451,7 +473,7 @@ fn sample(hour: &HourBlock, tz: Tz) -> Result<Option<HourSample>> {
             .precipitation
             .as_ref()
             .and_then(|precipitation| precipitation.probability)
-            .map(fraction),
+            .map(percent),
         weather: condition_of(&hour.condition.code),
         wind_kmh: metric(&hour.wind.speed, "m/s", "hours[].wind.speed")? * MS_TO_KMH,
         wind_dir_deg: Some(degrees(direction)),
@@ -516,6 +538,12 @@ fn fraction(value: f32) -> u8 {
     (value * 100.0).round().clamp(0.0, 100.0) as u8
 }
 
+/// A percentage upstream already sent as a whole percent (0–100): clamped, never scaled.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn percent(value: f32) -> u8 {
+    value.round().clamp(0.0, 100.0) as u8
+}
+
 /// A direction in degrees, normalised into `0..360`.
 #[allow(clippy::cast_possible_truncation)]
 fn degrees(value: f32) -> u16 {
@@ -562,14 +590,15 @@ fn condition_of(code: &str) -> Condition {
         402 | 403 | 410 => 75,       // heavy snow, snowstorm
         404..=406 => 66,             // sleet, rain and snow
         407 => 85,                   // snow flurry
-        500..=515 => 45,             // mist, fog, haze, sand, dust and their stronger forms
+        500..=514 => 45,             // mist, fog, haze, sand, dust and their stronger forms
+        515 => 56,                   // freezing drizzle
         _ => 255,                    // hot, cold, unknown and anything unlisted
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::condition_of;
+    use super::{condition_of, validate_host};
     use crate::model::Condition;
 
     /// Every code the provider publishes, minus the three with no weather meaning.
@@ -605,6 +634,25 @@ mod tests {
     }
 
     #[test]
+    fn the_host_must_be_the_https_account_authority() {
+        assert!(validate_host("https://abc123.re.qweatherapi.com").is_ok());
+        assert!(validate_host("https://my-account.re.qweatherapi.com").is_ok());
+        for rejected in [
+            "http://abc123.re.qweatherapi.com",
+            "https://abc123.qweatherapi.com",
+            "https://.re.qweatherapi.com",
+            "https://attacker.example",
+            "https://api.qweather.com",
+            "ftp://abc123.re.qweatherapi.com",
+        ] {
+            assert!(
+                validate_host(rejected).is_err(),
+                "{rejected} must be rejected"
+            );
+        }
+    }
+
+    #[test]
     fn the_families_follow_the_published_groups() {
         assert_eq!(condition_of("100").description_en(), "Clear sky");
         assert_eq!(condition_of("104").description_en(), "Overcast");
@@ -612,6 +660,12 @@ mod tests {
         assert_eq!(condition_of("307").description_en(), "Heavy rain");
         assert_eq!(condition_of("400").description_en(), "Slight snow fall");
         assert_eq!(condition_of("501").description_en(), "Fog");
+        // 515 is freezing drizzle, not another fog variant.
+        assert_eq!(condition_of("515"), Condition::from_u8(56));
+        assert_eq!(
+            condition_of("515").description_en(),
+            "Light freezing drizzle"
+        );
         assert_eq!(condition_of("150").description_en(), "Clear sky");
         assert_eq!(condition_of("999"), Condition::from_u8(255));
     }

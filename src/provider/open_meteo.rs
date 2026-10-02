@@ -76,7 +76,7 @@ impl Provider for OpenMeteo {
         ProviderId::OpenMeteo.metadata().capabilities()
     }
 
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         let local_today = local_today(env, loc.tz);
@@ -407,12 +407,14 @@ fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
             temp_c,
             feels_like_c: Some(feels_like_c),
             precip_mm,
-            precip_prob_pct: (*at(
-                &block.precipitation_probability,
-                index,
-                "precipitation_probability",
-            )?)
-            .map(percent),
+            // Upstream omits this array (or truncates it) when no model covers an hour; a missing
+            // entry is `None`, never an error and never a zero.
+            precip_prob_pct: block
+                .precipitation_probability
+                .get(index)
+                .copied()
+                .flatten()
+                .map(percent),
             weather: condition_of(code),
             wind_kmh,
             wind_dir_deg: (*at(&block.wind_direction_10m, index, "wind_direction_10m")?)
@@ -915,6 +917,28 @@ mod tests {
         let error = hourly_samples(&block, berlin()).expect_err("the arrays disagree");
         assert!(error.to_string().contains("visibility"));
         assert_eq!(error.exit_code(), 3);
+    }
+
+    #[test]
+    fn a_short_probability_array_leaves_those_hours_without_a_probability() {
+        let mut block = hourly_block();
+        // Two timestamps, but only the first has a probability; upstream omits the value for a
+        // model or an hour it cannot cover.
+        block.time = vec!["2026-05-04T00:00".to_owned(), "2026-05-04T01:00".to_owned()];
+        block.temperature_2m = vec![Some(1.0), Some(2.0)];
+        block.apparent_temperature = vec![Some(0.0), Some(1.0)];
+        block.precipitation = vec![Some(0.0), Some(0.0)];
+        block.weather_code = vec![Some(1.0), Some(1.0)];
+        block.wind_speed_10m = vec![Some(5.0), Some(5.0)];
+        block.wind_direction_10m = vec![Some(180.0), Some(180.0)];
+        block.relative_humidity_2m = vec![Some(50.0), Some(50.0)];
+        block.visibility = vec![Some(10_000.0), Some(10_000.0)];
+
+        let samples =
+            hourly_samples(&block, berlin()).expect("a short probability array is not an error");
+        assert_eq!(samples.len(), 2);
+        assert_eq!(samples[0].precip_prob_pct, Some(10));
+        assert_eq!(samples[1].precip_prob_pct, None);
     }
 
     #[test]

@@ -111,7 +111,7 @@ const EXPECTATIONS: &[Expect] = &[
     Expect {
         icao: "LFPG",
         time: (1, 0, 0),
-        wind: (None, 3.7, None, true, false),
+        wind: (None, 2.0 * 1.852, None, true, false),
         sector: None,
         visibility: (Some(10.0), false),
         weather: &[],
@@ -128,7 +128,7 @@ const EXPECTATIONS: &[Expect] = &[
     Expect {
         icao: "PASC",
         time: (1, 0, 11),
-        wind: (Some(250), 5.6, None, false, false),
+        wind: (Some(250), 3.0 * 1.852, None, false, false),
         sector: None,
         visibility: (Some(0.5 * 1.609_344), false),
         weather: &["SN", "FZFG"],
@@ -172,7 +172,7 @@ const EXPECTATIONS: &[Expect] = &[
     Expect {
         icao: "YPDN",
         time: (1, 0, 0),
-        wind: (Some(80), 13.0, None, false, false),
+        wind: (Some(80), 7.0 * 1.852, None, false, false),
         sector: Some((40, 100)),
         visibility: (None, false),
         weather: &[],
@@ -193,7 +193,7 @@ const EXPECTATIONS: &[Expect] = &[
     Expect {
         icao: "KMDW",
         time: (30, 23, 53),
-        wind: (Some(190), 13.0, None, false, false),
+        wind: (Some(190), 7.0 * 1.852, None, false, false),
         sector: None,
         visibility: (Some(9.0 * 1.609_344), false),
         weather: &["-RA"],
@@ -313,6 +313,28 @@ fn every_fixture_decodes_as_the_expectation_table_says() {
         }
         assert_eq!(decoded.rvr, expect.rvr, "{}", expect.icao);
     }
+}
+
+#[test]
+fn the_wind_and_visibility_conversions_keep_their_exact_constants() {
+    // 17 kt is exactly 31.484 km/h; a decoder that rounded at decode time would store 31.5.
+    let decoded = decode_metar("METAR ZBAA 010000Z 29017KT 9999 BKN016 16/M09 Q1023")
+        .expect("a complete report");
+    assert!(
+        (decoded.wind_kmh - 31.484).abs() < 1e-3,
+        "{}",
+        decoded.wind_kmh
+    );
+
+    // 10 SM is exactly 16.09344 km (1.609344 km per statute mile), not the 16.09 a rounded
+    // constant would give.
+    let decoded =
+        decode_metar("METAR KJFK 302351Z 00000KT 10SM CLR 18/16 A3010").expect("a complete report");
+    assert!(
+        (decoded.visibility_km.expect("a visibility") - 16.093_44).abs() < 1e-3,
+        "{:?}",
+        decoded.visibility_km
+    );
 }
 
 #[test]
@@ -459,7 +481,7 @@ fn an_unknown_station_is_a_location_error_naming_it() {
         .code(5)
         .stderr(
             predicate::str::contains("unknown station `ZZZZ`")
-                .and(predicate::str::contains("cirrocast location search")),
+                .and(predicate::str::contains("cirrocast -p metar @lat,lon")),
         );
 }
 

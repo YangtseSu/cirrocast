@@ -62,7 +62,7 @@ impl Provider for WorldWeatherOnline {
         ProviderId::WorldWeatherOnline.metadata().capabilities()
     }
 
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         if provisional_zone(loc) {
@@ -127,6 +127,20 @@ pub struct Data {
     /// The forecast days.
     #[serde(default)]
     pub weather: Vec<DayBlock>,
+    /// The error envelope (`{"data":{"error":[…]}}`) upstream answers a bad request with.
+    ///
+    /// It arrives with HTTP 200, so a successful deserialisation into an otherwise empty `Data` is
+    /// not an answer; every field is optional so a drifting error shape cannot mask the failure.
+    #[serde(default)]
+    pub error: Vec<ErrorBlock>,
+}
+
+/// One `data.error[]` entry.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ErrorBlock {
+    /// The human-readable reason, e.g. `API key is invalid.`.
+    #[serde(default)]
+    pub msg: Option<String>,
 }
 
 /// `current_condition[0]`.
@@ -257,6 +271,18 @@ fn text_number<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>
 
 /// Turns one response into a [`Report`].
 fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> Result<Report> {
+    // An error envelope is HTTP 200 with `{"data":{"error":[…]}}`; treating it as a successful
+    // empty response would report "no forecast days" for a bad key or an exhausted quota.
+    if let Some(error) = data.error.first() {
+        return Err(Error::Upstream {
+            provider: PROVIDER.to_owned(),
+            status: None,
+            message: format!(
+                "the response is an error envelope: {}",
+                error.msg.as_deref().unwrap_or("no detail")
+            ),
+        });
+    }
     let tz = loc.tz;
     let utc_today = DateTime::<Utc>::from(env.cache.clock().now()).date_naive();
     let current = data

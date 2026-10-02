@@ -42,7 +42,7 @@
 //! 2. freezing precipitation (`FZRA`/`FZDZ`) — 66/67 or 56/57;
 //! 3. showery precipitation (`SHRA`/`SHSN`) — 80–82 and 85/86;
 //! 4. steady precipitation — rain 61/63/65, snow 71/73/75, drizzle 51/53/55, snow grains 77,
-//!    ice pellets 79;
+//!    ice pellets and ice crystals 79;
 //! 5. an obscuration — fog 45 (rime fog 48), mist 10, haze 5, smoke 4, dust 6, sand 7;
 //! 6. nothing: the sky code from the cloud layers — clear 0, few 1, scattered 2, broken and
 //!    overcast (and an obscured sky) 3.
@@ -474,8 +474,8 @@ fn parse_wind(token: &str) -> Option<Wind> {
 
     Some(Wind {
         direction,
-        speed_kmh: round_speed(speed_kmh),
-        gust_kmh: gust_kmh.map(round_speed),
+        speed_kmh,
+        gust_kmh,
         variable: direction.is_none(),
         calm: direction.is_some_and(|direction| direction == 0) && speed_kmh.abs() < f32::EPSILON,
     })
@@ -655,7 +655,7 @@ fn parse_altimeter(token: &str) -> Option<f32> {
         return None;
     }
     let value: f32 = inches.parse().ok()?;
-    Some(round_two(value / 100.0 * INHG_TO_HPA))
+    Some(value / 100.0 * INHG_TO_HPA)
 }
 
 /// `P0000` in the remarks: precipitation since the last report, hundredths of an inch.
@@ -665,7 +665,7 @@ fn parse_precip_remark(token: &str) -> Option<f32> {
         return None;
     }
     let hundredths: f32 = digits.parse().ok()?;
-    Some(round_two(hundredths / 100.0 * MM_PER_INCH))
+    Some(hundredths / 100.0 * MM_PER_INCH)
 }
 
 /// One present-weather group as WMO 4677 and the precedence rank that decides which group of a
@@ -742,10 +742,14 @@ fn parse_weather(token: &str) -> Option<(Condition, u8)> {
         ));
     }
     let code = obscuration.first()?;
-    Some((
-        Condition::from_u8(obscuration_code(code, descriptor == Some("FZ"))),
-        RANK_OBSCURATION,
-    ))
+    let wmo = obscuration_code(code, descriptor == Some("FZ"));
+    // An obscuration the table does not name (volcanic ash, for example) is not a condition this
+    // model can describe: the group is treated as no weather, so the sky code decides (rule 6 in
+    // the module docs) instead of reporting an undescribed code that renders as "Clear sky".
+    if wmo == 0 {
+        return None;
+    }
+    Some((Condition::from_u8(wmo), RANK_OBSCURATION))
 }
 
 /// A thunderstorm outranks everything else in the report.
@@ -805,14 +809,16 @@ fn precip_code(code: &str, showery: bool, intensity: Intensity) -> u8 {
             Intensity::Heavy => 75,
         },
         "SG" => 77,
-        "PL" => 79,
+        // Ice crystals (IC) have no described code in this model's WMO 4677 table (76 is absent),
+        // so they share ice pellets' code: the nearest described family that keeps the observation
+        // renderable as a real condition.
+        "PL" | "IC" => 79,
         // Hail and small hail have no non-thunderstorm code in WMO 4677; the report carries hail,
         // so the hail code is the honest answer, and a thunderstorm already took the branch above.
         "GR" | "GS" => match intensity {
             Intensity::Heavy => 99,
             Intensity::Light | Intensity::Moderate => 96,
         },
-        "IC" => 76,
         _ => 0,
     }
 }
@@ -842,19 +848,42 @@ fn sky_condition(decoded: &Decoded) -> u8 {
         .unwrap_or(0)
 }
 
-/// Speeds are reported to whole knots or metres per second; the conversion keeps one decimal.
-fn round_speed(value: f32) -> f32 {
-    (value * 10.0).round() / 10.0
-}
-
-/// Altimeter and precipitation values keep two decimals (inHg has two, and 0.01 in = 0.254 mm).
-fn round_two(value: f32) -> f32 {
-    (value * 100.0).round() / 100.0
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Cover, decode_metar, parse_miles, parse_wind};
+    use super::{Cover, decode_metar, parse_miles, parse_weather, parse_wind};
+    use crate::model::Condition;
+
+    #[test]
+    fn ice_crystals_map_to_a_described_condition() {
+        let (condition, _) = parse_weather("IC").expect("ice crystals are a weather group");
+        assert_eq!(condition, Condition::from_u8(79));
+        assert!(condition.is_known(), "79 must be described by the catalog");
+    }
+
+    #[test]
+    fn volcanic_ash_leaves_the_condition_to_the_sky() {
+        // `VA` has no described code; the report must fall through to the sky layers, which are
+        // broken here, rather than report something that renders as "Clear sky".
+        let decoded = decode_metar("METAR KJFK 302351Z 00000KT 10SM VA BKN020 18/16 A3010")
+            .expect("a complete report");
+        assert_eq!(decoded.condition, Condition::from_u8(3));
+        assert_ne!(decoded.condition.description_en(), "Clear sky");
+        assert!(
+            decoded.weather.is_empty(),
+            "VA is not a described condition"
+        );
+    }
+
+    #[test]
+    fn a_wind_speed_keeps_its_exact_conversion_for_the_renderer_to_round() {
+        let wind = parse_wind("29017KT").expect("a wind group");
+        assert!((wind.speed_kmh - 31.484).abs() < 1e-3, "{}", wind.speed_kmh);
+        assert!(
+            (wind.speed_kmh - 31.5).abs() > 1e-3,
+            "the decoder must not round: {}",
+            wind.speed_kmh
+        );
+    }
 
     #[test]
     fn wind_groups_convert_to_kmh() {

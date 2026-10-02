@@ -65,7 +65,7 @@ impl Provider for PirateWeather {
         ProviderId::PirateWeather.metadata().capabilities()
     }
 
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         let variable = self
@@ -352,13 +352,13 @@ fn current_of(block: &Block, tz: Tz) -> Option<Current> {
         observed_at: observed_at.fixed_offset(),
         temp_c: value(block.temperature)?,
         feels_like_c: value(block.apparent_temperature),
-        humidity_pct: block.humidity.map(fraction)?,
+        humidity_pct: value(block.humidity).map(fraction)?,
         precip_mm: value(block.precip_intensity).unwrap_or(0.0),
         weather: condition_of(
             block.icon.as_deref().unwrap_or_default(),
             block.precip_intensity,
         ),
-        cloud_cover_pct: block.cloud_cover.map(fraction)?,
+        cloud_cover_pct: value(block.cloud_cover).map(fraction)?,
         pressure_hpa: value(block.pressure)?,
         wind_kmh: value(block.wind_speed)? * MS_TO_KMH,
         wind_dir_deg: value(block.wind_bearing).map(degrees)?,
@@ -376,14 +376,14 @@ fn sample(block: &Block, tz: Tz) -> Option<HourSample> {
         temp_c: value(block.temperature)?,
         feels_like_c: value(block.apparent_temperature),
         precip_mm: value(block.precip_intensity).unwrap_or(0.0),
-        precip_prob_pct: block.precip_probability.map(fraction),
+        precip_prob_pct: value(block.precip_probability).map(fraction),
         weather: condition_of(
             block.icon.as_deref().unwrap_or_default(),
             block.precip_intensity,
         ),
         wind_kmh: value(block.wind_speed)? * MS_TO_KMH,
         wind_dir_deg: value(block.wind_bearing).map(degrees),
-        humidity_pct: block.humidity.map(fraction),
+        humidity_pct: value(block.humidity).map(fraction),
         visibility_km: value(block.visibility),
     })
 }
@@ -454,8 +454,30 @@ fn condition_of(icon: &str, intensity: Option<f32>) -> Condition {
 
 #[cfg(test)]
 mod tests {
-    use super::condition_of;
+    use super::{Block, condition_of, current_of, sample};
     use crate::model::Condition;
+
+    #[test]
+    fn the_missing_sentinel_never_becomes_a_zero_percent() {
+        let hourly: Block = serde_json::from_str(
+            r#"{"time":0,"temperature":1.0,"humidity":-999,"cloudCover":-999,
+                "precipProbability":-999,"windSpeed":1.0,"windBearing":0,"icon":"clear-day"}"#,
+        )
+        .expect("an hourly block");
+        let hourly_sample =
+            sample(&hourly, chrono_tz::Tz::UTC).expect("temperature and wind are present");
+        assert_eq!(hourly_sample.humidity_pct, None);
+        assert_eq!(hourly_sample.precip_prob_pct, None);
+
+        // The current block's humidity and cloud cover are required readings: a sentinel value
+        // yields no current block at all rather than an invented 0 %.
+        let current: Block = serde_json::from_str(
+            r#"{"time":0,"temperature":1.0,"pressure":1010.0,"windSpeed":1.0,
+                "windBearing":0,"humidity":-999,"cloudCover":0.5,"icon":"clear-day"}"#,
+        )
+        .expect("a current block");
+        assert_eq!(current_of(&current, chrono_tz::Tz::UTC), None);
+    }
 
     #[test]
     fn the_default_icon_set_maps_to_described_conditions() {

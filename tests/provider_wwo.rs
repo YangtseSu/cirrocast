@@ -19,6 +19,7 @@ use std::time::SystemTime;
 use chrono::{TimeZone as _, Utc};
 
 use cirrocast::cache::{CacheMode, FakeClock};
+use cirrocast::error::Error;
 use cirrocast::geo::from_coordinates;
 use cirrocast::http::StubReply;
 use cirrocast::model::{Condition, DayForecast, DayPart, DayPartKind};
@@ -192,4 +193,22 @@ fn a_rejected_key_is_an_invalid_key_error() {
         "{text}"
     );
     assert!(!text.contains(KEY), "the key leaked: {text}");
+}
+
+#[test]
+fn an_error_envelope_is_an_upstream_error_not_an_empty_report() {
+    // Upstream answers a bad key with HTTP 200 and `{"data":{"error":[…]}}`; `-d 0` used to skip
+    // the empty-forecast guard and return a successful report with no current and no days.
+    let run = ProviderRun::new(
+        vec![StubReply::ok(200, fixture("wwo/error_401.json"))],
+        recording_clock(),
+        CacheMode::Normal,
+    );
+    run.with_key("worldweatheronline", KEY);
+    let error = run
+        .fetch_with(&WorldWeatherOnline, &fixture_location("beijing"), 0)
+        .expect_err("an error envelope must not become an empty report");
+    assert_eq!(error.exit_code(), 3);
+    assert!(matches!(&error, Error::Upstream { .. }), "{error:?}");
+    assert!(error.to_string().contains("API key is invalid"), "{error}");
 }
