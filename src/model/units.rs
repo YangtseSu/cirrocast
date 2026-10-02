@@ -315,12 +315,19 @@ impl FromStr for PrecipUnit {
     }
 }
 
-/// Parses one `[units]` override; an absent value stays absent.
+/// Parses one `[units]` override; an absent or empty value stays absent.
+///
+/// An empty value means "no override" everywhere else (`empty_as_none` in the configuration
+/// deserialiser, the documented spellings), so a caller that builds the override set by hand must
+/// not get a different answer for the same spelling than a `config.toml` does.
 fn parse_override<T>(value: Option<&str>) -> Result<Option<T>>
 where
     T: FromStr<Err = Error>,
 {
-    value.map(str::parse::<T>).transpose()
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    value.parse::<T>().map(Some)
 }
 
 /// How a value and its unit symbol are joined.
@@ -403,6 +410,8 @@ pub fn kmh_to_mps(kmh: f32) -> f32 {
 /// ```
 /// # use cirrocast::model::units::hpa_to_inhg;
 /// assert!((hpa_to_inhg(1013.25) - 29.9213).abs() < 1e-3);
+/// // The reciprocal pins the fourth digit the div-in-psi tolerance admits.
+/// assert!((hpa_to_inhg(33.863_89) - 1.0).abs() < 1e-5);
 /// ```
 #[must_use]
 pub fn hpa_to_inhg(hpa: f32) -> f32 {
@@ -451,20 +460,57 @@ pub fn mm_to_in(mm: f32) -> f32 {
 /// Rounds to the nearest integer, ties away from zero.
 ///
 /// Weather values are `f32`, so a decimal literal such as `9.95` is stored as `9.949_999_8` — just
-/// *below* the tie its decimal reading implies. The value is therefore nudged by one
-/// `f32::EPSILON` first: a relative change of one part in eight million, far below anything a
-/// weather reading carries, and enough for `9.95` to follow the half-away-from-zero rule instead
-/// of the binary representation accident.
+/// *below* the tie its decimal reading implies, and scaling it (`9.95 * 10` for a one-decimal
+/// form) can leave the result half an ulp short of a tie the same way. A value within half an ulp
+/// of a tie is therefore treated as the tie it means to be and rounded away from zero.
+///
+/// The adjustment is capped at the precision of the value itself: at `|value| >= 2^22` one ulp is
+/// already `>= 0.5`, so no fractional resolution is left to break a tie and the value is rounded
+/// directly — `fmt_int(4_194_303.0)` stays `4194303` and a value at `2^23` cannot gain a unit.
 ///
 /// ```
 /// # use cirrocast::model::units::round_half_away_from_zero;
 /// assert_eq!(round_half_away_from_zero(-0.4), 0.0);
 /// assert_eq!(round_half_away_from_zero(-0.6), -1.0);
 /// assert_eq!(round_half_away_from_zero(9.95), 10.0);
+/// assert_eq!(round_half_away_from_zero(4_194_303.0), 4_194_303.0);
+/// assert_eq!(round_half_away_from_zero(8_388_608.0), 8_388_608.0);
 /// ```
 #[must_use]
 pub fn round_half_away_from_zero(value: f32) -> f32 {
-    (value * (1.0 + f32::EPSILON)).round()
+    let rounded = value.round();
+    let delta = value - rounded;
+    let ulp = ulp(value);
+    // Only a value sitting just *below* a tie needs the nudge: `rounded` is then the integer the
+    // binary representation accident pulled the value towards, and the tie it means to be is one
+    // step further from zero. A value just *above* a tie has already rounded away correctly, and
+    // nudging it again would overshoot by one.
+    if delta.abs() < 0.5
+        && ulp < 0.5
+        && delta.abs() >= 0.5 - ulp * 0.5
+        && delta.signum() == value.signum()
+    {
+        rounded + value.signum()
+    } else {
+        rounded
+    }
+}
+
+/// The spacing of `f32` near `value` (the unit in the last place), or `0` where there is none.
+///
+/// `value * f32::EPSILON` is not that spacing: it is one ulp only for a mantissa in `[1, 2)` and
+/// grows with the exponent, which is why the old nudge overshot by a whole unit above `2^22`.
+fn ulp(value: f32) -> f32 {
+    let bits = value.abs().to_bits();
+    // Subnormals (and zero) are spaced by the smallest subnormal. `f32::MAX` has no next value, so
+    // it reports no spacing and is never nudged.
+    if bits < 0x0080_0000 {
+        return f32::from_bits(1);
+    }
+    if bits >= 0x7F7F_FFFF {
+        return 0.0;
+    }
+    f32::from_bits(bits + 1) - value.abs()
 }
 
 /// Formats a value as an integer, mapping a rounded `-0` to `0`.
@@ -482,9 +528,11 @@ pub fn fmt_int(value: f32) -> String {
 
 /// Turns `-0.0` into `0.0`, so a sign rounded away never reaches the output.
 ///
-/// Without it `-0.4` would print as `-0` (and `-0.0` in the one-decimal forms).
+/// Without it `-0.4` would print as `-0` (and `-0.0` in the one-decimal forms). The JSON renderer
+/// calls this too: `-0.0` and `0.0` are the same number but two different documents.
+#[must_use]
 #[allow(clippy::float_cmp)] // comparing against both IEEE zeros exactly is the point
-fn normalise_zero(value: f32) -> f32 {
+pub fn normalise_zero(value: f32) -> f32 {
     if value == 0.0 { 0.0 } else { value }
 }
 
@@ -493,12 +541,14 @@ fn round_1dp(value: f32) -> f32 {
     normalise_zero(round_half_away_from_zero(value * 10.0) / 10.0)
 }
 
-/// One decimal below ten, an integer at or above it.
+/// One decimal below ten (in magnitude), an integer at or above it.
 ///
-/// The threshold is applied **after** rounding, so `9.95` prints as `10` and `9.94` as `9.9`.
+/// The threshold is applied **after** rounding and on the magnitude, so `9.95` prints as `10`,
+/// `-9.95` as `-10`, and `9.94`/`-9.94` as `9.9`/`-9.9`: a negative reading takes the same branch
+/// as its positive twin.
 fn fmt_small(value: f32) -> String {
     let rounded = round_1dp(value);
-    if rounded < 10.0 {
+    if rounded.abs() < 10.0 {
         format!("{rounded:.1}")
     } else {
         fmt_int(value)

@@ -15,7 +15,7 @@ use cirrocast::error::Error;
 use cirrocast::model::units::{
     DistanceUnit, PrecipUnit, PressureUnit, ResolvedUnits, TempUnit, UnitStyle, UnitSystem,
     WindUnit, compass_16, fmt_int, format_distance, format_precip, format_pressure, format_temp,
-    format_visibility, format_wind, round_half_away_from_zero,
+    format_temp_signed, format_visibility, format_wind, round_half_away_from_zero,
 };
 
 /// The units a fixture row's `unit spec` column selects.
@@ -266,4 +266,53 @@ fn integer_rounding_never_prints_a_negative_zero() {
 #[allow(clippy::float_cmp)]
 fn assert_rounded(actual: f32, expected: f32) {
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn rounding_stays_bounded_at_large_magnitudes() {
+    // One ulp is >= 0.5 above 2^22: the old relative nudge pushed these integers to their
+    // neighbour. The tie itself must still round away from zero.
+    assert_eq!(fmt_int(4_194_303.0), "4194303");
+    assert_eq!(fmt_int(8_388_608.0), "8388608");
+    assert_eq!(fmt_int(f32::MAX), "340282346638528859811704183484516925440");
+    assert_eq!(fmt_int(2.5), "3");
+    assert_eq!(fmt_int(-2.5), "-3");
+}
+
+#[test]
+fn negative_readings_take_the_same_display_branch_as_positive_ones() {
+    // The signed temperature formatter is what the art table and one-line format call; the only
+    // negative Fahrenheit case in the doctests is absent, so pin one here.
+    assert_eq!(format_temp_signed(-5.2, TempUnit::Fahrenheit), "+23°F");
+    assert_eq!(format_temp_signed(-20.0, TempUnit::Fahrenheit), "-4°F");
+    assert_eq!(format_temp_signed(-0.4, TempUnit::Fahrenheit), "+31°F");
+
+    // A negative wind at the ten-unit threshold prints like its positive twin.
+    assert_eq!(
+        format_wind(-9.96, WindUnit::Kmh, UnitStyle::Spaced),
+        "-10 km/h"
+    );
+    assert_eq!(
+        format_distance(-9.96, DistanceUnit::Km, UnitStyle::Spaced),
+        "-10 km"
+    );
+    assert_eq!(
+        format_visibility(-1.5, DistanceUnit::Km, UnitStyle::Spaced),
+        "-1.5 km"
+    );
+}
+
+#[test]
+fn an_empty_override_is_absent_not_an_error() {
+    // `config.toml` maps `wind = ""` to no override; a hand-built override set must agree.
+    let overrides = UnitOverrides {
+        wind: Some(String::new()),
+        temp: Some("  ".to_owned()),
+        ..UnitOverrides::default()
+    };
+    let units = UnitSystem::Metric
+        .resolve(&overrides)
+        .expect("empty overrides mean `follow the system`");
+    assert_eq!(units.wind, WindUnit::Kmh);
+    assert_eq!(units.temp, TempUnit::Celsius);
 }

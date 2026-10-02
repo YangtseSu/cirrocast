@@ -14,8 +14,10 @@
 //! * **Day parts are four.** [`DayPartKind`] enumerates exactly `Morning | Noon | Evening | Night`
 //!   and [`DayForecast::parts`] is an array, so a missing part cannot be represented; the provider
 //!   aggregates hourly data into them using the location's time zone.
-//! * **Serde on everything.** The same types are the cache payload and, later, the `json` output
-//!   schema, so a field is added once.
+//! * **Serde on everything.** Every type round-trips through serde: providers build them,
+//!   fixtures load them, and the `json` renderer projects them with its own key names. The cache
+//!   itself stores the raw upstream body, never a serialised `Report`, so a provider schema
+//!   change heals by refetching instead of failing on an old document.
 
 pub mod condition;
 pub mod units;
@@ -80,9 +82,7 @@ pub struct Location {
     ///
     /// A station has no other way to carry its identity: the display name is the site name and the
     /// coordinates are the airport's, so a backend that needs the identifier (`metar`, for its
-    /// cache key and its request) reads it here. `None` for every non-station location, and
-    /// `#[serde(default)]` so documents written before this field still deserialise.
-    #[serde(default)]
+    /// cache key and its request) reads it here. `None` for every non-station location.
     pub station: Option<String>,
 }
 
@@ -221,6 +221,10 @@ pub struct DayForecast {
     /// The location-local calendar date.
     pub date: NaiveDate,
     /// The four parts, in [`DayPartKind::ALL`] order.
+    ///
+    /// Deserialisation rejects any other order: the array position and each part's `kind` must
+    /// agree, so a renderer may index either way without contradicting the other.
+    #[serde(deserialize_with = "parts_in_order")]
     pub parts: [DayPart; 4],
     /// Daily minimum temperature in °C.
     pub temp_min_c: f32,
@@ -230,6 +234,42 @@ pub struct DayForecast {
     pub sunrise: Option<DateTime<FixedOffset>>,
     /// Local sunset, when the provider reports it.
     pub sunset: Option<DateTime<FixedOffset>>,
+}
+
+impl DayForecast {
+    /// The part of the day `kind`, by [`DayPartKind::index`].
+    ///
+    /// Pressing `parts` into a by-kind lookup keeps the array position and the per-part `kind`
+    /// field from disagreeing: this accessor is what renderers use when they want one part.
+    #[must_use]
+    pub fn part(&self, kind: DayPartKind) -> &DayPart {
+        &self.parts[kind.index()]
+    }
+}
+
+/// Deserialises the four day parts and rejects an array whose `kind` fields do not match their
+/// positions.
+fn parts_in_order<'de, D>(deserializer: D) -> std::result::Result<[DayPart; 4], D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let parts = <[DayPart; 4]>::deserialize(deserializer)?;
+    if let Some((index, part)) = parts
+        .iter()
+        .enumerate()
+        .find(|(index, part)| part.kind.index() != *index)
+    {
+        let expected = DayPartKind::ALL
+            .iter()
+            .map(|kind| kind.label())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(serde::de::Error::custom(format!(
+            "day parts must be in {expected} order; element {index} carries `{}`",
+            part.kind.label()
+        )));
+    }
+    Ok(parts)
 }
 
 /// Which backend produced a [`Report`], and when.
@@ -247,10 +287,8 @@ pub struct Attribution {
     #[serde(default)]
     pub display_name: String,
     /// The credit line the data licence requires, when the registry knows one.
-    #[serde(default)]
     pub licence: Option<String>,
     /// What the backend declared it offers; `None` for an unknown source.
-    #[serde(default)]
     pub capabilities: Option<ReportCapabilities>,
     /// The request URL, without any API key.
     pub url: String,
@@ -377,16 +415,42 @@ pub fn resolve_local(tz: Tz, naive: NaiveDateTime) -> Result<DateTime<Tz>> {
         LocalResult::Single(at) => Ok(at),
         LocalResult::Ambiguous(first, _second) => Ok(first),
         LocalResult::None => {
-            let shifted = naive + TimeDelta::hours(1);
+            let shifted = naive
+                .checked_add_signed(TimeDelta::hours(1))
+                .ok_or_else(|| nonexistent(naive, tz))?;
             match tz.from_local_datetime(&shifted) {
                 LocalResult::Single(at) => Ok(at),
                 LocalResult::Ambiguous(first, _second) => Ok(first),
-                LocalResult::None => Err(Error::Upstream {
-                    provider: "tzdata".to_owned(),
-                    status: None,
-                    message: format!("local time {naive} does not exist in {tz}"),
-                }),
+                LocalResult::None => Err(nonexistent(naive, tz)),
             }
         }
+    }
+}
+
+/// The error for a local wall clock that no offset makes real, including the one-hour-shifted
+/// retry: the `provider` field carries `tzdata`, since it is the time zone database that rejects
+/// the timestamp.
+fn nonexistent(naive: NaiveDateTime, tz: Tz) -> Error {
+    Error::Upstream {
+        provider: "tzdata".to_owned(),
+        status: None,
+        message: format!("local time {naive} does not exist in {tz}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::NaiveDateTime;
+    use chrono_tz::Tz;
+
+    use super::resolve_local;
+
+    #[test]
+    fn an_extreme_timestamp_fails_instead_of_overflowing() {
+        // `NaiveDateTime::MAX` is inside a zone gap for this zone, so the spring-forward retry
+        // runs `naive + 1h`, which overflows and panicked before `checked_add_signed` was used.
+        let error = resolve_local(Tz::America__Santiago, NaiveDateTime::MAX)
+            .expect_err("an unrepresentable local time is an upstream error");
+        assert!(error.to_string().contains("does not exist"), "{error}");
     }
 }
