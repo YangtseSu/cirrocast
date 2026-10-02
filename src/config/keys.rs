@@ -13,10 +13,10 @@
 //! openweathermap = "…"
 //! ```
 //!
-//! Lookup order, first hit wins: `CIRROCAST_<PROVIDER>_KEY`, then `keys.toml`, then the OS keyring
-//! (a feature-gated backend that step 10 adds together with the first key-requiring provider). Any
-//! key file that group or other can read is refused rather than used, so a stray `chmod 644` is
-//! loud instead of silent.
+//! Lookup order, first hit wins: `CIRROCAST_<PROVIDER>_KEY`, then `keys.toml`. There is no third
+//! tier: OS keyring storage is out of scope for v1 (step 10's `## Out of scope` lists it), so a
+//! key that is in neither place is reported as missing. Any key file that group or other can read
+//! is refused rather than used, so a stray `chmod 644` is loud instead of silent.
 
 use std::collections::BTreeMap;
 use std::fs;

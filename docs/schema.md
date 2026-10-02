@@ -343,7 +343,7 @@ default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"; em
 [network]
 timeout_secs = 15        # 1..=300
 retries = 3              # 0..=10
-proxy = ""               # e.g. "socks5://127.0.0.1:1080"; empty = connect directly
+proxy = ""               # e.g. "http://127.0.0.1:8080"; empty = connect directly
 nominatim_url = ""       # Nominatim base URL for `~name` searches; empty = the public OpenStreetMap service
 
 [cache]

@@ -560,12 +560,23 @@ impl Config {
             TIMEOUT_RANGE,
         )?;
         check_range("network.retries", self.network.retries, RETRIES_RANGE)?;
+        self.validate_proxy()?;
+        self.validate_nominatim_url()
+    }
+
+    /// `network.proxy` must be empty, an `http(s)` proxy or a bare `host:port`.
+    fn validate_proxy(&self) -> Result<()> {
         if !is_proxy_url(&self.network.proxy) {
             return Err(Error::Config(format!(
-                "network.proxy: `{}` is neither `scheme://host[:port]` nor `host:port`",
+                "network.proxy: `{}` is not an `http://` or `https://` proxy URL",
                 self.network.proxy
             )));
         }
+        Ok(())
+    }
+
+    /// `network.nominatim_url` must be empty or an http(s) base URL.
+    fn validate_nominatim_url(&self) -> Result<()> {
         if !is_service_url(&self.network.nominatim_url) {
             return Err(Error::Config(format!(
                 "network.nominatim_url: `{}` is not an http(s) base URL",
@@ -595,21 +606,52 @@ impl Config {
     }
 
     fn validate_providers(&self) -> Result<()> {
+        self.validate_metar_station()?;
+        self.validate_qweather_host()
+    }
+
+    fn validate_metar_station(&self) -> Result<()> {
         let station = self.providers.metar.station.trim();
         if !station.is_empty() && !crate::provider::metar::is_icao_station(station) {
             return Err(Error::Config(format!(
                 "providers.metar.station: `{station}` is not a four-character ICAO station identifier (a letter followed by three letters or digits, e.g. `ZBAA`)"
             )));
         }
+        Ok(())
+    }
 
-        let host = self.providers.qweather.host.trim();
-        if !host.is_empty() && !host.starts_with("http://") && !host.starts_with("https://") {
+    /// `providers.qweather.host` must be the HTTPS account host the `QWeather` console shows.
+    ///
+    /// The host is part of the authentication and the key travels in a header, so plain `http` is
+    /// refused outright. The legacy shared domains (`api.qweather.com`, …) answer `403 Invalid
+    /// Host` for every key, so accepting them here would only move the failure somewhere less
+    /// explainable; the documented account shape `<account-id>.re.qweatherapi.com` is required.
+    fn validate_qweather_host(&self) -> Result<()> {
+        let host = self.providers.qweather.host.trim().trim_end_matches('/');
+        if !host.is_empty() && !is_qweather_host(host) {
             return Err(Error::Config(format!(
-                "providers.qweather.host: `{host}` must be empty or start with `http://` or `https://`"
+                "providers.qweather.host: `{host}` must be the HTTPS account host from \
+                 https://console.qweather.com/setting, e.g. \
+                 `https://<account-id>.re.qweatherapi.com`"
             )));
         }
         Ok(())
     }
+}
+
+/// Whether `host` is a bare `https://<account-id>.re.qweatherapi.com` URL (no path).
+///
+/// Mirrors the provider's own check in `src/provider/qweather.rs`; the two must accept exactly the
+/// same spelling so `config set` cannot write a value the backend then refuses.
+fn is_qweather_host(host: &str) -> bool {
+    let Some(rest) = host.strip_prefix("https://") else {
+        return false;
+    };
+    if rest.contains('/') {
+        return false;
+    }
+    rest.strip_suffix(".re.qweatherapi.com")
+        .is_some_and(|account| !account.is_empty())
 }
 
 /// `key: value is not one of a, b, c`, with the accepted values quoted for the user.
@@ -699,20 +741,19 @@ fn is_language_tag(value: &str) -> bool {
     })
 }
 
-/// Whether `value` is an empty proxy setting, `scheme://host[:port]` or `host:port`.
+/// Whether `value` is an empty proxy setting, `http(s)://host[:port]` or `host:port`.
 ///
-/// The syntax check is local on purpose: `ureq` — and with it `ureq::Proxy::new` — only becomes a
-/// dependency of this crate in step 05, which re-checks the setting against the real parser.
+/// Only the HTTP proxy schemes are accepted. `ureq` is built without its `socks-proxy` feature, and
+/// a manually configured SOCKS proxy makes it panic at connect time (its `WarnOnNoSocksConnector`
+/// treats a hand-written setting as a serious error) — a panic the user cannot blame on their
+/// input unless this check rejects it with a typed error first. A SOCKS proxy set through the
+/// environment only makes `ureq` warn, so the environment path stays as the library handles it.
 fn is_proxy_url(value: &str) -> bool {
     if value.is_empty() {
         return true;
     }
     if let Some((scheme, rest)) = value.split_once("://") {
-        return !scheme.is_empty()
-            && scheme
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
-            && !rest.is_empty();
+        return matches!(scheme, "http" | "https") && !rest.is_empty();
     }
     match value.rsplit_once(':') {
         Some((host, port)) if !host.is_empty() && !port.is_empty() => {
@@ -822,19 +863,38 @@ fn check_table(path: &str, value: &toml::Value) -> Result<()> {
 // ---------------------------------------------------------------------------------------------
 
 impl Config {
-    /// Writes the commented default document to `$XDG_CONFIG_HOME/cirrocast/config.toml`.
+    /// Writes the initial user configuration to `$XDG_CONFIG_HOME/cirrocast/config.toml`.
     ///
-    /// Refuses to overwrite an existing file unless `force` is set. The write is atomic: readers
-    /// see either the old file or the new one.
+    /// Refuses to overwrite an existing file unless `force` is set. When a configuration is
+    /// already in effect from another file (a system document under `$XDG_CONFIG_DIRS`, say), the
+    /// new user file is seeded with that effective configuration instead of the commented
+    /// defaults: writing the defaults there would silently shadow the system document and change
+    /// every later run. With no other source the commented [`DEFAULT_DOCUMENT`] is written as
+    /// before. The write is atomic: readers see either the old file or the new one.
     pub fn write_default(paths: &Paths, force: bool) -> Result<PathBuf> {
         let path = paths.config_file.clone();
-        if path.exists() && !force {
-            return Err(Error::Config(format!(
-                "{} exists; pass --force to overwrite it",
-                path.display()
-            )));
+        if path.exists() {
+            if !force {
+                return Err(Error::Config(format!(
+                    "{} exists; pass --force to overwrite it",
+                    path.display()
+                )));
+            }
+            atomic_write(&path, DEFAULT_DOCUMENT.as_bytes(), CONFIG_FILE_MODE)?;
+            return Ok(path);
         }
-        atomic_write(&path, DEFAULT_DOCUMENT.as_bytes(), CONFIG_FILE_MODE)?;
+        let document = match Self::source(paths)? {
+            Some(source) => {
+                let text = fs::read_to_string(&source)
+                    .map_err(|error| Error::Config(format!("{}: {error}", source.display())))?;
+                let config = Self::parse(&text, &source)?;
+                toml::to_string_pretty(&config).map_err(|error| {
+                    Error::Config(format!("cannot serialise {}: {error}", source.display()))
+                })?
+            }
+            None => DEFAULT_DOCUMENT.to_owned(),
+        };
+        atomic_write(&path, document.as_bytes(), CONFIG_FILE_MODE)?;
         Ok(path)
     }
 
@@ -952,7 +1012,7 @@ default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"; em
 [network]
 timeout_secs = 15        # 1..=300
 retries = 3              # 0..=10
-proxy = ""               # e.g. "socks5://127.0.0.1:1080"; empty = connect directly
+proxy = ""               # e.g. "http://127.0.0.1:8080"; empty = connect directly
 nominatim_url = ""       # Nominatim base URL for `~name` searches; empty = the public OpenStreetMap service
 
 [cache]
@@ -1299,7 +1359,62 @@ impl Config {
             "providers.qweather.host" => self.providers.qweather.host = value,
             _ => return Err(Error::Usage(unknown_key_message(spec.name))),
         }
-        self.validate()
+        // Only the key that was just written is checked. A whole-document check would refuse the
+        // very command that repairs a document that already holds an invalid value elsewhere.
+        self.validate_key(spec.name)
+    }
+
+    /// Validates only the field `key` names, the counterpart of [`Config::validate`] for
+    /// [`Config::set_key`].
+    fn validate_key(&self, key: &str) -> Result<()> {
+        match key {
+            "schema_version" => self.validate_schema_version(),
+            "defaults.provider" => check_provider_chain(key, &self.defaults.provider),
+            "defaults.format" => check_enum(key, &self.defaults.format, FORMATS),
+            "defaults.units" => check_enum(key, &self.defaults.units, UNIT_SYSTEMS),
+            "defaults.days" => check_range(key, u32::from(self.defaults.days), DAYS_RANGE),
+            "defaults.language" => check_language(key, &self.defaults.language),
+            "location.default" => self.validate_location(),
+            "units.temp" => check_optional_enum(key, self.units.temp.as_deref(), TEMP_UNITS),
+            "units.wind" => check_optional_enum(key, self.units.wind.as_deref(), WIND_UNITS),
+            "units.pressure" => {
+                check_optional_enum(key, self.units.pressure.as_deref(), PRESSURE_UNITS)
+            }
+            "units.distance" => {
+                check_optional_enum(key, self.units.distance.as_deref(), DISTANCE_UNITS)
+            }
+            "units.precip" => check_optional_enum(key, self.units.precip.as_deref(), PRECIP_UNITS),
+            "network.timeout_secs" => check_range(key, self.network.timeout_secs, TIMEOUT_RANGE),
+            "network.retries" => check_range(key, self.network.retries, RETRIES_RANGE),
+            "network.proxy" => self.validate_proxy(),
+            "network.nominatim_url" => self.validate_nominatim_url(),
+            "cache.weather_ttl_secs" => check_positive(key, self.cache.weather_ttl_secs),
+            "cache.ip_ttl_secs" => check_positive(key, self.cache.ip_ttl_secs),
+            "cache.geocode_ttl_secs" => check_positive(key, self.cache.geocode_ttl_secs),
+            "render.color" => check_enum(key, &self.render.color, COLOR_MODES),
+            "render.width" => self.validate_render(),
+            "providers.metar.station" => self.validate_metar_station(),
+            "providers.qweather.host" => self.validate_qweather_host(),
+            _ => Ok(()),
+        }
+    }
+
+    /// This configuration with every `CIRROCAST_*` environment override applied, the same values
+    /// [`Config::get_key`] reports for those keys.
+    ///
+    /// `config show` promises the *effective* configuration, so it renders this rather than the
+    /// file alone; `config get` has always resolved the environment first, and the two must not
+    /// disagree about the same key.
+    pub fn with_env_overrides(&self) -> Result<Self> {
+        let mut config = self.clone();
+        for spec in KEY_TABLE {
+            if let Some(env) = spec.env
+                && let Some(value) = env_value(env)
+            {
+                config.set_key(spec.name, &value)?;
+            }
+        }
+        Ok(config)
     }
 }
 
@@ -1618,7 +1733,7 @@ mod tests {
             (
                 "network.proxy",
                 |config| config.network.proxy = "http://".to_owned(),
-                "network.proxy: `http://` is neither",
+                "network.proxy: `http://` is not an `http://` or `https://` proxy URL",
             ),
             (
                 "network.nominatim_url",
@@ -1668,6 +1783,30 @@ mod tests {
     }
 
     #[test]
+    fn set_key_rejects_a_socks_proxy_and_a_foreign_qweather_host() {
+        // Both values are refused by `config set` through the per-key validator, so a user is told
+        // before the value is written (a SOCKS URL would otherwise reach ureq's panic path).
+        for (key, value, expected) in [
+            (
+                "network.proxy",
+                "socks5://127.0.0.1:1080",
+                "network.proxy: `socks5://127.0.0.1:1080` is not an `http://` or `https://` proxy URL",
+            ),
+            (
+                "providers.qweather.host",
+                "http://api.qweather.com",
+                "providers.qweather.host: `http://api.qweather.com` must be the HTTPS account host",
+            ),
+        ] {
+            let mut config = Config::default();
+            let error = config
+                .set_key(key, value)
+                .expect_err(&format!("{key} should not validate"));
+            assert!(error.to_string().contains(expected), "{key}: {error}");
+        }
+    }
+
+    #[test]
     fn a_fully_populated_configuration_validates() {
         let mut config = Config::default();
         config.defaults.provider = "open-meteo,smhi".to_owned();
@@ -1675,7 +1814,7 @@ mod tests {
         config.defaults.units = "uk".to_owned();
         config.defaults.language = "zh-CN".to_owned();
         config.units.temp = Some("f".to_owned());
-        config.network.proxy = "socks5://127.0.0.1:1080".to_owned();
+        config.network.proxy = "http://127.0.0.1:8080".to_owned();
         config.render.width = 80;
         config.render.color = "never".to_owned();
         config.providers.metar.station = "ZBAA".to_owned();
@@ -1706,6 +1845,23 @@ mod tests {
             "{error}"
         );
         assert!(error.to_string().contains("defaults.days"), "{error}");
+    }
+
+    #[test]
+    fn set_key_repairs_a_document_that_is_invalid_elsewhere() {
+        let mut config = Config::default();
+        config.defaults.days = 99;
+        config.render.width = 12;
+
+        config
+            .set_key("render.width", "80")
+            .expect("the key being set is valid");
+        config
+            .set_key("defaults.days", "5")
+            .expect("the key being set is valid");
+
+        assert_eq!(config.render.width, 80);
+        assert_eq!(config.defaults.days, 5);
     }
 
     #[test]

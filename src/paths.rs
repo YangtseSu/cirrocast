@@ -80,7 +80,10 @@ impl Paths {
     /// Every configuration file candidate, in XDG search order: the user's
     /// `$XDG_CONFIG_HOME/cirrocast/config.toml` first, then one
     /// `$XDG_CONFIG_DIRS/cirrocast/config.toml` per entry (default `/etc/xdg`). The first entry
-    /// that exists is the one `cirrocast` reads; duplicates are dropped.
+    /// that exists is the one `cirrocast` reads; duplicates are dropped. The XDG base directory
+    /// spec says a path in `XDG_CONFIG_DIRS` must be absolute, and that a relative one is
+    /// invalid and must be ignored — so a `XDG_CONFIG_DIRS=.` cannot make the process read a
+    /// `./cirrocast/config.toml` from the working directory.
     pub fn config_file_candidates(&self) -> Vec<PathBuf> {
         let mut candidates = vec![self.config_file.clone()];
         let dirs = std::env::var(XDG_CONFIG_DIRS).unwrap_or_default();
@@ -89,7 +92,11 @@ impl Paths {
         } else {
             &dirs
         };
-        for dir in dirs.split(':').filter(|entry| !entry.is_empty()) {
+        for dir in dirs
+            .split(':')
+            .filter(|entry| !entry.is_empty())
+            .filter(|entry| Path::new(entry).is_absolute())
+        {
             let candidate = Path::new(dir).join(APP_DIR).join(CONFIG_FILE);
             if !candidates.contains(&candidate) {
                 candidates.push(candidate);

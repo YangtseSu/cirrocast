@@ -456,6 +456,127 @@ fn validate_rejects_the_documented_impossible_values() {
 }
 
 #[test]
+fn set_repairs_a_file_that_is_invalid_elsewhere() {
+    let sandbox = Sandbox::new();
+    sandbox.write_config("[defaults]\ndays = 99\n[render]\nwidth = 12\n");
+
+    sandbox
+        .cirrocast()
+        .args(["config", "set", "render.width", "80"])
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty());
+    sandbox
+        .cirrocast()
+        .args(["config", "set", "defaults.days", "5"])
+        .assert()
+        .success();
+
+    get(&sandbox, "render.width")
+        .assert()
+        .success()
+        .stdout(predicate::eq("80\n"));
+    get(&sandbox, "defaults.days")
+        .assert()
+        .success()
+        .stdout(predicate::eq("5\n"));
+}
+
+#[test]
+fn show_applies_the_environment_overrides_like_get() {
+    let sandbox = Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["config", "set", "defaults.days", "5"])
+        .assert()
+        .success();
+
+    let assert = sandbox
+        .cirrocast()
+        .env("CIRROCAST_DAYS", "7")
+        .args(["config", "show"])
+        .assert()
+        .success();
+    let stdout =
+        String::from_utf8(assert.get_output().stdout.clone()).expect("show prints UTF-8 TOML");
+    let document: toml::Value = toml::from_str(&stdout).expect("show prints parsable TOML");
+    assert_eq!(
+        document
+            .get("defaults")
+            .and_then(|defaults| defaults.get("days"))
+            .and_then(toml::Value::as_integer),
+        Some(7),
+        "`config show` must report the effective value, like `config get`"
+    );
+}
+
+#[test]
+fn init_seeds_the_effective_system_configuration_instead_of_shadowing_it() {
+    let sandbox = Sandbox::new();
+    let system = sandbox.home().join("system/cirrocast");
+    fs::create_dir_all(&system).expect("the system config directory");
+    fs::write(
+        system.join("config.toml"),
+        "[defaults]\ndays = 9\nformat = \"json\"\n",
+    )
+    .expect("the system config is written");
+
+    sandbox
+        .cirrocast()
+        .args(["config", "init"])
+        .assert()
+        .success();
+
+    // The user file now shadows the system one, so it has to carry the same effective values.
+    get(&sandbox, "defaults.days")
+        .assert()
+        .success()
+        .stdout(predicate::eq("9\n"));
+    get(&sandbox, "defaults.format")
+        .assert()
+        .success()
+        .stdout(predicate::eq("json\n"));
+}
+
+#[test]
+fn a_relative_xdg_config_dirs_entry_is_ignored() {
+    let sandbox = Sandbox::new();
+    let relative = sandbox.home().join("cirrocast");
+    fs::create_dir_all(&relative).expect("the relative config directory");
+    fs::write(relative.join("config.toml"), "[defaults]\ndays = 11\n")
+        .expect("the relative document is written");
+
+    sandbox
+        .cirrocast()
+        .current_dir(sandbox.home())
+        .env("XDG_CONFIG_DIRS", ".")
+        .args(["config", "get", "defaults.days"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("3\n"));
+}
+
+#[test]
+fn a_socks_proxy_is_rejected_before_ureq_can_panic_on_it() {
+    let sandbox = Sandbox::new();
+
+    sandbox
+        .cirrocast()
+        .args(["config", "set", "network.proxy", "socks5://127.0.0.1:1080"])
+        .assert()
+        .code(4)
+        .stderr(predicate::str::contains(
+            "network.proxy: `socks5://127.0.0.1:1080` is not an `http://` or `https://` proxy URL",
+        ));
+
+    sandbox
+        .cirrocast()
+        .args(["config", "set", "network.proxy", "http://127.0.0.1:8080"])
+        .assert()
+        .success();
+}
+
+#[test]
 fn validate_checks_the_offline_combination_and_explains_unit_overrides() {
     let sandbox = Sandbox::new();
     sandbox.write_config("[cache]\nenabled = false\n");
