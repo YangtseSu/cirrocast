@@ -659,6 +659,12 @@ The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.gi
   admits the permissive licences, MPL-2.0 and the data licences `Unicode-3.0`, `CDLA-Permissive-2.0`
   and `ODbL-1.0`), duplicate versions and wildcard requirements denied, crates.io as the only
   source, and every advisory ignore carrying a reason plus an expiry date.
+* **Dependabot** checks both ecosystems once a day ([`.github/dependabot.yml`](.github/dependabot.yml)):
+  `cargo` for `Cargo.toml` and the committed `Cargo.lock`, and `github-actions` for the action pins
+  in the workflows — it moves each pinned commit SHA together with its `# vX.Y.Z` comment. Minor and
+  patch bumps arrive as one grouped pull request per ecosystem; a major bump keeps its own, because
+  the MSRV, `deny` and `audit` gates are what decide whether it can land. Dependabot alerts and
+  security updates are enabled in the repository settings.
 * **Reproducibility**: every third-party action is pinned to a commit SHA and the runner images are
   named explicitly (`ubuntu-26.04`, `macos-26`, `ubuntu-26.04-arm`) instead of `<os>-latest`; the
   release matrix ([`.github/workflows/release.yml`](.github/workflows/release.yml)) follows the same

@@ -445,3 +445,12 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   annotates every run with a deprecation warning, and the newest *release* still declares `node20`. The commit
   changes only `runs.using` (plus changelog and package metadata), so the pin is safe; the comment above the
   `uses:` line says to switch back to a tag once a release carries the fix.
+- 2026-10-02 — Dependabot added (`.github/dependabot.yml`): a daily check of `cargo` (manifest and lockfile)
+  and `github-actions` (the pins in `.github/workflows/`, SHA and `# vX.Y.Z` comment together), grouped as one
+  pull request per ecosystem for minor and patch bumps with majors left individual — the MSRV, `deny` and
+  `audit` gates are what decide whether a bump can land, so the grouped PR is the reviewable unit and a major
+  gets its own. The `github-actions` group deliberately omits `update-types`: the reference does not state that
+  SemVer-level grouping is supported for that ecosystem, and there are only eight actions. Dependabot alerts
+  and automated security updates were switched on in the repository settings (both were off); version updates
+  keep Dependabot's default three-day cooldown, which does not apply to security updates. README's development
+  section documents it.

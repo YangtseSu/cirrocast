@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Dependabot version updates, one daily check per ecosystem (README.md#development-and-ci).
+#
+# * `cargo` covers `Cargo.toml` and the committed `Cargo.lock`; a pull request it raises runs the
+#   same gates as any other (MSRV 1.98, `cargo deny`, `cargo audit`), so an update that breaks the
+#   dependency policy fails visibly instead of landing quietly.
+# * `github-actions` covers every action referenced by `.github/workflows/`, including the
+#   commit-SHA pins — Dependabot moves the SHA and the trailing `# vX.Y.Z` comment together.
+# * Minor and patch bumps are grouped into one pull request per ecosystem; a major bump keeps its
+#   own, because that is the one that needs reading. The `github-actions` group has no
+#   `update-types` filter on purpose: the reference does not state that grouping by SemVer level is
+#   supported for that ecosystem, and there are only eight actions.
+# * Version updates keep Dependabot's default three-day cooldown, so a release is not proposed the
+#   day it appears; security updates are not subject to it and are enabled in the repository
+#   settings, not here.
+
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      github-actions:
+        patterns: ["*"]
