@@ -26,13 +26,31 @@ path = [
     "tests/fixtures/malformed/**",
     "tests/fixtures/model/**",
     "tests/fixtures/http/**",
-    "tests/fixtures/ip/**",
     "tests/fixtures/report/**",
     "tests/fixtures/smhi/point_sentinel_2026-10-01.json",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Recorded IP-geolocation payloads (ipwho.is primary, ipapi.co fallback). Their terms forbid
+# redistribution — ipwho.is is "personal or internal use, no redistribution" and ipapi.co is
+# "internal use, no resale" (README's data-sources table) — so they cannot be relicensed GPL and
+# carry the same custom licence reference as the other recorded proprietary payloads.
+[[annotations]]
+path = "tests/fixtures/ip/**"
+precedence = "override"
+SPDX-FileCopyrightText = "ipwho.is and ipapi.co (recorded API responses)"
+SPDX-License-Identifier = "LicenseRef-Proprietary-API-Data"
+
+# The Open-Meteo 400 envelope is a verbatim recording of the forecast API's error body, so it
+# keeps the upstream CC BY 4.0 licence instead of the first-party GPL rule for the rest of
+# `tests/fixtures/http/**`. This annotation is later than that block, so it wins for this path.
+[[annotations]]
+path = "tests/fixtures/http/open_meteo_error_invalid_param.json"
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com"
+SPDX-License-Identifier = "CC-BY-4.0"
 
 # insta snapshots. The `.snap` format is insta's (a YAML header, then the recorded text), so the
 # files cannot carry a comment header of their own; the content is our own renderer output.
@@ -87,7 +105,8 @@ SPDX-License-Identifier = "LicenseRef-Proprietary-API-Data"
 
 # Recorded OpenWeatherMap responses: the data is ODbL 1.0 (attribution required, share-alike only
 # for an adapted database), and the fixtures keep the upstream licence rather than being relicensed.
-# The API key the recording used is replaced by `REDACTED`.
+# The API key travels in the request's `appid` query parameter and is absent from every response
+# body, so these recorded bodies carry no key at all.
 [[annotations]]
 path = "tests/fixtures/owm/**"
 precedence = "override"
@@ -122,7 +141,8 @@ SPDX-License-Identifier = "ODbL-1.0"
 # Recorded aviation weather: METAR/SPECI observations (the raw report and the `format=json` body
 # the provider decodes) and `stationinfo` metadata rows. NOAA/NWS is US government material and
 # therefore public domain, which is why these directories are annotated per path with a
-# `LicenseRef` instead of falling under the GPL override for first-party fixtures.
+# `LicenseRef` instead of falling under the GPL override for first-party fixtures. The `ZZZZ`
+# sentinel rows are hand-authored and carved out below.
 [[annotations]]
 path = [
     "tests/fixtures/metar/**",
@@ -131,3 +151,17 @@ path = [
 precedence = "override"
 SPDX-FileCopyrightText = "NOAA/NWS (aviationweather.gov)"
 SPDX-License-Identifier = "LicenseRef-US-Government-Public-Domain"
+
+# Carve-out for the hand-authored `ZZZZ` sentinel inside the NOAA directories above: the unknown
+# station used by the "unknown station" tests was written by hand from the schema, not recorded
+# from aviationweather.gov, so it stays first-party. This annotation is later than the two NOAA
+# globs, so it wins for these exact paths.
+[[annotations]]
+path = [
+    "tests/fixtures/stationinfo/ZZZZ.json",
+    "tests/fixtures/metar/ZZZZ/current.json",
+    "tests/fixtures/metar/ZZZZ/truncated.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"

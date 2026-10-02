@@ -48,9 +48,14 @@ step 20, and `[locations]` aliases make `cirrocast @home` work.
       per-location full tables and log `note: art-table summary layout is limited to 4 locations` to
       stderr once (silenced by `-q`).
 - ⬜ `src/template.rs`: token table shared by `one-line`, the `full`/`minimal` presets, the
-      wttr.in compat surface and `status` (step 24): `%c %C %x %t %f %H %L %w %h %p %P %e %u %m %M %v
-      %l %d %D %T %Z %z %S %s %A %q`, with `TOKENS: &[TokenSpec]` exported so tests and the compat
+      wttr.in compat surface and `status` (step 24): `%c %C %x %t %f %H %L %w %h %p %P %e %u %U %m %M
+      %v %l %d %D %T %Z %z %S %s %A %q`, with `TOKENS: &[TokenSpec]` exported so tests and the compat
       help page enumerate the same list.
+- ⬜ Breaking token change: `%L` is reassigned from the shipped long/qualified location form (`%l %L`
+      = "name / 39.90,116.40", minted and test-pinned by step 08 at `src/render/one_line.rs:170`,
+      `:199`, `:568`) to the day's low temperature, matching wttr.in's `L` (see the design note below).
+      Step 08's one-line tests pin the old meaning, so this step must update them in the same commit
+      and call the reassignment out as a breaking change in `CHANGELOG.md` and `docs/formats.md`.
 - ⬜ `src/template.rs`: width specifiers `%[-][0][<width>][.<prec>]X` (right-aligned unless `-`,
       zero-pad for numeric tokens, precision truncates text from the right and rounds numbers),
       escapes `%%` → literal `%`, `%{…}` → the braced content as a token when it is exactly one known

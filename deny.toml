@@ -58,7 +58,11 @@ exceptions = [
 
 [bans]
 # A second copy of one crate is a bug waiting to happen (two types that should be one). The
-# current lockfile has three, each with a skip entry below naming why it cannot be unified.
+# lockfile carries three duplicated names — `syn` 2/3, `windows-sys` 0.52/0.61 and `getrandom`
+# 0.2/0.4 — but only the first two need a skip entry: cargo-deny ignores a duplicate version whose
+# only dependent chain is reachable solely through a dev-dependency, and `getrandom` 0.4 arrives
+# through `tempfile`, which is dev-only, so the check never flags it. No skip entry is needed; it
+# is named here so the third duplicate is accounted for instead of looking overlooked.
 multiple-versions = "deny"
 wildcards = "deny"
 skip = [

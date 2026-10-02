@@ -215,7 +215,7 @@ cirrocast provider list && cirrocast provider info smhi
 - ✅ `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test` / `reuse lint` all clean
       (29 suites green, REUSE 157/157 at the time of the run)
 - ✅ `provider list`/`provider info <ID>` cover all seven providers with capabilities, auth, key variable, credit,
-      limits and verification date (QWeather's `credit:` is the not-implemented placeholder until its backend lands)
+      limits and verification date
 - ✅ SMHI renders real data for Stockholm without a key; an out-of-coverage request exits 3 and falls through
       (observed under `-v`: `-p smhi,open-meteo @39.9,116.4` → `smhi failed (upstream: out of coverage: 39.90,116.40 is
       outside the SMHI valid area); falling back to open-meteo`. `auto` puts open-meteo first, so the fall-through is

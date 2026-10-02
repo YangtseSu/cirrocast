@@ -22,7 +22,7 @@ Weather report: Beijing, Beijing Municipality, China (39.91, 116.40)
 ├───────────────────────┼───────────────────────┼───────────────────────┤
 │    \│/  Morning       │    \│/  Morning       │    \│/  Morning       │
 │  ╭───╮  +17°C (+11°C) │   ─(●)─ +16°C (+13°C) │   ─(●)─ +16°C (+13°C) │
-│ (     ) ↖ 19km/h NNW  │    /│\  ← 0.0km/h W   │    /│\  ↗ 6.0km/h NNE │
+│ (     ) ↑ 19km/h NNW  │    /│\  ← 0.0km/h W   │    /│\  ↗ 6.0km/h NNE │
 │  ╰───╯  0.0mm 18%     │         0.0mm 13%     │         0.0mm 27%     │
 … the noon, evening and night rows of each day, then the credits …
 ```
@@ -135,14 +135,14 @@ cirrocast [OPTIONS] [LOCATION]
       --timeout <SECS>
       --color <WHEN>            auto | always | never
       --width <COLS>            layout width for the table formats, 1..=500
-  -q, --quiet    -v, --verbose
+  -q, --quiet    -v, --verbose (repeat `-vv` for every HTTP attempt, its status and the cache decisions)
   -h, --help     -V, --version
 
-cirrocast config     <path|init|show|get|set|edit|validate>
-cirrocast key        <set|rm|list>
+cirrocast config     <path|init|show|get|set|edit|validate [--offline]>
+cirrocast key        <set [--stdin]|rm|list>
 cirrocast provider   <list|info>
-cirrocast cache      <stat|clean>
-cirrocast location   <search>
+cirrocast cache      <stat|clean [--all] [--offline]>
+cirrocast location   <search [--ip] [--limit <N>] [--timeout <SECS>]>
 cirrocast completion <bash|zsh|fish|elvish|powershell> [--bin-name NAME]
 cirrocast man [--bin-name NAME]
 ```

@@ -100,7 +100,9 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   message names the provider and the defect rather than an empty `caused by:` chain; the taxonomy assertions
   check the variant class and the provider name.
 - ✅ Render-path audit: `src/render/**` and `src/model/**` import nothing from `http`, `provider` or `cache`,
-  enforced by a CI grep gate (`! grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model`). Beyond
+  enforced by a CI grep gate over `crate::(http|provider|cache)`, grouped `crate::{…}` imports and
+  `super::(http|provider|cache)` forms in `src/render`/`src/model` (comment lines excluded, so a rustdoc link
+  is not a code edge). Beyond
   `std` and crate-internal modules, the two trees use only `serde`, `serde_json`, `chrono`, `chrono-tz`,
   `clap` (the `ValueEnum` derives on the format/colour enums), `unicode-width` and `fluent-bundle` — no
   transport, no cache, no registry. (The three registry lookups the renderers used — capabilities, display

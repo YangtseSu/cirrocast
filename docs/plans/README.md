@@ -122,6 +122,7 @@ src/
     open_meteo.rs    Open-Meteo geocoding (no key)
     nominatim.rs     OSM Nominatim fallback (`~query`), 1 req/s + mandatory cache
     ip.rs            ipwho.is primary, ipapi.co fallback
+    tz.rs            offline coordinate → IANA zone lookup (`tzf-rs`), for payloads that carry none
   http.rs            shared HTTP client: timeouts, UA, retries/backoff, proxy, error taxonomy
   cache.rs           on-disk cache: keys, TTLs, atomic writes, offline mode
   provider/
@@ -268,7 +269,8 @@ schema_version = 1
   `DAYS`, `LANG`, `LOCATION`, `TIMEOUT` — and `config get` prints the environment value when set.
 * API keys are **never** written to `config.toml`. Precedence (first hit wins):
   `CIRROCAST_<PROVIDER>_KEY` env var → `keys.toml` in the config dir with mode `0600`
-  (`cirrocast key set/rm/list`) → OS keyring, only if the `keyring` feature is enabled (step 10+).
+  (`cirrocast key set/rm/list`). There is no third tier: OS keyring storage is explicitly out of
+  scope for v1 (step 10, `## Out of scope`), so a key in neither place is simply missing.
 * A `keys.toml` with any group/other permission bits is refused with `Error::Config`, not silently used.
 * Cache layout: `geocode/<sha256(query)>.json`, `ip/<service>.json`,
   `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json`,
@@ -315,7 +317,7 @@ cirrocast completion <shell>    cirrocast man
 
 Location argument syntax: bare `Beijing` = fuzzy search; `:Beijing` = exact name match; `~Tsinghua` =
 OpenStreetMap/Nominatim; `@39.9,116.4` = coordinates; empty = config `location.default`, else public
-IP. Ambiguous fuzzy matches are resolved by deterministic ranking (population, then exact-name, then
+IP. Ambiguous fuzzy matches are resolved by deterministic ranking (exact-name, then population, then
 provider order) and the chosen location is echoed in the header, never silently guessed twice.
 
 ### Licensing and REUSE (binding)

@@ -61,6 +61,10 @@ jobs:
         rust: [stable, "1.98.0"]
     env:
       CIRROCAST_FORBID_NETWORK: "1"
+      # Snapshot drift must fail the build, not hide in an untracked `.snap.new`: insta's `auto`
+      # default writes nothing outside CI but still passes on a stale snapshot. Forcing `no` here
+      # makes the committed snapshot the one that decides, as step 07's plan documents.
+      INSTA_UPDATE: "no"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
@@ -93,10 +97,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The render layer must not reach into the transport, the cache or the provider registry:
       # the renderers shape their output from what the report carries (step 12's render-path audit).
+      #
+      # The pattern is deliberately wider than an import: a grouped `use crate::{cache, provider}`
+      # and a bare body path `crate::cache::Cache::new()` are both dependency edges, so both are
+      # caught along with `crate::http`, `crate::provider`, `crate::cache` and the `super::` forms.
+      # Comment lines (doc links such as `crate::provider::Capabilities` inside a doc comment) are
+      # stripped first: a rustdoc link is documentation, not a code dependency, and would otherwise
+      # fail the gate on a model doc comment.
       - name: no render/model dependency on http, provider or cache
         run: |
-          if grep -rn 'use crate::\(http\|provider\|cache\)' src/render src/model; then
-            echo "::error::src/render and src/model must not import http, provider or cache"
+          hits=$(grep -rnE 'crate::(http|provider|cache)|crate::\{[^}]*(http|provider|cache)|super::(http|provider|cache)' src/render src/model \
+            | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|/\*)' || true)
+          if [ -n "$hits" ]; then
+            printf '%s\n' "$hits"
+            echo "::error::src/render and src/model must not reference http, provider or cache"
             exit 1
           fi
       # LICENSES/GPL-3.0-or-later.txt is a real copy (a Windows checkout cannot rely on symlinks),
@@ -119,6 +133,11 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
+          # `--locked` makes cargo-deny judge the committed graph. Without it cargo metadata is
+          # free to update `Cargo.lock` when the manifest disagrees, so a dependency set the build
+          # would refuse could still pass the licence and advisory gate. `--all-features` is the
+          # action's own default, kept because setting `arguments` replaces the default.
+          arguments: --all-features --locked
 
   audit:
     name: cargo audit
