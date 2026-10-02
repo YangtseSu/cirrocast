@@ -13,9 +13,10 @@
 //! live instead:
 //!
 //! * **Negotiation.** `--lang` wins, then `LC_ALL`, `LC_MESSAGES` and `LANG` in that order, then
-//!   `en-US`. `zh_CN.UTF-8` normalises to `zh-CN`; `zh-TW` resolves through the explicit chain
-//!   `zh-TW → zh-CN → en-US` rather than through a generic `zh` match, because showing Simplified
-//!   text to a Traditional reader is a choice that has to be written down (and shown under `-v`).
+//!   `en-US`. `zh_CN.UTF-8` normalises to `zh-CN`; an `en-*` or `zh-*` tag resolves through the
+//!   explicit chain for its family — `en-GB → en-US`, `zh-TW → zh-CN → en-US` — without a warning,
+//!   because the substitution is the documented answer, not a surprise. A family with no catalog
+//!   (`fr`, `de-DE`) falls back to `en-US` and says so.
 //! * **Completeness.** [`RENDERER_KEYS`] is the single list of every static key renderers may ask
 //!   for, and the [`keys`] constants are the only way the code names them. A catalog that lacks a
 //!   key is caught by the completeness test, so a new label cannot ship untranslated.
@@ -28,7 +29,7 @@
 //! call.
 
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::fmt;
 
 use chrono::{Datelike as _, NaiveDate};
@@ -332,6 +333,22 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::UV_BANDS[2],
     keys::UV_BANDS[3],
     keys::UV_BANDS[4],
+    keys::DIRECTIONS[0],
+    keys::DIRECTIONS[1],
+    keys::DIRECTIONS[2],
+    keys::DIRECTIONS[3],
+    keys::DIRECTIONS[4],
+    keys::DIRECTIONS[5],
+    keys::DIRECTIONS[6],
+    keys::DIRECTIONS[7],
+    keys::DIRECTIONS[8],
+    keys::DIRECTIONS[9],
+    keys::DIRECTIONS[10],
+    keys::DIRECTIONS[11],
+    keys::DIRECTIONS[12],
+    keys::DIRECTIONS[13],
+    keys::DIRECTIONS[14],
+    keys::DIRECTIONS[15],
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -405,7 +422,7 @@ impl fmt::Display for LanguageId {
 pub enum LanguageRequest {
     /// `auto`, or no setting at all: negotiate from `LC_ALL`/`LC_MESSAGES`/`LANG`.
     Auto,
-    /// An explicit tag, e.g. `zh-CN`. Its casing is preserved for the messages the user reads.
+    /// An explicit tag, e.g. `zh-CN`, normalised from the value the user wrote.
     Tag(String),
 }
 
@@ -413,21 +430,25 @@ impl LanguageRequest {
     /// Reads a `--lang` value (or a `defaults.language` setting).
     ///
     /// The `C`/`POSIX` pseudo-locales mean "no locale", which this client spells `auto`; every other
-    /// value is an explicit tag, whether or not it parses. An unparsable or unavailable tag is not
-    /// an error — the caller warns and continues in `en-US`, because a typo in `--lang` must not
-    /// cost a forecast.
+    /// value is normalised to a BCP-47 tag (`zh_CN.UTF-8` becomes `zh-CN`) and kept as an explicit
+    /// request, whether or not it parses. An unparsable or unavailable tag is not an error — the
+    /// caller warns and continues in `en-US`, because a typo in `--lang` must not cost a forecast.
     #[must_use]
     pub fn parse(request: &str) -> Self {
         let request = request.trim();
         if request.is_empty() || request.eq_ignore_ascii_case("auto") || is_pseudo_locale(request) {
             return Self::Auto;
         }
-        if let Ok(identifier) = request.parse::<LanguageIdentifier>()
+        // The same normalisation the ambient path uses, so `--lang zh_CN.UTF-8` is the tag
+        // `zh-CN` before anything compares it against the catalogs. A value that normalises to
+        // nothing (`!!`) is kept verbatim and rejected by the caller with a warning.
+        let candidate = normalize_locale(request).unwrap_or_else(|| request.to_owned());
+        if let Ok(identifier) = candidate.parse::<LanguageIdentifier>()
             && let Some(language) = LanguageId::from_tag(&identifier.to_string())
         {
             return Self::Tag(language.tag().to_owned());
         }
-        Self::Tag(request.to_owned())
+        Self::Tag(candidate)
     }
 
     /// The tag as the user wrote it, for a warning or a `-v` line; `auto` for the negotiated case.
@@ -562,7 +583,6 @@ pub struct I18n {
     requested: Option<String>,
     bundle: Option<FluentBundle<FluentResource>>,
     notes: RefCell<Vec<Note>>,
-    reported_missing: Cell<bool>,
 }
 
 impl fmt::Debug for I18n {
@@ -573,7 +593,6 @@ impl fmt::Debug for I18n {
             .field("requested", &self.requested)
             .field("catalogs", &self.bundle.is_some())
             .field("notes", &self.notes.borrow())
-            .field("reported_missing", &self.reported_missing)
             .finish()
     }
 }
@@ -608,7 +627,6 @@ impl I18n {
             requested,
             bundle: build_bundle(language),
             notes: RefCell::new(notes),
-            reported_missing: Cell::new(false),
         }
     }
 
@@ -675,8 +693,9 @@ impl I18n {
 
     /// The message for `key`, formatted with `arguments`.
     ///
-    /// A pattern error counts as a missing key: the raw key is returned and the run is told once,
-    /// so a mistyped argument in a catalog is visible in the output instead of printing nothing.
+    /// A pattern error counts as a missing key: the raw key is returned and the run is told once
+    /// per key, so a mistyped argument in a catalog is visible in the output instead of printing
+    /// `{$name}` in the middle of a table.
     #[must_use]
     pub fn format(
         &self,
@@ -704,6 +723,7 @@ impl I18n {
         let rendered = bundle.format_pattern(pattern, Some(&args), &mut errors);
         if !errors.is_empty() {
             self.missing(&name);
+            return Cow::Owned(name.into_owned());
         }
         Cow::Owned(rendered.into_owned())
     }
@@ -737,8 +757,9 @@ impl I18n {
 
     /// The band name of a UV index, as the WHO scale defines it.
     ///
-    /// `2.9` is low and `3.0` moderate: the bands are cut on the value the token prints, so the
-    /// number and its name can never disagree (`%u` prints `2` for `2.9` and `3` for `3.0`).
+    /// The bands are cut on the integer the token prints — `2.9` rounds to `3` and is `moderate`,
+    /// exactly like `3.0` — so the number and its name can never disagree (`%u`/`%U` print `3` for
+    /// `2.9`).
     #[must_use]
     pub fn uv_band(&self, uv: f32) -> Cow<'_, str> {
         self.text(&uv_band_key(uv))
@@ -840,11 +861,11 @@ impl I18n {
     }
 
     /// Records a missing key, at most once per key.
+    ///
+    /// Per *key*, not per run: a catalog that lacks two messages has to name both, otherwise the
+    /// second one stays invisible until the first is fixed. The scan is over the handful of notes a
+    /// run can collect, so it costs nothing next to rendering.
     fn missing(&self, key: &str) {
-        if self.reported_missing.get() {
-            return;
-        }
-        self.reported_missing.set(true);
         let mut notes = self.notes.borrow_mut();
         if !notes
             .iter()
@@ -904,15 +925,20 @@ pub fn month_key(month: chrono::Month) -> MessageKey {
 }
 
 /// The key of a UV band.
+///
+/// The bands are cut on the value `%U` prints — [`crate::model::units::fmt_int`]'s rounded integer
+/// — so the number and its name can never disagree: `2.9` rounds to `3` and both are `moderate`.
+/// Cutting on the raw `f32` instead would print `3 (low)` at `2.9` and `3 (moderate)` at `3.0`.
 #[must_use]
 pub fn uv_band_key(uv: f32) -> MessageKey {
-    let index = if uv < 3.0 {
+    let rounded = crate::model::units::round_half_away_from_zero(uv);
+    let index = if rounded < 3.0 {
         0
-    } else if uv < 6.0 {
+    } else if rounded < 6.0 {
         1
-    } else if uv < 8.0 {
+    } else if rounded < 8.0 {
         2
-    } else if uv < 11.0 {
+    } else if rounded < 11.0 {
         3
     } else {
         4
@@ -981,22 +1007,28 @@ fn build_bundle(language: LanguageId) -> Option<FluentBundle<FluentResource>> {
 
 /// The catalog language a parsed tag resolves to, if this build can serve it at all.
 ///
-/// Two cases: the tag is a catalog, or it belongs to the `zh` family, whose fallback map is the
-/// explicit `zh-* → zh-CN` of [`language_chain`]. Everything else — `de-DE`, `fr-CA` — has no
-/// answer, and the caller decides between warning (an explicit request) and walking on (an ambient
-/// locale).
+/// Two cases: the tag is a catalog, or it belongs to a family whose fallback map is explicit —
+/// `zh-*` lands on `zh-CN`, `en-*` on `en-US`, and both are the language [`language_chain`] names,
+/// so no warning is owed for a substitution the chain documents. Everything else — `de-DE`,
+/// `fr-CA` — has no answer, and the caller decides between warning (an explicit request) and
+/// walking on (an ambient locale).
 fn catalog_for(identifier: &LanguageIdentifier) -> Option<LanguageId> {
     if let Some(language) = LanguageId::from_tag(&identifier.to_string()) {
         return Some(language);
     }
-    (identifier.language.as_str() == "zh").then_some(LanguageId::ZhCn)
+    match identifier.language.as_str() {
+        "zh" => Some(LanguageId::ZhCn),
+        "en" => Some(LanguageId::EnUs),
+        _ => None,
+    }
 }
 
 /// The language an explicit request resolves to, with the notes that explain the choice.
 ///
 /// A request the build cannot serve at all (`de-DE`, `bad-TAG`) is a fallback to English and warns.
-/// A `zh` request resolves through the documented chain to `zh-CN` without a warning: the `-v` line
-/// prints the substitution, and warning about a substitution the plan promises would be noise.
+/// An `en`/`zh` family request resolves through the documented chain — `en-GB → en-US`,
+/// `zh-TW → zh-CN` — without a warning: the `-v` line prints the substitution, and warning about a
+/// substitution the plan promises would be noise.
 fn resolve_tag(requested: &str) -> (LanguageId, Vec<Note>) {
     let Ok(identifier) = requested.parse::<LanguageIdentifier>() else {
         return (
@@ -1013,16 +1045,7 @@ fn resolve_tag(requested: &str) -> (LanguageId, Vec<Note>) {
             }],
         );
     };
-    if language.identifier() == identifier || identifier.language.as_str() == "zh" {
-        return (language, Vec::new());
-    }
-    (
-        language,
-        vec![Note::Fallback {
-            requested: requested.to_owned(),
-            selected: language.tag().to_owned(),
-        }],
-    )
+    (language, Vec::new())
 }
 
 /// The first ambient locale that names a language this build has a catalog for, and the value it
@@ -1114,7 +1137,7 @@ mod tests {
             (vec![("LANG", "zh_CN.UTF-8")], "zh-CN"),
             (vec![("LC_MESSAGES", "zh_TW.UTF-8")], "zh-CN"),
             (
-                vec![("LC_ALL", "en_GB.UTF-8"), ("LANG", "zh_CN.UTF-8")],
+                vec![("LC_ALL", "de_DE.UTF-8"), ("LANG", "zh_CN.UTF-8")],
                 "zh-CN",
             ),
             (vec![("LC_ALL", "C"), ("LANG", "zh_CN.UTF-8")], "zh-CN"),
@@ -1125,6 +1148,7 @@ mod tests {
             (vec![("LANG", "POSIX")], "en-US"),
             (vec![("LANG", "")], "en-US"),
             (vec![("LANG", "de_DE.UTF-8")], "en-US"),
+            (vec![("LANG", "en_GB.UTF-8")], "en-US"),
             (vec![("LANG", "zh_CN.UTF-8@latin")], "zh-CN"),
         ] {
             let i18n = I18n::load(&LanguageRequest::Auto, environment(&pairs));
@@ -1140,6 +1164,10 @@ mod tests {
             ("zh-CN", "zh-CN", false),
             ("zh-TW", "zh-CN", false),
             ("zh-HK", "zh-CN", false),
+            ("en", "en-US", false),
+            ("en-GB", "en-US", false),
+            ("EN", "en-US", false),
+            ("en-US", "en-US", false),
             ("de-DE", "en-US", true),
             ("bad-TAG", "en-US", true),
             ("!!", "en-US", true),
@@ -1192,13 +1220,20 @@ mod tests {
         assert_eq!(month_key(chrono::Month::December).as_str(), "month-12");
         for (uv, key) in [
             (0.0, "uv-band-low"),
-            (2.9, "uv-band-low"),
+            (2.4, "uv-band-low"),
+            (2.5, "uv-band-moderate"),
+            (2.9, "uv-band-moderate"),
             (3.0, "uv-band-moderate"),
-            (5.9, "uv-band-moderate"),
+            (5.4, "uv-band-moderate"),
+            (5.5, "uv-band-high"),
+            (5.9, "uv-band-high"),
             (6.0, "uv-band-high"),
-            (7.9, "uv-band-high"),
+            (7.4, "uv-band-high"),
+            (7.5, "uv-band-very-high"),
+            (7.9, "uv-band-very-high"),
             (8.0, "uv-band-very-high"),
-            (10.9, "uv-band-very-high"),
+            (10.4, "uv-band-very-high"),
+            (10.9, "uv-band-extreme"),
             (11.0, "uv-band-extreme"),
         ] {
             assert_eq!(uv_band_key(uv).as_str(), key, "UV {uv}");
@@ -1275,17 +1310,70 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_key_stays_visible_and_is_reported_once() {
+    fn a_missing_key_stays_visible_and_is_reported_once_per_key() {
         let i18n = english();
-        let key = MessageKey::new("no-such-key");
-        assert_eq!(i18n.text(&key), "no-such-key");
-        assert_eq!(i18n.text(&key), "no-such-key");
+        let first = MessageKey::new("no-such-key");
+        let second = MessageKey::new("another-missing-key");
+        assert_eq!(i18n.text(&first), "no-such-key");
+        assert_eq!(i18n.text(&second), "another-missing-key");
+        // Repeating either key must not add a second note for it.
+        assert_eq!(i18n.text(&first), "no-such-key");
+        assert_eq!(i18n.text(&second), "another-missing-key");
+        let reported: Vec<String> = i18n
+            .notes()
+            .iter()
+            .filter_map(|note| match note {
+                Note::MissingKey(key) => Some(key.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reported,
+            ["no-such-key".to_owned(), "another-missing-key".to_owned()],
+            "every distinct missing key is named once: {:?}",
+            i18n.notes()
+        );
+    }
+
+    #[test]
+    fn a_pattern_error_returns_the_key_instead_of_a_half_render() {
+        // `format-temp-c` needs `{$value}`; a call site that forgets it must not leak `{$value}`
+        // into a table — the raw key is what the doc promises and what `-v` then reports.
+        let i18n = english();
+        assert_eq!(
+            i18n.format(&keys::FORMAT_TEMP_C, &[]),
+            "format-temp-c",
+            "{:?}",
+            i18n.notes()
+        );
         let missing = i18n
             .notes()
             .iter()
             .filter(|note| matches!(note, Note::MissingKey(_)))
             .count();
         assert_eq!(missing, 1, "{:?}", i18n.notes());
+    }
+
+    #[test]
+    fn a_language_request_is_normalised_before_it_is_parsed() {
+        // `--lang` and the ambient locale share one normalisation: a POSIX spelling must not be
+        // rejected by the tier that outranks the environment.
+        for (requested, expected) in [
+            ("zh_CN.UTF-8", Some("zh-CN")),
+            ("zh-cn", Some("zh-CN")),
+            ("en_GB.UTF-8", Some("en-GB")),
+            ("de_DE.UTF-8", Some("de-DE")),
+            ("sr_RS@latin", Some("sr-RS")),
+            ("C", None),
+            ("POSIX", None),
+            ("auto", None),
+        ] {
+            let request = LanguageRequest::parse(requested);
+            match expected {
+                Some(tag) => assert_eq!(request.tag(), tag, "{requested}"),
+                None => assert_eq!(request, LanguageRequest::Auto, "{requested}"),
+            }
+        }
     }
 
     #[test]

@@ -179,6 +179,6 @@ fn five_is_an_unknown_station() {
         .code(5)
         .stderr(
             predicate::str::contains("unknown station `ZZZZ`")
-                .and(predicate::str::contains("cirrocast location search")),
+                .and(predicate::str::contains("cirrocast -p metar")),
         );
 }

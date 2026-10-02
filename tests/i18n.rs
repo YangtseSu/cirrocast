@@ -23,7 +23,9 @@ use std::time::Duration;
 
 use assert_cmd::Command;
 use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
-use cirrocast::i18n::{CATALOGS, I18n, LanguageRequest, MessageKey, RENDERER_KEYS, condition_key};
+use cirrocast::i18n::{
+    CATALOGS, I18n, LanguageRequest, MessageKey, Note, RENDERER_KEYS, condition_key, keys,
+};
 use cirrocast::model::condition::Condition;
 use common::Sandbox;
 
@@ -177,6 +179,41 @@ fn an_unknown_condition_has_a_name_of_its_own() {
         "小雨",
         "a described code keeps its own name"
     );
+}
+
+#[test]
+fn a_pattern_error_returns_the_raw_key_not_a_half_render() {
+    // `format-temp-c` is `{ $value }°C`; a call site that forgot the argument must not leak
+    // `{$value}` into a table. The key is what the doc promises, and `-v` reports it as missing.
+    let request = LanguageRequest::Tag("en-US".to_owned());
+    let i18n = I18n::load(&request, |_| None);
+    assert_eq!(
+        i18n.format(&keys::FORMAT_TEMP_C, &[]),
+        "format-temp-c",
+        "{:?}",
+        i18n.notes()
+    );
+    let reported: Vec<String> = i18n
+        .notes()
+        .iter()
+        .filter_map(|note| match note {
+            Note::MissingKey(key) => Some(key.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reported, ["format-temp-c".to_owned()]);
+}
+
+#[test]
+fn the_renderer_key_list_carries_every_direction() {
+    // `direction_key` is the only producer of `dir-*`, so these 16 keys are the render half's
+    // completeness coverage; without them the bundle test never renders a single direction.
+    for direction in keys::DIRECTIONS {
+        assert!(
+            RENDERER_KEYS.contains(&direction),
+            "`{direction}` escapes RENDERER_KEYS"
+        );
+    }
 }
 
 /// A sandbox run with a terminal that can draw the box-drawing table.
@@ -347,6 +384,47 @@ fn the_environment_variable_is_honoured_and_named_in_the_decision() {
     assert!(output.contains("天气报告："), "{output}");
     assert!(
         notes.contains("language: zh-CN (from the environment)"),
+        "{notes}"
+    );
+}
+
+#[test]
+fn an_english_request_is_served_without_a_fallback_warning() {
+    // English is the fallback language: asking for one of its regional spellings must not warn
+    // that the language is unsupported, because the answer *is* the language that was asked for.
+    let sandbox = seeded();
+    for tag in ["en", "en-GB", "EN"] {
+        let assert = run(&sandbox, &["--lang", tag, "-v"]).assert().success();
+        let output =
+            String::from_utf8(assert.get_output().stdout.clone()).expect("stdout is UTF-8");
+        let notes = String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8");
+        assert!(output.contains("Weather report:"), "{tag}: {output}");
+        assert!(
+            !notes.contains("unsupported language") && !notes.contains("falling back"),
+            "{tag}: {notes}"
+        );
+        assert!(notes.contains("i18n: requested"), "{tag}: {notes}");
+        assert!(notes.contains("selected en-US"), "{tag}: {notes}");
+    }
+}
+
+#[test]
+fn a_posix_locale_spelling_normalises_for_the_flag_too() {
+    // `--lang` is the first negotiation tier, so it must accept the same spelling the ambient
+    // variables do. The rejected, un-normalised value used to leak into the `-v` line.
+    let sandbox = seeded();
+    let assert = run(&sandbox, &["--lang", "zh_CN.UTF-8", "-v"])
+        .assert()
+        .success();
+    let output = String::from_utf8(assert.get_output().stdout.clone()).expect("stdout is UTF-8");
+    let notes = String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8");
+    assert!(output.contains("天气报告："), "{output}");
+    assert!(
+        !notes.contains("unsupported language") && !notes.contains("i18n: requested zh_CN.UTF-8"),
+        "the POSIX spelling is normalised before it is compared: {notes}"
+    );
+    assert!(
+        notes.contains("i18n: zh-CN (chain zh-CN → en-US)"),
         "{notes}"
     );
 }

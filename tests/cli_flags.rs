@@ -113,6 +113,21 @@ fn latitude_and_longitude_replace_the_location_argument() {
 }
 
 #[test]
+fn coordinate_flags_are_reported_as_the_command_line_source() {
+    let sandbox = seeded(3);
+    let assert = sandbox
+        .cirrocast()
+        .args(["-v", "--lat", "39.9042", "--lon", "116.4074", "--offline"])
+        .assert()
+        .success();
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
+    assert!(
+        stderr.contains("location: @39.9042,116.4074 (from the command line)"),
+        "the coordinates come from the flag that supplied them: {stderr}"
+    );
+}
+
+#[test]
 fn color_and_width_reach_the_renderer() {
     let sandbox = seeded(3);
 
@@ -576,6 +591,21 @@ fn quiet_suppresses_the_notes_but_not_the_output() {
     );
 }
 
+#[test]
+fn verbose_still_lists_every_ranked_candidate() {
+    // The list is built lazily now, only when `-v` will print it; this pins that the lazy path
+    // still produces the full ranking the verbose listing promises.
+    let sandbox = seed_geocode_ambiguous();
+    let assert = sandbox
+        .cirrocast()
+        .args(["location", "search", "Beijing", "--offline", "-v"])
+        .assert()
+        .success();
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
+    assert!(stderr.contains("location: candidate 1/3"), "{stderr}");
+    assert!(stderr.contains("location: candidate 3/3"), "{stderr}");
+}
+
 /// A sandbox whose geocode cache answers `Beijing` with the recorded ambiguous response.
 fn seed_geocode_ambiguous() -> Sandbox {
     let sandbox = Sandbox::new();
@@ -699,6 +729,17 @@ fn the_help_documents_the_flag_matrix_and_both_tables() {
             "`{fragment}` missing from --help"
         );
     }
+
+    // The precedence table names the positional argument for the location, not a `--location`
+    // flag: `assert_cmd` runs the real binary, and `cirrocast --location Beijing` is rejected.
+    assert!(
+        stdout.contains("LOCATION  CIRROCAST_LOCATION"),
+        "the row names the argument"
+    );
+    assert!(
+        !stdout.contains("--location"),
+        "no `--location` flag exists to advertise"
+    );
 
     // `--bin-name` lives on the two document subcommands, so it is documented where it is used.
     for command in ["completion", "man"] {

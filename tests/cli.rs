@@ -111,6 +111,77 @@ fn config_path_prints_the_xdg_config_file() {
 }
 
 #[test]
+fn config_show_applies_the_same_environment_overrides_as_config_get() {
+    let sandbox = common::Sandbox::new();
+    sandbox.write_config(
+        "schema_version = 1\n\
+         [defaults]\n\
+         format = \"plain\"\n",
+    );
+
+    let get = |sandbox: &common::Sandbox, args: &[&str]| -> String {
+        let assert = sandbox
+            .cirrocast()
+            .env("CIRROCAST_FORMAT", "json")
+            .args(args)
+            .assert()
+            .success();
+        String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output")
+    };
+
+    // The variable outranks the file for both subcommands, so they cannot disagree.
+    assert_eq!(
+        get(&sandbox, &["config", "get", "defaults.format"]).trim(),
+        "json"
+    );
+    let shown = get(&sandbox, &["config", "show"]);
+    assert!(
+        shown.contains("format = \"json\""),
+        "`config show` is the effective configuration:\n{shown}"
+    );
+
+    // With no variable, the file's value is what both report.
+    let assert = sandbox
+        .cirrocast()
+        .args(["config", "show"])
+        .assert()
+        .success();
+    let shown = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
+    assert!(shown.contains("format = \"plain\""), "{shown}");
+}
+
+#[test]
+fn config_edit_rejects_an_unknown_key_like_config_validate_does() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let sandbox = common::Sandbox::new();
+    // The editor only has to leave a document behind: `config edit` validates whatever is on disk
+    // after the editor exits, and an unknown key is the problem `validate` exists to catch.
+    let editor = sandbox.home().join("editor.sh");
+    std::fs::write(
+        &editor,
+        "#!/bin/sh\nprintf 'schema_version = 1\\n[defaults]\\nnope = true\\n' > \"$1\"\n",
+    )
+    .expect("the editor script is written");
+    let mut permissions = std::fs::metadata(&editor)
+        .expect("the script exists")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&editor, permissions).expect("the script is executable");
+
+    sandbox
+        .cirrocast()
+        .env("VISUAL", &editor)
+        .env("EDITOR", &editor)
+        .args(["config", "edit"])
+        .assert()
+        .code(4)
+        .stderr(predicate::str::contains(
+            "unknown config key `defaults.nope`",
+        ));
+}
+
+#[test]
 fn location_search_resolves_coordinates_without_touching_the_network() {
     let sandbox = common::Sandbox::new();
     sandbox

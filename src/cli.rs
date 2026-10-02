@@ -126,7 +126,7 @@ const HELP_EPILOG: &str = "\
 CONFIG PRECEDENCE (highest first)
   command line flag > CIRROCAST_* environment variable > config.toml > built-in default
   --provider  CIRROCAST_PROVIDER   --days    CIRROCAST_DAYS     --timeout CIRROCAST_TIMEOUT
-  --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    --location CIRROCAST_LOCATION
+  --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
   --lang      CIRROCAST_LANG
   The configuration file is consulted only when neither the flag nor the variable is set, so an
   environment value is never overridden by config.toml. `config get <key>` prints the variable's
@@ -608,6 +608,10 @@ pub struct Sources {
     pub lang: Source,
     /// The location argument / `CIRROCAST_LOCATION`.
     pub location: Source,
+    /// Whether `--lat/--lon` supplied the location. Kept apart from [`Self::location`] because the
+    /// coordinates outrank the argument by precedence, while [`validate_query`] must still see the
+    /// argument's own tier to decide what conflicts with what.
+    pub coordinates: bool,
     /// `--timeout` / `CIRROCAST_TIMEOUT`.
     pub timeout: Source,
 }
@@ -625,6 +629,8 @@ impl Sources {
             Some(clap::parser::ValueSource::EnvVariable) => Source::Environment,
             _ => Source::Default,
         };
+        let given =
+            |id: &str| matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine);
         Self {
             provider: source("provider"),
             format: source("format"),
@@ -632,6 +638,7 @@ impl Sources {
             units: source("units"),
             lang: source("lang"),
             location: source("location"),
+            coordinates: given("lat") || given("lon"),
             timeout: source("timeout"),
         }
     }
@@ -657,7 +664,12 @@ impl Sources {
             self.timeout.as_str()
         );
         if let Some(location) = &settings.location {
-            eprintln!("location: {location} (from {})", self.location.as_str());
+            let source = if self.coordinates {
+                Source::CommandLine
+            } else {
+                self.location
+            };
+            eprintln!("location: {location} (from {})", source.as_str());
         }
     }
 }
@@ -905,19 +917,40 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     };
     // `one-line` is one line by contract, so the credits the licences require cannot travel in the
     // output: they go to stderr, where `plain` (a document) and `json` (an envelope) keep theirs.
-    if setup.format == Format::OneLine {
-        if let Some(credit) = attribution_line(&report.location) {
-            eprintln!("{credit}");
-        }
-        if let Some(licence) = licence_line(&report.attribution.provider) {
-            eprintln!(
-                "{} {licence}",
-                setup.i18n.text(&crate::i18n::keys::LABEL_DATA)
-            );
+    credit_to_stderr(&setup, &report);
+    print_line(format_args!("{}", setup.renderer.render(&report, &ctx)?))?;
+    // A message a catalog lacks is a bug in this crate, not a user error: it renders its key and is
+    // reported here, after the render — the only point at which every key a renderer will ask for
+    // has been asked for — where `-v` asked for exactly this kind of detail.
+    if cli.verbose > 0 {
+        report_missing_keys(&setup);
+    }
+    Ok(())
+}
+
+/// Prints the `one-line` credits to stderr; other formats carry them in the document itself.
+fn credit_to_stderr(setup: &RenderSetup, report: &crate::model::Report) {
+    if setup.format != Format::OneLine {
+        return;
+    }
+    if let Some(credit) = attribution_line(&report.location) {
+        eprintln!("{credit}");
+    }
+    if let Some(licence) = licence_line(&report.attribution.provider) {
+        eprintln!(
+            "{} {licence}",
+            setup.i18n.text(&crate::i18n::keys::LABEL_DATA)
+        );
+    }
+}
+
+/// Prints the catalog misses the render recorded, one line each, under `-v`.
+fn report_missing_keys(setup: &RenderSetup) {
+    for note in setup.i18n.notes() {
+        if matches!(note, crate::i18n::Note::MissingKey(_)) {
+            eprintln!("{}", note.text());
         }
     }
-    print_line(format_args!("{}", setup.renderer.render(&report, &ctx)?))?;
-    Ok(())
 }
 
 /// What `-v` says about the report that came back: its credit and request, the raw upstream text
@@ -1139,13 +1172,6 @@ fn render_notes(setup: &RenderSetup) {
         caps.is_tty
     );
     eprintln!("{}", setup.i18n.report());
-    // A message a catalog lacks is a bug in this crate, not a user error: it renders its key and is
-    // reported here, where `-v` asked for exactly this kind of detail.
-    for note in setup.i18n.notes() {
-        if matches!(note, crate::i18n::Note::MissingKey(_)) {
-            eprintln!("{}", note.text());
-        }
-    }
     if format == Format::Dumb {
         eprintln!("note: `--format dumb` draws the ASCII table without colour");
     } else if caps.charset() == Charset::Ascii {
@@ -1253,6 +1279,23 @@ fn location_target(
     }
 }
 
+/// The ranked candidate list the `-v` listing prints, or an empty one when nobody will look at it.
+///
+/// Ranking is a clone of every hit plus a second sort of the whole list, and the list is consumed
+/// only under `--verbose`; a normal run must not pay for it. `hits` is borrowed here so the caller
+/// can still consume it for the resolution itself.
+fn verbose_candidates(
+    hits: &[Location],
+    spec: &LocationSpec,
+    limit: u8,
+    cli: &Cli,
+) -> Vec<Location> {
+    if cli.verbose == 0 {
+        return Vec::new();
+    }
+    rank(hits.to_vec(), spec.query(), limit)
+}
+
 /// Resolves `spec` through the geocoder it names, returning the winner, how it was chosen and the
 /// ranked candidates the `-v` listing prints.
 fn resolve_location(
@@ -1284,14 +1327,16 @@ fn resolve_location(
                 Duration::from_secs(u64::from(config.cache.geocode_ttl_secs)),
             );
             let hits = geocoder.search(spec.query().unwrap_or_default(), limit)?;
-            let candidates = rank(hits.clone(), spec.query(), limit);
+            // The ranked list is only ever printed under `-v`, so a normal run must not pay for the
+            // clone and the second sort.
+            let candidates = verbose_candidates(&hits, spec, limit, cli);
             let (location, resolution) = resolve(hits, spec, limit)?;
             Ok((location, resolution, candidates))
         }
         spec @ LocationSpec::Osm(_) => {
             let nominatim = Nominatim::new(http, cache, nominatim_url(config));
             let hits = nominatim.search(spec.query().unwrap_or_default(), limit)?;
-            let candidates = rank(hits.clone(), spec.query(), limit);
+            let candidates = verbose_candidates(&hits, spec, limit, cli);
             let (location, resolution) = resolve(hits, spec, limit)?;
             Ok((location, resolution, candidates))
         }
@@ -1487,7 +1532,9 @@ fn run_config(command: &ConfigCommand) -> Result<()> {
             Ok(())
         }
         ConfigCommand::Show => {
-            let config = Config::load(&paths)?;
+            // The effective configuration, exactly like `config get`: a `CIRROCAST_*` variable
+            // overrides the file, and the two subcommands must not disagree about the same key.
+            let config = Config::load(&paths)?.with_env_overrides()?;
             let document = toml::to_string_pretty(&config).map_err(|error| {
                 Error::Other(format!("cannot render the configuration: {error}"))
             })?;
@@ -1617,7 +1664,12 @@ fn edit_config(paths: &Paths) -> Result<()> {
         return Err(Error::Other(format!("`{editor}` exited with {status}")));
     }
 
-    let config = Config::load(paths)?;
+    let (config, document) = Config::load_document(paths)?;
+    // A typo introduced in the editor is the most likely problem, and `validate` names the key
+    // path; check it here so `edit` and `validate` agree about the same file.
+    if let Some((_, document)) = document {
+        crate::config::check_known_keys(&document)?;
+    }
     config.validate()?;
     print_line(format_args!("ok: {}", paths.config_file.display()))?;
     Ok(())
@@ -1803,6 +1855,20 @@ mod tests {
             Source::Default.as_str(),
             "the config or the built-in default"
         );
+        assert!(!sources.coordinates);
+    }
+
+    #[test]
+    fn the_coordinate_flags_are_the_location_source() {
+        // `--lat/--lon` spell the location themselves, so `-v` must not claim the config supplied
+        // it; the argument's own tier stays separate for `validate_query`.
+        let (_, sources) = parse(&["cirrocast", "--lat", "39.9", "--lon", "116.4"]);
+        assert!(sources.coordinates);
+        assert_eq!(sources.location, Source::Default);
+
+        let (_, sources) = parse(&["cirrocast", "Beijing"]);
+        assert!(!sources.coordinates);
+        assert_eq!(sources.location, Source::CommandLine);
     }
 
     #[test]
