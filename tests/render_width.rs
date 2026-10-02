@@ -40,6 +40,11 @@ const WIDE_FROM: usize = 74;
 
 /// Renders `report` at `width` with `format`, in the charset a UTF-8 terminal gets.
 fn render_in(report: &Report, width: usize, format: Format) -> String {
+    render_with(report, width, format, ColorMode::Never)
+}
+
+/// The same, with the colour mode injected.
+fn render_with(report: &Report, width: usize, format: Format, color: ColorMode) -> String {
     let i18n = english();
     let caps = TermCaps::read(
         |name| match name {
@@ -53,7 +58,7 @@ fn render_in(report: &Report, width: usize, format: Format) -> String {
         units: UnitSystem::Metric
             .resolve(&UnitOverrides::default())
             .expect("the default overrides resolve"),
-        color: ColorMode::Never,
+        color,
         width,
         term: caps,
         now: common::fixture_now(report),
@@ -178,7 +183,22 @@ fn assert_bands_are_square(text: &str, border: char, row: char, width: usize, ex
 fn a_report_without_days_is_only_a_header_and_current_conditions() {
     let report = common::fixture_report("current-only.json");
     let text = render(&report, 80);
+    assert!(
+        text.starts_with("Weather report: "),
+        "an empty render must not pass this test:\n{text}"
+    );
+    let condition = report
+        .current
+        .as_ref()
+        .expect("the fixture has current conditions")
+        .weather
+        .description_en();
+    assert!(
+        text.contains(condition),
+        "the current conditions are missing:\n{text}"
+    );
     assert!(!text.contains('\u{250c}'), "{text}");
+    assert!(text.lines().count() >= 3, "{text}");
     assert!(text.lines().count() <= 10, "{text}");
     for line in text.lines() {
         assert!(line.width() <= 80, "{line:?}");
@@ -195,4 +215,66 @@ fn the_dumb_table_is_ascii_at_every_width() {
             assert!(line.width() <= width, "width {width}: {line:?}");
         }
     }
+}
+
+/// Colour is presentation, never layout, at every width.
+///
+/// The escape bookkeeping is strict — every SGR open is matched by an SGR reset — because a
+/// lenient strip cannot see a missing reset, and the width invariant would hide it.
+#[test]
+fn colour_never_changes_the_width_or_leaves_a_colour_open() {
+    let report = report_with(7);
+    for width in [
+        MIN_WIDTH,
+        21,
+        36,
+        40,
+        STACKED_BELOW - 1,
+        STACKED_BELOW,
+        WIDE_FROM,
+        80,
+        200,
+    ] {
+        let coloured = render_with(&report, width, Format::ArtTable, ColorMode::Always);
+        assert!(
+            coloured.contains("38;5;"),
+            "colour was requested at {width} columns"
+        );
+        for line in coloured.lines() {
+            let plain = strip_sgr(line);
+            assert!(
+                plain.width() <= width,
+                "width {width}: {line:?} is {} columns",
+                plain.width()
+            );
+            assert_eq!(
+                line.matches("\u{1b}[38;5;").count(),
+                line.matches("\u{1b}[0m").count(),
+                "a colour is left open at {width} columns: {line:?}"
+            );
+        }
+        assert_eq!(
+            strip_sgr(&coloured),
+            render(&report, width),
+            "colour changed the layout at {width} columns"
+        );
+    }
+}
+
+/// The text without its `38;5;<n>` colour sequences and their resets — the escapes `paint` emits.
+fn strip_sgr(text: &str) -> String {
+    let mut plain = String::with_capacity(text.len());
+    let mut characters = text.chars();
+    while let Some(character) = characters.next() {
+        if character == '\u{1b}' {
+            for escape in characters.by_ref() {
+                if escape == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        plain.push(character);
+    }
+    plain
 }

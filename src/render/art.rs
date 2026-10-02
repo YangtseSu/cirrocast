@@ -18,7 +18,10 @@
 //!
 //! [`Condition::art_key`]: crate::model::condition::Condition::art_key
 
+use unicode_width::UnicodeWidthStr as _;
+
 use super::Charset;
+use crate::model::units::compass_16;
 
 /// The width of an art block in display columns.
 pub const ART_W: usize = 7;
@@ -313,8 +316,11 @@ const ART: &[(&str, Block)] = &[
     (
         "smoke",
         Block {
-            unicode: ["  ∿ ∿", " ∿ ∿", "  ∿ ∿", ""],
-            ascii: ["  ~ ~", " ~ ~", "  ~ ~", ""],
+            // Three waves in every row, so the block fills all `ART_W` columns and its rows are
+            // not ragged: a two-wave row measured five columns where its neighbours measured four
+            // and drew the block off-centre in its own cell.
+            unicode: ["  ∿ ∿ ∿", "  ∿ ∿ ∿", "  ∿ ∿ ∿", ""],
+            ascii: ["  ~ ~ ~", "  ~ ~ ~", "  ~ ~ ~", ""],
             style: ArtStyle::Fog,
         },
     ),
@@ -460,6 +466,12 @@ pub fn night_variant(key: &str) -> &str {
 /// is what [`compass_16`] names. Rain and snow do not care, but a reader comparing `↗` with `NE`
 /// does.
 ///
+/// ASCII has only the two slashes for four diagonals, so the two westerly ones take punctuation
+/// whose tail or head points the way the arrow does: `,` (south-west) and `` ` `` (north-west).
+/// In the narrow ASCII cell the label is dropped, and an arrow that two opposite winds print
+/// identically is no direction cue at all. No two marks below are equal, and none is a digit —
+/// `1 6.0km/h` would read as a number beside the speed.
+///
 /// [`compass_16`]: crate::model::units::compass_16
 const ARROWS: [(&str, &str); 8] = [
     ("↑", "^"),
@@ -467,15 +479,28 @@ const ARROWS: [(&str, &str); 8] = [
     ("→", ">"),
     ("↘", "\\"),
     ("↓", "v"),
-    ("↙", "/"),
+    ("↙", ","),
     ("←", "<"),
-    ("↖", "\\"),
+    ("↖", "`"),
 ];
 
 /// The arrow for a wind direction in degrees, in `charset`.
+///
+/// The sector is [`compass_16`]'s own: an arrow owns the point it is named for and that point's
+/// counter-clockwise neighbour, so the arrow turns exactly where the cardinal label does and the
+/// two can never name different half-sectors.
 #[must_use]
 pub fn wind_arrow(deg: u16, charset: Charset) -> &'static str {
-    let sector = (usize::from(deg % 360) + 22) / 45 % ARROWS.len();
+    let sector = match compass_16(deg) {
+        "N" | "NNW" => 0,
+        "NNE" | "NE" => 1,
+        "ENE" | "E" => 2,
+        "ESE" | "SE" => 3,
+        "SSE" | "S" => 4,
+        "SSW" | "SW" => 5,
+        "WSW" | "W" => 6,
+        _ => 7,
+    };
     ARROWS.get(sector).map_or("-", |arrow| match charset {
         Charset::Unicode => arrow.0,
         Charset::Ascii => arrow.1,
@@ -486,13 +511,26 @@ pub fn wind_arrow(deg: u16, charset: Charset) -> &'static str {
 ///
 /// `n/a` is accepted as a spelling of `unknown`, because that is what a caller with no condition at
 /// all — a report without current conditions and without forecast days — will ask for.
+///
+/// The width invariant [`ART_W`] documents is enforced here as well as by the test below: the
+/// array's arity pins the number of lines, never their width, so a mis-measured block would
+/// otherwise only show up as a metric column that shifts left in a release build.
 #[must_use]
 pub fn art(key: &str) -> Option<&'static Block> {
     let key = if key == "n/a" { "unknown" } else { key };
-    ART.binary_search_by(|(candidate, _)| candidate.cmp(&key))
+    let block = ART
+        .binary_search_by(|(candidate, _)| candidate.cmp(&key))
         .ok()
         .and_then(|index| ART.get(index))
-        .map(|(_, block)| block)
+        .map(|(_, block)| block);
+    debug_assert!(
+        block.is_none_or(|block| [Charset::Unicode, Charset::Ascii]
+            .into_iter()
+            .flat_map(|charset| block.lines(charset))
+            .all(|line| line.width() <= ART_W)),
+        "the block for `{key}` has a line wider than ART_W = {ART_W}"
+    );
+    block
 }
 
 #[cfg(test)]
@@ -500,9 +538,11 @@ mod tests {
     use unicode_width::UnicodeWidthStr as _;
 
     use super::{
-        ART, ART_LINES, ART_W, ArtStyle, NO_BLOCK, art, night_variant, one_line_art, wind_arrow,
+        ARROWS, ART, ART_LINES, ART_W, ArtStyle, NO_BLOCK, art, night_variant, one_line_art,
+        wind_arrow,
     };
     use crate::model::condition::Condition;
+    use crate::model::units::compass_16;
     use crate::render::Charset;
 
     /// Every key the vocabulary can produce.
@@ -556,16 +596,84 @@ mod tests {
     fn blocks_are_four_lines_of_at_most_art_width() {
         assert_eq!(NO_BLOCK.len(), ART_LINES);
         for (key, block) in ART {
-            for charset in [Charset::Unicode, Charset::Ascii] {
-                for (index, line) in block.lines(charset).iter().enumerate() {
-                    assert!(
-                        line.width() <= ART_W,
-                        "{key}: line {index} of {charset:?} is {} columns wide: {line:?}",
-                        line.width()
-                    );
-                }
+            for (index, (unicode, ascii)) in block.unicode.iter().zip(block.ascii).enumerate() {
+                let (unicode_w, ascii_w) = (unicode.width(), ascii.width());
+                assert!(
+                    unicode_w <= ART_W,
+                    "{key}: line {index} of unicode is {unicode_w} columns wide: {unicode:?}"
+                );
+                assert!(
+                    ascii_w <= ART_W,
+                    "{key}: line {index} of ASCII is {ascii_w} columns wide: {ascii:?}"
+                );
+                assert_eq!(
+                    unicode_w, ascii_w,
+                    "{key}: line {index} measures {unicode_w} columns in unicode but {ascii_w} in \
+                     ASCII, so the fallback draws another shape"
+                );
             }
         }
+    }
+
+    /// Every row of a block is either empty or as wide as the block; a row of its own width draws
+    /// the block off-centre in its cell, which is what made `smoke`'s metrics look staggered.
+    #[test]
+    fn the_smoke_block_fills_the_art_width() {
+        let smoke = art("smoke").expect("the smoke block exists");
+        for charset in [Charset::Unicode, Charset::Ascii] {
+            for (index, line) in smoke.lines(charset).iter().enumerate() {
+                assert!(
+                    line.is_empty() || line.width() == ART_W,
+                    "smoke: line {index} of {charset:?} is {} columns wide: {line:?}",
+                    line.width()
+                );
+            }
+        }
+    }
+
+    /// The eight ASCII arrows must be pairwise distinct: the narrow ASCII cell drops the cardinal
+    /// label, so two opposite winds printing the same mark are indistinguishable.
+    #[test]
+    fn the_eight_ascii_arrows_are_pairwise_distinct() {
+        let mut marks: Vec<&str> = ARROWS.iter().map(|(_, ascii)| *ascii).collect();
+        assert_eq!(marks.len(), 8);
+        marks.sort_unstable();
+        marks.dedup();
+        assert_eq!(
+            marks.len(),
+            ARROWS.len(),
+            "two ASCII arrows share a mark: {marks:?}"
+        );
+        for (unicode, ascii) in ARROWS {
+            assert!(
+                ascii.is_ascii() && ascii.len() == 1,
+                "the fallback of {unicode} is {ascii:?}, not one 7-bit column"
+            );
+        }
+    }
+
+    /// The arrow may only turn where [`compass_16`] does: the two read one table, so a wind can
+    /// never print `↗` beside a label the arrow's own sector does not name.
+    #[test]
+    fn the_wind_arrow_only_turns_where_the_compass_does() {
+        let mut arrow = wind_arrow(0, Charset::Unicode);
+        let mut label = compass_16(0);
+        for deg in 1..=360_u16 {
+            let (next_arrow, next_label) = (wind_arrow(deg, Charset::Unicode), compass_16(deg));
+            if next_arrow != arrow {
+                assert_ne!(
+                    next_label, label,
+                    "the arrow turned at {deg}° while the label stayed {label}"
+                );
+            }
+            arrow = next_arrow;
+            label = next_label;
+        }
+        // The boundary is a `compass_16` edge: N keeps the north arrow, NNE takes the NE one.
+        assert_eq!(wind_arrow(11, Charset::Unicode), "↑");
+        assert_eq!(wind_arrow(12, Charset::Unicode), "↗");
+        assert_eq!(compass_16(11), "N");
+        assert_eq!(compass_16(12), "NNE");
     }
 
     #[test]

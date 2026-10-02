@@ -282,3 +282,60 @@ fn the_chinese_tokens_read_the_catalog() {
         );
     }
 }
+
+/// A template is one line: the width a caller asks for never truncates it, because truncation would
+/// silently drop the tokens the format exists to print.
+#[test]
+fn the_width_does_not_change_the_output() {
+    let report = report();
+    let i18n = english();
+    let caps = capable();
+    let context = |width| RenderContext {
+        units: UnitSystem::Metric
+            .resolve(&UnitOverrides::default())
+            .expect("the default overrides resolve"),
+        color: ColorMode::Never,
+        width,
+        term: caps,
+        now: common::fixture_now(&report),
+        tz: report.location.tz,
+        lang: i18n.lang(),
+        i18n: &i18n,
+    };
+
+    let template = one_line::preset("full").expect("the full preset exists");
+    let narrow = expand(template, &report, &context(20)).expect("the template expands");
+    assert_eq!(
+        narrow,
+        expand(template, &report, &context(200)).expect("the template expands")
+    );
+    assert!(
+        narrow.chars().count() > 20,
+        "the full preset is wider than 20 columns: {narrow:?}"
+    );
+}
+
+/// The direction is genuinely optional upstream — a calm `OpenWeatherMap` reading and a METAR
+/// `VRB` both leave it out — so a known speed must not become `n/a` for want of an arrow.
+#[test]
+fn the_wind_token_prints_a_known_speed_without_a_direction() {
+    let mut report = report();
+    report.current = None;
+    for day in &mut report.days {
+        for part in &mut day.parts {
+            part.wind_dir_deg = None;
+        }
+    }
+    let i18n = english();
+    let text = expand(
+        "%w",
+        &report,
+        &context(&report, UnitSystem::Metric, capable(), &i18n),
+    )
+    .expect("the template expands");
+    assert_eq!(
+        text, "12km/h",
+        "the noon part's known speed prints without a direction"
+    );
+    assert!(!text.contains("n/a"), "{text}");
+}

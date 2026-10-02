@@ -11,7 +11,7 @@
 //!
 //! | token | output | token | output |
 //! |---|---|---|---|
-//! | `%c` | condition art, day/night aware | `%d` `%D` | ISO date / `Wed, Sep 30` |
+//! | `%c` | condition art, day/night aware | `%d` `%D` | ISO date / `Wed 30 Sep` |
 //! | `%C` | condition text | `%Z` `%z` | time zone name / `+0800` |
 //! | `%t` `%f` | temp / feels-like | `%u` `%U` | UV `5` / `5 (moderate)` |
 //! | `%w` | wind `↗ 12km/h NE` | `%S` `%s` | sunrise / sunset `06:05` |
@@ -155,7 +155,7 @@ pub enum Token {
     UvBand,
     /// `%d` — the date, ISO 8601.
     Date,
-    /// `%D` — the date, `Wed, Sep 30`.
+    /// `%D` — the date, `Wed 30 Sep`.
     DateLong,
     /// `%Z` — the time zone name.
     TzName,
@@ -471,15 +471,24 @@ fn value(token: Token, snapshot: &Snapshot, report: &Report, ctx: &RenderContext
         Token::FeelsLike => snapshot
             .feels_like_c
             .map_or_else(|| n_a(ctx), |temp| format_temp_signed(temp, units.temp)),
-        Token::Wind => match (snapshot.wind_kmh, snapshot.wind_dir_deg) {
-            (Some(kmh), Some(deg)) => format!(
-                "{} {} {}",
-                art::wind_arrow(deg, ctx.term.charset()),
-                format_wind(kmh, units.wind, UnitStyle::Compact),
-                ctx.i18n.direction(deg)
-            ),
-            _ => n_a(ctx),
-        },
+        Token::Wind => snapshot.wind_kmh.map_or_else(
+            || n_a(ctx),
+            |kmh| {
+                let speed = format_wind(kmh, units.wind, UnitStyle::Compact);
+                // The direction is genuinely optional upstream — a calm `OpenWeatherMap` reading
+                // and a METAR `VRB` both leave it out — and a known speed must not become `n/a`
+                // for want of an arrow: the arrow-free speed is what the table and `plain` print.
+                // With a direction, the documented order is arrow, speed, direction.
+                match snapshot.wind_dir_deg {
+                    Some(deg) => format!(
+                        "{} {speed} {}",
+                        art::wind_arrow(deg, ctx.term.charset()),
+                        ctx.i18n.direction(deg)
+                    ),
+                    None => speed,
+                }
+            },
+        ),
         Token::Humidity => snapshot
             .humidity_pct
             .map_or_else(|| n_a(ctx), |humidity| format!("{humidity}%")),

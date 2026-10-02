@@ -127,13 +127,18 @@ fn report() -> Report {
 
 /// Renders `report` in `units`, at the fixture's own observation time.
 fn render(report: &Report, units: UnitSystem) -> String {
+    render_at(report, units, 80)
+}
+
+/// Renders `report` in `units` at `width`, which the `json` format promises to ignore.
+fn render_at(report: &Report, units: UnitSystem, width: usize) -> String {
     let i18n = english();
     let ctx = RenderContext {
         units: units
             .resolve(&UnitOverrides::default())
             .expect("the default overrides resolve"),
         color: ColorMode::Never,
-        width: 80,
+        width,
         term: TermCaps::default(),
         now: common::fixture_now(report),
         tz: report.location.tz,
@@ -142,6 +147,21 @@ fn render(report: &Report, units: UnitSystem) -> String {
     };
     Json.render(report, &ctx)
         .expect("the fixture renders as JSON")
+}
+
+/// Asserts that `key` of the object `value` is present **and** null.
+///
+/// `Value`'s index operator returns `Null` for a missing key, so a bare `is_null()` passes whether
+/// the renderer wrote the documented `null` or dropped the key the schema promises.
+fn assert_null_present(value: &Value, key: &str, what: &str) {
+    let object = value
+        .as_object()
+        .unwrap_or_else(|| panic!("{what} is not an object"));
+    assert!(
+        object.contains_key(key),
+        "{what}.{key} is an omitted key, not the documented null"
+    );
+    assert!(object[key].is_null(), "{what}.{key} is not null");
 }
 
 /// The document of a fixture.
@@ -234,7 +254,7 @@ fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
 fn a_missing_value_is_null_and_never_an_omitted_key() {
     // `current-only.json` has no days, and its `current` has no gust; both keep their keys.
     let document = document("current-only.json", UnitSystem::Metric);
-    assert!(document["current"]["wind_gust_kmh"].is_null());
+    assert_null_present(&document["current"], "wind_gust_kmh", "current");
     assert_eq!(document["days"], serde_json::json!([]));
 
     // A coordinate location has no admin1 and no country code, and they are null, not absent.
@@ -244,9 +264,9 @@ fn a_missing_value_is_null_and_never_an_omitted_key() {
     report.location.elevation_m = None;
     let document: Value =
         serde_json::from_str(&render(&report, UnitSystem::Metric)).expect("valid JSON");
-    assert!(document["location"]["admin1"].is_null());
-    assert!(document["location"]["country_code"].is_null());
-    assert!(document["location"]["elevation_m"].is_null());
+    assert_null_present(&document["location"], "admin1", "location");
+    assert_null_present(&document["location"], "country_code", "location");
+    assert_null_present(&document["location"], "elevation_m", "location");
     assert_eq!(document["location"]["country"], "China");
 }
 
@@ -261,6 +281,46 @@ fn the_unit_system_does_not_change_a_single_byte() {
             "JSON is canonical metric; --units must not leak into it"
         );
     }
+}
+
+#[test]
+fn the_width_does_not_change_the_output() {
+    let report = report();
+    let metric = render(&report, UnitSystem::Metric);
+    assert_eq!(render_at(&report, UnitSystem::Metric, 20), metric);
+    assert_eq!(render_at(&report, UnitSystem::Metric, 200), metric);
+}
+
+#[test]
+fn a_negative_zero_is_written_as_a_positive_one() {
+    let mut report = report();
+    let current = report
+        .current
+        .as_mut()
+        .expect("the fixture carries current conditions");
+    for value in [
+        &mut current.temp_c,
+        &mut current.precip_mm,
+        &mut current.wind_kmh,
+    ] {
+        *value = -0.0;
+    }
+    for day in &mut report.days {
+        day.temp_min_c = -0.0;
+        for part in &mut day.parts {
+            part.temp_c = -0.0;
+            part.precip_mm = -0.0;
+        }
+    }
+
+    let text = render(&report, UnitSystem::Metric);
+    assert!(
+        !text.contains("-0.0"),
+        "a sign rounded to zero reached the document:\n{text}"
+    );
+    let document: Value = serde_json::from_str(&text).expect("valid JSON");
+    assert_eq!(document["current"]["temp_c"], 0.0);
+    assert_eq!(document["days"][0]["parts"]["morning"]["precip_mm"], 0.0);
 }
 
 #[test]

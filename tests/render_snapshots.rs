@@ -476,12 +476,39 @@ fn seed_weather_cache(sandbox: &common::Sandbox) {
     }
 }
 
-/// The fixture a snapshot renders must be a `Report`; this pins that the loader and the renderer
-/// agree on the type as much as on the bytes.
+/// Every file in `tests/fixtures/report/` loads as a [`Report`].
+///
+/// This is the real invariant behind the fixture set: the loader and the renderer share the type,
+/// and a fixture added for a new layout cannot rot half-parsed without failing here.
 #[test]
-fn the_fixtures_load_as_reports() {
-    let report: Report = common::fixture_report("beijing-3d-day.json");
-    assert_eq!(report.days.len(), 3);
-    assert!(report.current.is_some());
-    assert_eq!(report.location.tz, chrono_tz::Tz::Asia__Shanghai);
+fn every_report_fixture_loads_as_a_report() {
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/report");
+    let mut names: Vec<String> = std::fs::read_dir(&directory)
+        .unwrap_or_else(|error| panic!("{}: {error}", directory.display()))
+        .map(|entry| {
+            entry
+                .expect("a readable fixture directory entry")
+                .file_name()
+        })
+        .filter_map(|name| name.to_str().map(str::to_owned))
+        .filter(|name| {
+            std::path::Path::new(name)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
+        })
+        .collect();
+    names.sort_unstable();
+    assert!(
+        !names.is_empty(),
+        "{} holds no report fixtures",
+        directory.display()
+    );
+
+    for name in &names {
+        let report: Report = common::fixture_report(name);
+        assert!(
+            !report.location.name.is_empty(),
+            "{name} loaded as a report with no place"
+        );
+    }
 }

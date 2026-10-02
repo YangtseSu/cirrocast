@@ -179,3 +179,50 @@ fn the_width_does_not_change_the_output() {
         "the day summary is longer than 20 columns"
     );
 }
+
+/// A value the provider did not report is omitted, never printed as a zero.
+///
+/// The golden above is the complete fixture, so only the `Some` branches run there: a regression
+/// printing `visibility 0km` for a missing value would pass it.
+#[test]
+fn absent_values_are_omitted_not_zeroed() {
+    let mut report = report();
+    let current = report
+        .current
+        .as_mut()
+        .expect("the fixture reports current conditions");
+    current.feels_like_c = None;
+    current.visibility_km = None;
+    for day in &mut report.days {
+        for part in &mut day.parts {
+            part.feels_like_c = None;
+            part.visibility_km = None;
+            part.precip_prob_pct = None;
+            part.wind_dir_deg = None;
+        }
+    }
+
+    let text = render(&report, UnitSystem::Metric);
+    assert!(
+        text.contains(
+            "current: Clear sky 18°C wind 13km/h NW humidity 11% precip 0.0mm pressure 1021hPa\n"
+        ),
+        "{text}"
+    );
+    assert!(
+        !text.contains("feels"),
+        "an unreported apparent temperature is omitted, not invented:\n{text}"
+    );
+    assert!(
+        !text.contains("visibility"),
+        "an unreported visibility is omitted, not a zero:\n{text}"
+    );
+    assert!(
+        !text.contains("(0%)"),
+        "an unreported probability is omitted:\n{text}"
+    );
+    assert!(
+        text.contains("Morning Clear sky 29°C 0.0mm wind 2.5km/h |"),
+        "the part keeps the values it has:\n{text}"
+    );
+}

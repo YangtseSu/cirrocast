@@ -51,6 +51,7 @@
 //! a truncation can only ever drop a table border at widths below the layout's own minimum — never
 //! half of an art block.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 
 use unicode_width::UnicodeWidthChar as _;
@@ -104,21 +105,40 @@ const STACKED_BELOW: usize = 60;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ArtTable {
     charset: Charset,
+    /// Paint nothing, whatever `ctx.color` asks: `--format dumb` is documented as colourless, and
+    /// a public `renderer_for` must not be able to break that promise.
+    mono: bool,
 }
 
 impl ArtTable {
-    /// The table for `charset`; `--format dumb` and a terminal without UTF-8 both ask for
-    /// [`Charset::Ascii`].
+    /// The table for `charset`; a terminal without UTF-8 asks for [`Charset::Ascii`].
     #[must_use]
     pub const fn new(charset: Charset) -> Self {
-        Self { charset }
+        Self {
+            charset,
+            mono: false,
+        }
+    }
+
+    /// The `--format dumb` table: [`Charset::Ascii`] with the palette forced off, so the format's
+    /// "no colour" is a property of the renderer rather than of the CLI that built the context.
+    #[must_use]
+    pub const fn dumb() -> Self {
+        Self {
+            charset: Charset::Ascii,
+            mono: true,
+        }
     }
 }
 
 impl Renderer for ArtTable {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
         let charset = self.charset;
-        let depth = ctx.depth();
+        let depth = if self.mono {
+            ColorDepth::Mono
+        } else {
+            ctx.depth()
+        };
 
         let mut lines = vec![header(report, ctx)];
         if let Some(current) = &report.current {
@@ -155,8 +175,8 @@ impl Renderer for ArtTable {
         Ok(lines
             .into_iter()
             .map(|line| match charset {
-                Charset::Ascii => fit(&fold_ascii(&line), ctx.width, charset),
-                Charset::Unicode => fit(&line, ctx.width, charset),
+                Charset::Ascii => fit(&fold_ascii(&line), ctx.width, charset).into_owned(),
+                Charset::Unicode => fit(&line, ctx.width, charset).into_owned(),
             })
             .collect::<Vec<_>>()
             .join("\n"))
@@ -364,11 +384,16 @@ fn columns(
             cell_w,
             charset,
         ));
+        // One buffer for the row's borrowed cells, reused for every row of the band: the cells are
+        // the day lines themselves, so nothing is copied between building and drawing a row.
+        let mut cells: Vec<&str> = Vec::with_capacity(per_day.len());
         for row in 0..height {
-            let cells: Vec<String> = per_day
-                .iter()
-                .map(|day| day.get(row).cloned().unwrap_or_default())
-                .collect();
+            cells.clear();
+            cells.extend(
+                per_day
+                    .iter()
+                    .map(|day| day.get(row).map_or("", String::as_str)),
+            );
             lines.push(cell_row(&cells, cell_w, charset));
             if row % ART_LINES == 0 {
                 let kind = if row + 1 == height {
@@ -469,7 +494,7 @@ fn cell_line(
     let mut line = paint(art_line, art_fg, depth).into_owned();
     line.push_str(&gap_after(art_line));
     let metric = fit(metric, metrics_w, charset);
-    line.push_str(&paint(&metric, metric_fg, depth));
+    line.push_str(&paint(metric.as_ref(), metric_fg, depth));
     line.push_str(&" ".repeat(metrics_w.saturating_sub(display_width(&metric))));
     line
 }
@@ -528,16 +553,20 @@ fn stacked_part(
     let separator = format!(" {} ", vertical(charset));
 
     // The degradation ladder of a narrow terminal. Apparent temperature, cardinal direction (the
-    // arrow already names the sector) and precipitation probability are dropped in that order — all
-    // three are second readings of something already on the line — before the line is clipped at
-    // all.
+    // arrow already names the sector), precipitation probability, the precipitation tail and then
+    // the wind are dropped in that order — every one of them a second reading of something already
+    // on the line — before the line is clipped at all. The two rungs that drop the tail and the
+    // wind are what keep a width between `MIN_WIDTH` and a full line from silently truncating a
+    // complete part.
     let mut line = String::new();
-    for (with_glyph, feels_like, cardinal, probability) in [
-        (true, true, true, true),
-        (true, true, true, false),
-        (true, false, true, false),
-        (true, false, false, false),
-        (false, false, false, false),
+    for (with_glyph, feels_like, cardinal, probability, with_tail, with_wind) in [
+        (true, true, true, true, true, true),
+        (true, true, true, false, true, true),
+        (true, false, true, false, true, true),
+        (true, false, false, false, true, true),
+        (false, false, false, false, true, true),
+        (false, false, false, false, false, true),
+        (false, false, false, false, false, false),
     ] {
         let temp = temp_metric(
             part.temp_c,
@@ -546,8 +575,9 @@ fn stacked_part(
             METRICS_W,
             charset,
         );
-        let wind = wind_text(part.wind_kmh, part.wind_dir_deg, ctx, charset, cardinal);
-        let tail = part_tail(part, ctx.units, probability);
+        let wind =
+            with_wind.then(|| wind_text(part.wind_kmh, part.wind_dir_deg, ctx, charset, cardinal));
+        let tail = with_tail.then(|| part_tail(part, ctx.units, probability));
 
         let mut text = format!("  {label}");
         if with_glyph {
@@ -555,12 +585,14 @@ fn stacked_part(
             text.push_str(&paint(&glyph, fg, depth));
         }
         for (value, fg) in [
-            (&temp, color::temp_fg(part.temp_c)),
-            (&wind, color::wind_fg(part.wind_kmh)),
-            (&tail, color::precip_fg(part.precip_mm)),
+            (Some(&temp), color::temp_fg(part.temp_c)),
+            (wind.as_ref(), color::wind_fg(part.wind_kmh)),
+            (tail.as_ref(), color::precip_fg(part.precip_mm)),
         ] {
-            text.push_str(&separator);
-            text.push_str(&paint(value, fg, depth));
+            if let Some(value) = value {
+                text.push_str(&separator);
+                text.push_str(&paint(value, fg, depth));
+            }
         }
         line = text;
         if display_width(&line) <= ctx.width {
@@ -622,15 +654,26 @@ fn border(kind: Border, cells: usize, cell_w: usize, charset: Charset) -> String
 }
 
 /// One screen row: `│`, then every cell padded to `cell_w` and surrounded by [`PAD`] spaces.
-fn cell_row(cells: &[String], cell_w: usize, charset: Charset) -> String {
+///
+/// The cells arrive borrowed and the row is written into one [`String`]; `fit` returns the cell
+/// borrowed too, so an untruncated cell — every cell of every committed layout — is copied once,
+/// into the row, instead of three times on its way there.
+fn cell_row(cells: &[&str], cell_w: usize, charset: Charset) -> String {
     let bar = vertical(charset);
-    let pad = " ".repeat(PAD);
-    let mut text = String::new();
+    let mut text = String::with_capacity(cells.len() * (cell_w + 2 * PAD + 1) + 1);
     for cell in cells {
+        let fitted = fit(cell, cell_w, charset);
         text.push(bar);
-        text.push_str(&pad);
-        text.push_str(&pad_columns(&fit(cell, cell_w, charset), cell_w));
-        text.push_str(&pad);
+        for _ in 0..PAD {
+            text.push(' ');
+        }
+        text.push_str(&fitted);
+        for _ in 0..cell_w.saturating_sub(display_width(&fitted)) {
+            text.push(' ');
+        }
+        for _ in 0..PAD {
+            text.push(' ');
+        }
     }
     text.push(bar);
     text
@@ -737,9 +780,11 @@ const fn ellipsis(charset: Charset) -> &'static str {
 /// Escape sequences are copied verbatim (they take no columns) and an unterminated colour is
 /// closed before the ellipsis, so a truncated line cannot paint the rest of the terminal. This is
 /// the last line of defence of the width invariant: the cell builders size their metrics first.
-fn fit(line: &str, width: usize, charset: Charset) -> String {
+///
+/// A line that already fits is returned **borrowed**, so the common case allocates nothing.
+fn fit(line: &str, width: usize, charset: Charset) -> Cow<'_, str> {
     if display_width(line) <= width {
-        return line.to_owned();
+        return Cow::Borrowed(line);
     }
     let marker = ellipsis(charset);
     let (marker, budget) = if display_width(marker) <= width {
@@ -778,7 +823,7 @@ fn fit(line: &str, width: usize, charset: Charset) -> String {
         display_width(&clipped) <= width,
         "{clipped:?} is wider than {width} columns"
     );
-    clipped
+    Cow::Owned(clipped)
 }
 
 /// `+22°C (+23°C)`, or just the temperature when the pair does not fit the column.
@@ -804,7 +849,7 @@ fn temp_metric(
             return pair;
         }
     }
-    fit(&temp, metrics_w, charset)
+    fit(&temp, metrics_w, charset).into_owned()
 }
 
 /// `↗ 12km/h NE`, or less of it when the column is narrow.
@@ -827,7 +872,7 @@ fn wind_metric(
     if display_width(&short) <= metrics_w {
         return short;
     }
-    fit(&speed, metrics_w, charset)
+    fit(&speed, metrics_w, charset).into_owned()
 }
 
 /// `↗ 12km/h NE`, or `↗ 12km/h` when the caller has no room for the cardinal direction.
@@ -872,7 +917,9 @@ mod tests {
         Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
         LocationSource, Report,
     };
-    use crate::render::{Charset, ColorDepth, ColorMode, RenderContext, Renderer, TermCaps};
+    use crate::render::{
+        Charset, ColorDepth, ColorMode, Format, RenderContext, Renderer, TermCaps, renderer_for,
+    };
 
     /// The English catalog, loaded the way the CLI loads an unconfigured run.
     fn english() -> I18n {
@@ -1185,6 +1232,28 @@ mod tests {
     }
 
     #[test]
+    fn every_stacked_rung_fits_every_width_it_can() {
+        let report = report(Some(current(true, 2)), vec![day(30, 3)]);
+        for width in [20, 24, 29, 36] {
+            let text = render(&report, width, Charset::Unicode);
+            let morning = text
+                .lines()
+                .find(|line| line.contains("Morning"))
+                .unwrap_or_else(|| panic!("no morning line at {width} columns:\n{text}"));
+            assert!(
+                display_width(morning) <= width,
+                "width {width}: {morning:?}"
+            );
+            assert!(
+                !morning.contains('\u{2026}'),
+                "width {width} dropped the part's tail instead of using a shorter rung: {morning:?}"
+            );
+            // The temperature survives every rung: it is the one reading a part cannot lose.
+            assert!(morning.contains("+18°C"), "width {width}: {morning:?}");
+        }
+    }
+
+    #[test]
     fn fitting_measures_display_columns_and_keeps_escapes_balanced() {
         assert_eq!(fit("abc", 5, Charset::Unicode), "abc");
         assert_eq!(fit("abcdef", 4, Charset::Unicode), "abc\u{2026}");
@@ -1227,5 +1296,31 @@ mod tests {
         let text = render(&report, 80, Charset::Unicode);
         assert!(!text.contains('\u{1b}'), "mono emits no escape");
         assert_eq!(METRICS_W, 13);
+    }
+
+    /// `--format dumb` promises "the ASCII table, with no colour" whatever the context says: the
+    /// suppression has to live in the renderer, because `renderer_for` is public.
+    #[test]
+    fn the_dumb_format_paints_nothing_even_when_colour_is_always() {
+        let report = report(Some(current(true, 2)), Vec::new());
+        let i18n = english();
+        let caps = TermCaps::read(
+            |name| (name == "TERM").then(|| "xterm-256color".to_owned()),
+            true,
+        );
+        let mut ctx = context(&i18n, 80);
+        ctx.color = ColorMode::Always;
+        ctx.term = caps;
+        assert_eq!(ctx.depth(), ColorDepth::Ansi256);
+
+        let text = renderer_for(Format::Dumb, &caps, None)
+            .expect("dumb has a renderer")
+            .render(&report, &ctx)
+            .expect("renders");
+        assert!(text.is_ascii(), "{text}");
+        assert!(
+            !text.contains('\u{1b}'),
+            "dumb is documented colourless, but painted:\n{text}"
+        );
     }
 }

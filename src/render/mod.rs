@@ -493,7 +493,7 @@ pub fn renderer_for(
     }
     match format {
         Format::ArtTable => Ok(Box::new(art_table::ArtTable::new(caps.charset()))),
-        Format::Dumb => Ok(Box::new(art_table::ArtTable::new(Charset::Ascii))),
+        Format::Dumb => Ok(Box::new(art_table::ArtTable::dumb())),
         Format::Plain => Ok(Box::new(plain::Plain)),
         Format::Json => Ok(Box::new(json::Json)),
         Format::OneLine => Ok(Box::new(one_line::OneLine::new(

@@ -20,6 +20,9 @@
 //! * values are **canonical metric** (`temp_c`, `wind_kmh`, `precip_mm`, `pressure_hpa`,
 //!   `visibility_km`) with the unit in the key name, so `--units`, `--color` and `--width` have no
 //!   effect on this format — the same report renders to the same bytes in every mode;
+//! * every number is **finite and has no negative zero**. A non-finite value is rejected where the
+//!   report is built (the provider boundary), never folded into the `null` that means "the provider
+//!   did not report it"; `-0.0` is written as `0.0`, like every display path in the crate;
 //! * timestamps are ISO 8601 with the location's offset (`2026-09-30T12:15:00+08:00`), and
 //!   `attribution.retrieved_at` is UTC (`…Z`);
 //! * `days` ascends from the location-local today, oldest first.
@@ -36,7 +39,10 @@ use super::{RenderContext, Renderer};
 use crate::error::{Error, Result};
 use crate::geo::attribution_line;
 use crate::model::ReportCapabilities as Capabilities;
-use crate::model::{Attribution, Condition, Current, DayForecast, DayPart, Location, Report};
+use crate::model::units::normalise_zero;
+use crate::model::{
+    Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location, Report,
+};
 
 /// The schema version this build emits; see the module documentation for what may change within
 /// one version.
@@ -192,17 +198,17 @@ impl<'a> CurrentJson<'a> {
         Self {
             time: iso_local(current.observed_at),
             condition: ConditionJson::of(current.weather, ctx),
-            temp_c: current.temp_c,
-            feels_like_c: current.feels_like_c,
+            temp_c: normalise_zero(current.temp_c),
+            feels_like_c: current.feels_like_c.map(normalise_zero),
             humidity_pct: current.humidity_pct,
-            precip_mm: current.precip_mm,
-            pressure_hpa: current.pressure_hpa,
-            visibility_km: current.visibility_km,
-            wind_kmh: current.wind_kmh,
+            precip_mm: normalise_zero(current.precip_mm),
+            pressure_hpa: normalise_zero(current.pressure_hpa),
+            visibility_km: current.visibility_km.map(normalise_zero),
+            wind_kmh: normalise_zero(current.wind_kmh),
             wind_dir_deg: current.wind_dir_deg,
-            wind_gust_kmh: current.wind_gust_kmh,
+            wind_gust_kmh: current.wind_gust_kmh.map(normalise_zero),
             cloud_cover_pct: current.cloud_cover_pct,
-            uv_index: current.uv_index,
+            uv_index: current.uv_index.map(normalise_zero),
             is_day: current.is_day,
         }
     }
@@ -232,9 +238,9 @@ impl<'a> DayJson<'a> {
             date: day.date.to_string(),
             sunrise: day.sunrise.map(clock_time),
             sunset: day.sunset.map(clock_time),
-            min_c: day.temp_min_c,
-            max_c: day.temp_max_c,
-            parts: PartsJson::of(&day.parts, ctx),
+            min_c: normalise_zero(day.temp_min_c),
+            max_c: normalise_zero(day.temp_max_c),
+            parts: PartsJson::of(day, ctx),
         }
     }
 }
@@ -258,12 +264,15 @@ struct PartsJson<'a> {
 
 impl<'a> PartsJson<'a> {
     /// Projects the four parts in display order.
-    fn of(parts: &'a [DayPart; 4], ctx: &'a RenderContext<'_>) -> Self {
+    ///
+    /// Each part is looked up by its [`DayPartKind`] rather than by array position, so the day
+    /// model owns which part is which and no renderer can disagree with it.
+    fn of(day: &'a DayForecast, ctx: &'a RenderContext<'_>) -> Self {
         Self {
-            morning: PartJson::of(&parts[0], ctx),
-            noon: PartJson::of(&parts[1], ctx),
-            evening: PartJson::of(&parts[2], ctx),
-            night: PartJson::of(&parts[3], ctx),
+            morning: PartJson::of(day.part(DayPartKind::Morning), ctx),
+            noon: PartJson::of(day.part(DayPartKind::Noon), ctx),
+            evening: PartJson::of(day.part(DayPartKind::Evening), ctx),
+            night: PartJson::of(day.part(DayPartKind::Night), ctx),
         }
     }
 }
@@ -296,13 +305,13 @@ impl<'a> PartJson<'a> {
     fn of(part: &'a DayPart, ctx: &'a RenderContext<'_>) -> Self {
         Self {
             condition: ConditionJson::of(part.weather, ctx),
-            temp_c: part.temp_c,
-            feels_like_c: part.feels_like_c,
-            precip_mm: part.precip_mm,
+            temp_c: normalise_zero(part.temp_c),
+            feels_like_c: part.feels_like_c.map(normalise_zero),
+            precip_mm: normalise_zero(part.precip_mm),
             precip_prob_pct: part.precip_prob_pct,
             humidity_pct: part.humidity_pct,
-            visibility_km: part.visibility_km,
-            wind_kmh: part.wind_kmh,
+            visibility_km: part.visibility_km.map(normalise_zero),
+            wind_kmh: normalise_zero(part.wind_kmh),
             wind_dir_deg: part.wind_dir_deg,
         }
     }
@@ -602,9 +611,12 @@ mod tests {
         assert_eq!(day["parts"]["noon"]["temp_c"], 24.0);
         assert_eq!(day["parts"]["evening"]["temp_c"], 21.0);
         assert_eq!(day["parts"]["night"]["condition"]["code"], 45);
+        let noon = day["parts"]["noon"]
+            .as_object()
+            .expect("the noon part is an object");
         assert!(
-            day["parts"]["noon"]["visibility_km"].is_null(),
-            "the part's own visibility is null when upstream has none"
+            noon.contains_key("visibility_km") && noon["visibility_km"].is_null(),
+            "the part's own visibility is present and null when upstream has none"
         );
     }
 
