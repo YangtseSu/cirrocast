@@ -51,10 +51,15 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `cirrocast-v$VERSION-$TARGET.tar.gz` containing `cirrocast`, `README.md`, `LICENSE`, `CHANGELOG.md`,
   `cirrocast.1` and `completions/`, writes a `.sha256` per archive and publishes with the preinstalled `gh`
   (`gh release create "$GITHUB_REF_NAME" … --generate-notes`).
-- ✅ `publish` job in the same workflow: `cargo package --list` review and `cargo publish --locked` with
-  `CARGO_REGISTRY_TOKEN`, gated on the build matrix succeeding and on a protected environment, skipping with an
-  explicit notice while the token is not configured (so the first tag is not a red run); plus a documented
-  dry-run path (`cargo publish --dry-run --locked`) that runs for every PR in `ci.yml`.
+- ✅ `publish` job in the same workflow: `cargo package --list` review and `cargo publish --locked` through
+  **crates.io trusted publishing** (OIDC) — the job runs in the `crates-io` environment with `id-token: write`
+  and exchanges the workflow identity for a short-lived token via `rust-lang/crates-io-auth-action` (pinned by
+  SHA), so no token is stored in GitHub; a `workflow_dispatch` run executes only the `verify` job, which proves
+  the crate's trusted-publisher record matches this repository/workflow/environment without cutting a release,
+  and the publish step skips a version that is already on crates.io. (Original design, 2026-10-01: a
+  `CARGO_REGISTRY_TOKEN` environment secret with a skip-with-notice while unset; replaced on 2026-10-02 —
+  see the progress log.) Plus a documented dry-run path (`cargo publish --dry-run --locked`) that runs for
+  every PR in `ci.yml`.
 - ✅ `Cargo.toml` metadata: keep `license = "GPL-3.0-or-later"` with no `license-file` (cargo forbids both),
   `repository`, `readme`, `keywords`, `categories` and `rust-version` present and correct; replace the blunt
   `exclude = ["docs/", ".github/"]` with an explicit `include` list (`src/**`, `locales/**`, `LICENSE`,
@@ -219,9 +224,10 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
    from in a job that does not check the tree out; the fix (`--repo "$GITHUB_REPOSITORY"`) is on `main`, and
    `v0.1.0`'s release was recreated from that run's own artifacts: three archives, three `.sha256` files,
    checksums verified and the x86_64 binary run from the extracted archive (`cirrocast 0.1.0`).
-7. ✅ The crates.io publish is confirmed, or its explicit skip notice is recorded while the token is
-   unconfigured. — the `publish` job took the skip branch: it printed
-   `CARGO_REGISTRY_TOKEN is not configured for the crates-io environment; skipping the publish` and exited 0.
+7. ✅ The crates.io publish is confirmed, or the reason it did not run is recorded. — the `v0.1.0` `publish`
+   job took the skip branch (`CARGO_REGISTRY_TOKEN is not configured for the crates-io environment; skipping the
+   publish`, exit 0); `1.0.0` was published from the maintainer's machine on 2026-10-02, and since that date the
+   job publishes through crates.io trusted publishing instead of a token (see the progress log).
 8. ✅ The AUR package is bumped from the tag tarball (`updpkgsums`, `makepkg --printsrcinfo > .SRCINFO`,
    `git push`) and the `## Verification` commands are re-run. — pushed as commit `b0652b1`.
 
@@ -229,8 +235,9 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
 
 * GitHub runner drift (an image being renamed or retired) would break one matrix entry: the matrix is a one-line
   change and the workflow comments record the alternatives (`ubuntu-24.04`, `macos-15-intel`).
-* `cargo publish` is irreversible: mitigated by a dry-run job on every PR, a protected environment, an explicit
-  skip while the token is absent, and publishing after the GitHub release artefacts exist.
+* `cargo publish` is irreversible: mitigated by a dry-run job on every PR, a protected environment, the
+  trusted-publishing exchange (which carries no long-lived token to leak or forget) and publishing after the
+  GitHub release artefacts exist.
 * AUR rules require `.SRCINFO` to match the PKGBUILD exactly: the release checklist regenerates it in the same
   commit as the `pkgver` bump, and the `check()` version assertion fails a stale PKGBUILD loudly.
 * `--locked` fails in the source tarball if `Cargo.lock` is not committed or if a dependency needs a newer MSRV:
@@ -313,3 +320,13 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   is the fix on `main`, and the `v0.1.0` release was recreated from that run's own artifacts (all three
   `.sha256` files verified, the x86_64 binary run from the archive). Step 14's `1.0.0` tag is what exercises the
   fixed job end to end.
+- 2026-10-02 — the publish path moved from a stored token to **crates.io trusted publishing**. `1.0.0` had been
+  published from the maintainer's machine (the workflow's `publish` job having skipped on the unset environment
+  secret), and the crate's crates.io settings now enable *"Require trusted publishing for all new versions"*,
+  so token publishing is refused from here on. `release.yml`'s `publish` job runs with `id-token: write` inside
+  the `crates-io` environment and exchanges the workflow identity for a short-lived token via
+  `rust-lang/crates-io-auth-action` (pinned to `c6f97d42243bad5fab37ca0427f495c86d5b1a18`, v1.0.5); the
+  skip-with-notice branch is gone — a mis-configured trusted-publisher record now fails the job loudly, which is
+  the point. A `verify` job, reachable only through `workflow_dispatch`, proves the record matches the
+  repository/workflow/environment without cutting a release. The deliverable, pre-tag-checklist and risk wording
+  above were corrected in the same commit, and README.md#publishing documents the new setup.

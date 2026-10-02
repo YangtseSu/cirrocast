@@ -11,9 +11,11 @@
 # * the runner images are named explicitly, never `<os>-latest`: the Linux archives inherit the
 #   image's glibc floor, and `-latest` moves under the project's feet;
 # * `CIRROCAST_FORBID_NETWORK=1` is exported so the release test run is the same run CI makes;
-# * the publish job skips with a notice until the `crates-io` environment carries a token, so a
-#   tag that is cut before the secret exists is a green run with an explicit note rather than a
-#   red one (README.md#publishing documents the switch).
+# * publishing uses crates.io *trusted publishing* (OIDC), not a stored token: the `publish` job
+#   asks `rust-lang/crates-io-auth-action` for a temporary token inside the `crates-io`
+#   environment, which is the identity the crate's trusted-publisher record names
+#   (README.md#publishing); a `workflow_dispatch` run executes only the `verify` job, which proves
+#   that exchange without cutting a release.
 #
 # `gh release create` is used for the release itself, so no third-party release action is needed.
 
@@ -22,6 +24,9 @@ name: Release
 on:
   push:
     tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+  # A manual run executes only the `verify` job: it proves the crates.io trusted-publisher record
+  # matches this workflow (repository, workflow file, environment) without cutting a release.
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -38,6 +43,7 @@ permissions:
 jobs:
   build:
     name: build (${{ matrix.target }})
+    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -97,6 +103,7 @@ jobs:
   release:
     name: publish the GitHub release
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -122,13 +129,14 @@ jobs:
   publish:
     name: publish to crates.io
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-26.04
-    # The protected environment is the gate. Create `crates-io` in the repository settings, add the
-    # required reviewers, and store CARGO_REGISTRY_TOKEN there as a secret (README.md#publishing).
-    # An environment referenced but not yet configured is created implicitly by GitHub Actions.
+    # crates.io trusted publishing: no stored token. The `crates-io` environment is part of the
+    # identity the crate's trusted-publisher record names, so it must stay on this job.
     environment: crates-io
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
@@ -136,22 +144,49 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
+      - name: exchange the workflow identity for a temporary crates.io token
+        id: auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+
       - name: review the packaged file set
         run: cargo package --list --locked
 
       - name: cargo publish, unless there is nothing to do
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           CURL_USER_AGENT: cirrocast-release-workflow (+https://github.com/YangtseSu/cirrocast)
         run: |
           set -eu
           version="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version')"
-          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
-            echo "::notice::CARGO_REGISTRY_TOKEN is not configured for the crates-io environment; skipping the publish (README.md#publishing)"
-            exit 0
-          fi
           if curl -sSf -A "$CURL_USER_AGENT" "https://crates.io/api/v1/crates/cirrocast/$version" > /dev/null; then
             echo "::notice::cirrocast $version is already on crates.io; nothing to publish"
             exit 0
           fi
           cargo publish --locked
+
+  # Manual (`workflow_dispatch`) only: proves the crates.io trusted-publisher record matches this
+  # repository, workflow file and environment, without cutting a release. A mismatch makes the
+  # exchange step fail, which is the point — the next real tag then cannot fail for that reason.
+  verify:
+    name: verify trusted publishing
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-26.04
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: exchange the workflow identity for a temporary crates.io token
+        id: auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+
+      - name: the exchange produced a token
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -eu
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::crates.io returned no token; check the crate's trusted-publisher record"
+            exit 1
+          fi
+          echo "::notice::crates.io issued a temporary token for this workflow; the trusted-publisher record matches"

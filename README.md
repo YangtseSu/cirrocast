@@ -620,14 +620,19 @@ Checklist, executed 2026-10-01 before the first release:
 * `Cargo.lock` is committed, because every release path builds with `--locked`.
 
 `cirrocast 1.0.0` was published on 2026-10-02 with `cargo publish --locked` from the tagged tree
-(the `v1.0.0` release workflow's `publish` job had skipped with its explicit notice, because the
-`crates-io` environment has no `CARGO_REGISTRY_TOKEN` yet — the token lives in the maintainer's
-`~/.cargo/credentials.toml`). The registry then reports `1.0.0` as the newest version.
+(the `v1.0.0` release workflow's `publish` job had skipped with its notice, because that was before
+the crate moved to trusted publishing). The crate's crates.io settings now enable **"Require trusted
+publishing for all new versions"**, so token-based publishing is refused from here on.
 
-To let the release workflow publish: Settings → Environments → `crates-io`, add required reviewers,
-and store `CARGO_REGISTRY_TOKEN` there as an environment secret. Until the token exists the job
-skips with a notice, so a tag cut before the secret is configured is a green run with an explicit
-note; a version that is already on crates.io is skipped the same way.
+Since 2026-10-02 the release workflow publishes with **crates.io trusted publishing** (OIDC): no
+token is stored in GitHub. The `publish` job runs inside the `crates-io` environment with
+`id-token: write` and exchanges the workflow's OIDC identity for a short-lived crates.io token via
+[`rust-lang/crates-io-auth-action`](https://github.com/rust-lang/crates-io-auth-action), pinned by
+commit SHA in `.github/workflows/release.yml`. The crate's trusted-publisher record names three
+things — the repository (`YangtseSu/cirrocast`), the workflow file (`release.yml`) and the
+environment (`crates-io`) — and the exchange fails if any of them changes. `gh workflow run
+release.yml` executes only the `verify` job, which proves that record matches without cutting a
+release; a version that is already on crates.io is skipped by the publish job's own check.
 
 ## Development and CI
 
