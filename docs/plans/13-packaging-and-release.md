@@ -330,3 +330,10 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   the point. A `verify` job, reachable only through `workflow_dispatch`, proves the record matches the
   repository/workflow/environment without cutting a release. The deliverable, pre-tag-checklist and risk wording
   above were corrected in the same commit, and README.md#publishing documents the new setup.
+- 2026-10-02 — the exchange was proved before any release depends on it: `gh workflow run release.yml --ref main`
+  (run 36944713379, the `verify` job only — build/release/publish skip on a dispatch). The log shows
+  `Requesting token from: https://crates.io/api/v1/trusted_publishing/tokens` → `Retrieved token successfully` →
+  `##[notice]crates.io issued a temporary token for this workflow; the trusted-publisher record matches`, and the
+  action's post step `Token revoked successfully`. The next tag therefore publishes without a stored secret; the
+  only way it can fail is a change to the repository name, the workflow file name or the `crates-io` environment
+  without updating the crate's trusted-publisher record.
