@@ -130,6 +130,31 @@ fn a_future_envelope_version_is_a_miss_and_a_corrupt_entry_self_heals() {
 }
 
 #[test]
+#[cfg(unix)]
+fn a_failed_cache_write_does_not_discard_the_fetched_answer() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let clock = clock();
+    let (cache, directory) = cache(CacheMode::Normal, &clock);
+    std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o555))
+        .expect("the cache root is made read-only");
+
+    let value: serde_json::Value = cache
+        .read_or_fetch_json(
+            &key(),
+            Duration::from_secs(600),
+            "test",
+            "the test key",
+            || Ok((200, "{\"results\":[\"served\"]}".to_owned())),
+        )
+        .expect("a cache write failure must not throw the answer away");
+    assert_eq!(value["results"][0], "served");
+
+    std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o755))
+        .expect("the cache root is writable again for cleanup");
+}
+
+#[test]
 fn no_cache_reads_and_writes_nothing() {
     let clock = clock();
     let (cache, directory) = cache(CacheMode::NoCache, &clock);

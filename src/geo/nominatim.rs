@@ -6,7 +6,9 @@
 //! Nominatim is a donated service with a usage policy, so this client does three things the other
 //! geocoders here do not have to: it identifies itself with [`UA`] on every request, it never
 //! sends more than one request per second (shared across processes through a timestamp under the
-//! cache root), and it caches every response — a cache hit neither throttles nor sleeps.
+//! cache root), and it caches every response — a cache hit neither throttles nor sleeps. Each
+//! outbound request goes out exactly once (`HttpClient::send_once`): the shared retry loop would
+//! space two attempts 500 ms apart, inside the interval the policy reserves.
 //!
 //! The throttle reads and writes `ratelimit/nominatim.json` through [`Cache::read_state`] and
 //! [`Cache::write_state`], so the state travels with the cache instead of a second private
@@ -97,11 +99,13 @@ impl<'a> Nominatim<'a> {
         CacheKey::hash("geocode", &format!("nominatim|{base_url}|{query}|{limit}"))
     }
 
-    /// Fetches the raw body: wait out the rate limit first, then send. The throttle is reached
-    /// only from here, which is what keeps the cache path silent.
+    /// Fetches the raw body: wait out the rate limit first, then send exactly once. The throttle
+    /// is reached only from here, which is what keeps the cache path silent, and the request goes
+    /// out through [`HttpClient::send_once`] so no retry can breach the 1 req/s interval that
+    /// [`Self::throttle`] stamped.
     fn fetch(&self, query: &str, limit: u8) -> Result<(u16, String)> {
         self.throttle()?;
-        let response = self.http.send(&self.request(query, limit))?;
+        let response = self.http.send_once(&self.request(query, limit))?;
         Ok((response.status(), response.body().to_owned()))
     }
 

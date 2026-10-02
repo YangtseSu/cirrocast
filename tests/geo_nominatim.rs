@@ -214,6 +214,28 @@ fn a_second_request_waits_out_the_one_request_per_second_policy() {
 }
 
 #[test]
+fn a_retryable_status_is_not_retried_against_the_throttle() {
+    // The shared client would retry a 500 after 500 ms, inside the one-second window the throttle
+    // promises; the geocoder sends each request exactly once.
+    let harness = Harness::new(vec![StubReply::ok(500, "upstream exploded"), tsinghua()]);
+    let error = harness
+        .geocoder()
+        .search("Tsinghua", 10)
+        .expect_err("a 500 is reported, not retried");
+    assert!(error.to_string().contains("upstream exploded"), "{error}");
+    assert_eq!(
+        harness.transport.calls().len(),
+        1,
+        "a retry would breach the one-request-per-second policy"
+    );
+    assert_eq!(
+        harness.clock.sleeps(),
+        Vec::<Duration>::new(),
+        "no backoff wait either: the throttle sleep is the only one"
+    );
+}
+
+#[test]
 fn a_cached_response_is_served_without_throttling() {
     let harness = Harness::new(vec![tsinghua()]);
     let geocoder = harness.geocoder();

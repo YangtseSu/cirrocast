@@ -269,16 +269,22 @@ impl HttpRequest {
 
     /// Replaces each recorded secret with [`REDACTED`], longest first so overlapping values cannot
     /// leave a tail behind.
+    ///
+    /// Both the raw spelling and the percent-encoded one are replaced: a credential that reaches
+    /// the wire inside a query string is spelled encoded in every URL this module prints, and a
+    /// secret containing `+`, `@` or any other character outside the RFC 3986 unreserved set would
+    /// otherwise survive redaction.
     fn redact(&self, text: &str) -> String {
-        let mut secrets: Vec<&str> = self
+        let mut secrets: Vec<String> = self
             .secrets
             .iter()
-            .map(String::as_str)
             .filter(|value| !value.is_empty())
+            .flat_map(|value| [value.clone(), encode(value)])
             .collect();
         secrets.sort_by_key(|value| std::cmp::Reverse(value.len()));
+        secrets.dedup();
         secrets.into_iter().fold(text.to_owned(), |text, secret| {
-            text.replace(secret, REDACTED)
+            text.replace(&secret, REDACTED)
         })
     }
 
@@ -689,8 +695,27 @@ impl HttpClient {
                     self.clock.sleep(delay);
                     attempt += 1;
                 }
-                Err(error) => return Err(network_error(request, attempt, &error)),
+                Err(error) => return Err(network_error(request, Some(attempt), &error)),
             }
+        }
+    }
+
+    /// Sends `request` exactly once: no retry, no backoff wait.
+    ///
+    /// The Nominatim client uses this because its one-request-per-second throttle is taken once
+    /// per call, and the retry loop inside [`HttpClient::send`] would put two requests on the wire
+    /// 500 ms apart — below the interval the service's usage policy allows. Status handling is the
+    /// same as `send`'s last attempt.
+    pub fn send_once(&self, request: &HttpRequest) -> Result<HttpResponse> {
+        match self.transport.execute(request) {
+            Ok(response) => {
+                if (200..300).contains(&response.status()) {
+                    Ok(response)
+                } else {
+                    Err(upstream_error(&response))
+                }
+            }
+            Err(error) => Err(network_error(request, None, &error)),
         }
     }
 
@@ -715,17 +740,16 @@ impl HttpClient {
     }
 }
 
-/// Maps an exhausted transport failure: retryable ones name the attempt count, permanent ones do
-/// not.
-fn network_error(request: &HttpRequest, attempts: u32, error: &TransportError) -> Error {
+/// Maps an exhausted transport failure: retryable ones name the attempt count when there was more
+/// than one attempt, permanent ones and single attempts do not.
+fn network_error(request: &HttpRequest, attempts: Option<u32>, error: &TransportError) -> Error {
     let method = request.method().as_str();
     let url = request.redacted_url();
-    if error.is_retryable() {
-        Error::Network(format!(
+    match (error.is_retryable(), attempts) {
+        (true, Some(attempts)) => Error::Network(format!(
             "{method} {url} failed after {attempts} attempts: {error}"
-        ))
-    } else {
-        Error::Network(format!("{method} {url} failed: {error}"))
+        )),
+        _ => Error::Network(format!("{method} {url} failed: {error}")),
     }
 }
 
@@ -741,6 +765,10 @@ fn backoff(attempt: u32) -> Duration {
 
 /// The upstream's own words when it sends an error envelope, the body's first 200 characters
 /// otherwise.
+///
+/// Both paths are bounded: an upstream is free to answer a 401 with a `reason` field that fills
+/// the whole [`MAX_BODY_BYTES`] budget, and that text ends up in an [`Error::Upstream`] message
+/// (and, for a fallback chain, in every attempt row of the [`Error::Chain`] report).
 fn error_message(body: &str) -> String {
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
         let field = |name: &str| {
@@ -751,15 +779,20 @@ fn error_message(body: &str) -> String {
                 .filter(|text| !text.is_empty())
         };
         if let Some(reason) = field("reason") {
-            return reason.to_owned();
+            return first_200(reason);
         }
         if value.get("error").and_then(serde_json::Value::as_bool) == Some(true)
             && let Some(message) = field("message")
         {
-            return message.to_owned();
+            return first_200(message);
         }
     }
-    body.chars().take(200).collect()
+    first_200(body)
+}
+
+/// The first 200 characters of `text`.
+fn first_200(text: &str) -> String {
+    text.chars().take(200).collect()
 }
 
 /// A non-2xx response the client is not going to retry.
@@ -886,6 +919,32 @@ mod tests {
             request.redacted_url(),
             "https://api.example.invalid/v1/forecast?key=***"
         );
+    }
+
+    #[test]
+    fn a_secret_outside_the_unreserved_set_is_redacted_encoded_too() {
+        // The wire spelling of a query value is percent-encoded; a key with `+` or `/` would slip
+        // past a redaction that only looked for the raw text.
+        let secret = "abc+def/SECRET=123";
+        let request = HttpRequest::get("https://api.example.invalid/v1/forecast")
+            .query("key", secret)
+            .secret(secret);
+
+        let printed = request.redacted_url();
+        assert!(!printed.contains(secret), "{printed}");
+        assert!(!printed.contains("abc%2Bdef%2FSECRET%3D123"), "{printed}");
+        assert!(printed.contains("key=***"), "{printed}");
+        assert!(
+            !request.redacted_normalized().contains(secret),
+            "the cache-envelope spelling must be redacted too"
+        );
+    }
+
+    #[test]
+    fn a_json_error_reason_is_bounded_like_a_raw_body() {
+        let reason = "x".repeat(9_000);
+        let body = format!(r#"{{"error":true,"reason":"{reason}"}}"#);
+        assert_eq!(error_message(&body).chars().count(), 200);
     }
 
     #[test]

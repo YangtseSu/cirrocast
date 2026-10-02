@@ -519,7 +519,15 @@ impl Cache {
         }
 
         let (status, body) = fetch()?;
-        self.write(key, status, &body, ttl)?;
+        // The fetch succeeded; a cache write that fails (read-only or full cache directory,
+        // permissions) must not throw the answer away. The cache is an optimisation, so its
+        // failure is logged and the parsed value returned anyway.
+        if let Err(error) = self.write(key, status, &body, ttl) {
+            self.log(&format!(
+                "{}: cache write failed ({error}); serving the fetched body",
+                key.path().display()
+            ));
+        }
         serde_json::from_str(&body).map_err(|error| Error::Upstream {
             provider: provider.to_owned(),
             status: Some(status),
