@@ -440,3 +440,8 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   delay plus the cache decisions — in `src/cli.rs`'s `--verbose` doc comment (and therefore the man page) and
   in the deliverable line above. The historical log line below the split's own entry is left as written; this
   entry is the correction.
+- 2026-10-02 — the `audit` job's action pin moved from `rustsec/audit-check` v2.0.0 to the `main` commit
+  "Update to use Node 24 (#48)" (`858dc40f`, 2026-03-20): GitHub now runs Node 20 actions on Node 24 and
+  annotates every run with a deprecation warning, and the newest *release* still declares `node20`. The commit
+  changes only `runs.using` (plus changelog and package metadata), so the pin is safe; the comment above the
+  `uses:` line says to switch back to a tag once a release carries the fix.
