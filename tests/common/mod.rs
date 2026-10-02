@@ -39,8 +39,9 @@ const OVERRIDE_VARS: [&str; 9] = [
     "CIRROCAST_IP_SERVICE",
 ];
 
-/// A throwaway XDG environment: config, cache and data all point into a temporary directory, and
-/// the system wide config path points at an empty sibling.
+/// A throwaway XDG environment: config, cache and data all point into a temporary directory, the
+/// system wide config path points at an empty sibling, and `HOME` points at the tree root as well
+/// so a stray write to `~/.config`, `~/.cache` or `~/.local/share` cannot escape the sandbox.
 pub struct Sandbox {
     home: tempfile::TempDir,
 }
@@ -88,6 +89,7 @@ impl Sandbox {
     pub fn cirrocast(&self) -> Command {
         let mut command = Command::cargo_bin("cirrocast").expect("the binary is built by cargo");
         command
+            .env("HOME", self.home.path())
             .env("XDG_CONFIG_HOME", self.home.path().join("config"))
             .env("XDG_CONFIG_DIRS", self.home.path().join("system"))
             .env("XDG_CACHE_HOME", self.home.path().join("cache"))

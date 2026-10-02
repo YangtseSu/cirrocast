@@ -14,7 +14,7 @@
 mod common;
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use chrono_tz::Tz;
@@ -237,8 +237,9 @@ fn qweather_renders_from_the_recorded_payloads() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
     seed_keys(&sandbox);
-    // The account host comes from the configuration; the test uses a placeholder.
-    sandbox.write_config("[providers.qweather]\nhost = \"https://example.qweatherapi.com\"\n");
+    // The account host comes from the configuration; the shape has to be the documented
+    // `<account>.re.qweatherapi.com`, so the placeholder account is `example`.
+    sandbox.write_config("[providers.qweather]\nhost = \"https://example.re.qweatherapi.com\"\n");
     let date = today();
     seed(
         &sandbox,
@@ -308,11 +309,36 @@ fn no_run_output_or_cache_entry_carries_the_api_key() {
     }
 }
 
-/// The fixtures must not carry any of the recorded API keys.
+/// The key-shaped names a recorded payload would carry if a key was ever committed, matched
+/// case-insensitively.
+const KEY_NAMES: [&str; 5] = ["api_key", "apikey", "appid", "access_key", "token"];
+
+/// The shortest value that reads as a secret rather than a placeholder or a sentence fragment.
+const MIN_SECRET_LEN: usize = 16;
+
+/// The fixtures must not carry any recorded API key.
+///
+/// Two independent passes, so the test asserts a real property on CI, where the developer's
+/// `~/.config/cirrocast/keys.toml` does not exist:
+///
+/// 1. every fixture is scanned for a key-shaped assignment (`api_key`, `apikey`, `appid`,
+///    `access_key`, `token`) followed by a long alphanumeric value — machine-independent, and it
+///    names the offending file when it fires;
+/// 2. when the developer's `keys.toml` exists, its values must not appear in any fixture either,
+///    catching a recording made from a live authenticated session.
 #[test]
 fn no_fixture_carries_an_api_key() {
-    let keys = std::env::var("HOME")
-        .map(|home| std::path::PathBuf::from(home).join(".config/cirrocast/keys.toml"));
+    let (scanned, found) = scan_for_key_shaped_assignments(Path::new("tests/fixtures"));
+    assert!(scanned > 0, "no fixtures were scanned");
+    if let Some((path, value)) = found {
+        panic!(
+            "{} carries a key-shaped assignment: {value}",
+            path.display()
+        );
+    }
+
+    let keys =
+        std::env::var("HOME").map(|home| PathBuf::from(home).join(".config/cirrocast/keys.toml"));
     let Ok(path) = keys else {
         return;
     };
@@ -328,6 +354,64 @@ fn no_fixture_carries_an_api_key() {
     assert_ne!(secrets, Vec::<&str>::new(), "no keys to scan for");
 
     scan(Path::new("tests/fixtures"), &secrets);
+}
+
+/// Walks `directory`, returning how many files were read and the first key-shaped assignment found.
+fn scan_for_key_shaped_assignments(directory: &Path) -> (usize, Option<(PathBuf, String)>) {
+    let mut scanned = 0usize;
+    let mut found = None;
+    for entry in fs::read_dir(directory).expect("the fixtures are readable") {
+        let path = entry.expect("a directory entry").path();
+        if path.is_dir() {
+            let (nested_scanned, nested_found) = scan_for_key_shaped_assignments(&path);
+            scanned += nested_scanned;
+            found = found.or(nested_found);
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        scanned += 1;
+        found = found.or_else(|| key_shaped_assignment(&text).map(|value| (path, value)));
+    }
+    (scanned, found)
+}
+
+/// The first `<key name>`-then-`<long alphanumeric value>` shape in `text`, if any.
+///
+/// The name match is case-insensitive and the value has to be at least [`MIN_SECRET_LEN`]
+/// characters of `[A-Za-z0-9]`, so ordinary prose that merely mentions a token is not a hit.
+fn key_shaped_assignment(text: &str) -> Option<String> {
+    // ASCII-lowercasing preserves byte offsets, so the offsets index `text` unchanged.
+    let lower = text.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    for name in KEY_NAMES {
+        let mut from = 0;
+        while let Some(offset) = lower[from..].find(name) {
+            let after = from + offset + name.len();
+            // Skip the `": "` / `= ` punctuation between a name and its value, but not far: a
+            // value on the next line is still the same logical assignment.
+            let mut index = after;
+            while index < bytes.len()
+                && index < after + 12
+                && matches!(
+                    bytes[index],
+                    b' ' | b'\t' | b'\n' | b'\r' | b'"' | b'\'' | b':' | b'=' | b','
+                )
+            {
+                index += 1;
+            }
+            let value_start = index;
+            while index < bytes.len() && bytes[index].is_ascii_alphanumeric() {
+                index += 1;
+            }
+            if index - value_start >= MIN_SECRET_LEN {
+                return Some(text[value_start..index].to_owned());
+            }
+            from = after;
+        }
+    }
+    None
 }
 
 /// Walks `directory`, asserting no file contains any of `secrets`.

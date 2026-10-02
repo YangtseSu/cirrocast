@@ -4,10 +4,12 @@
 //! The `CIRROCAST_FORBID_NETWORK` guard, proved from the outside.
 //!
 //! `src/http.rs` reads the variable once and refuses every non-loopback request before DNS or
-//! connect. The first test exercises that refusal against a real upstream host (there is no stub a
-//! separate process could be pointed at), so a silently broken guard cannot pass on a machine with
-//! network; the second runs the CLI in a network namespace without external connectivity, so a
-//! guarded `--offline` run is proven not to need DNS or a socket at all.
+//! connect. Two tests cover it. The first drives that refusal against a real upstream host, the
+//! only way to prove the guard fires before the socket — but a broken guard would then open a
+//! connection on a networked machine, which AGENTS.md forbids, so it is a live test: `#[ignore]`d
+//! and gated on `CIRROCAST_LIVE_TESTS=1`, like `tests/live.rs`. The second runs the CLI in a
+//! network namespace without external connectivity and is the non-ignored proof: a guarded run
+//! needs neither DNS nor a socket at all.
 
 mod common;
 
@@ -39,8 +41,24 @@ fn seed(sandbox: &Sandbox, key: &CacheKey, body: &str) {
     .expect("the entry is written");
 }
 
+/// Whether the live tests are enabled on this machine.
+///
+/// Same gate as `tests/live.rs`: the ignored test below may only open a socket when the variable
+/// is set, so a bare `cargo test -- --ignored` still cannot reach the network by accident.
+fn live_tests_enabled() -> bool {
+    if std::env::var("CIRROCAST_LIVE_TESTS").is_ok() {
+        return true;
+    }
+    eprintln!("skipping: set CIRROCAST_LIVE_TESTS=1 to run the live tests");
+    false
+}
+
 #[test]
+#[ignore = "live network: set CIRROCAST_LIVE_TESTS=1 and run with --ignored"]
 fn a_cold_cache_request_is_refused_before_it_reaches_the_network() {
+    if !live_tests_enabled() {
+        return;
+    }
     let sandbox = Sandbox::new();
     let assert = sandbox
         .cirrocast()
@@ -101,6 +119,7 @@ fn a_guarded_offline_run_works_without_any_external_network() {
     let output = Command::new("unshare")
         .args(["-rn", BINARY, "--offline", "Beijing", "-f", "plain"])
         .env("CIRROCAST_FORBID_NETWORK", "1")
+        .env("HOME", sandbox.home())
         .env("XDG_CONFIG_HOME", sandbox.home().join("config"))
         .env("XDG_CONFIG_DIRS", sandbox.home().join("system"))
         .env("XDG_CACHE_HOME", sandbox.home().join("cache"))
