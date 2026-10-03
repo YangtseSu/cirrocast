@@ -13,7 +13,65 @@ records how each of them changes and which changes are breaking.
 
 ## [Unreleased]
 
-Nothing yet.
+The fixes from the 2026-10-02 full-project review
+([`docs/reviews/02-review-01-fixes-2026-10-02.md`](docs/reviews/02-review-01-fixes-2026-10-02.md)),
+landed after the `v1.0.0` tag.
+
+### Changed
+
+* `network.proxy` accepts only `http://` and `https://` URLs. A SOCKS URL is refused by the config
+  validator, naming the key, instead of reaching `ureq` — which is built without a SOCKS connector and
+  panicked on a hand-written setting.
+* `providers.qweather.host` must be the account's HTTPS host, `https://<account-id>.re.qweatherapi.com`.
+  A legacy shared host or a plain-`http://` value now fails validation on every run: the legacy hosts
+  answer `403 Invalid Host`, and cleartext would leak the key.
+* `config show` prints the values `config get` reports, `CIRROCAST_*` overrides included, and exits 4
+  when an override is invalid; it previously ignored the environment.
+* `config edit` rejects unknown keys like `config validate`; `config set` validates only the key it
+  writes, so an unrelated invalid value no longer blocks it.
+* `config init`, and `config edit` on a missing file, seed the new file with the *effective*
+  configuration when a system document is shadowed (that one case writes canonical TOML without the
+  commented template; with no other source the template is unchanged).
+* A whitespace-only `CIRROCAST_*` override counts as unset, like a whitespace-only config value.
+* `--lang` accepts POSIX spellings (`zh_CN.UTF-8` → `zh-CN`), and `en-*`/`zh-*` tags resolve through
+  their family chain (`en-GB → en-US`) without the fallback warning.
+* `art-table`: the `dumb`/ASCII arrows are `,` (SW) and `` ` `` (NW) — the previous keypad digits read
+  as part of the speed — and the arrow sector follows the 16-point compass, so arrow and label always
+  turn together.
+* `art-table` at 20–36 columns: the stacked ladder's rungs keep the precipitation and wind fields
+  instead of silently dropping them (at ≥37 columns the output is unchanged).
+* `-f dumb` is always plain, escapes included: `--color always` no longer paints the ASCII table.
+* `-f one-line`: `%w` prints the speed alone when the direction is absent, instead of `n/a`.
+* `-f json`: `-0.0` is written as `0.0`, like every other display path.
+* `-v`: the missing-key dump runs after the forecast and reports each missing key once per run; `-vv`
+  request logs redact secrets in their percent-encoded spelling too.
+* Messages: an unknown location no longer promises a candidate list it does not print, an unknown
+  station points at `@lat,lon`, `--lat/--lon` report the command-line source, and the help epilogue
+  spells the precedence as `LOCATION CIRROCAST_LOCATION`.
+
+### Fixed
+
+* A reading that is `NaN` or `inf` is refused with `Error::Upstream` in `Provider::fetch` — the one
+  path every backend's answer takes — before it can be cached or rendered.
+* QWeather: precipitation probability is read as the percent upstream sends (a `40` came out as `100%`
+  through the fraction helper), and code 515 maps to WMO 56 (freezing drizzle), not a fog variant.
+* Open-Meteo: an absent or truncated `precipitation_probability` array means "no probability", not an
+  upstream error.
+* Pirate Weather: `-999` sentinels in humidity, cloud cover and probability are missing values, not
+  readings.
+* WorldWeatherOnline: the `{"data":{"error":[…]}}` envelope is an upstream error carrying the message,
+  not a decode failure.
+* METAR: an unmapped obscuration falls back to the sky condition, `IC` maps to WMO 79 (ice pellets,
+  the nearest described family) instead of failing, and conversions keep the exact value rather than a
+  pre-rounded one.
+* A value just below a `.5` tie no longer rounds to the wrong side (`fmt_int` on large readings,
+  `fmt_small` on a negative reading).
+* An extreme timestamp in an upstream payload produces a typed error instead of overflowing.
+* A failed cache write logs at `-vv` and still serves the fetched answer.
+* Nominatim requests are sent once, without retry, so its 1 req/s policy is never breached by backoff.
+* A non-absolute `XDG_CONFIG_DIRS` entry is ignored instead of read.
+* A `days` array whose parts are not exactly `[Morning, Noon, Evening, Night]` is rejected at
+  deserialisation, so no renderer can show a part under another part's label.
 
 ## [1.0.0] - 2026-10-02
 
