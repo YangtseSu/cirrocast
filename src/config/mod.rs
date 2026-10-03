@@ -70,6 +70,10 @@ const RETRIES_RANGE: (u32, u32) = (0, 10);
 /// Allowed values of `render.width` besides `0` ("detect").
 const WIDTH_RANGE: (u32, u32) = (40, 500);
 
+/// Allowed values of `[alerts] severity_threshold`; mirrors `model::alert::Severity::ALL`, and a
+/// unit test keeps the two in step.
+pub const SEVERITY_LEVELS: &[&str] = &["unknown", "minor", "moderate", "severe", "extreme"];
+
 /// The configuration document, matching the contract's TOML schema exactly.
 ///
 /// Every table and field is optional on input: anything absent falls back to [`Config::default`],
@@ -92,6 +96,8 @@ pub struct Config {
     pub cache: CacheConfig,
     /// Output rendering.
     pub render: RenderConfig,
+    /// Severe-weather alert fetching.
+    pub alerts: AlertsConfig,
     /// Per-provider settings.
     pub providers: Providers,
 }
@@ -185,6 +191,22 @@ pub struct RenderConfig {
     pub width: usize,
 }
 
+/// `[alerts]` — the severe-weather warning sources.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AlertsConfig {
+    /// Whether alerts are fetched when `--alerts` is not given.
+    pub enabled: bool,
+    /// The lowest severity shown; alerts below it are dropped before rendering.
+    pub severity_threshold: String,
+    /// `["auto"]` (coverage-selected) or an explicit list of source ids.
+    pub sources: Vec<String>,
+    /// Base URL of the FOSS Public Alert Server; empty = the public `https://alerts.kde.org`.
+    pub fpas_url: String,
+    /// TTL of cached alert responses, in seconds.
+    pub cache_ttl_secs: u32,
+}
+
 /// `[providers]`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -222,6 +244,7 @@ impl Default for Config {
             network: Network::default(),
             cache: CacheConfig::default(),
             render: RenderConfig::default(),
+            alerts: AlertsConfig::default(),
             providers: Providers::default(),
         }
     }
@@ -266,6 +289,18 @@ impl Default for RenderConfig {
         Self {
             color: "auto".to_owned(),
             width: 0,
+        }
+    }
+}
+
+impl Default for AlertsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            severity_threshold: "minor".to_owned(),
+            sources: vec!["auto".to_owned()],
+            fpas_url: String::new(),
+            cache_ttl_secs: 300,
         }
     }
 }
@@ -430,6 +465,7 @@ impl Config {
         self.validate_network()?;
         self.validate_cache()?;
         self.validate_render()?;
+        self.validate_alerts()?;
         self.validate_providers()
     }
 
@@ -610,6 +646,31 @@ impl Config {
         self.validate_qweather_host()
     }
 
+    /// Every `[alerts]` value must be usable before a run starts: an unknown source id or a bogus
+    /// instance URL is a configuration mistake, and finding it at startup beats finding it after
+    /// the forecast was fetched.
+    fn validate_alerts(&self) -> Result<()> {
+        check_enum(
+            "alerts.severity_threshold",
+            &self.alerts.severity_threshold,
+            SEVERITY_LEVELS,
+        )?;
+        check_alert_sources("alerts.sources", &self.alerts.sources)?;
+        self.validate_fpas_url()?;
+        check_positive("alerts.cache_ttl_secs", self.alerts.cache_ttl_secs)
+    }
+
+    /// `alerts.fpas_url` must be empty or an http(s) base URL, like `network.nominatim_url`.
+    fn validate_fpas_url(&self) -> Result<()> {
+        if !is_service_url(&self.alerts.fpas_url) {
+            return Err(Error::Config(format!(
+                "alerts.fpas_url: `{}` is not an http(s) base URL",
+                self.alerts.fpas_url
+            )));
+        }
+        Ok(())
+    }
+
     fn validate_metar_station(&self) -> Result<()> {
         let station = self.providers.metar.station.trim();
         if !station.is_empty() && !crate::provider::metar::is_icao_station(station) {
@@ -713,6 +774,30 @@ fn check_provider_chain(key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+/// `auto` or a list of known alert source ids, for `alerts.sources`.
+fn check_alert_sources(key: &str, sources: &[String]) -> Result<()> {
+    if sources.is_empty() {
+        return Err(Error::Config(format!(
+            "{key}: name at least one source, or `auto`"
+        )));
+    }
+    for source in sources {
+        let token = source.trim();
+        if token.eq_ignore_ascii_case("auto") {
+            continue;
+        }
+        token.parse::<crate::model::AlertSource>().map_err(|_| {
+            Error::Config(format!(
+                "{key}: unknown alert source `{token}`; use `auto` or ids from: {}",
+                crate::model::AlertSource::ALL
+                    .map(crate::model::AlertSource::as_str)
+                    .join(", ")
+            ))
+        })?;
+    }
+    Ok(())
+}
+
 /// `auto` or a BCP-47 shaped language tag (`en`, `en-US`, `zh-Hant-CN`).
 fn check_language(key: &str, value: &str) -> Result<()> {
     if is_language_tag(value) {
@@ -797,6 +882,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "network",
             "cache",
             "render",
+            "alerts",
             "providers",
         ],
         "defaults" => &["provider", "format", "units", "days", "language"],
@@ -810,6 +896,13 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "geocode_ttl_secs",
         ],
         "render" => &["color", "width"],
+        "alerts" => &[
+            "enabled",
+            "severity_threshold",
+            "sources",
+            "fpas_url",
+            "cache_ttl_secs",
+        ],
         "providers" => &["metar", "qweather"],
         "providers.metar" => &["station"],
         "providers.qweather" => &["host"],
@@ -1025,6 +1118,14 @@ geocode_ttl_secs = 2592000   # 30 days
 color = "auto"           # auto | always | never
 width = 0                # 0 = detect from the terminal, or 40..=500 columns
 
+[alerts]
+enabled = true                # fetch warnings automatically when a source covers the location
+severity_threshold = "minor"  # unknown | minor | moderate | severe | extreme
+sources = ["auto"]            # ["auto"] (coverage-selected) or ids: nws, meteoalarm, qweather,
+                              # hko, wmoswic, fpas, visualcrossing
+fpas_url = ""                 # FOSS Public Alert Server base URL; empty = https://alerts.kde.org
+cache_ttl_secs = 300          # 5 minutes
+
 [providers.metar]
 station = ""             # default ICAO identifier, e.g. "ZBAA"
 
@@ -1230,6 +1331,36 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "alerts.enabled",
+        kind: KeyKind::Bool,
+        doc: "fetch alerts automatically",
+        env: None,
+    },
+    KeySpec {
+        name: "alerts.severity_threshold",
+        kind: KeyKind::Enum(SEVERITY_LEVELS),
+        doc: "lowest severity shown",
+        env: None,
+    },
+    KeySpec {
+        name: "alerts.sources",
+        kind: KeyKind::Str,
+        doc: "comma separated source ids or auto",
+        env: None,
+    },
+    KeySpec {
+        name: "alerts.fpas_url",
+        kind: KeyKind::Str,
+        doc: "FOSS Public Alert Server URL; empty = the public instance",
+        env: None,
+    },
+    KeySpec {
+        name: "alerts.cache_ttl_secs",
+        kind: KeyKind::U32,
+        doc: "alert cache TTL in seconds",
+        env: None,
+    },
+    KeySpec {
         name: "providers.metar.station",
         kind: KeyKind::Str,
         doc: "default ICAO station",
@@ -1297,6 +1428,11 @@ impl Config {
             "cache.geocode_ttl_secs" => self.cache.geocode_ttl_secs.to_string(),
             "render.color" => self.render.color.clone(),
             "render.width" => self.render.width.to_string(),
+            "alerts.enabled" => self.alerts.enabled.to_string(),
+            "alerts.severity_threshold" => self.alerts.severity_threshold.clone(),
+            "alerts.sources" => self.alerts.sources.join(","),
+            "alerts.fpas_url" => self.alerts.fpas_url.clone(),
+            "alerts.cache_ttl_secs" => self.alerts.cache_ttl_secs.to_string(),
             "providers.metar.station" => self.providers.metar.station.clone(),
             "providers.qweather.host" => self.providers.qweather.host.clone(),
             _ => return Err(Error::Usage(unknown_key_message(spec.name))),
@@ -1355,6 +1491,23 @@ impl Config {
                 self.render.color = value;
             }
             "render.width" => self.render.width = width_value(spec.name, &value)?,
+            "alerts.enabled" => self.alerts.enabled = bool_value(spec.name, &value)?,
+            "alerts.severity_threshold" => {
+                check_enum(spec.name, &value, SEVERITY_LEVELS)?;
+                self.alerts.severity_threshold = value;
+            }
+            "alerts.sources" => {
+                self.alerts.sources = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|entry| !entry.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+            }
+            "alerts.fpas_url" => self.alerts.fpas_url = value,
+            "alerts.cache_ttl_secs" => {
+                self.alerts.cache_ttl_secs = u32_value(spec.name, &value)?;
+            }
             "providers.metar.station" => self.providers.metar.station = value,
             "providers.qweather.host" => self.providers.qweather.host = value,
             _ => return Err(Error::Usage(unknown_key_message(spec.name))),
@@ -1393,6 +1546,12 @@ impl Config {
             "cache.geocode_ttl_secs" => check_positive(key, self.cache.geocode_ttl_secs),
             "render.color" => check_enum(key, &self.render.color, COLOR_MODES),
             "render.width" => self.validate_render(),
+            "alerts.severity_threshold" => {
+                check_enum(key, &self.alerts.severity_threshold, SEVERITY_LEVELS)
+            }
+            "alerts.sources" => check_alert_sources(key, &self.alerts.sources),
+            "alerts.fpas_url" => self.validate_fpas_url(),
+            "alerts.cache_ttl_secs" => check_positive(key, self.alerts.cache_ttl_secs),
             "providers.metar.station" => self.validate_metar_station(),
             "providers.qweather.host" => self.validate_qweather_host(),
             _ => Ok(()),
@@ -1617,8 +1776,22 @@ mod tests {
         assert_eq!(config.cache.geocode_ttl_secs, 2_592_000);
         assert_eq!(config.render.color, "auto");
         assert_eq!(config.render.width, 0);
+        assert!(config.alerts.enabled);
+        assert_eq!(config.alerts.severity_threshold, "minor");
+        assert_eq!(config.alerts.sources, ["auto"]);
+        assert_eq!(config.alerts.fpas_url, "");
+        assert_eq!(config.alerts.cache_ttl_secs, 300);
         assert_eq!(config.providers.metar.station, "");
         assert_eq!(config.providers.qweather.host, "");
+    }
+
+    #[test]
+    fn the_severity_level_list_mirrors_the_model() {
+        let model: Vec<&str> = crate::model::Severity::ALL
+            .into_iter()
+            .map(crate::model::Severity::as_str)
+            .collect();
+        assert_eq!(super::SEVERITY_LEVELS, model.as_slice());
     }
 
     #[test]
@@ -1819,7 +1992,38 @@ mod tests {
         config.render.color = "never".to_owned();
         config.providers.metar.station = "ZBAA".to_owned();
         config.providers.qweather.host = "https://abc123.re.qweatherapi.com".to_owned();
+        config.alerts.enabled = false;
+        config.alerts.severity_threshold = "severe".to_owned();
+        config.alerts.sources = vec!["nws".to_owned(), "fpas".to_owned()];
+        config.alerts.fpas_url = "https://alerts.example.org".to_owned();
+        config.alerts.cache_ttl_secs = 60;
         config.validate().expect("every value is in range");
+    }
+
+    #[test]
+    fn alert_settings_reject_unknown_sources_and_bad_urls() {
+        let mut config = Config::default();
+        config.alerts.sources = vec!["acme".to_owned()];
+        let error = config.validate().unwrap_err();
+        assert!(
+            error.to_string().contains("unknown alert source `acme`"),
+            "{error}"
+        );
+
+        let mut config = Config::default();
+        config.alerts.sources = Vec::new();
+        let error = config.validate().unwrap_err();
+        assert!(error.to_string().contains("at least one source"), "{error}");
+
+        let mut config = Config::default();
+        config.alerts.fpas_url = "ftp://example.org".to_owned();
+        let error = config.validate().unwrap_err();
+        assert!(error.to_string().contains("alerts.fpas_url"), "{error}");
+
+        let mut config = Config::default();
+        config.alerts.severity_threshold = "catastrophic".to_owned();
+        let error = config.validate().unwrap_err();
+        assert!(error.to_string().contains("severity_threshold"), "{error}");
     }
 
     #[test]

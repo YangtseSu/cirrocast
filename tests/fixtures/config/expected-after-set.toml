@@ -34,6 +34,13 @@ geocode_ttl_secs = 2592000
 color = "auto"
 width = 0
 
+[alerts]
+enabled = true
+severity_threshold = "minor"
+sources = ["auto"]
+fpas_url = ""
+cache_ttl_secs = 300
+
 [providers.metar]
 station = ""
 
