@@ -1,0 +1,198 @@
+<!--
+SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+# Step 27 — location sources, second generation
+
+Status: ⬜ not-started
+Depends on: `04-geocoding-and-location-syntax.md` (spec parsing, ranking, attribution lines, Nominatim throttle), `05-http-cache-and-ip-location.md` (IP chain and cache), `18-offline-city-database.md` (bundled city index), `26-location-candidate-selection.md` (the picker that consumes the candidate lists this step produces)
+Touches: `src/geo/{mod,ip,reverse,chain,merge}.rs`, `src/geo/data/`, `build/geo-table/`, `src/config/mod.rs`, `src/cli.rs`, `src/main.rs`, `tests/{geo_ip,geo_geonames,geo_reverse,geo_merge}.rs`, `tests/fixtures/geo/`, `REUSE.toml`, `LICENSES/`, `docs/providers.md`, `README.md`, `CHANGELOG.md`
+
+## Goal
+
+Location resolution gains a second generation of sources, screened from the breezy-weather audit and
+each verified against its own documentation: **IP.SB** as a third keyless IP locator (worldwide, no
+key), **GeoNames `searchJSON`** as a BYOK city search with the fuzzy matching the offline table
+cannot do, **Nominatim `/reverse`** for naming a coordinate, and **Natural Earth country polygons**
+plus step 18's city index for fully offline naming (`@lat,lon` → "Xianghe, Hebei, China 12 km away").
+Name searches merge candidates across sources, de-duplicate them (same folded name + country + within
+5 km), keep step 04's ranking, and hand several hits to step 26's picker. No source here needs a
+bundled credential: GeoNames is BYOK.
+
+## Deliverables
+
+- ⬜ `src/geo/ip.rs`: `IpService::IpSb` — `GET https://api.ip.sb/geoip`, keyless, worldwide;
+  consumes `latitude`, `longitude`, `city`, `region`, `country`, `country_code`, `timezone`; rejects
+  a null or `0,0` answer and a missing IANA zone exactly as the existing services do (no silent
+  UTC); cached as `ip/ip.sb.json` under the 24 h cap; `CIRROCAST_IP_SERVICE` gains the `ipsb`
+  spelling and `auto` becomes `ipwhois → ipapi → ipsb`, every attempt still reported by the
+  exhausted-chain message. The `--ip` disclosure line keeps naming the service that answered.
+  Measured 2026-10-03 (direct connection; the local proxy's TLS handshake to this host fails):
+  HTTP 200 with `{"city":"Xinxiang","region":"Henan","country":"China","country_code":"CN",
+  "latitude":35.1874,"longitude":113.8025,"timezone":"Asia/Shanghai",…}` — city-level, keyless, and
+  reachable from a mainland-China network without a proxy, which is exactly the gap the two shipped
+  services leave.
+- ⬜ `src/geo/geonames.rs`: `GET https://secure.geonames.org/searchJSON` with
+  `q`, `fuzzy=0.8`, `maxRows=<limit>`, `style=FULL`, `username=<key>`; BYOK through
+  `CIRROCAST_GEONAMES_USER` → `keys.toml [keys].geonames` (free registration, no card); response
+  `geonames[].{name, lat, lng, countryCode, countryName, adminName1, population, geonameId,
+  timezone.timeZoneId}` mapped to `Location` with `LocationSource::Geocoder`; drops entries with
+  `lat == 0 && lng == 0` or a missing country code; a `{"status":{"value":…}}` body is
+  `Error::Upstream` naming the quota message (values 18/19/20 are the documented limits), never a
+  silent empty result. Measured 2026-10-03: with no username the endpoint answers **HTTP 401** with
+  `{"status":{"message":"Please add a username …","value":10}}` — that specific case is
+  `Error::MissingKey` (exit 6) naming `CIRROCAST_GEONAMES_USER`, because the shared helper would
+  otherwise call it an invalid key. Cached under `geocode/<sha256>.json` (the query, limit and
+  source in the hash) with `cache.geocode_ttl_secs`; credit
+  `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` through `geo::attribution_line`.
+- ⬜ `src/geo/chain.rs`: `pub enum GeoSource { OpenMeteo, GeoNames, Nominatim }` and a search chain
+  mirroring the provider chain: explicit selection `[geo] search = "auto" | "open-meteo" | "geonames"
+  | "nominatim"` (+ `CIRROCAST_GEO_SEARCH`), `auto` = Open-Meteo, then GeoNames when a username is
+  configured, then Nominatim `/search` as the last resort (still 1 req/s and cached, still not
+  autocomplete); only `Error::Upstream`/`Network`/no-hit continues down the chain, a missing
+  GeoNames credential is not an error under `auto`. `~query` remains Nominatim-only, `:query` keeps
+  its exact-name filter, and the winner's credit is the source's own (the existing three
+  attribution strings, plus GeoNames and ODbL for Nominatim search).
+- ⬜ `src/geo/merge.rs`: `pub fn merge(sources: &[(GeoSource, Vec<Location>)]) -> Vec<Location>` —
+  order-preserving de-duplication: candidates with the same folded name, the same country code and
+  within 5 km of each other collapse to one (the earlier source's record wins, its population and
+  zone retained), invalid country codes (not two ASCII letters) are dropped, and the merged list is
+  ranked with step 04's keys (exact name, population, then source order). Unit tests cover the
+  Beijing overlap (Open-Meteo vs GeoNames), a 5 km boundary pair, a `TW`/`-99` country-code
+  disagreement, and two different Springfields staying separate.
+- ⬜ `src/geo/reverse.rs`: coordinate → name, in this order: (1) the **bundled** city index
+  (step 18) scanned for cities within 25 km, ranked by distance then population; (2) when that finds
+  nothing and the run is online, Nominatim `/reverse?lat=&lon=&format=jsonv2&zoom=10&addressdetails=1`
+  (same base URL, UA, 1 req/s throttle and `geocode/<sha256>.json` cache as the search path, 30-day
+  TTL) mapping through the step-04 helper. `[geo] reverse = "auto" | "offline" | "off"` (+
+  `CIRROCAST_GEO_REVERSE`, default `auto`); `--offline=geo` and `--offline` imply `offline`, which
+  never opens a socket. Several offline candidates inside the radius go through step 26's picker
+  (nearest first); the chosen name is a **display attribute only** — a coordinate location keeps its
+  `source = Coordinates` and its full-precision `lat`/`lon` as the request key, and `-v` prints which
+  source named it and how far away the place is.
+- ⬜ `src/geo/country.rs` + `build/geo-table/`: Natural Earth 1:50m countries (public domain),
+  quantised and stripped to `ISO_A2` + English name, embedded gzip like the city table (fall back to
+  the 110m dataset if the compressed member exceeds 1 MiB; measure and record the size);
+  point-in-polygon gives the country name and code for any coordinate, offline; the four `ISO_A2`
+  values Natural Earth leaves as `-99` (Taiwan, Northern Cyprus, Kosovo, Somaliland) map through an
+  explicit name table so no candidate ends up with an invalid code; `REUSE.toml` carries the Natural
+  Earth annotation and `LICENSES/CC0-1.0.txt` the licence text.
+- ⬜ `--ip` naming: when the IP service's own city is empty (allowed by the ipwho.is schema) the
+  coordinate now gets a name through `reverse.rs` instead of being printed bare; with several
+  nearby places the picker asks; the disclosure line and README/`--help` privacy text list all three
+  IP services. `location search @lat,lon` prints the coordinate line plus the named candidates under
+  `--all` (step 26's flag); `location search --ip --all` does the same for the IP answer.
+- ⬜ `docs/providers.md`: a new "Location services" table — service, endpoint, auth, licence/credit,
+  privacy-policy URL, cache ceiling, `verified: <date>` — covering the Open-Meteo geocoder,
+  Nominatim search and reverse, GeoNames search, IP.SB, ipwho.is, ipapi.co and the bundled Natural
+  Earth/GeoNames data sets (which get no network row but a data section), with the per-service
+  caching and rate-limit obligations quoted from the live pages at the recorded date.
+- ⬜ Tests (`tests/geo_ip.rs` extended, `tests/geo_geonames.rs`, `tests/geo_reverse.rs`,
+  `tests/geo_merge.rs`, all offline): ip.sb fixture plus its fall-through; a GeoNames hit, a quota
+  body, a `0,0` row and an invalid country row; Nominatim reverse fixture sharing the search
+  mapping; offline naming from the bundled table (Beijing coordinates → a Hebei city within 25 km),
+  the no-candidate case with `[geo] reverse = "off"` and with `--offline`; merge/dedup ordering;
+  `--offline=geo` opening no socket (the existing `strace` pattern).
+
+## Design notes
+
+* **Screened from the breezy-weather audit (2026-10-03).** What this step takes and why: IP.SB is
+  keyless and worldwide, where the two shipped services are quota-limited; GeoNames `searchJSON` is
+  the only free service in the audit with `fuzzy` matching over alternate names; Nominatim's
+  `/reverse` is the standard coordinate-naming path and already deployed here under its policy; the
+  Natural Earth country layer is public domain and 2 MB *as shipped by breezy* before
+  simplification, so a quantised extract is cheap. Explicitly **rejected**: **Baidu IP**
+  (`api.map.baidu.com/location/ip`) needs an AK key, is China-only, and answers in GCJ-02, so mixing
+  it would put the point hundreds of metres off in a data model that is WGS-84 throughout; a
+  licensed offset conversion is out of proportion for a city-level CLI. **Offline IP databases**
+  (GeoLite2 and friends) need an account, forbid redistribution of the database and would add tens
+  of megabytes to the binary. **Xiaomi/Caiyun** (the `china` module in breezy) is reverse-engineered
+  with a hard-coded app key and signature and is not adopted under any circumstances; **BMD
+  (Bangladesh)** is a third-party aggregator rather than the agency's API; **Météo-France's**
+  location service mints a JWT from a secret shipped inside the app, the opposite of the BYOK model
+  this project follows.
+* **GeoNames is BYOK, never bundled.** Breezy ships a `BuildConfig.GEO_NAMES_KEY`; this project
+  cannot (a bundled credential in a GPL distribution is exactly the pattern `AGENTS.md` §10
+  forbids). Without a username the chain simply skips GeoNames.
+* **Reverse naming is display-only and offline-first.** The coordinate is the user's own input and
+  the request key; naming it must not change what is fetched, and doing it offline first keeps `--ip`
+  from leaking the coordinate to a second service unless the bundled tables cannot name the place
+  and the user is online.
+* **25 km and 5 km** are the audit's own constants (`REVERSE_GEOCODING_DISTANCE_LIMIT`,
+  `CLOSE_DISTANCE` in breezy); they are documented here so a later tuning is a deliberate change.
+* **`[geo] search` is orthogonal to step 18's `[geo] strategy`.** `strategy = "auto"` consults the
+  bundled table first and the network backends only when it yields no hit; `--offline=geo` /
+  `[network] offline` restrict geocoding to the bundle entirely, in which case `search` is never
+  reached. This step names the network backends behind that table; it changes nothing about the
+  offline layering.
+* **The picker is the single selection surface.** This step only produces candidate lists; it never
+  grows a second chooser, and non-interactive runs keep step 26's rules (ranked winner + note).
+
+## Out of scope
+
+Postal codes, admin-2/admin-3 hierarchies, place-name search over OSM *objects* (`~` already covers
+that case), geocoding in non-English locales beyond what each API returns, user-supplied city files,
+offline IP databases, and reverse geocoding of multiple coordinates in one run (step 21's
+multi-location form will reuse the same single-point path).
+
+## Verification
+
+```sh
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && reuse lint
+
+cargo run -q -- location search Beijing --all        # ranked list, GeoNames/Open-Meteo merge, credit
+CIRROCAST_GEONAMES_USER=… cargo run -q -- location search 'Springfiel' -v   # fuzzy hit under -v
+cargo run -q -- location search @39.9042,116.4074    # coordinate line + nearest place within 25 km
+cargo run -q -- location search @0,-140 -v           # mid-Pacific: no name, verbose says why
+cargo run -q -- --ip -f plain -v                     # service named; ip.sb answers when the others fail
+cargo run -q -- --offline=geo -f plain @39.9042,116.4074   # offline naming, no socket
+CIRROCAST_IP_SERVICE=ipsb cargo run -q -- location search --ip
+```
+
+Observable result: three IP services are individually selectable and the chain still aggregates
+failures; a GeoNames username adds fuzzy candidates with the CC-BY-4.0 credit; a coordinate gets a
+name offline; `--offline=geo` names it without a socket; the merged candidate list has no duplicate
+for the same place and keeps step 04's order.
+
+## Exit criteria
+
+- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean
+      (with the Natural Earth annotation and licence text in place).
+- ⬜ `CIRROCAST_IP_SERVICE=ipsb` answers with a real location; the chain message still names every
+      attempted service when all three fail.
+- ⬜ GeoNames without a username is skipped silently under `auto` and named as the missing piece
+      under `-v`; with one, a fuzzy query returns merged candidates.
+- ⬜ `[geo] reverse = "off"` and `--offline` never name a coordinate from the network; `auto` names it
+      offline-first (asserted by fixture and by the no-socket `strace` check).
+- ⬜ The merged list for Beijing contains no duplicate place; the 5 km boundary and `-99` country
+      fixtures pass.
+- ⬜ `docs/providers.md` gains the location-services table with live-verified lines, and README's
+      `--ip` privacy note lists all three services.
+
+## Risks
+
+* Third-party geo services change terms or endpoints (GeoNames quotas, Nominatim policy, ip.sb
+  availability); each row carries a `verified` date, every service is switchable
+  (`nominatim_url`, `CIRROCAST_GEO_SEARCH`, `CIRROCAST_IP_SERVICE`), and all of them are cached.
+* Coordinate naming can be confidently wrong near a border or between two close towns; it is
+  display-only, the distance is printed under `-v`, and `--all` shows the other candidates, so the
+  user can always fall back to `@lat,lon` (which never changes what is fetched).
+* The Natural Earth extract adds binary size; the fallback to 110m and the size record keep it
+  inside step 22's budget, and the data stays credited.
+* GeoNames free usernames are rate-limited per day; a 429/status-code body becomes an exit-3 error
+  naming the quota, never a silently empty search, and the geocode cache absorbs repeat queries.
+
+## Progress log
+
+- 2026-10-03 — step opened after the breezy-weather source audit (IP.SB, GeoNames, Nominatim reverse,
+  Natural Earth all traced to their modules there) and a local-verification pass on the services this
+  project will actually call. Shipping is deliberately arranged so that no source is a prerequisite
+  for another: IP.SB and GeoNames can land without the reverse path, and the reverse path degrades to
+  the bundled tables alone.
+- 2026-10-03 — measurements this file is built on: `api.ip.sb/geoip` answered HTTP 200 JSON directly
+  from this network (the local proxy fails its TLS handshake) with `city`/`region`/`country`/
+  `country_code`/`latitude`/`longitude`/`timezone` populated; `secure.geonames.org/searchJSON`
+  without a `username` answers HTTP 401 `{"status":{"value":10,"message":"Please add a username …"}}`,
+  which is why the no-username case is mapped to `MissingKey` rather than the shared helper's
+  invalid-key path; both recorded in the deliverables above.

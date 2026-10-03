@@ -22,6 +22,11 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
   updated in the same commit. Never mark a step done while any `- ⬜` item is still open.
 * A step file is a living document: if the design changes, the doc changes in the same commit as the
   code. Docs are not written once and abandoned.
+* Work discovered after a phase has been planned is appended as a new numbered step and a new phase
+  row: the number is the execution order, so an appended step runs after the existing tail. A step
+  may be started ahead of its number — while steps with lower numbers are still open — only when
+  every entry of its `Depends on` line is done, and the deviation is recorded in its
+  `## Progress log`.
 
 ## Phases and milestones
 
@@ -32,6 +37,13 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | C — Quality and release | 12–14 | **v1.0.0 = "basically formed"**, packaged and reproducible |
 | D — Parity and reach | 15–19 | v1.1–v1.2: alerts, air quality, moon/astro, offline city database, extra providers |
 | E — Integration and ecosystem | 20–24 | v2.0: wttr.in-compatible local service, multi-location, perf budgets, docs, ecosystem packages |
+| F — Sources, selection and auth | 25–29 | QWeather JWT, pick-a-candidate location resolution, second-generation geo/IP sources, keyless national backends with coverage-aware `auto`, climate normals |
+
+Phase F was appended on 2026-10-03 after a review of `breezy-weather`'s source catalogue and two
+upstream requests (QWeather JWT, selectable location candidates); it is independent of phase E. The
+same review added the append-and-pull-forward rule to `AGENTS.md`'s plan-driven workflow (step 1)
+and to "How these plans are used" above, because a phase appended after the tail would otherwise
+wait on ten unrelated steps.
 
 ## Step files
 
@@ -61,6 +73,11 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | 22 | E | [perf-and-resource-budget](22-perf-and-resource-budget.md) | ⬜ not-started | 12, 21 |
 | 23 | E | [docs-and-guides](23-docs-and-guides.md) | ⬜ not-started | 14, 21 |
 | 24 | E | [ecosystem-integration](24-ecosystem-integration.md) | ⬜ not-started | 13, 20, 21 |
+| 25 | F | [qweather-jwt-auth](25-qweather-jwt-auth.md) | ⬜ not-started | 02, 10, 15 |
+| 26 | F | [location-candidate-selection](26-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
+| 27 | F | [location-sources-2](27-location-sources-2.md) | ⬜ not-started | 04, 05, 18, 26 |
+| 28 | F | [keyless-national-providers](28-keyless-national-providers.md) | ⬜ not-started | 06, 10, 19 |
+| 29 | F | [climate-normals](29-climate-normals.md) | ⬜ not-started | 03, 06, 08 |
 
 **v1.0.0 = "basically formed"** (steps 01–14) means, end to end and demonstrated in step 14: eight
 backends selectable (three keyless), BYOK keys never touching `config.toml`, city-name, coordinate
@@ -74,15 +91,23 @@ data directories, and a packaged, REUSE-compliant, CI-clean release. Everything 
 | Original requirement | Steps that deliver it |
 |---|---|
 | 1. Rust with `clap` and friends | 01 (toolchain, dependencies, lint gates) |
-| 2. Multiple backends, keyless first | 06 (open-meteo), 10 (owm, weatherapi, wwo, pirateweather, qweather, smhi), 11 (metar), 19 (met.no, visualcrossing, open-meteo archive/marine) |
-| 3. BYOK for key-requiring backends | 02 (key store + `key` subcommands), 10 (consumption, `MissingKey`), 12 (secret-handling audit) |
+| 2. Multiple backends, keyless first | 06 (open-meteo), 10 (owm, weatherapi, wwo, pirateweather, qweather, smhi), 11 (metar), 19 (met.no, visualcrossing, open-meteo archive/marine), 28 (nws, brightsky) |
+| 3. BYOK for key-requiring backends | 02 (key store + `key` subcommands), 10 (consumption, `MissingKey`), 12 (secret-handling audit), 25 (JWT credentials) |
 | 4. All wttr.in outputs | 07 (`art-table`, `dumb`), 08 (`one-line` templates, `plain`, `json`, completions, man), 17 (astro/moon tokens), 20 (wttr.in-compatible local service incl. the `?` option table), 21 (multi-location output) |
-| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation) |
-| 6. IP → city | 05 (ipwho.is + ipapi.co, opt-in, cached, privacy documented) |
+| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation), 27 (GeoNames search, multi-source merge) |
+| 6. IP → city | 05 (ipwho.is + ipapi.co, opt-in, cached, privacy documented), 27 (IP.SB, coordinate naming, coverage) |
 | 7. Own CLI design, no wego copying | 01 + `AGENTS.md` (no-copy rule), 08 (documented flag matrix and precedence) |
 | 8. Selectable units and output language | 03 (unit system + formatting), 09 (Fluent i18n, en-US + zh-CN) |
 | 9. Standard XDG directories | 02 (`etcetera`-based config/cache/data), 12 (XDG audit) |
 | 10. Project name | 01 / `AGENTS.md` — `cirrocast`; verified free on crates.io, AUR, Arch, npm, PyPI and GitHub |
+| 11. Candidates selectable when a name/IP lookup is ambiguous | 26 (picker, `--pick`/`--yes`, `location search --all`), 27 (multi-source merge, coordinate naming feeds the picker) |
+| 12. QWeather JSON Web Token authentication | 25 (Ed25519 credentials, `key set qweather --jwt`, bearer header) |
+| 13. Official keyless national backends, chosen by coverage | 28 (NWS, Bright Sky, coverage-aware `auto`), 15 (global alert aggregators WMO SWIC and FPAS, HKO alerts) |
+| 14. Climate normals for the location | 29 (NOAA NCEI Global Summary of the Month, 1991–2020, cached 30 days) |
+
+Rows 11–14 were added on 2026-10-03: 11 and 12 are upstream requests, 13 and 14 come from the
+`breezy-weather` source audit (proprietary and reverse-engineered sources, including Xiaomi's
+`china` API, are explicitly not adopted — see step 19's design notes).
 
 ## Definition of "basically formed" (v1.0.0 gate, checked in step 14)
 
@@ -198,10 +223,17 @@ pub trait Provider {
   `provider list`/`provider info` update. No CLI flag is added per provider.
 * Selection: `--provider a,b,c` is an explicit ordered chain; bare default comes from config
   (`defaults.provider`), whose built-in value is `open-meteo`. `auto` expands to the keyless chain
-  that answers for a resolved place (`open-meteo,smhi`); a station is never part of it — `--station`
+  that answers for a resolved place, **ranked by registry coverage** (country match, then bounding
+  box, then the global entries; step 28) — until step 28 lands it is the interim fixed list
+  `open-meteo,met-no,smhi` (step 19). A station is never part of it — `--station`
   selects `metar` when no provider is given, and prepends it to `auto` when one is. A failure in a chain falls through
   to the next entry only when the error is transport/upstream (`Error::Upstream`/`Network`), never
   when it is a usage, key or location error.
+* Alerts are a **separate source registry**, not a provider capability: step 15's sources (NWS,
+  MeteoAlarm, HKO, WMO SWIC, FPAS, QWeather, VisualCrossing) declare their own coverage and are
+  selected by it (`[alerts] sources = ["auto"]`, `--alerts-from` overrides); a provider's
+  `alerts: true` means its *own payload* carries warnings. The global aggregators (WMO SWIC, FPAS)
+  are what make `--alerts` meaningful outside the US, the EU and China.
 
 ### Rendering contract (binding)
 
@@ -241,14 +273,17 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   someone's data, so the credit travels with it: `Location data based on GeoNames (CC-BY-4.0) via
   Open-Meteo — https://open-meteo.com/` for a geocoded name (CC-BY-4.0 asks for credit plus a service
   link next to the data), `Location data © OpenStreetMap contributors (ODbL)` for `~` results and
-  `Weather data by Open-Meteo.com (https://open-meteo.com/)` for an Open-Meteo forecast.
-  `geo::attribution_line` is the single place that decides the location-side text; every renderer
+  `Weather data by Open-Meteo.com (https://open-meteo.com/)` for an Open-Meteo forecast; a direct
+  GeoNames search (step 27) carries `Location data by GeoNames (CC BY 4.0) —
+  https://www.geonames.org/` instead of the Open-Meteo-via wording. `geo::attribution_line` is the
+  single place that decides the location-side text; every renderer
   that shows upstream data — `plain`, `art-table`, `one-line` and the `json` envelope — carries the
   matching credit, on stderr where the format is meant to be piped. Step 08 fixed the three kinds:
   `plain` and the `json` `attribution` object keep the credits in the document, `art-table` keeps
   them in its footer, and `one-line` — one line by contract — prints them to stderr.
-* Coordinates and IP answers carry no credit: the first is the user's own input, and neither
-  `ipwho.is` nor `ipapi.co` asks for one (the `--ip` disclosure already names the service).
+* Coordinates and IP answers carry no credit: the first is the user's own input, and none of the IP
+  services (`ipwho.is`, `ipapi.co`, IP.SB) asks for one (the `--ip` disclosure already names the
+  service).
 * Art blocks and translated condition strings are **re-authored** in this repo. Copying wego or
   wttr.in source, data files or art is forbidden (see AGENTS.md).
 
@@ -261,12 +296,18 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
 schema_version = 1
 [defaults]  provider = "open-meteo"  format = "art-table"  units = "metric"  days = 3  language = "auto"
 [location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"
+            pick = "auto"           # auto | never (never = always take the ranked winner; step 26)
+[geo]       strategy = "auto"       # bundled table first, network fallback (step 18)
+            search = "auto"         # auto | open-meteo | geonames | nominatim (step 27)
+            reverse = "auto"        # auto | offline | off — coordinate naming (step 27)
 [units]     # per-quantity overrides; an absent (or empty) key follows defaults.units
             # temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
 [network]   timeout_secs = 15  retries = 3  proxy = ""  nominatim_url = ""
 [cache]     enabled = true  weather_ttl_secs = 600  ip_ttl_secs = 86400  geocode_ttl_secs = 2592000
             # ip_ttl_secs is capped at 86400: ipapi.co's terms allow caching an IP answer for at most 24 hours
 [render]    color = "auto"  width = 0
+[alerts]    enabled = true  sources = ["auto"]  fpas_url = ""   # step 15
+[normals]   period = "1991-2020"  max_distance_km = 60          # step 29
 [providers.metar]    station = ""
 [providers.qweather] host = ""
 ```
@@ -278,11 +319,20 @@ schema_version = 1
   `CIRROCAST_<PROVIDER>_KEY` env var → `keys.toml` in the config dir with mode `0600`
   (`cirrocast key set/rm/list`). There is no third tier: OS keyring storage is explicitly out of
   scope for v1 (step 10, `## Out of scope`), so a key in neither place is simply missing.
+* Providers with a second authentication mode store a `[jwt.<provider>]` table in the same `0600`
+  `keys.toml` (step 25, QWeather): the PEM private key plus its non-secret identifiers
+  (`credential_id`, `developer_id`, `project_id`). Resolution for such a provider checks the JWT
+  environment quartet → `[jwt.<provider>]` → the API-key tiers above; a *partial* JWT set is
+  `Error::Config`, never a silent fall-through. A PEM is read from a file or stdin at `key set` time
+  and never from argv; tokens are minted per fetch and never written to disk.
 * A `keys.toml` with any group/other permission bits is refused with `Error::Config`, not silently used.
 * Cache layout: `geocode/<sha256(query)>.json`, `ip/<service>.json`,
   `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json`,
   `weather/metar-<ICAO>-{current,taf}.json` for the station resources and `station/<ICAO>.json` for
-  30-day station metadata; writes are `tmp` + `rename`. `cache stat` reports all four namespaces.
+  30-day station metadata; writes are `tmp` + `rename`. Steps 28 and 29 add two namespaces with the
+  same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
+  mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
+  reports every namespace it finds.
 * `--no-cache`, `--refresh`, `--offline` (cache-only, never touches the network), `cache stat`,
   `cache clean`.
 
@@ -311,21 +361,28 @@ cirrocast [OPTIONS] [LOCATION]
       --timeout <SECS>
       --color <auto|always|never>
       --width <COLS>
+      --pick / --yes            force the candidate picker / take the ranked winner (step 26)
   -q, --quiet   -v, --verbose (repeatable)
   -h, --help    -V, --version
 
 cirrocast config   <path|init|show|get|set|edit|validate>
-cirrocast key      <set|rm|list>
+cirrocast key      <set|rm|list>            # `key set qweather --jwt …` (step 25)
 cirrocast provider <list|info>
 cirrocast cache    <stat|clean>
-cirrocast location <search>
+cirrocast location <search>                 # `location search --all` lists the ranked candidates (step 26)
 cirrocast completion <shell>    cirrocast man
 ```
 
 Location argument syntax: bare `Beijing` = fuzzy search; `:Beijing` = exact name match; `~Tsinghua` =
 OpenStreetMap/Nominatim; `@39.9,116.4` = coordinates; empty = config `location.default`, else public
-IP. Ambiguous fuzzy matches are resolved by deterministic ranking (exact-name, then population, then
-provider order) and the chosen location is echoed in the header, never silently guessed twice.
+IP. Fuzzy matches are ranked deterministically (exact-name, then population, then source order) and
+the chosen location is echoed in the header. When a lookup yields **more than one candidate** — a
+name search, the offline table, a coordinate or IP answer named by several nearby places — the tool
+asks: on a terminal (stdin and stderr) the ranked list is printed on stderr and one line is read
+(step 26); `--pick` forces the prompt, `--yes`/`[location] pick = "never"` and any non-terminal run
+take the ranked winner and print the extended note, so a script is never prompted and never hangs.
+Aborting the choice is `Error::Location` (exit 5). Coordinates (`@lat,lon`) remain the only
+geocoder-independent spec and are what the selection echo prints back.
 
 ### Licensing and REUSE (binding)
 

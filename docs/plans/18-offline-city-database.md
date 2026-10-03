@@ -57,9 +57,11 @@ offline path produces the same ranking as the network path for the same query.
 - ⬜ `auto` geo strategy (`[geo] strategy = "auto"`, the default): bundled table first for
       non-`~` queries; the network geocoder is consulted only when the table yields no hit or the
       query is `~`-prefixed, and the chosen source is echoed under `--verbose`.
-- ⬜ `cirrocast location search <query> [--offline] [--limit N] [--exact]`: table output with
-      name, admin/country, population, coordinates and IANA zone; `--offline` forces the bundle and
-      never opens a socket; a missing name exits 5 with
+- ⬜ `cirrocast location search <query> [--offline] [--all] [--limit N] [--exact]`: the winner line
+      by default (identical shape to the network path, so the two do not diverge) and the ranked
+      candidate table — number, name, admin/country, population, coordinates and IANA zone — under
+      `--all` (step 26 defines the flag; this step must not ship a second search shape);
+      `--offline` forces the bundle and never opens a socket; a missing name exits 5 with
       `error: location not found: <query> (no offline match)`.
 - ⬜ Licensing/credits: `REUSE.toml` annotation for `src/geo/data/*.bin.gz` and `src/geo/data/SNAPSHOT`
       with a GeoNames copyright line (`GeoNames (https://www.geonames.org/)`) and the licence
@@ -124,21 +126,25 @@ offline path produces the same ranking as the network path for the same query.
 
 ## Out of scope
 
-Reverse geocoding (`@lat,lon` needs no database), admin-1/admin-2 hierarchies, postal codes,
-time-zone lookup for coordinates (stays with the provider response / step 03), a user-supplied
-custom city file, and incremental dataset updates over the network. `location search` does not gain
-paging or fuzzy (edit-distance) matching; prefix + exact on folded keys is the contract.
+Reverse geocoding (`@lat,lon` → place name) is **step 27's** deliverable; it reuses this step's
+decoded table for a nearest-city scan inside 25 km and adds the Natural Earth country layer, so this
+step only has to expose the decoded rows (an iterator plus the population/coordinate fields the scan
+needs). Also out of scope: admin-1/admin-2 hierarchies, postal codes, time-zone lookup for
+coordinates (stays with the provider response / step 03), a user-supplied custom city file, and
+incremental dataset updates over the network. `location search` does not gain paging or fuzzy
+(edit-distance) matching; prefix + exact on folded keys is the contract.
 
 ## Verification
 
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && reuse lint
 
-cargo run -q -- location search --offline Springfield
-#   9 rows, ranked by population descending, identical order to `location search Springfield`
-cargo run -q -- location search --offline sao paulo     # São Paulo, SP, BR — folding works
-cargo run -q -- location search --offline 北京          # Beijing — id 1816670
-cargo run -q -- location search --offline Wien          # Wien/Vienna both listed
+cargo run -q -- location search --offline --all Springfield
+#   9 rows, ranked by population descending, identical order to `location search --all Springfield`
+cargo run -q -- location search --offline --all sao paulo     # São Paulo, SP, BR — folding works
+cargo run -q -- location search --offline --all 北京          # Beijing — id 1816670
+cargo run -q -- location search --offline --all Wien          # Wien/Vienna both listed
+cargo run -q -- location search --offline Springfield         # one winner line, exit 0
 cargo run -q -- location search --offline Nowhereville; echo $?    # error, exit 5
 cargo run -q -- --offline=geo -f one-line Sao Paulo     # local geocoding + live weather, exit 0
 cargo run -q -- --offline -f plain Beijing              # cached only; without cache: exit 3
@@ -178,3 +184,7 @@ not materialised eagerly.
 - 2026-09-30 — step opened; crate candidates measured (`world-cities`/`city-timezones` absent from
   crates.io, `geocoding` has no bundled dataset), GeoNames `cities15000` sizes and gzip/zstd
   trade-offs measured, flate2 chosen over ruzstd (MSRV 1.87) and the zstd C bindings.
+- 2026-10-03 — plan amended for the location work in steps 26–27: the `location search` shape is the
+  winner line by default plus `--all` for the ranked table (instead of a table by default), the
+  decoded table must expose the rows the step-27 nearest-city scan needs, and reverse geocoding
+  moves from "out of scope" to step 27, which reuses this step's index.

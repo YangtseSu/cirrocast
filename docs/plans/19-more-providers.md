@@ -18,9 +18,10 @@ Touches: `src/provider/{mod,met_no,visualcrossing,open_meteo_archive,open_meteo_
 
 Four new `--provider` keys beyond the ten of phases A–C: `met-no` (keyless, global, 9 days),
 `visualcrossing` (BYOK, 15 days, supplies its own alerts), `open-meteo-archive` (historical only) and
-`open-meteo-marine` (waves/swell/sea-surface behind `--marine`). `auto` becomes
-`open-meteo,met-no,smhi` (+`metar` with `--station`), the README backend matrix and `keys.rs` list
-every new source, and scraped HTML sites stay explicitly refused.
+`open-meteo-marine` (waves/swell/sea-surface behind `--marine`). `auto` becomes the interim fixed
+list `open-meteo,met-no,smhi` (+`metar` with `--station`; step 28 replaces it with the
+coverage-ranked expansion), the README backend matrix and `keys.rs` list every new source, and
+scraped HTML sites stay explicitly refused.
 
 ## Deliverables
 
@@ -70,12 +71,14 @@ every new source, and scraped HTML sites stay explicitly refused.
       named under `--verbose`; `src/cli.rs` gains `--date <YYYY-MM-DD>` and `--history <N>d` (both
       need a chain entry with `history_days > 0`, else usage error), `--marine` and `--days` clamped
       per provider against `max_days` with the warn-once behaviour.
-- ⬜ `auto` chain `open-meteo,met-no,smhi` (+`metar` with `--station`): update the selection
-      paragraph, provider list and CLI block of `docs/plans/README.md`, the README backend matrix
-      (key/env var, coverage, days, alerts, attribution per row) and `src/config/keys.rs` with
-      `CIRROCAST_METEOALARM_KEY` and `CIRROCAST_VISUALCROSSING_KEY`; `provider info` rows for the new
-      ids and the re-checked old ones gain coverage, days, key env var, alert sources, rate limit and
-      the exact attribution string each backend requires.
+- ⬜ `auto` chain `open-meteo,met-no,smhi` (+`metar` with `--station`) as the **interim** fixed
+      list — step 28 replaces it with the coverage-ranked expansion once national backends carry
+      `covers` metadata — and update the selection paragraph, provider list and CLI block of
+      `docs/plans/README.md`, the README backend matrix (key/env var, coverage, days, alerts,
+      attribution per row) and `src/config/keys.rs` with `CIRROCAST_METEOALARM_KEY` and
+      `CIRROCAST_VISUALCROSSING_KEY`; `provider info` rows for the new ids and the re-checked old
+      ones gain coverage, days, key env var, alert sources, rate limit and the exact attribution
+      string each backend requires.
 - ⬜ Fixtures + tests: recorded `met-no` compact JSON (Oslo plus a `polartwilight` symbol),
       `visualcrossing` timeline JSON with an alert object, archive JSON for a fixed date and marine
       JSON for a coastal point; a symbol-table test over all 46 met.no base codes including the
@@ -117,12 +120,24 @@ every new source, and scraped HTML sites stay explicitly refused.
   for a weather tool means confidently wrong output; (3) supportability — no documented API, no
   `User-Agent` policy to honour, no contact, no status page. The same test (documented API, stated
   licence, identity/attribution requirements) admits every backend above, so the rule is uniform.
+* **Admission criteria, sharpened by the breezy-weather audit (2026-10-03)** — a candidate backend
+  must additionally: load an endpoint that is documented and public (no undocumented dashboard or
+  NinJo/`llj`-style internal routes); require no credential shipped inside this project (BYOK from
+  the user, or none at all — an app-minted JWT from a bundled secret, as Météo-France's client does,
+  is refused); not act as a reskin of a third party's API (the audit's Bangladesh source is an
+  aggregator, not the agency); not be reachable through a reverse-engineered private API (the
+  audit's Xiaomi/`china` module ships a hard-coded app key and signature and is the canonical
+  rejection); and, for a "free" key, need no credit card or phone number. Coverage is judged against
+  what the model can express: a backend whose payload cannot fill the four day parts waits for a
+  model change rather than half-filling the table (step 28 records the daily-only national sources
+  this excludes).
 
 ## Out of scope
 
 Open-Meteo's single-runs/previous-runs/climate APIs, marine *historical* data, sea ice and
-current-based routing, MET Norway's Nowcast and MetAlerts (MeteoAlarm covers alerting), Visual
-Crossing's `forecastDataset`, and provider flags beyond `--marine`/`--date`/`--history`.
+current-based routing, MET Norway's Nowcast and MetAlerts (step 15's alert registry covers alerting,
+including the global WMO SWIC and FPAS aggregators), Visual Crossing's `forecastDataset`, and
+provider flags beyond `--marine`/`--date`/`--history`.
 
 ## Verification
 
@@ -178,3 +193,8 @@ cargo run -q -- -p open-meteo-marine --lat 54.54 --lon 10.23; echo $?   # exit 2
   visualcrossing 15 days, free plan 1 000 records/day; open-meteo-marine accepts `forecast_days=8`
   (192 hourly slots, so `max_days: 8`, not the docs default 7); open-meteo-archive covers 1940-01-01
   onward with ERA5's ~5-day latency.
+- 2026-10-03 — plan amended after the breezy-weather audit: `auto` is explicitly the *interim* fixed
+  list (step 28 makes it coverage-aware), the source-admission criteria gained the audit's rules
+  (documented public endpoint, user-supplied credentials only, no reskins, no reverse-engineered
+  APIs, no card/phone for a free key), and the alert note now points at step 15's independent alert
+  registry instead of MeteoAlarm alone.
