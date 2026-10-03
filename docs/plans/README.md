@@ -144,6 +144,7 @@ src/
     units.rs         UnitSystem + conversion + formatting (single conversion point)
     alert.rs         CAP-shaped alert types (step 15)
     air.rs           AirQuality, Pollen, AirSource (step 16)
+    astro.rs         Astro, Moon, Sun, MoonPhase, Polar, SunSource (step 17)
   geo/
     mod.rs           Geocoder trait, IpLocator trait, LocationSpec
     open_meteo.rs    Open-Meteo geocoding (no key)
@@ -156,6 +157,11 @@ src/
     mod.rs           air-quality facade (best-effort, one panel per run)
     aqi.rs           the US and European AQI category scales
     open_meteo.rs    Open-Meteo Air Quality API (keyless)
+  astro/
+    mod.rs           Astro::compute, GMST, the local-day window and the shared rise/set search
+    julian.rs        Julian dates and the ΔT seam (Espenak–Meeus fits)
+    moon.rs          truncated ELP-2000/82 position, phase, illumination, age, rise/set
+    sun.rs           solar position and the local day's sunrise/sunset/polar state
   provider/
     mod.rs           Provider trait, ProviderId, registry metadata, selection + fallback chain
     open_meteo.rs    Open-Meteo (keyless, default)
@@ -168,6 +174,9 @@ src/
     one_line.rs      template output (`%c`, `%t`, ... wttr.in-compatible tokens)
     plain.rs         box-free, pipe friendly
     json.rs          stable JSON schema
+    alerts.rs        the alert banner, records and listing (step 15)
+    air.rs           the air-quality panel, records and standalone view (step 16)
+    moon.rs          the moon/sun panel, records and standalone view (step 17)
     art.rs           canonical condition -> unicode art blocks (day/night)
     color.rs         256-color palette, NO_COLOR / CLICOLOR_FORCE handling
   i18n.rs            Fluent bundle loading, locale negotiation, embedded .ftl catalogs
@@ -185,7 +194,9 @@ tests/               integration tests (CLI level), fixtures/ = recorded API res
   `pressure_hpa`, `visibility_km`). Providers request metric from upstream wherever the API allows
   it; **the render layer is the only place that converts units**. Cache entries are therefore
   unit-independent.
-* `Report { location, current: Option<Current>, days: Vec<DayForecast>, attribution }`.
+* `Report { location, current: Option<Current>, days: Vec<DayForecast>, alerts, air, astro,
+  attribution }`; `alerts` (step 15), `air` (step 16) and `astro` (step 17) are attached after the
+  forecast and default to empty/`None`, so a hand-built or older document still parses.
   `days` is ordered oldest → newest and always starts at the location-local today. A backend that
   serves observations only (step 11's `metar`) answers with `current: Some(..)`, `days: []`, and the
   renderers shape their output from the provider's declared capabilities, never from its id.
@@ -259,14 +270,18 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   `current`, `hourly`, `daily`, `alerts`, `max_days`, `requires_key`, `key_env`, `locations`), so a
   consumer can tell "no `days` because the backend is an observation" from "no `days` because the
   request asked for none". Additive within `schema_version = 2`, which added the `alerts` array
-  (the CAP-shaped warning set, strongest first), `alert_credits` (step 15) and the `air` object
+  (the CAP-shaped warning set, strongest first), `alert_credits` (step 15), the `air` object
   (step 16: the best-effort air-quality reading — both raw indices, the six pollutants, the
-  nullable pollen block and the `units` pair). The key sets are listed in `docs/schema.md`;
-  the CAP subset actually parsed is the list at the top of `docs/plans/15-alerts-and-severity.md`.
+  nullable pollen block and the `units` pair) and the `astro` object (step 17: the locally
+  computed moon block — phase, illuminated fraction, age, rise/set, the next four instants — and
+  the sun block with its `source`; `null` unless the run asked). The key sets are listed in
+  `docs/schema.md`; the CAP subset actually parsed is the list at the top of
+  `docs/plans/15-alerts-and-severity.md`.
 * Formats: `art-table` (default, wttr.in's classic four-row coloured columns), `one-line`
   (wttr.in-compatible `%` tokens), `plain`, `json`, `alerts` (the full severe-weather warning
-  listing; `no active weather alerts` when there are none) and `aqi` (the standalone air-quality
-  panel, step 16; `air quality unavailable` when the best-effort fetch failed). `dumb` is not a
+  listing; `no active weather alerts` when there are none), `aqi` (the standalone air-quality
+  panel, step 16; `air quality unavailable` when the best-effort fetch failed) and `moon` (the
+  standalone moon/sun view, step 17). `dumb` is not a
   fourth layout: it is the art table in the ASCII character set (`+ - |`, ASCII art, no degree
   sign), selected by
   `--format dumb` and automatically for `TERM=dumb` or a non-UTF-8 locale.

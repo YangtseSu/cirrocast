@@ -220,3 +220,8 @@ cargo run -q -- --moon -p metar --station EGLL -v
   `-f moon`, `-f json --moon | jq`, `-f one-line --template '%M (%m) %t'`, the metar `-v` note
   (`sun: computed locally (provider sends none)`; `met-no` does not exist yet — step 19 adds it)
   and the Longyearbyen offline replay. Step closed.
+- 2026-10-04 — follow-up in the same session: the master contract in `docs/plans/README.md` now
+  lists `model/astro.rs`, `src/astro/` and the renderer files in its module map, spells the
+  `Report` shape with the attached `alerts`/`air`/`astro` blocks (it had gone stale at step 15),
+  adds the `astro` object and the `moon` format to the rendering contract, and names `moon.rs` in
+  the renderer list. No interface changed; the map was brought back in line with the tree.
