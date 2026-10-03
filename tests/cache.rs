@@ -349,7 +349,7 @@ fn stat_and_clean_count_what_they_say() {
             .iter()
             .map(|namespace| namespace.name)
             .collect::<Vec<_>>(),
-        ["weather", "geocode", "ip", "station"]
+        ["weather", "geocode", "ip", "station", "alerts"]
     );
     assert_eq!(stat.namespaces[0].entries, 0);
     assert_eq!(stat.namespaces[0].bytes, 0);

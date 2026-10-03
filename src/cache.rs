@@ -41,7 +41,7 @@ use crate::paths::Paths;
 pub const CACHE_SCHEMA_VERSION: u32 = 1;
 
 /// The namespaces `cache stat` reports, always in this order.
-pub const NAMESPACES: [&str; 4] = ["weather", "geocode", "ip", "station"];
+pub const NAMESPACES: [&str; 5] = ["weather", "geocode", "ip", "station", "alerts"];
 
 /// File mode of a freshly written cache entry.
 const ENTRY_MODE: u32 = 0o644;
@@ -271,6 +271,20 @@ impl CacheKey {
         }
     }
 
+    /// An alert key: one file per source, place and UTC hour under the `alerts/` namespace.
+    ///
+    /// Alerts change with the hour, so the hour is part of the key rather than left to the TTL: a
+    /// run after the boundary misses by key and the five-minute TTL only guards within one hour.
+    #[must_use]
+    pub fn alert(source: &str, lat: f64, lon: f64, hour: DateTime<Utc>) -> Self {
+        let stamp = hour.format("%Y%m%dT%H");
+        let name = format!("{source}-{lat:.2}-{lon:.2}-{stamp}.json");
+        Self {
+            path: PathBuf::from("alerts").join(&name),
+            normalised: format!("alerts|{source}|{lat:.2}|{lon:.2}|{stamp}"),
+        }
+    }
+
     /// The path below the cache root.
     #[must_use]
     pub fn path(&self) -> &Path {
@@ -416,6 +430,37 @@ impl Cache {
             ));
             return Ok(None);
         }
+        let Some(entry) = self.load_entry(key)? else {
+            return Ok(None);
+        };
+        if !entry.is_fresh(self.clock.now()) {
+            self.log(&format!("{}: expired", self.entry_path(key).display()));
+            return Ok(None);
+        }
+        self.log(&format!("{}: hit", self.entry_path(key).display()));
+        Ok(Some(entry))
+    }
+
+    /// Reads an entry even when it is past its TTL — the offline replay of an alert set.
+    ///
+    /// Alerts are liveness-filtered after they are read (an expired alert is dropped, not shown
+    /// stale), so what a `--offline` run replays is the last fetched *set*, filtered against the
+    /// current clock exactly as a fresh one would be. Modes that never read answer `None` without
+    /// touching disk, like [`Cache::read`].
+    pub fn read_ignoring_ttl(&self, key: &CacheKey) -> Result<Option<CacheEntry>> {
+        if !self.mode.reads() {
+            self.log(&format!(
+                "{}: not reading {}",
+                self.mode.name(),
+                key.path().display()
+            ));
+            return Ok(None);
+        }
+        self.load_entry(key)
+    }
+
+    /// The entry at `key`, freshly parsed, with no TTL or mode decision applied.
+    fn load_entry(&self, key: &CacheKey) -> Result<Option<CacheEntry>> {
         let path = self.entry_path(key);
         let text = match fs::read_to_string(&path) {
             Ok(text) => text,
@@ -449,12 +494,6 @@ impl Cache {
                 return Ok(None);
             }
         };
-
-        if !entry.is_fresh(self.clock.now()) {
-            self.log(&format!("{}: expired", path.display()));
-            return Ok(None);
-        }
-        self.log(&format!("{}: hit", path.display()));
         Ok(Some(entry))
     }
 
@@ -815,11 +854,74 @@ mod tests {
             station.path().parent().and_then(|parent| parent.to_str()),
             Some("station")
         );
+
+        let hour = chrono::DateTime::parse_from_rfc3339("2026-10-03T13:59:00Z")
+            .expect("a valid instant")
+            .with_timezone(&chrono::Utc);
+        let alert = CacheKey::alert("wmoswic", 39.9075, 116.39723, hour);
+        assert_eq!(
+            alert.path().to_string_lossy(),
+            "alerts/wmoswic-39.91-116.40-20261003T13.json"
+        );
+        assert_eq!(
+            alert.path().parent().and_then(|parent| parent.to_str()),
+            Some("alerts")
+        );
     }
 
     #[test]
     fn hex_is_lower_case_and_fixed_width() {
         assert_eq!(hex(&[0x00, 0x0f, 0xff]), "000fff");
+    }
+
+    #[test]
+    fn read_ignoring_ttl_replays_an_expired_entry_only_when_reading_is_allowed() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let fake = std::sync::Arc::new(super::FakeClock::new(SystemTime::UNIX_EPOCH));
+        let clock: std::sync::Arc<dyn super::Clock> = fake.clone();
+        let key = CacheKey::alert(
+            "fpas",
+            0.0,
+            0.0,
+            chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("a valid instant"),
+        );
+        let writer = super::Cache::with_root(
+            directory.path(),
+            CacheMode::Normal,
+            std::sync::Arc::clone(&clock),
+            0,
+        );
+        writer
+            .write(&key, 200, "[1]", Duration::from_secs(300))
+            .expect("the write succeeds");
+        fake.advance(Duration::from_secs(3600));
+
+        let reader = super::Cache::with_root(
+            directory.path(),
+            CacheMode::Offline,
+            std::sync::Arc::clone(&clock),
+            0,
+        );
+        assert!(reader.read(&key).expect("a read succeeds").is_none());
+        let stale = reader
+            .read_ignoring_ttl(&key)
+            .expect("a stale read succeeds")
+            .expect("the entry is there");
+        assert_eq!(stale.body, "[1]");
+
+        let no_cache = super::Cache::with_root(
+            directory.path(),
+            CacheMode::NoCache,
+            std::sync::Arc::clone(&clock),
+            0,
+        );
+        assert!(
+            no_cache
+                .read_ignoring_ttl(&key)
+                .expect("a read succeeds")
+                .is_none(),
+            "a mode that never reads must not see the stale entry either"
+        );
     }
 
     #[test]

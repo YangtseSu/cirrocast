@@ -282,3 +282,7 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
   Minor flood advisories in TX), WMO SWIC 0 features for ten probed points that hour, FPAS 18 UUIDs
   for the Beijing box with a redirect-following CAP fetch, HKO `{}` and MeteoAlarm `401` without a
   token.
+- 2026-10-03 — the cache half landed: the `alerts` namespace (reported by `cache stat` and cleared
+  by `cache clean`), `CacheKey::alert(source, lat, lon, utc_hour)` and `Cache::read_ignoring_ttl`,
+  the stale-replay read the offline path needs. The fetch module wires the 300 s TTL and the mode
+  rules onto it later in this step.
