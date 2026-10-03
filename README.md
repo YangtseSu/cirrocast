@@ -123,7 +123,7 @@ cirrocast [OPTIONS] [LOCATION]
 
   -p, --provider <ID[,ID...]>   open-meteo | smhi | metar | openweathermap | weatherapi
                                 | worldweatheronline | pirateweather | qweather | auto
-  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts
+  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts | aqi | moon
   -d, --days <N>                0..=14, clamped to what the provider serves
   -u, --units <SYSTEM>          metric | us | uk
       --lang <TAG>              BCP-47, or "auto"
@@ -135,6 +135,7 @@ cirrocast [OPTIONS] [LOCATION]
       --severity <LEVEL>        lowest alert severity shown: unknown | minor | moderate | severe | extreme
       --aqi                     append the air-quality panel (US/European AQI, pollutants, pollen)
       --aqi-index <SCALE>       us | european: the AQI scale behind the panel colour and %q
+      --moon                    append the locally computed moon/sun block (no request)
       --template <TEMPLATE>     one-line template or @PRESET
       --no-cache | --refresh | --offline
       --timeout <SECS>
@@ -207,6 +208,7 @@ notes, never errors.
 | `json` | the stable machine-readable document (`schema_version: 2`) | ignores `--width` and `--units` |
 | `alerts` | the full severe-weather warning listing for the location, strongest first; `no active weather alerts` when there are none | ignores `--width` |
 | `aqi` | the standalone air-quality panel (implies `--aqi`); `air quality unavailable` when the reading could not be fetched | wraps to `--width` |
+| `moon` | the standalone moon/sun view: phase, illumination, age, moonrise/moonset, sunrise/sunset and the next four phase instants, all computed locally | wraps to `--width` |
 
 `one-line` takes a template with `--template`, either a literal string or a preset:
 
@@ -217,7 +219,7 @@ notes, never errors.
 | `%t` `%f` | temperature / feels-like | `%u` `%U` | `5` / `5 (moderate)` |
 | `%w` | wind `↗ 12km/h NE` | `%S` `%s` | sunrise / sunset `06:05` |
 | `%h` | humidity `56%` | `%l` `%L` | name / `39.90,116.40` |
-| `%p` | precipitation `0.0mm` | `%m` | moon phase — `n/a` until the moon step lands |
+| `%p` | precipitation `0.0mm` | `%m` `%M` | moon glyph / phase name, e.g. `◕` / `Waning Gibbous` |
 | `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
 | `%A` | strongest alert's event, empty when nothing is in force | `%q` | air-quality index on the selected scale, e.g. `US AQI 43 (Good)` |
 
@@ -298,6 +300,36 @@ domain the pollen line reads `not covered at this location`; under `-v` the run 
 response is cached in the `weather` namespace under
 `weather/open-meteo-air-<lat>-<lon>-<local-date>.json` with `cache.weather_ttl_secs`, and
 `--no-cache`/`--refresh`/`--offline` behave exactly as they do for the forecast.
+
+### Moon and sun
+
+`--moon` appends a moon/sun block to the table and `plain` output, carries it as the `astro` object
+in `json`, and `--format moon` prints the standalone view; `one-line` shows the same numbers through
+the `%m` (glyph) and `%M` (phase name) tokens, which need no flag. Everything is **computed on this
+machine** — no request, no cache entry, no key:
+
+```text
+ ██▒░░  Moon: Last Quarter
+████▒░░ 47% illuminated (geocentric) · age 22.7 d
+████▒░░ Moonrise 23:49 · Moonset 14:24
+ ██▒░░  Sunrise 06:13 · Sunset 17:52 · daylight 11h 39m
+```
+
+The moon block is always local: phase (one of eight 45° windows of the synodic elongation), the
+geocentric illuminated fraction, the age since the last new moon, moonrise/moonset for the
+location-local day, and the next four phase instants (shown by `--format moon`, carried by
+`json`). The sun block prefers the backend's own sunrise/sunset and computes them locally only when
+the backend sends none — `astro.sun.source` and a `-v` line say which happened. Days without an
+event print `—` rather than a clamped `00:00`: inside the polar circles the sun line becomes
+`polar day`/`polar night`, and a lunar day (24 h 50 m) can miss a rise or a set. Sunrise, sunset and
+the polar state are computed for the location-local calendar day, so a 23-hour spring-forward day
+stays 23 hours long and the printed clocks are the location's own.
+
+The arithmetic is the truncated ELP-2000/82 and solar series of Meeus' *Astronomical Algorithms*
+(chapters 22, 25, 47 and the chapter-15 event method), with ΔT from the Espenak–Meeus fits. Against
+JPL Horizons DE441 the illuminated fraction is within 0.14 pp over the 2026 fixtures and the 1977
+and 2044 phase instants of Meeus' examples are reproduced to 32 s and 23 s; the supported range is
+1900–2100, where the truncated series stays inside the tolerances the test suite pins.
 
 ### Weather
 

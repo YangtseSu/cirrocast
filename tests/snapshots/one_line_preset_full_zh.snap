@@ -2,4 +2,4 @@
 source: tests/render_one_line.rs
 expression: "rendered_in(\"@full\", UnitSystem::Metric, &catalog(\"zh-CN\"))"
 ---
-Beijing: \o_ 晴间多云 +22°C (+22°C) ↗ 10km/h 北东北风 52% 0.0mm 1015hPa 无数据 14km 5 06:05 17:58 Asia/Shanghai
+Beijing: \o_ 晴间多云 +22°C (+22°C) ↗ 10km/h 北东北风 52% 0.0mm 1015hPa ◕ 14km 5 06:05 17:58 Asia/Shanghai

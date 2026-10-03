@@ -1,6 +1,6 @@
 ---
 source: tests/render_json.rs
-expression: "render(&report(), UnitSystem::Metric)"
+expression: "render(&report, UnitSystem::Metric)"
 ---
 {
   "schema_version": 2,
@@ -103,7 +103,46 @@ expression: "render(&report(), UnitSystem::Metric)"
     }
   ],
   "air": null,
-  "astro": null,
+  "astro": {
+    "computed_at": "2026-09-30T12:30:00Z",
+    "moon": {
+      "phase": "Waning Crescent",
+      "phase_key": "waning-crescent",
+      "illuminated_fraction": 0.2313,
+      "age_days": 26.54,
+      "moonrise": "2026-09-30T07:12:00+08:00",
+      "moonset": "2026-09-30T21:34:00+08:00",
+      "next": [
+        {
+          "phase": "Full Moon",
+          "phase_key": "full",
+          "at": "2026-10-06T22:09:00+08:00"
+        },
+        {
+          "phase": "Last Quarter",
+          "phase_key": "last-quarter",
+          "at": "2026-10-14T12:44:00+08:00"
+        },
+        {
+          "phase": "New Moon",
+          "phase_key": "new",
+          "at": "2026-10-22T03:18:00+08:00"
+        },
+        {
+          "phase": "First Quarter",
+          "phase_key": "first-quarter",
+          "at": "2026-10-30T06:21:00+08:00"
+        }
+      ]
+    },
+    "sun": {
+      "sunrise": "2026-09-30T06:05:00+08:00",
+      "sunset": "2026-09-30T18:55:00+08:00",
+      "daylight_secs": 43200,
+      "polar": null,
+      "source": "provider"
+    }
+  },
   "alerts": [],
   "capabilities": {
     "current": true,

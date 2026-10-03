@@ -46,6 +46,17 @@ Post-`v1.0.0` work: the step-15 alert surface, on top of the 2026-10-02 review f
   best-effort: a failure prints `warning: air quality unavailable: …` on stderr and never changes
   the run's exit code, and a location outside the pollen domain says `not covered at this location`
   instead of inventing a zero.
+* **Moon phase and astronomy (step 17).** `--moon` appends a locally computed moon/sun block to
+  `art-table` and `plain`, `--format moon` prints the standalone view, `one-line` gains `%m` (the
+  phase's art glyph) and `%M` (the phase's name), and `json` carries an `astro` object (additive
+  within `schema_version` 2). Nothing is fetched: the phase, the geocentric illuminated fraction,
+  the age, moonrise/moonset, the next four phase instants and — when the backend sends no sun
+  times — sunrise/sunset/daylight are computed from the truncated Meeus series (ELP-2000/82 and
+  solar, ΔT from the Espenak–Meeus fits). The sun block prefers the provider's own times and records
+  where they came from in `astro.sun.source`; inside the polar circles the state is named
+  (`polar day`/`polar night`) instead of clamping to `00:00`, and an event a day does not have
+  prints `—`. `%m`/`%M` are always available; `--moon` is a usage error for the formats that have
+  no astro surface (`one-line`, `alerts`, `aqi`).
 
 ### Changed
 

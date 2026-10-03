@@ -1,0 +1,147 @@
+{
+  "location": {
+    "name": "Beijing",
+    "admin1": "Beijing",
+    "country": "China",
+    "country_code": "CN",
+    "lat": 39.9042,
+    "lon": 116.4074,
+    "tz": "Asia/Shanghai",
+    "elevation_m": 44.0,
+    "population": 18960744,
+    "source": "geocoder"
+  },
+  "current": {
+    "observed_at": "2026-09-30T12:15:00+08:00",
+    "temp_c": 21.5,
+    "feels_like_c": 22.0,
+    "humidity_pct": 52,
+    "precip_mm": 0.0,
+    "weather": 1,
+    "cloud_cover_pct": 25,
+    "pressure_hpa": 1015.0,
+    "wind_kmh": 10.0,
+    "wind_dir_deg": 30,
+    "wind_gust_kmh": null,
+    "visibility_km": 14.0,
+    "uv_index": 5.0,
+    "is_day": true
+  },
+  "days": [
+    {
+      "date": "2026-09-30",
+      "parts": [
+        {
+          "kind": "morning",
+          "temp_c": 17.0,
+          "feels_like_c": 16.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 0,
+          "wind_kmh": 7.0,
+          "wind_dir_deg": 100,
+          "humidity_pct": 58,
+          "visibility_km": 12.0
+        },
+        {
+          "kind": "noon",
+          "temp_c": 23.0,
+          "feels_like_c": 23.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "weather": 1,
+          "wind_kmh": 12.0,
+          "wind_dir_deg": 130,
+          "humidity_pct": 42,
+          "visibility_km": 15.0
+        },
+        {
+          "kind": "evening",
+          "temp_c": 19.0,
+          "feels_like_c": 18.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 10,
+          "weather": 2,
+          "wind_kmh": 9.0,
+          "wind_dir_deg": 170,
+          "humidity_pct": 55,
+          "visibility_km": 13.0
+        },
+        {
+          "kind": "night",
+          "temp_c": 14.0,
+          "feels_like_c": 13.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "weather": 3,
+          "wind_kmh": 6.0,
+          "wind_dir_deg": 210,
+          "humidity_pct": 72,
+          "visibility_km": 10.0
+        }
+      ],
+      "temp_min_c": 14.0,
+      "temp_max_c": 24.0,
+      "sunrise": "2026-09-30T06:05:00+08:00",
+      "sunset": "2026-09-30T17:58:00+08:00"
+    }
+  ],
+  "air": null,
+  "astro": {
+    "moon": {
+      "phase": "waning-crescent",
+      "illuminated_fraction": 0.2313,
+      "age_days": 26.54,
+      "moonrise": "2026-09-30T07:12:00+08:00",
+      "moonset": "2026-09-30T21:34:00+08:00",
+      "next": [
+        [
+          "full",
+          "2026-10-06T22:09:00+08:00"
+        ],
+        [
+          "last-quarter",
+          "2026-10-14T12:44:00+08:00"
+        ],
+        [
+          "new",
+          "2026-10-22T03:18:00+08:00"
+        ],
+        [
+          "first-quarter",
+          "2026-10-30T06:21:00+08:00"
+        ]
+      ]
+    },
+    "sun": {
+      "sunrise": "2026-09-30T06:05:00+08:00",
+      "sunset": "2026-09-30T18:55:00+08:00",
+      "daylight_secs": 43200,
+      "polar": null,
+      "source": "provider"
+    },
+    "computed_at": "2026-09-30T12:30:00Z"
+  },
+  "attribution": {
+    "provider": "open-meteo",
+    "display_name": "Open-Meteo",
+    "licence": "Open-Meteo.com (CC BY 4.0)",
+    "capabilities": {
+      "current": true,
+      "hourly": true,
+      "daily": true,
+      "alerts": false,
+      "max_days": 16,
+      "requires_key": false,
+      "key_env": null,
+      "locations": {
+        "city": true,
+        "station": false,
+        "lat_lon": true
+      }
+    },
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "fetched_at": "2026-09-30T04:11:00Z",
+    "raw": null
+  }
+}

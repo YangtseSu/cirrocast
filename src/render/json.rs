@@ -41,6 +41,7 @@ use crate::error::{Error, Result};
 use crate::geo::attribution_line;
 use crate::model::ReportCapabilities as Capabilities;
 use crate::model::air::{POLLEN_UNIT, POLLUTANT_UNIT};
+use crate::model::astro::{Astro, Moon, Sun};
 use crate::model::units::{normalise_zero, normalise_zero_f64};
 use crate::model::{
     AirQuality, Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
@@ -76,6 +77,8 @@ struct Document<'a> {
     days: Vec<DayJson<'a>>,
     /// Air quality, `null` when the run did not ask for it or the best-effort fetch degraded.
     air: Option<AirJson>,
+    /// Moon phase, sun times and the next phase instants, `null` unless the run asked (`--moon`).
+    astro: Option<AstroJson<'a>>,
     /// Severe-weather warnings in force, strongest first.
     alerts: Vec<AlertJson<'a>>,
     /// What the backend offers, so a consumer can tell "no days because it is an observation"
@@ -104,6 +107,7 @@ impl<'a> Document<'a> {
                 .map(|day| DayJson::of(day, ctx))
                 .collect(),
             air: report.air.as_ref().map(AirJson::of),
+            astro: report.astro.as_ref().map(|astro| AstroJson::of(astro, ctx)),
             alerts: report.alerts.iter().map(AlertJson::of).collect(),
             capabilities: report.attribution.capabilities.as_ref(),
             attribution: AttributionJson::of(&report.attribution, &report.location),
@@ -339,6 +343,117 @@ struct AirUnitsJson {
     pollutants: &'static str,
     /// Pollen unit (`grains/m³`).
     pollen: &'static str,
+}
+
+/// The moon and sun block, computed locally.
+///
+/// Present only when the run asked for it (`--moon` or `--format moon`), like the air object;
+/// every key inside it is always present and nullable where the value can be absent, and no
+/// timestamp is ever a clamped `00:00` — an event that does not happen is `null`, and a polar
+/// state is named in `sun.polar`.
+#[derive(Debug, Serialize)]
+struct AstroJson<'a> {
+    /// When the block was computed, UTC.
+    computed_at: String,
+    /// The Moon.
+    moon: MoonJson<'a>,
+    /// The Sun.
+    sun: SunJson,
+}
+
+impl<'a> AstroJson<'a> {
+    /// Projects the block.
+    fn of(astro: &'a Astro, ctx: &'a RenderContext<'_>) -> Self {
+        Self {
+            computed_at: astro
+                .computed_at
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            moon: MoonJson::of(&astro.moon, ctx),
+            sun: SunJson::of(&astro.sun),
+        }
+    }
+}
+
+/// The Moon: phase, illumination, age, the day's rise/set and the next phase instants.
+#[derive(Debug, Serialize)]
+struct MoonJson<'a> {
+    /// The phase's name in the report's language.
+    phase: Cow<'a, str>,
+    /// The phase's stable slug, e.g. `waxing-crescent`.
+    phase_key: &'static str,
+    /// Illuminated fraction of the disc, 0..=1 (geocentric).
+    illuminated_fraction: f64,
+    /// Days since the preceding New Moon.
+    age_days: f64,
+    /// Moonrise on the location-local day, ISO 8601 at the location's offset; `null` when the
+    /// event does not happen on the day.
+    moonrise: Option<String>,
+    /// Moonset on the location-local day; `null` when the event does not happen on the day.
+    moonset: Option<String>,
+    /// The next four phase instants after the run's clock.
+    next: Vec<NextPhaseJson<'a>>,
+}
+
+impl<'a> MoonJson<'a> {
+    /// Projects the Moon.
+    fn of(moon: &'a Moon, ctx: &'a RenderContext<'_>) -> Self {
+        Self {
+            phase: ctx.i18n.moon_phase(moon.phase),
+            phase_key: moon.phase.as_str(),
+            illuminated_fraction: normalise_zero_f64(moon.illuminated_fraction),
+            age_days: normalise_zero_f64(moon.age_days),
+            moonrise: moon.moonrise.map(iso_local),
+            moonset: moon.moonset.map(iso_local),
+            next: moon
+                .next
+                .iter()
+                .map(|(phase, at)| NextPhaseJson {
+                    phase: ctx.i18n.moon_phase(*phase),
+                    phase_key: phase.as_str(),
+                    at: iso_local(*at),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// One upcoming phase instant.
+#[derive(Debug, Serialize)]
+struct NextPhaseJson<'a> {
+    /// The phase's name in the report's language.
+    phase: Cow<'a, str>,
+    /// The phase's stable slug, the same vocabulary as `moon.phase_key`.
+    phase_key: &'static str,
+    /// The instant, ISO 8601 at the location's offset.
+    at: String,
+}
+
+/// The Sun: the day's rise/set, the daylight span and where the times came from.
+#[derive(Debug, Serialize)]
+struct SunJson {
+    /// Sunrise on the location-local day; `null` when the Sun does not rise.
+    sunrise: Option<String>,
+    /// Sunset on the location-local day; `null` when the Sun does not set.
+    sunset: Option<String>,
+    /// Seconds of daylight; `86400` for a polar day and `0` for a polar night.
+    daylight_secs: Option<u32>,
+    /// `day` or `night` inside the polar circles; `null` otherwise.
+    polar: Option<&'static str>,
+    /// `provider` when the backend supplied the times, `local` when they were computed here.
+    source: &'static str,
+}
+
+impl SunJson {
+    /// Projects the Sun.
+    fn of(sun: &Sun) -> Self {
+        Self {
+            sunrise: sun.sunrise.map(iso_local),
+            sunset: sun.sunset.map(iso_local),
+            daylight_secs: sun.daylight_secs,
+            polar: sun.polar.map(super::super::model::astro::Polar::as_str),
+            source: sun.source.as_str(),
+        }
+    }
 }
 
 /// One forecast day.

@@ -21,6 +21,7 @@
 use unicode_width::UnicodeWidthStr as _;
 
 use super::Charset;
+use crate::model::astro::MoonPhase;
 use crate::model::units::compass_16;
 
 /// The width of an art block in display columns.
@@ -398,6 +399,140 @@ const ART: &[(&str, Block)] = &[
     ),
 ];
 
+// ---------------------------------------------------------------------------------------------
+// The moon
+// ---------------------------------------------------------------------------------------------
+
+/// One moon block: the four-line disc for each charset and the one-line `%m` glyphs.
+///
+/// The disc is drawn with `█` for the lit limb and `░`/`▒` for the dark one and its terminator —
+/// re-authored here from the phase geometry, like every other block in this module, never copied.
+/// The ASCII fallback is a four-column transcription of the same silhouette, and the glyphs are
+/// the single-column form the `one-line` `%m` token prints.
+#[derive(Debug, Clone, Copy)]
+pub struct MoonBlock {
+    /// The unicode block, four lines, each at most [`ART_W`] columns.
+    pub unicode: [&'static str; ART_LINES],
+    /// The ASCII transcription of the same shape.
+    pub ascii: [&'static str; ART_LINES],
+    /// The single-column unicode glyph (`%m` on a UTF-8 terminal).
+    pub glyph: &'static str,
+    /// The single-column 7-bit glyph (`%m` on a dumb terminal).
+    pub ascii_glyph: &'static str,
+}
+
+/// The eight moon blocks, in [`MoonPhase::ALL`] order — [`moon`] indexes them by
+/// [`MoonPhase::index`].
+///
+/// The glyph set distinguishes six of the eight phases: `☽`/`☾` split the crescents and `◐`/`◑`
+/// the quarters, while the two gibbous phases share `◕` (Unicode has no mirrored "all but one
+/// quadrant" circle, and the four-line block and the phase name carry the direction). ASCII has
+/// no glyph family at all, so it names the sides with punctuation: `(`/`)` for the crescents,
+/// `[`/`]` for the quarters, `O` for a gibbous and `@` for the full disc.
+const MOON_ART: [(&str, MoonBlock); 8] = [
+    (
+        "moon/new",
+        MoonBlock {
+            unicode: [" ░░░░░ ", "░░░░░░░", "░░░░░░░", " ░░░░░ "],
+            ascii: [" .. ", "....", "....", " .. "],
+            glyph: "○",
+            ascii_glyph: ".",
+        },
+    ),
+    (
+        "moon/waxing-crescent",
+        MoonBlock {
+            unicode: [" ░░░▒█ ", "░░░░░▒█", "░░░░░▒█", " ░░░▒█ "],
+            ascii: [" +# ", "..+#", "..+#", " +# "],
+            glyph: "☽",
+            ascii_glyph: "(",
+        },
+    ),
+    (
+        "moon/first-quarter",
+        MoonBlock {
+            unicode: [" ░░▒██ ", "░░▒████", "░░▒████", " ░░▒██ "],
+            ascii: [" +# ", ".+##", ".+##", " +# "],
+            glyph: "◑",
+            ascii_glyph: "]",
+        },
+    ),
+    (
+        "moon/waxing-gibbous",
+        MoonBlock {
+            unicode: [" ▒████ ", "▒██████", "▒██████", " ▒████ "],
+            ascii: [" +# ", "+###", "+###", " +# "],
+            glyph: "◕",
+            ascii_glyph: "O",
+        },
+    ),
+    (
+        "moon/full",
+        MoonBlock {
+            unicode: [" █████ ", "███████", "███████", " █████ "],
+            ascii: [" ## ", "####", "####", " ## "],
+            glyph: "●",
+            ascii_glyph: "@",
+        },
+    ),
+    (
+        "moon/waning-gibbous",
+        MoonBlock {
+            unicode: [" ████▒ ", "██████▒", "██████▒", " ████▒ "],
+            ascii: [" #+ ", "###+", "###+", " #+ "],
+            glyph: "◕",
+            ascii_glyph: "O",
+        },
+    ),
+    (
+        "moon/last-quarter",
+        MoonBlock {
+            unicode: [" ██▒░░ ", "████▒░░", "████▒░░", " ██▒░░ "],
+            ascii: [" #+ ", "##+.", "##+.", " #+ "],
+            glyph: "◐",
+            ascii_glyph: "[",
+        },
+    ),
+    (
+        "moon/waning-crescent",
+        MoonBlock {
+            unicode: [" █▒░░░ ", "█▒░░░░░", "█▒░░░░░", " █▒░░░ "],
+            ascii: [" #+ ", "#+..", "#+..", " #+ "],
+            glyph: "☾",
+            ascii_glyph: ")",
+        },
+    ),
+];
+
+/// The moon block of a phase.
+///
+/// Indexed by [`MoonPhase::index`], which the test below pins against [`MoonPhase::art_key`], so
+/// the table order and the phase order cannot drift apart.
+#[must_use]
+pub fn moon(phase: MoonPhase) -> &'static MoonBlock {
+    &MOON_ART[phase.index()].1
+}
+
+/// The four lines of a phase's block in `charset`.
+#[must_use]
+pub fn moon_lines(phase: MoonPhase, charset: Charset) -> [&'static str; ART_LINES] {
+    let block = moon(phase);
+    match charset {
+        Charset::Unicode => block.unicode,
+        Charset::Ascii => block.ascii,
+    }
+}
+
+/// The one-column glyph of a phase in `charset`, for the `%m` token.
+#[must_use]
+pub fn moon_glyph(phase: MoonPhase, charset: Charset) -> &'static str {
+    let block = moon(phase);
+    match charset {
+        Charset::Unicode => block.glyph,
+        Charset::Ascii => block.ascii_glyph,
+    }
+}
+
 /// The one-line glyph of a key, used where a whole block would not fit (the stacked narrow layout,
 /// and `%c` in the `one-line` format).
 ///
@@ -538,9 +673,10 @@ mod tests {
     use unicode_width::UnicodeWidthStr as _;
 
     use super::{
-        ARROWS, ART, ART_LINES, ART_W, ArtStyle, NO_BLOCK, art, night_variant, one_line_art,
-        wind_arrow,
+        ARROWS, ART, ART_LINES, ART_W, ArtStyle, MOON_ART, NO_BLOCK, art, moon, moon_glyph,
+        moon_lines, night_variant, one_line_art, wind_arrow,
     };
+    use crate::model::astro::MoonPhase;
     use crate::model::condition::Condition;
     use crate::model::units::compass_16;
     use crate::render::Charset;
@@ -772,6 +908,101 @@ mod tests {
                 "`{key}`: {glyph:?} is {} columns wide",
                 glyph.width()
             );
+        }
+    }
+
+    #[test]
+    fn every_phase_has_a_moon_block_with_the_documented_shape() {
+        for phase in MoonPhase::ALL {
+            let block = moon(phase);
+            assert_eq!(
+                MOON_ART[phase.index()].0,
+                phase.art_key(),
+                "{phase:?} is not in its own table row"
+            );
+            for (index, (unicode, ascii)) in block.unicode.iter().zip(block.ascii).enumerate() {
+                let (unicode_w, ascii_w) = (unicode.width(), ascii.width());
+                assert!(
+                    unicode_w <= ART_W && ascii_w <= ART_W,
+                    "{phase:?}: line {index} is wider than ART_W"
+                );
+                assert!(
+                    unicode_w > 0 && ascii_w > 0,
+                    "{phase:?}: line {index} is empty in one charset"
+                );
+                assert!(
+                    ascii.is_ascii(),
+                    "{phase:?}: {ascii:?} needs a unicode terminal"
+                );
+            }
+            for glyph in [block.glyph, block.ascii_glyph] {
+                assert_eq!(
+                    glyph.width(),
+                    1,
+                    "{phase:?}: the glyph {glyph:?} is not one column"
+                );
+                assert_ne!(glyph, "");
+            }
+            assert!(block.ascii_glyph.is_ascii(), "{phase:?}");
+        }
+        assert_eq!(MOON_ART.len(), MoonPhase::ALL.len());
+    }
+
+    /// A full disc is all lit, a new one all dark, and the two gibbous rows are the mirrors of
+    /// each other: the geometry a reader relies on cannot silently invert.
+    #[test]
+    fn the_moon_blocks_draw_the_phase_they_name() {
+        let lit = |phase: MoonPhase| {
+            let lines = moon_lines(phase, Charset::Unicode);
+            lines
+                .iter()
+                .map(|line| line.chars().filter(|c| *c == '█').count())
+                .sum::<usize>()
+        };
+        assert_eq!(lit(MoonPhase::New), 0);
+        assert_eq!(lit(MoonPhase::Full), 24);
+        assert_eq!(lit(MoonPhase::FirstQuarter), lit(MoonPhase::LastQuarter));
+        assert_eq!(
+            lit(MoonPhase::WaxingCrescent),
+            lit(MoonPhase::WaningCrescent)
+        );
+        assert_eq!(lit(MoonPhase::WaxingGibbous), lit(MoonPhase::WaningGibbous));
+        for (earlier, later) in [
+            (MoonPhase::New, MoonPhase::WaxingCrescent),
+            (MoonPhase::WaxingCrescent, MoonPhase::FirstQuarter),
+            (MoonPhase::FirstQuarter, MoonPhase::WaxingGibbous),
+            (MoonPhase::WaxingGibbous, MoonPhase::Full),
+        ] {
+            assert!(
+                lit(earlier) < lit(later),
+                "{earlier:?} is not dimmer than {later:?}"
+            );
+        }
+        // The lit side follows the direction: waxing on the right, waning on the left.
+        let edge_lit = |phase: MoonPhase, right: bool| {
+            moon_lines(phase, Charset::Unicode).iter().any(|line| {
+                let characters: Vec<char> = line.chars().collect();
+                if right {
+                    characters.iter().rev().take(2).any(|c| *c == '█')
+                } else {
+                    characters.iter().take(2).any(|c| *c == '█')
+                }
+            })
+        };
+        assert!(edge_lit(MoonPhase::WaxingCrescent, true));
+        assert!(!edge_lit(MoonPhase::WaxingCrescent, false));
+        assert!(edge_lit(MoonPhase::WaningCrescent, false));
+        assert!(!edge_lit(MoonPhase::WaningCrescent, true));
+    }
+
+    #[test]
+    fn the_moon_glyphs_are_charset_specific() {
+        for phase in crate::model::astro::MoonPhase::ALL {
+            let unicode = moon_glyph(phase, Charset::Unicode);
+            let ascii = moon_glyph(phase, Charset::Ascii);
+            assert!(ascii.is_ascii(), "{phase:?}: {ascii:?}");
+            assert!(!unicode.is_ascii(), "{phase:?}: {unicode:?} is not unicode");
+            assert_eq!(ascii.len(), 1);
         }
     }
 }

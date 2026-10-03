@@ -211,6 +211,28 @@ fn a_night_observation_draws_the_night_blocks() {
 }
 
 #[test]
+fn the_moon_block_renders_under_the_table_in_both_charsets() {
+    snapshot!(
+        "art_table_moon_d1_w80",
+        case("beijing-astro.json", UnitSystem::Metric, 80)
+    );
+    snapshot!(
+        "art_table_moon_dumb_d1_w80",
+        Case {
+            format: Format::Dumb,
+            ..case("beijing-astro.json", UnitSystem::Metric, 80)
+        }
+    );
+    snapshot!(
+        "moon_view_d1_w80",
+        Case {
+            format: Format::Moon,
+            ..case("beijing-astro.json", UnitSystem::Metric, 80)
+        }
+    );
+}
+
+#[test]
 fn the_dumb_format_is_ascii_without_colour() {
     snapshot!(
         "art_table_dumb_d3_w80",

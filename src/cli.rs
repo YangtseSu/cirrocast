@@ -149,9 +149,10 @@ EXIT CODES
 ONE-LINE TOKENS (--format one-line)
   %c condition art    %C condition text   %t temp        %f feels-like
   %w wind             %h humidity         %p precip      %P pressure
-  %v visibility       %u UV index         %U UV + band   %m moon (n/a)
-  %d ISO date         %D Wed 30 Sep       %Z zone name   %z +0800
-  %S sunrise          %s sunset           %l name        %L 39.90,116.40
+  %v visibility       %u UV index         %U UV + band   %m moon glyph
+  %M moon phase       %d ISO date         %D Wed 30 Sep  %Z zone name
+  %z +0800            %S sunrise          %s sunset      %l name
+  %L 39.90,116.40
   %A strongest alert event, empty when no alerts are in force
   %q air-quality index on the selected scale (US AQI 43 (Good))
   %% is a literal %, %{...} is verbatim, \\n \\t \\\\ are escapes; an unknown %X stays literal.
@@ -255,6 +256,12 @@ pub struct QueryArgs {
     /// overrides `[air] index`. Needs `--aqi` or `--format aqi`.
     #[arg(long, value_name = "SCALE", value_parser = parse_aqi_index)]
     pub aqi_index: Option<AqiIndex>,
+
+    /// Compute the moon and sun block locally (no request) and append it to the table and `plain`
+    /// output; `json` then carries it as the `astro` object. `--format moon` prints the standalone
+    /// view, and `one-line` shows the moon through the `%m`/`%M` tokens.
+    #[arg(long)]
+    pub moon: bool,
 
     /// Template for `--format one-line`: a literal `%`-token string, or `@PRESET`. The presets
     /// are `@default`, `@short`, `@full`, `@uv` and `@sun`; `--help` lists their templates and
@@ -915,13 +922,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         eprintln!("{warning}");
     }
     let setup = RenderSetup::resolve(query, &config, &settings, cli.verbose, cli.quiet)?;
-    // `--aqi-index` shapes the air panel, so it needs a run that fetches one: either `--aqi` or
-    // the standalone `--format aqi` (which implies the fetch). Checked before any traffic.
-    if query.aqi_index.is_some() && !query.aqi && setup.format != Format::Aqi {
-        return Err(Error::Usage(
-            "--aqi-index needs --aqi or `--format aqi`; it shapes the air-quality panel".to_owned(),
-        ));
-    }
+    validate_surfaces(query, setup.format)?;
     if cli.verbose > 0 {
         sources.note(&settings);
         render_notes(&setup);
@@ -989,7 +990,62 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         attach_air(&mut report, &env, cli.quiet);
     }
 
-    output_report(&setup, &report, &alert_credits, &cache, cli)
+    // The astro block is attached only when the run asks for it (see `attach_astro`).
+    let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
+    if query.moon || setup.format == Format::Moon {
+        attach_astro(&mut report, now, cli.verbose);
+    }
+
+    output_report(&setup, &report, &alert_credits, now, cli)
+}
+
+/// The flags whose effect depends on the format, checked before any traffic.
+///
+/// `--aqi-index` shapes the air panel, so it needs a run that fetches one; `--moon` appends the
+/// block to the formats that have one, while `one-line` has the `%m`/`%M` tokens and the
+/// alert/AQI listings show their own panel. A flag that would draw nothing is a usage error
+/// rather than a silent no-op.
+fn validate_surfaces(query: &QueryArgs, format: Format) -> Result<()> {
+    if query.aqi_index.is_some() && !query.aqi && format != Format::Aqi {
+        return Err(Error::Usage(
+            "--aqi-index needs --aqi or `--format aqi`; it shapes the air-quality panel".to_owned(),
+        ));
+    }
+    if query.moon && matches!(format, Format::OneLine | Format::Alerts | Format::Aqi) {
+        return Err(Error::Usage(match format {
+            Format::OneLine => {
+                "`--format one-line` shows the moon through the `%m`/`%M` tokens; `--moon` appends \
+                 the block to `art-table`, `dumb`, `plain` and `json`"
+                    .to_owned()
+            }
+            format => format!(
+                "`--moon` appends the block to `art-table`, `dumb`, `plain`, `json` and `moon`; \
+                 `--format {}` has no astro surface",
+                format.as_str()
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Attaches the locally computed astro block when the run asked for it.
+///
+/// It costs no request, but it is still attached only when asked for, so the renderers stay dumb
+/// about display settings: `--moon`/`--format moon` here, `Report::astro` there. `now` is the
+/// run's clock, read once, so `ctx.now` and `astro.computed_at` are the same instant.
+fn attach_astro(
+    report: &mut crate::model::Report,
+    now: chrono::DateTime<chrono::Utc>,
+    verbose: u8,
+) {
+    let astro = crate::astro::Astro::compute(
+        report,
+        now.with_timezone(&report.location.tz).fixed_offset(),
+    );
+    if verbose > 0 && astro.sun.source == crate::model::SunSource::Local {
+        eprintln!("sun: computed locally (provider sends none)");
+    }
+    report.astro = Some(astro);
 }
 
 /// Renders and prints the report: the context `main` builds once, the credits `one-line` cannot
@@ -998,10 +1054,9 @@ fn output_report(
     setup: &RenderSetup,
     report: &crate::model::Report,
     alert_credits: &[String],
-    cache: &Cache,
+    now: chrono::DateTime<chrono::Utc>,
     cli: &Cli,
 ) -> Result<()> {
-    let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
     let ctx = RenderContext {
         units: setup.units,
         color: setup.color,

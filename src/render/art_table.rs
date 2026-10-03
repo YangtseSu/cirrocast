@@ -58,7 +58,7 @@ use unicode_width::UnicodeWidthChar as _;
 
 use super::art::{self, ART_LINES, ART_W};
 use super::color::{self, FG_DEFAULT, paint};
-use super::{Charset, ColorDepth, RenderContext, Renderer};
+use super::{Charset, ColorDepth, RenderContext, Renderer, TermKind};
 use crate::error::Result;
 use crate::geo::{attribution_line, place};
 use crate::i18n::keys;
@@ -173,9 +173,17 @@ impl Renderer for ArtTable {
                 lines.extend(columns(&report.days, ctx, charset, depth));
             }
         }
+        // The moon block sits between the forecast and the air panel: it is sky data like the
+        // table's own, while the air panel is a separate reading with its own credit.
+        let panels = panel_context(ctx, charset);
+        let moon = super::moon::panel(report, &panels);
+        if !moon.is_empty() {
+            lines.push(String::new());
+            lines.extend(moon);
+        }
         // The air panel sits between the forecast and the credits: the air credit is part of the
         // panel (it belongs to those numbers), the place and forecast credits stay last.
-        let panel = super::air::panel(report, ctx, depth);
+        let panel = super::air::panel(report, &panels, depth);
         if !panel.is_empty() {
             lines.push(String::new());
             lines.extend(panel);
@@ -195,6 +203,18 @@ impl Renderer for ArtTable {
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+/// The context the panels see: an ASCII table (`--format dumb`, or a terminal that cannot draw
+/// UTF-8) forces the 7-bit charset on the air and moon blocks too, so a format that promises
+/// ASCII cannot end up drawing the unicode moon disc.
+fn panel_context<'a>(ctx: &RenderContext<'a>, charset: Charset) -> RenderContext<'a> {
+    let mut panels = *ctx;
+    if charset == Charset::Ascii {
+        panels.term.term = TermKind::Dumb;
+        panels.term.utf8 = false;
+    }
+    panels
 }
 
 /// `observed 23:51Z · 12 min ago`: when the observation was taken and how old it is.

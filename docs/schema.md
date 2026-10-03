@@ -157,6 +157,25 @@ present).
 | `air.units` | object | — | no | the units the air numbers are in |
 | `air.units.pollutants` | string | — | no | `μg/m³` |
 | `air.units.pollen` | string | — | no | `grains/m³` |
+| `astro` | object | — | yes | moon and sun, computed locally; `null` unless the run asked (`--moon` or `--format moon`) |
+| `astro.computed_at` | string | — | no | when the block was computed, UTC |
+| `astro.moon` | object | — | no | the Moon |
+| `astro.moon.phase` | string | — | no | phase name in the report's language, e.g. `Waxing Crescent` |
+| `astro.moon.phase_key` | string | — | no | stable slug: `new`, `waxing-crescent`, `first-quarter`, `waxing-gibbous`, `full`, `waning-gibbous`, `last-quarter`, `waning-crescent` |
+| `astro.moon.illuminated_fraction` | number | 0..1 | no | illuminated fraction of the disc, geocentric |
+| `astro.moon.age_days` | number | days | no | days since the preceding New Moon |
+| `astro.moon.moonrise` | string | — | yes | moonrise at the location's offset; `null` when the event does not happen on the local day |
+| `astro.moon.moonset` | string | — | yes | moonset at the location's offset; `null` when the event does not happen on the local day |
+| `astro.moon.next` | array | — | no | the next four phase instants after the run's clock, chronological |
+| `astro.moon.next[].phase` | string | — | no | phase name in the report's language |
+| `astro.moon.next[].phase_key` | string | — | no | the same slug vocabulary as `astro.moon.phase_key` |
+| `astro.moon.next[].at` | string | — | no | the instant, at the location's offset |
+| `astro.sun` | object | — | no | the Sun |
+| `astro.sun.sunrise` | string | — | yes | sunrise at the location's offset; `null` when the Sun does not rise |
+| `astro.sun.sunset` | string | — | yes | sunset at the location's offset; `null` when the Sun does not set |
+| `astro.sun.daylight_secs` | integer | seconds | yes | daylight span; `86400` on a polar day, `0` on a polar night, `null` when unknown |
+| `astro.sun.polar` | string | — | yes | `day` or `night` inside the polar circles, else `null` |
+| `astro.sun.source` | string | — | no | `provider` when the backend sent the times, `local` when they were computed here |
 | `capabilities` | object | — | yes | what the answering backend offers; `null` for an unknown backend |
 | `capabilities.current` | boolean | — | no | current conditions available |
 | `capabilities.hourly` | boolean | — | no | hourly data available |

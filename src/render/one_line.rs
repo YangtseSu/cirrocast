@@ -16,7 +16,7 @@
 //! | `%t` `%f` | temp / feels-like | `%u` `%U` | UV `5` / `5 (moderate)` |
 //! | `%w` | wind `↗ 12km/h NE` | `%S` `%s` | sunrise / sunset `06:05` |
 //! | `%h` | humidity `56%` | `%l` `%L` | name / `39.90,116.40` |
-//! | `%p` | precipitation `0.0mm` | `%m` | moon phase — `n/a` until the moon step lands |
+//! | `%p` | precipitation `0.0mm` | `%m` `%M` | moon glyph / phase name |
 //! | `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
 //! | `%q` | air-quality index `US AQI 43 (Good)` | `%A` | strongest alert event |
 //!
@@ -184,8 +184,10 @@ pub enum Token {
     Location,
     /// `%L` — the coordinates.
     Coordinates,
-    /// `%m` — the moon phase, `n/a` until step 17.
+    /// `%m` — the moon phase's art glyph.
     Moon,
+    /// `%M` — the moon phase's name (`Waxing Crescent`).
+    MoonPhase,
     /// `%A` — the strongest alert's event, empty when there are none.
     Alert,
     /// `%q` — the air-quality index on the selected scale.
@@ -217,6 +219,7 @@ const TOKENS: &[(char, Token)] = &[
     ('l', Token::Location),
     ('L', Token::Coordinates),
     ('m', Token::Moon),
+    ('M', Token::MoonPhase),
     ('A', Token::Alert),
     ('q', Token::Quality),
 ];
@@ -549,7 +552,14 @@ fn value(token: Token, snapshot: &Snapshot, report: &Report, ctx: &RenderContext
         Token::Sunset => snapshot.sunset.map_or_else(|| n_a(ctx), clock_time),
         Token::Location => report.location.name.clone(),
         Token::Coordinates => coordinates(&report.location),
-        Token::Moon => ctx.i18n.text(&keys::MOON_NA).into_owned(),
+        Token::Moon => {
+            let phase = crate::astro::phase_at(ctx.now);
+            art::moon_glyph(phase, ctx.term.charset()).to_owned()
+        }
+        Token::MoonPhase => {
+            let phase = crate::astro::phase_at(ctx.now);
+            ctx.i18n.moon_phase(phase).into_owned()
+        }
         // Unlike every other token, an absent alert is the empty string, not `n/a`: a template is
         // a sentence, and `%A` there reads as "the warning, if any".
         Token::Alert => report
@@ -630,6 +640,7 @@ mod tests {
             ('l', Token::Location),
             ('L', Token::Coordinates),
             ('m', Token::Moon),
+            ('M', Token::MoonPhase),
             ('A', Token::Alert),
             ('q', Token::Quality),
         ] {

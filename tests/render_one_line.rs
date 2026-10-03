@@ -119,7 +119,9 @@ fn every_token_renders_the_documented_value() {
         ("%s", "17:58"),
         ("%l", "Beijing"),
         ("%L", "39.90,116.41"),
-        ("%m", "n/a"),
+        // The fixture is 2026-09-30, four days after the full moon of the 26th: waning gibbous.
+        ("%m", "◕"),
+        ("%M", "Waning Gibbous"),
     ] {
         assert_eq!(line(template), expected, "{template}");
     }

@@ -72,6 +72,7 @@ impl Renderer for Plain {
             lines.push(day_line(day, ctx));
         }
         lines.extend(super::air::records(report, ctx));
+        lines.extend(super::moon::records(report, ctx));
 
         if let Some(credit) = attribution_line(&report.location) {
             lines.push(credit.to_owned());
