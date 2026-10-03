@@ -1021,6 +1021,7 @@ mod tests {
             location: location(),
             current,
             days,
+            alerts: Vec::new(),
             attribution: attribution(),
         }
     }

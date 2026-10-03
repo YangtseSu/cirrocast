@@ -250,6 +250,7 @@ fn report(
         location: loc.clone(),
         current,
         days: forecasts,
+        alerts: Vec::new(),
         attribution: attribution(
             ProviderId::Smhi,
             url,

@@ -345,6 +345,7 @@ fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> 
         location: loc.clone(),
         current,
         days: forecasts,
+        alerts: Vec::new(),
         attribution: attribution(
             ProviderId::WorldWeatherOnline,
             url,

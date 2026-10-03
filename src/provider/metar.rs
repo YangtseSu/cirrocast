@@ -111,6 +111,7 @@ impl Provider for Metar {
             location: station,
             current: Some(current),
             days: Vec::new(),
+            alerts: Vec::new(),
             attribution: attribution(
                 ProviderId::Metar,
                 observation_request(&icao).redacted_url(),

@@ -256,6 +256,7 @@ fn report(
         location,
         current,
         days: forecasts,
+        alerts: Vec::new(),
         attribution: attribution(
             ProviderId::PirateWeather,
             url,

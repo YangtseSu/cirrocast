@@ -1315,6 +1315,7 @@ mod tests {
             location: test_location(),
             current: None,
             days: Vec::new(),
+            alerts: Vec::new(),
             attribution: Attribution::unregistered(
                 id.to_string(),
                 "https://example.invalid/forecast",

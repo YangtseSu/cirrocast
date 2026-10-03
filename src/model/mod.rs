@@ -19,9 +19,11 @@
 //!   itself stores the raw upstream body, never a serialised `Report`, so a provider schema
 //!   change heals by refetching instead of failing on an old document.
 
+pub mod alert;
 pub mod condition;
 pub mod units;
 
+pub use alert::{Alert, AlertSource, Certainty, Severity, Urgency};
 pub use condition::Condition;
 
 use chrono::{
@@ -394,6 +396,14 @@ pub struct Report {
     pub current: Option<Current>,
     /// Forecast days, oldest first, starting at the location-local today.
     pub days: Vec<DayForecast>,
+    /// Severe-weather warnings in force for the location, strongest first.
+    ///
+    /// Alerts come from their own source registry (step 15), not from the weather backend, so the
+    /// CLI attaches them after the forecast is fetched. They are part of the report because they
+    /// belong to the data the renderers print, not to the run's display settings; a hand-built or
+    /// pre-step-15 document parses because the field defaults to empty.
+    #[serde(default)]
+    pub alerts: Vec<Alert>,
     /// Where the data came from.
     pub attribution: Attribution,
 }

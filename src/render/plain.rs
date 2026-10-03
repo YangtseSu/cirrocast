@@ -329,6 +329,7 @@ mod tests {
             location: location(),
             current: Some(current()),
             days: vec![day()],
+            alerts: Vec::new(),
             attribution: attribution(),
         }
     }

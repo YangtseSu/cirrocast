@@ -133,6 +133,7 @@ impl Provider for OpenWeatherMap {
             location: loc.clone(),
             current,
             days: forecasts,
+            alerts: Vec::new(),
             attribution: attribution(
                 ProviderId::OpenWeatherMap,
                 url,

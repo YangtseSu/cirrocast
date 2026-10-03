@@ -463,6 +463,7 @@ mod tests {
             },
             current,
             days,
+            alerts: Vec::new(),
             attribution: attribution(),
         }
     }

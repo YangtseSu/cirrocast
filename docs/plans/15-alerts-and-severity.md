@@ -27,13 +27,19 @@ location no source covers is reported as such instead of being silently asked.
 
 ## Deliverables
 
-- ⬜ `src/alerts/mod.rs`: `Alert { id, source, event, severity: Severity, urgency: Urgency,
-      certainty: Certainty, onset: Option<DateTime<FixedOffset>>, expires: Option<..>, areas:
-      Vec<String>, headline, description: Option<String>, instruction: Option<String>, sender:
-      Option<String> }`; enums with CAP v1.2 value sets — `Severity::{Unknown,Minor,Moderate,Severe,
-      Extreme}`, `Urgency::{Unknown,Past,Future,Expected,Immediate}`,
+- ⬜ `src/model/alert.rs` (re-exported by `src/alerts/mod.rs`): `Alert { id, source, event, severity:
+      Severity, urgency: Urgency, certainty: Certainty, onset: Option<DateTime<FixedOffset>>,
+      expires: Option<..>, ends: Option<..>, areas: Vec<String>, headline, description:
+      Option<String>, instruction: Option<String>, sender: Option<String> }`; enums with CAP v1.2
+      value sets — `Severity::{Unknown,Minor,Moderate,Severe,Extreme}`,
+      `Urgency::{Unknown,Past,Future,Expected,Immediate}`,
       `Certainty::{Unknown,Unobserved,Possible,Unlikely,Likely,Observed}`; `Ord` on `Severity` for
-      ordering; `AlertSource::{Nws,MeteoAlarm,QWeather,VisualCrossing}`.
+      ordering; `AlertSource::{Nws,MeteoAlarm,QWeather,Hko,WmoSwic,Fpas,VisualCrossing}`.
+      Deviation from the original bullet: the data types live in `src/model/alert.rs` because
+      `model::Report` carries the alerts and `src/model` may not depend on the fetching module;
+      `src/alerts` re-exports the names so the documented paths stay valid. `ends` was added to the
+      model (the liveness rule needs it) but stays out of the JSON document, which keeps the key
+      list of the next bullet.
 - ⬜ `src/alerts/mod.rs`: CAP v1.2 **subset** actually parsed, listed here so it cannot drift:
       alert level `identifier` (`id`), `sender`, `sent`, `status`, `msgType`, `scope`, `references`;
       info level `language`, `category`, `event`, `responseType`, `urgency`, `severity`, `certainty`,
@@ -174,10 +180,13 @@ location no source covers is reported as such instead of being silently asked.
 * **Colour ramp is authored here**, not copied: Minor = grey/blue, Moderate = yellow, Severe = red,
   Extreme = white on red; when `color = never`, severity is preserved as a text word.
 * **`%A` is claimed by this step**; step 16 claims `%q` for AQI to avoid the collision.
-* **No new crates.** CAP XML is parsed with the XML reader already chosen in step 05/06 (recorded
-  before `serde_json`-style structs are derived); if step 05 landed on `quick-xml`, the CAP reader
-  uses it with a hand-written state machine over the 17 elements listed above (`quick-xml` 0.42.0,
-  MIT, MSRV 1.56 — GPL-compatible).
+* **CAP XML is parsed with `quick-xml`.** The original note assumed step 05/06 had chosen an XML
+  reader; it did not (nothing before this step consumed XML). The alternatives were a hand-written
+  subset parser and `quick-xml = "0.42"` (MIT, no TLS, no async runtime, MSRV 1.56, already in the
+  dependency allow list's MIT rule): the pull parser is the boring one, and the CAP documents come
+  from ~130 different agencies whose escaping and CDATA use a hand-rolled reader would get wrong
+  eventually. The state machine over its events is hand-written (no serde derive), so the parsed
+  subset is exactly the list above and nothing else.
 * **Auto-on semantics**: `--alerts` forces the fetch and errors only when no source covers the
   location and none was named explicitly; without the flag, alerts are fetched when
   `[alerts] enabled` is not `false` **and** `sources_for(location)` is non-empty — a `--no-alerts`
@@ -266,3 +275,10 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
   "the weather chain declares alerts" to an independent coverage-selected registry with
   `[alerts] sources` / `--alerts-from`. QWeather alert auth now follows step 25's credential
   resolver. No code exists for this step yet, so nothing else changed.
+- 2026-10-03 — work started: `quick-xml 0.42` added (CAP XML, design note above) and the CAP-shaped
+  model landed in `src/model/alert.rs` (`Alert`, the three CAP value sets, `AlertSource`), with
+  `Report.alerts` added as a `serde(default)` field so pre-step-15 documents still parse. The first
+  deliverable bullet was amended to match that placement; probes re-confirmed NWS 200 (two live
+  Minor flood advisories in TX), WMO SWIC 0 features for ten probed points that hour, FPAS 18 UUIDs
+  for the Beijing box with a redirect-following CAP fetch, HKO `{}` and MeteoAlarm `401` without a
+  token.
