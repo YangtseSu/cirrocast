@@ -253,3 +253,7 @@ cirrocast man --bin-name weather | head -3               # ".TH weather 1"
 - 2026-09-30 — step done. Gates: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
   (22 binaries, 0 failures) and `reuse lint` clean; the smoke run above was executed and observed against the
   live Open-Meteo API, including the byte-identical `-u us` JSON comparison.
+
+- 2026-10-04 — historical note, appended by step 17: the `%m` row above ("renders the literal
+  `n/a`") and the token-table line `%m = n/a` were the state step 08 shipped. Step 17 replaced that
+  with the moon glyph and added `%M`; the `n/a` behaviour is no longer current.

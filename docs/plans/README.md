@@ -65,7 +65,7 @@ wait on ten unrelated steps.
 | 14 | C | [v1-acceptance](14-v1-acceptance.md) | ✅ done | all of A–C |
 | 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | ✅ done | 10, 12 |
 | 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ✅ done | 03, 08 |
-| 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ⬜ not-started | 03, 08 |
+| 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ✅ done | 03, 08 |
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ⬜ not-started | 04, 05 |
 | 19 | D | [more-providers](19-more-providers.md) | ⬜ not-started | 10, 15, 16 |
 | 20 | E | [wttr-compat-service](20-wttr-compat-service.md) | ⬜ not-started | 08, 10, 14 |

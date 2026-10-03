@@ -214,3 +214,7 @@ cargo test --test i18n                                            # completeness
   the five new `zh` files); `tests/i18n.rs` (11 tests) covers catalog completeness, key-set equality,
   bundle resolution with a full argument set, negotiation from `--lang`/env/config, the `zh-TW` chain,
   the `bad-TAG` warning with exit 0, `-q` silence, and the three document formats in Chinese.
+
+- 2026-10-04 — historical note, appended by step 17: the `moon-na` catalog key named above was
+  removed when `%m`/`%M` became real tokens (the phase is always computable, so there is no
+  `n/a` for it); the step-17 keys replace it in both catalogs.
