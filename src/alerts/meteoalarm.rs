@@ -70,7 +70,8 @@ pub fn fetch(loc: &Location, env: &Env<'_>, language: &str) -> Result<Vec<Alert>
         &request,
         &key,
         "country warnings",
-    )?;
+    )
+    .map_err(token_error)?;
     let features = index(&body)?;
 
     let mut alerts = Vec::new();
@@ -107,6 +108,20 @@ fn token() -> Option<String> {
         None
     } else {
         Some(value.to_owned())
+    }
+}
+
+/// A rejected token names the variable, not `cirrocast key set`: the token has no key-store entry
+/// (`MeteoAlarm` is not a weather provider), so the generic invalid-key advice would send the user
+/// to a command that does not know the service.
+fn token_error(error: Error) -> Error {
+    match error {
+        Error::InvalidKey { status, .. } => Error::InvalidToken {
+            provider: AlertSource::MeteoAlarm.as_str().to_owned(),
+            var: TOKEN_ENV.to_owned(),
+            status,
+        },
+        other => other,
     }
 }
 

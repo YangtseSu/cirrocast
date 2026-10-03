@@ -75,6 +75,20 @@ pub enum Error {
         status: u16,
     },
 
+    /// An env-only credential was rejected: there is no `key set` to point at, so the message
+    /// names the variable itself. `MeteoAlarm`'s optional alert token is the case this exists for.
+    #[error(
+        "provider {provider} rejected {var} (HTTP {status}); check the value or unset it to skip this source"
+    )]
+    InvalidToken {
+        /// Source name, e.g. `meteoalarm`.
+        provider: String,
+        /// The environment variable that carried the credential.
+        var: String,
+        /// The HTTP status the rejection came with.
+        status: u16,
+    },
+
     /// Every entry of a fallback chain failed; the message names each attempt in order.
     #[error("all {subject} failed: {}", attempts.join("; "))]
     Chain {
@@ -100,7 +114,7 @@ impl Error {
             Self::Network(_) | Self::Upstream { .. } | Self::Chain { .. } => 3,
             Self::Config(_) => 4,
             Self::LocationNotFound(_) => 5,
-            Self::MissingKey { .. } | Self::InvalidKey { .. } => 6,
+            Self::MissingKey { .. } | Self::InvalidKey { .. } | Self::InvalidToken { .. } => 6,
         }
     }
 
@@ -169,6 +183,14 @@ mod tests {
             (
                 Error::InvalidKey {
                     provider: "openweathermap".into(),
+                    status: 401,
+                },
+                6,
+            ),
+            (
+                Error::InvalidToken {
+                    provider: "meteoalarm".into(),
+                    var: "CIRROCAST_METEOALARM_KEY".into(),
                     status: 401,
                 },
                 6,
