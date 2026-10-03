@@ -178,13 +178,20 @@ pub struct Capabilities {
 pub trait Provider {
     fn id(&self) -> ProviderId;
     fn capabilities(&self) -> Capabilities;
-    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env) -> Result<Report>;
+    /// Provided: runs `fetch_report`, refuses a report whose readings are not finite
+    /// (`Error::Upstream`), then returns it. Callers always use this.
+    fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report>;
+    /// Required: the backend's own request and decode.
+    fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report>;
 }
 ```
 
 * `fetch(&self)` takes `&self` (no interior mutability), is **synchronous** — the project does not
   use an async runtime; `ureq` is the HTTP stack. Do not add `tokio`/`reqwest` without updating this
   contract and stating why in the step doc.
+* Backends implement `fetch_report`; `fetch` is the one choke point that validates the report (no
+  reading may be `NaN`/`inf`), so no backend can skip the guard. This split — a provided `fetch` plus
+  the required `fetch_report` — is the shipped shape since the 2026-10-02 review fixes.
 * `req: FetchRequest { days, hourly_resolution }`; `env: Env` gives access to the shared HTTP client,
   cache and config. Providers never open sockets or read files directly.
 * Adding a provider = one file + one `ProviderId` variant + one registry row + fixtures + a

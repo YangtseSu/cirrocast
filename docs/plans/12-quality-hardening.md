@@ -456,3 +456,8 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   and automated security updates were switched on in the repository settings (both were off); version updates
   keep Dependabot's default three-day cooldown, which does not apply to security updates. README's development
   section documents it.
+- 2026-10-03 — review-01 fix 5.1 split the `Provider` trait (`fetch` provided with the finite-reading
+  guard, backends implement `fetch_report`) but only the review record was updated; the binding sketch in
+  `docs/plans/README.md` still showed a single required `fetch`, which a step-19 implementor would copy into
+  code that cannot compile. The sketch is synced here, together with the guard sentence. No step-12
+  deliverable or exit criterion changes.
