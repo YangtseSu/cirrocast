@@ -64,7 +64,7 @@ wait on ten unrelated steps.
 | 13 | C | [packaging-and-release](13-packaging-and-release.md) | ✅ done | 08, 12 |
 | 14 | C | [v1-acceptance](14-v1-acceptance.md) | ✅ done | all of A–C |
 | 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | ✅ done | 10, 12 |
-| 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ⬜ not-started | 03, 08 |
+| 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ✅ done | 03, 08 |
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ⬜ not-started | 03, 08 |
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ⬜ not-started | 04, 05 |
 | 19 | D | [more-providers](19-more-providers.md) | ⬜ not-started | 10, 15, 16 |
@@ -142,6 +142,8 @@ src/
     mod.rs           Location, Current, DayPart, DayForecast, Report, Attribution
     condition.rs     canonical WMO 4677 code type + classification helpers
     units.rs         UnitSystem + conversion + formatting (single conversion point)
+    alert.rs         CAP-shaped alert types (step 15)
+    air.rs           AirQuality, Pollen, AirSource (step 16)
   geo/
     mod.rs           Geocoder trait, IpLocator trait, LocationSpec
     open_meteo.rs    Open-Meteo geocoding (no key)
@@ -150,6 +152,10 @@ src/
     tz.rs            offline coordinate → IANA zone lookup (`tzf-rs`), for payloads that carry none
   http.rs            shared HTTP client: timeouts, UA, retries/backoff, proxy, error taxonomy
   cache.rs           on-disk cache: keys, TTLs, atomic writes, offline mode
+  air/
+    mod.rs           air-quality facade (best-effort, one panel per run)
+    aqi.rs           the US and European AQI category scales
+    open_meteo.rs    Open-Meteo Air Quality API (keyless)
   provider/
     mod.rs           Provider trait, ProviderId, registry metadata, selection + fallback chain
     open_meteo.rs    Open-Meteo (keyless, default)
@@ -253,13 +259,16 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   `current`, `hourly`, `daily`, `alerts`, `max_days`, `requires_key`, `key_env`, `locations`), so a
   consumer can tell "no `days` because the backend is an observation" from "no `days` because the
   request asked for none". Additive within `schema_version = 2`, which added the `alerts` array
-  (the CAP-shaped warning set, strongest first) and `alert_credits` (step 15). The alert key set
-  is listed in `docs/schema.md`, and the CAP subset actually parsed is the list at the top of
-  `docs/plans/15-alerts-and-severity.md`.
+  (the CAP-shaped warning set, strongest first), `alert_credits` (step 15) and the `air` object
+  (step 16: the best-effort air-quality reading — both raw indices, the six pollutants, the
+  nullable pollen block and the `units` pair). The key sets are listed in `docs/schema.md`;
+  the CAP subset actually parsed is the list at the top of `docs/plans/15-alerts-and-severity.md`.
 * Formats: `art-table` (default, wttr.in's classic four-row coloured columns), `one-line`
   (wttr.in-compatible `%` tokens), `plain`, `json`, `alerts` (the full severe-weather warning
-  listing; `no active weather alerts` when there are none). `dumb` is not a fourth layout: it is
-  the art table in the ASCII character set (`+ - |`, ASCII art, no degree sign), selected by
+  listing; `no active weather alerts` when there are none) and `aqi` (the standalone air-quality
+  panel, step 16; `air quality unavailable` when the best-effort fetch failed). `dumb` is not a
+  fourth layout: it is the art table in the ASCII character set (`+ - |`, ASCII art, no degree
+  sign), selected by
   `--format dumb` and automatically for `TERM=dumb` or a non-UTF-8 locale.
 * Width handling: `--width` > `COLUMNS` > terminal size > 80, and never below 20 columns (a
   narrower source is raised and reported under `--verbose`). The terminal's own size comes from

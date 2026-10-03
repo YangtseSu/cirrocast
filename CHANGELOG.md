@@ -34,6 +34,18 @@ Post-`v1.0.0` work: the step-15 alert surface, on top of the 2026-10-02 review f
   (`provider info qweather` → `alerts: qweather`, `provider info smhi` → `alerts: none`).
 * `[alerts]` configuration table (`enabled`, `severity_threshold`, `sources`, `fpas_url`,
   `cache_ttl_secs`) with `config get`/`set` support.
+* **Air quality (step 16).** `--aqi` appends an air-quality panel to `art-table` and `plain` — the
+  US and European AQI, the six regulated pollutants in μg/m³ and, inside the CAMS European domain,
+  the six pollen species in grains/m³ — `--format aqi` prints it standalone, `one-line` gains the
+  `%q` token, and `json` carries an `air` object (additive within `schema_version` 2). The reading
+  is one keyless request to Open-Meteo's Air Quality API for the location the run already resolved,
+  cached under `weather/open-meteo-air-<lat>-<lon>-<local-date>.json` with `cache.weather_ttl_secs`
+  and the usual `--no-cache`/`--refresh`/`--offline` semantics. Categories are computed locally from
+  the published breakpoints; `--aqi-index` (`[air] index`, default `us`) picks the scale that drives
+  the category colour and `%q`; `--units` leaves the pollutant values alone by design. The fetch is
+  best-effort: a failure prints `warning: air quality unavailable: …` on stderr and never changes
+  the run's exit code, and a location outside the pollen domain says `not covered at this location`
+  instead of inventing a zero.
 
 ### Changed
 

@@ -5,71 +5,81 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 16 — air quality and pollen
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: 03, 08
-Touches: `src/air/mod.rs`, `src/air/aqi.rs`, `src/render/{art_table,plain,one_line,json,color}.rs`,
+Touches: `src/model/air.rs`, `src/model/mod.rs`, `src/model/units.rs`, `src/lib.rs`,
+`src/air/{mod,aqi,open_meteo}.rs`, `src/render/{mod,air,art_table,plain,one_line,json,color}.rs`,
 `src/cli.rs`, `src/config/mod.rs`, `src/cache.rs`, `src/i18n.rs`, `locales/{en-US,zh-CN}/main.ftl`,
-`tests/air.rs`, `tests/fixtures/air/`, `tests/fixtures/air/README.md`, `REUSE.toml`,
-`docs/plans/README.md`, `CHANGELOG.md`
+`tests/air.rs`, `tests/render_json.rs`, `tests/{config,render_one_line,render_*}`, `tests/fixtures/air/`,
+`tests/fixtures/air/README.md`, `tests/fixtures/report/beijing-air.json`, `REUSE.toml`,
+`docs/schema.md`, `docs/plans/README.md`, `CHANGELOG.md`
 
 ## Goal
 
 `cirrocast --aqi Berlin` appends an air-quality panel (US AQI, European AQI, the six regulated
 pollutants, and pollen where the source covers it) to the `art-table` and `plain` output, `--format
 aqi` prints it standalone, `one-line` can expand it with `%q`, and `json` carries it as a typed
-object. Values are passed through in µg/m³ exactly as the source reports them, the AQI category is
+object. Values are passed through in μg/m³ exactly as the source reports them, the AQI category is
 computed locally with an authored colour ramp, and a location outside the pollen domain degrades to
 "pollen not covered here" under `--verbose` instead of failing.
 
 ## Deliverables
 
-- ⬜ `src/air/mod.rs`: `AirQuality { time: DateTime<FixedOffset>, aqi_us: Option<u16>,
+- ✅ `src/model/air.rs`: `AirQuality { time: DateTime<FixedOffset>, aqi_us: Option<u16>,
       aqi_european: Option<u16>, pm2_5: Option<f64>, pm10: Option<f64>, o3: Option<f64>,
       no2: Option<f64>, so2: Option<f64>, co: Option<f64>, pollen: Option<Pollen>, source: AirSource }`
       and `Pollen { alder, birch, grass, mugwort, olive, ragweed: f64 }` (grains/m³);
       `AirSource::{OpenMeteo}` (an enum rather than a `&str`, so step 19 can add more sources
-      without a schema change).
-- ⬜ `src/air/aqi.rs`: `AqiCategory` with the two documented scales — US: Good `0..=50`,
+      without a schema change). The types live in the model rather than `src/air/mod.rs`: `Report`
+      carries the reading, `src/render` reads the model and may not depend on a module that fetches
+      (the step-12 layering gate), exactly as the alert types live in `src/model/alert.rs`.
+- ✅ `src/air/aqi.rs`: `AqiCategory` with the two documented scales — US: Good `0..=50`,
       Moderate `51..=100`, UnhealthyForSensitiveGroups `101..=150`, Unhealthy `151..=200`,
       VeryUnhealthy `201..=300`, Hazardous `301..=500` (and `>500` clamped to Hazardous plus the
       `beyond_index` flag); European: Good `0..=20`, Fair `21..=40`, Moderate `41..=60`,
       Poor `61..=80`, VeryPoor `81..=100`, ExtremelyPoor `>100`. `from_us(u16)`,
-      `from_european(u16)`, `color(&ColorMode)`, `i18n_key()`.
-- ⬜ `src/air/open_meteo.rs`: `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=<lat>
+      `from_european(u16)`, `i18n_key()`, `as_str()` (the JSON spelling), plus `AqiIndex`
+      (`us`/`european`, parsed by flag and config) and `us_beyond_index`. The colour ramp lives in
+      `src/render/color.rs` (`aqi_fg`) with the rest of the palette, so the air module stays free of
+      the render layer; the renderer paints the value + category word through `color::paint`, which
+      already folds to 16 colours and returns the text borrowed when colour is off.
+- ✅ `src/air/open_meteo.rs`: `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=<lat>
       &longitude=<lon>&current=us_aqi,european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,
       sulphur_dioxide,carbon_monoxide,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,
       olive_pollen,ragweed_pollen&timezone=auto` — keyless, no `&apikey`; parses `current.*`,
       `current_units.*` (asserted to be `μg/m³` / `grains/m³`, a unit mismatch is an `Error::Upstream`
       with the received unit in the message), `utc_offset_seconds`, `timezone`.
-- ⬜ Cache: reuse the report cache key with an `-air` suffix (`weather/open-meteo-air-<lat.2dp>-
+- ✅ Cache: reuse the report cache key with an `-air` suffix (`weather/open-meteo-air-<lat.2dp>-
       <lon.2dp>-<local-date>.json`), TTL = the existing weather TTL (600 s), `--no-cache`/`--refresh`/
       `--offline` semantics identical to step 05.
-- ⬜ CLI: `--aqi` (append panel), `--format aqi` (standalone view; implies `--aqi`),
+- ✅ CLI: `--aqi` (append panel), `--format aqi` (standalone view; implies `--aqi`),
       `--aqi-index <us|european>` (which index drives the category colour and the one-line summary;
       default `us`, configurable as `[air] index = "us"`), `%q` token in `one-line` (chosen because
       step 15 claims `%A`; documented in `--help` and in the README token table alongside `%A`).
-- ⬜ `json`: `"air": { "time", "source", "aqi_us", "aqi_european", "category": {"us","european"},
+- ✅ `json`: `"air": { "time", "source", "aqi_us", "aqi_european", "category": {"us","european"},
       "pm2_5", "pm10", "o3", "no2", "so2", "co", "pollen": null | {alder,birch,grass,mugwort,olive,
-      ragweed}, "units": {"pollutants":"µg/m³","pollen":"grains/m³"} }` — additive relative to
+      ragweed}, "units": {"pollutants":"μg/m³","pollen":"grains/m³"} }` — additive relative to
       `schema_version` 2 from step 15, so no further bump.
-- ⬜ UV index: **not fetched here**. The panel prints the `uv_index` already present in the weather
+- ✅ UV index: **not fetched here**. The panel prints the `uv_index` already present in the weather
       report (`src/model/mod.rs`, filled by step 06 from Open-Meteo's `uv_index` daily maximum) when
       the report carries it, labelled with its own provenance; the AQ module must compile and work
       with `uv_index: None`.
-- ⬜ Panel rendering with the width budget of step 07: 4-line compact panel ≥ 60 columns, stacked
-      key/value lines below that, never a line wider than `ctx.width`; colour ramp Good→Hazardous
-      (green → yellow → orange → red → purple → maroon) applied only to the category word and the
-      value, `color = never` keeps the words.
-- ⬜ Graceful degradation, all three cases tested: all six pollen fields `null` ⇒ `pollen = None`
+- ✅ Panel rendering with the width budget of step 07: a compact form from 60 columns (title+indices,
+      pollutants, pollen, UV, attribution — five lines at ≥ 80 columns, wrapped within the width
+      below that) and stacked key/value lines under 60, never a line wider than `ctx.width`; colour
+      ramp Good→Hazardous (green → yellow → orange → red → purple → maroon) applied only to the
+      selected scale's category word and value, `color = never` keeps the words.
+- ✅ Graceful degradation, all three cases tested: all six pollen fields `null` ⇒ `pollen = None`
       plus one `--verbose` line `air: pollen forecast is not covered here (CAMS European domain
       only)`; a partially null pollen block ⇒ nulls read as `0.0` plus a `--verbose` note; a
       response without `current` ⇒ `Error::Upstream`, `--aqi` prints `air quality unavailable` on
       stderr and the run still exits 0 with the weather output intact.
-- ⬜ i18n: `aqi-category-{good,moderate,unhealthy-sensitive,unhealthy,very-unhealthy,hazardous,
+- ✅ i18n: `aqi-category-{good,moderate,unhealthy-sensitive,unhealthy,very-unhealthy,hazardous,
       extremely-poor,fair,poor,very-poor}`, `aqi-panel-title`, `aqi-pollen-title`, `aqi-no-coverage`,
-      `aqi-uv-label`, pollutant names (`pm2-5`, `pm10`, `o3`, `no2`, `so2`, `co`) and the six pollen
-      species names.
-- ⬜ Tests (`tests/air.rs`): recorded fixtures for Berlin (all six pollen present), Sydney (all
+      `aqi-unavailable`, `aqi-uv-label`, `aqi-uv-source`, the two scale labels (`aqi-us-label`,
+      `aqi-european-label`), pollutant names (`pm2-5`, `pm10`, `o3`, `no2`, `so2`, `co`), the six
+      pollen species names and the two units (`unit-ug-m3`, `unit-grains-m3`).
+- ✅ Tests (`tests/air.rs`): recorded fixtures for Berlin (all six pollen present), Sydney (all
       pollen `null`) and a malformed/truncated response; the boundary table for both scales at
       exactly `0, 50, 51, 100, 101, 150, 151, 200, 201, 300, 301, 500` (US) and
       `0, 20, 21, 40, 41, 60, 61, 80, 81, 100, 101` (European); missing pollen; out-of-coverage
@@ -87,15 +97,27 @@ computed locally with an authored colour ramp, and a location outside the pollen
   mid-Pacific point `0,-140` return `null` for all six; Reykjavík `64.15,-21.94` (inside the CAMS
   Europe domain) returns `0.0` for all six. "Zero" and "not covered" are therefore distinguishable
   only by null-ness, which is exactly what the `Option<Pollen>` rule encodes.
-* **No unit conversion.** The API returns µg/m³ and grains/m³ (`current_units` proves it), and the
+* **No unit conversion.** The API returns μg/m³ and grains/m³ (`current_units` proves it), and the
   contract stores SI; `--units us` does **not** change pollutant units, because AQI categories are
-  not unit-dependent and mixing `µg/ft³` into a category scale is meaningless. Documented in the
+  not unit-dependent and mixing `μg/ft³` into a category scale is meaningless. Documented in the
   units table of step 03 as an explicit non-conversion.
 * **Category vs index**: the raw index numbers are always shown; the category word is localised and
   coloured. `--aqi-index` selects which of the two scales drives the colour so EU users are not
   forced to read a US index.
-* **No async, no new crates.** The fetch goes through `Env`'s `ureq` client and the existing cache;
-  the new module has no dependencies beyond `serde`/`chrono` already in the tree.
+* **No async, no new crates.** The fetch goes through `Env`'s `ureq` client and the existing
+  cache (`provider::fetch_json`), so the air request inherits the retry policy, the cache modes and
+  the error taxonomy without a second code path; no dependency was added.
+* **The upstream unit is the Greek mu.** The API reports `μg/m³` with U+03BC, not the micro sign
+  U+00B5 (a live run caught the difference). `model::air::POLLUTANT_UNIT` and the decode assertion
+  use the upstream spelling; `art_table::fold_ascii` accepts both spellings and folds them to `u`
+  for the ASCII charset, with `³` → `3`.
+* **The panel's colour mapping is per category, not per position.** The two scales share the words
+  `Good` and `Moderate`, so the palette is keyed on the category variant and documented: Good/Fair
+  green, Moderate yellow, sensitive-groups/Poor orange, Unhealthy/Very poor red, Very
+  unhealthy/Extremely poor purple, Hazardous maroon.
+* **The boundary tables live in `tests/air.rs`** (driven through the public crate surface); the
+  unit tests in `src/air/aqi.rs` cover the key and spelling mapping instead of a second copy of the
+  numbers.
 * **`%q` over `%a`**: `%a` collides with wttr.in's "astronomy" slot semantics that step 17 fills with
   moon/solar tokens, so the AQI token is `%q` ("quality"), and both are listed in one token table.
 
@@ -119,19 +141,19 @@ cargo run -q -- --aqi -f aqi --lat 52.52 --lon 13.41
 cargo run -q -- --aqi -f aqi --lat -33.87 --lon 151.21
 #   pollen section replaced by "pollen: not covered at this location", exit 0
 cargo run -q -- --aqi -f json Beijing | jq '.air.aqi_us, .air.pollen.birch'
-#   number, number (or null outside the domain); jq -e '.air.units.pollutants == "µg/m³"'
+#   number, number (or null outside the domain); jq -e '.air.units.pollutants == "μg/m³"'
 COLUMNS=58 cargo run -q -- --aqi Beijing | awk '{ if (length($0) > 58) { print "TOO WIDE"; exit 1 } }'
 cargo run -q -- --aqi --offline Beijing      # cached panel, no network syscalls (checked by the test)
 ```
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ Boundary tests for both scales pass at the twelve/eleven values listed above.
-- ⬜ `--aqi` never changes the exit code of a successful weather run, including on an AQ error.
-- ⬜ No output line exceeds `--width`/`COLUMNS`, and the AQ panel contains no `NaN`, `inf` or `-0`.
-- ⬜ `%q` expands in `one-line` and is documented next to `%A` in `--help` and the README table.
-- ⬜ Fixtures are recorded responses; `tests/air.rs` passes with the network blocked.
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ✅ Boundary tests for both scales pass at the twelve/eleven values listed above.
+- ✅ `--aqi` never changes the exit code of a successful weather run, including on an AQ error.
+- ✅ No output line exceeds `--width`/`COLUMNS`, and the AQ panel contains no `NaN`, `inf` or `-0`.
+- ✅ `%q` expands in `one-line` and is documented next to `%A` in `--help` and the README table.
+- ✅ Fixtures are recorded responses; `tests/air.rs` passes with the network blocked.
 
 ## Risks
 
@@ -146,3 +168,21 @@ cargo run -q -- --aqi --offline Beijing      # cached panel, no network syscalls
 
 - 2026-09-30 — step opened; live probes recorded Berlin (pollen present), Sydney and mid-Pacific
   (pollen `null`), Reykjavík (`0.0`), confirming the null-vs-zero rule in the design notes.
+- 2026-10-04 — model (`src/model/air.rs`: `AirQuality`/`Pollen`/`AirSource`, `Report::air`,
+  `CacheKey::air`) and the Open-Meteo air fetcher landed; the three recorded fixtures plus the
+  hand-written edge cases were added under `tests/fixtures/air/`. Two deviations from the step
+  text, both in the same spirit as step 15 and recorded here: the data types live in the model (the
+  render layer may not import the fetching module) and the palette lives in `src/render/color.rs`.
+- 2026-10-04 — the surface landed: `[air] index`, `--aqi`/`--aqi-index`, `Format::Aqi` with
+  `src/render/air.rs` (panel, `plain` records, standalone view), `%q`, the JSON `air` object, the
+  i18n keys in both catalogs and the `docs/schema.md` key index. A live run caught the upstream
+  micro-sign nuance (`μg/m³` is U+03BC, not U+00B5); the constants and fixtures now use the
+  upstream spelling and the ASCII fold accepts both. The compact panel is five lines at ≥ 80
+  columns (title+indices, pollutants, pollen, UV, attribution) — four when the weather report
+  carries no UV reading — and wraps within narrower widths, which the exit criterion's
+  "never wider than the width" check exercises at 59/60/80/120.
+- 2026-10-04 — `tests/air.rs` added (adapter, both boundary tables, panel widths, colour, ASCII
+  fold, CLI formats over a seeded cache, degradation); the JSON key index now unions the
+  alert-carrying and air-carrying fixtures so `docs/schema.md` stays the single key list. Gates
+  (`fmt`, `clippy -D warnings`, `cargo test` with and without the network guard, `reuse lint`) and
+  the live verification commands were run; step closed.

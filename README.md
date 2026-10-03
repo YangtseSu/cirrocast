@@ -133,6 +133,8 @@ cirrocast [OPTIONS] [LOCATION]
       --alerts | --no-alerts    force / suppress severe-weather warnings (they are on by default)
       --alerts-from <LIST>      explicit alert sources: nws, meteoalarm, qweather, hko, wmoswic, fpas
       --severity <LEVEL>        lowest alert severity shown: unknown | minor | moderate | severe | extreme
+      --aqi                     append the air-quality panel (US/European AQI, pollutants, pollen)
+      --aqi-index <SCALE>       us | european: the AQI scale behind the panel colour and %q
       --template <TEMPLATE>     one-line template or @PRESET
       --no-cache | --refresh | --offline
       --timeout <SECS>
@@ -177,6 +179,7 @@ tier it came from.
 | Timeout | `--timeout` | `CIRROCAST_TIMEOUT` | `network.timeout_secs` |
 | Colour | `--color` | — | `render.color` |
 | Width | `--width` | — | `render.width` |
+| AQI scale | `--aqi-index` | — | `air.index` |
 
 ### Exit codes
 
@@ -203,6 +206,7 @@ notes, never errors.
 | `plain` | box-free `label: value` lines, one record per line | ignores `--width`: a record is never truncated |
 | `json` | the stable machine-readable document (`schema_version: 2`) | ignores `--width` and `--units` |
 | `alerts` | the full severe-weather warning listing for the location, strongest first; `no active weather alerts` when there are none | ignores `--width` |
+| `aqi` | the standalone air-quality panel (implies `--aqi`); `air quality unavailable` when the reading could not be fetched | wraps to `--width` |
 
 `one-line` takes a template with `--template`, either a literal string or a preset:
 
@@ -215,7 +219,7 @@ notes, never errors.
 | `%h` | humidity `56%` | `%l` `%L` | name / `39.90,116.40` |
 | `%p` | precipitation `0.0mm` | `%m` | moon phase — `n/a` until the moon step lands |
 | `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
-| `%A` | strongest alert's event, empty when nothing is in force | | |
+| `%A` | strongest alert's event, empty when nothing is in force | `%q` | air-quality index on the selected scale, e.g. `US AQI 43 (Good)` |
 
 `%%` is a literal `%`, a trailing lone `%` is one too, `%{…}` is verbatim (`\}` escapes the brace),
 `\n`/`\t`/`\\` are unescaped, and an unknown `%X` prints literally and is reported once under `-v`.
@@ -262,6 +266,39 @@ Alert responses are cached for `[alerts] cache_ttl_secs` (300 s) under
 `$XDG_CACHE_HOME/cirrocast/alerts/`, so a repeated run is served from disk; `--offline` replays the
 last set with a `-v` staleness note. A self-hosted FPAS is configured with `[alerts] fpas_url`.
 
+### Air quality
+
+`--aqi` appends an air-quality panel to the table and `plain` output, carries it as the `air`
+object in `json`, and makes `%q` expand in `one-line`; `--format aqi` prints the panel standalone.
+The reading is one extra keyless request to Open-Meteo's Air Quality API for the location the run
+already resolved — the two consolidated indices (US and European AQI), the six regulated
+pollutants in μg/m³ and, inside the CAMS European domain, the six pollen species in grains/m³:
+
+```text
+Air quality: US AQI 43 (Good) · European AQI 42 (Good)
+PM2.5 8.2 · PM10 13.3 · O3 38 · NO2 27.9 · SO2 3 · CO 251 μg/m³
+Pollen: alder 0 · birch 0 · grass 0 · mugwort 0 · olive 0 · ragweed 0 grains/m³
+UV 5 (moderate) · weather data
+Air quality data by Open-Meteo.com (CAMS ENSEMBLE)
+```
+
+The category is computed locally from the raw index with the published breakpoints; `--aqi-index`
+(`[air] index`, default `us`) selects which scale drives its colour and `%q`, while both raw
+numbers are always shown. `--units` does **not** convert these values: an AQI category is not unit
+dependent, so the panel keeps the source's μg/m³ exactly as reported (the JSON `air.units` object
+says so). The panel's UV line is the `uv_index` already present in the weather report, labelled
+`weather data` — the air API's own UV field is deliberately not fetched twice (the UV work in step
+17 extends that reading, not this panel).
+
+Below 60 columns the panel switches to one key per line and every line is wrapped to the resolved
+width, so it never widens the table. The fetch is **best-effort**: a failure prints `warning: air
+quality unavailable: …` on stderr (`-q` silences it), leaves the weather output and the exit code
+untouched, and `--format aqi` alone then prints `air quality unavailable`. Outside the pollen
+domain the pollen line reads `not covered at this location`; under `-v` the run says why. The
+response is cached in the `weather` namespace under
+`weather/open-meteo-air-<lat>-<lon>-<local-date>.json` with `cache.weather_ttl_secs`, and
+`--no-cache`/`--refresh`/`--offline` behave exactly as they do for the forecast.
+
 ### Weather
 
 ```bash
@@ -291,8 +328,9 @@ Every forecast is cached for `cache.weather_ttl_secs` under
 location's own calendar date; a station-based backend keys the same namespace by identifier
 (`weather/metar-<ICAO>-current.json`) and keeps the station's metadata under
 `$XDG_CACHE_HOME/cirrocast/station/<ICAO>.json` for 30 days. Geocoder answers live under `geocode/`
-and `ip/`, and the OSM one-request-per-second stamp under `ratelimit/nominatim.json` — `cache stat`
-reports the four data namespaces. Providers are also requested in metric, and the renderer converts into
+and `ip/`, the air reading under `weather/<source>-air-<lat>-<lon>-<local-date>.json`, and the OSM
+one-request-per-second stamp under `ratelimit/nominatim.json` — `cache stat` reports the five data
+namespaces. Providers are also requested in metric, and the renderer converts into
 the display units, so a cache entry is unit-independent.
 
 The `one-line` format is a single line by contract, so the credits its licences require go to stderr;
@@ -319,8 +357,9 @@ choice, and one the `-v` line discloses: Traditional readers are not silently se
 without a note); every other tag falls back to `en-US`.
 
 What is translated: condition names for all 100 WMO codes, day-part, weekday and month names, the
-date formats, the measurement labels, the UV bands, the sixteen compass directions and the
-`one-line` vocabulary (`%C`, `%w`, `%U`, `%D`, `%m`). What is not: `--help` and the other clap
+date formats, the measurement labels, the UV bands, the sixteen compass directions, the
+air-quality panel (AQI categories, pollutant and pollen names, units) and the
+`one-line` vocabulary (`%C`, `%w`, `%U`, `%D`, `%m`, `%q`). What is not: `--help` and the other clap
 strings, the art blocks (they are pictograms), and the attribution lines of the data licences, which
 stay verbatim next to their data. The `json` format translates `condition.text` and nothing else —
 keys stay the machine-readable contract.
@@ -393,6 +432,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 |---|---|---|---|
 | [Open-Meteo](https://open-meteo.com/) geocoding | `Beijing`, `:Beijing` | free tier is **non-commercial**, < 10 000 calls/day, 5 000/hour, 600/minute; `name` needs ≥ 2 characters | data CC-BY-4.0; the CLI prints `Location data based on GeoNames (CC-BY-4.0) via Open-Meteo` with the service link |
 | [Open-Meteo](https://open-meteo.com/) forecast | every weather query | free tier is **non-commercial**, < 10 000 calls/day; `forecast_days` ≤ 16 | data CC-BY-4.0; the rendered report ends with `Data: Open-Meteo.com (CC BY 4.0)` |
+| [Open-Meteo Air Quality](https://open-meteo.com/en/docs/air-quality-api) | `--aqi`, `--format aqi` | same free tier as the forecast API; one keyless request per run; pollen comes from the CAMS European domain only (elsewhere it is absent, which the panel states) | CAMS ENSEMBLE data, CC BY 4.0; the panel ends with `Air quality data by Open-Meteo.com (CAMS ENSEMBLE)` |
 | [SMHI](https://opendata.smhi.se/metfcst/snow1gv1) open data | `-p smhi` (Nordics) | no published quota; SMHI's fair-use rules forbid mass downloads and re-fetching the same data | data CC BY 4.0 SE; the rendered report ends with `Data: SMHI (CC BY 4.0 SE)` |
 | [aviationweather.gov](https://aviationweather.gov/) (NOAA/NWS) | `-p metar`, `--station` | 100 requests/minute, at most 400 entries per response; an unknown station answers `204 No Content`; a custom `User-Agent` is required | US government work, public domain (no credit mandated); the report still names the source: `Data: aviationweather.gov (NOAA/NWS, public domain)` |
 | [OpenWeatherMap](https://openweathermap.org/) | `-p openweathermap` | free tier: 60 calls/minute, 1 000 000 calls/month; two calls per fetch (current + 5-day/3-hourly forecast); a fresh key needs up to 2 hours to activate | data ODbL 1.0; visible attribution required — the rendered report ends with `Data: OpenWeather (ODbL 1.0) — https://openweathermap.org/` |
@@ -412,7 +452,10 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 
 Alert output carries its own credits: WMO SWIC names the issuing agencies and FPAS the instance,
 printed in the `alerts` listing, the `art-table`/`plain` footers, the `json` `alert_credits` array
-and, for `one-line`, on stderr. The weather output carries the credit the data licence asks for — `Data: Open-Meteo.com (CC BY 4.0)` or
+and, for `one-line`, on stderr. The air-quality credit (`Air quality data by Open-Meteo.com (CAMS
+ENSEMBLE)`) travels inside the air panel — the `art-table` footer area, the `plain` document, the
+`aqi` listing and the `json` `air` object — because the numbers it describes are air data, not
+forecast data. The weather output carries the credit the data licence asks for — `Data: Open-Meteo.com (CC BY 4.0)` or
 `Data: SMHI (CC BY 4.0 SE)` — plus a provenance line (`attribution: open-meteo
 https://api.open-meteo.com/v1/forecast`), both taken from the provider registry rather than
 hard-coded, and a geocoded place adds the GeoNames line next to them. Where the credit travels
@@ -497,6 +540,7 @@ write and the first one read — and `config validate` reports the file that was
 | `alerts.sources` | `["auto"]` | `["auto"]` or source ids: `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas` |
 | `alerts.fpas_url` | empty | FOSS Public Alert Server base URL; empty = `https://alerts.kde.org` |
 | `alerts.cache_ttl_secs` | `300` | `> 0` (5 minutes) |
+| `air.index` | `us` | `us`, `european` — the AQI scale behind the panel colour and `%q` |
 | `providers.metar.station` | empty | ICAO identifier, e.g. `ZBAA` |
 | `providers.qweather.host` | empty | your QWeather API host, from <https://console.qweather.com/setting> (e.g. `https://<account-id>.re.qweatherapi.com`) |
 
