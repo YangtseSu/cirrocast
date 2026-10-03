@@ -286,3 +286,8 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
   by `cache clean`), `CacheKey::alert(source, lat, lon, utc_hour)` and `Cache::read_ignoring_ttl`,
   the stale-replay read the offline path needs. The fetch module wires the 300 s TTL and the mode
   rules onto it later in this step.
+- 2026-10-03 — the shared readers landed: `src/alerts/cap.rs` (the fixed CAP 1.2 subset over a
+  `quick-xml` state machine, locale-matched multi-`info` selection, area union, `msgType=Cancel`
+  dropped, syntax errors and eventless documents refused) and `src/alerts/geometry.rs` (GeoJSON
+  polygon/multipolygon and CAP polygon/circle point tests, with the circle test on haversine
+  distance). The config `[alerts]` table also landed with validation and dotted-key access.
