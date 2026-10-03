@@ -49,6 +49,16 @@ precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com (CAMS ENSEMBLE)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# Recorded Open-Meteo archive responses (CC BY 4.0): the sunrise/sunset/daylight rows the
+# astronomy tests compare their local computation against, kept verbatim. The moon instants,
+# book instants and moonrise references in the same directory are not payloads — they live in
+# `README.md` and `tests/astro.rs`, which carry the project licence.
+[[annotations]]
+path = "tests/fixtures/astro/open-meteo-*.json"
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com"
+SPDX-License-Identifier = "CC-BY-4.0"
+
 # Recorded IP-geolocation payloads (ipwho.is primary, ipapi.co fallback). Their terms forbid
 # redistribution — ipwho.is is "personal or internal use, no redistribution" and ipapi.co is
 # "internal use, no resale" (README's data-sources table) — so they cannot be relicensed GPL and

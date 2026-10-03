@@ -124,6 +124,8 @@ fn arguments() -> Vec<(&'static str, fluent_bundle::FluentValue<'static>)> {
         ("time", "18:30 CDT"),
         ("count", "2"),
         ("host", "alerts.kde.org"),
+        ("percent", "23"),
+        ("days", "6.5"),
     ]
     .into_iter()
     .map(|(name, value)| (name, fluent_bundle::FluentValue::from(value)))
