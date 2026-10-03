@@ -12,6 +12,7 @@
 
 mod common;
 
+use cirrocast::air::aqi::AqiIndex;
 use cirrocast::config::UnitOverrides;
 use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::Report;
@@ -65,6 +66,7 @@ fn context<'a>(
         lang: i18n.lang(),
         i18n,
         alert_credits: &[],
+        aqi_index: cirrocast::air::aqi::AqiIndex::Us,
     }
 }
 
@@ -169,8 +171,12 @@ fn escapes_are_unwrapped_before_the_tokens_are_read() {
     assert_eq!(line("%%"), "%");
     assert_eq!(line("%l:%%"), "Beijing:%");
     assert_eq!(line("50%"), "50%", "a trailing lone % is literal");
-    assert_eq!(line("%q %c"), "%q \\o_", "an unknown token stays literal");
-    assert_eq!(line("%q").len(), 2, "`%q` is two characters, not one");
+    assert_eq!(line("%y %c"), "%y \\o_", "an unknown token stays literal");
+    assert_eq!(
+        line("%y").len(),
+        2,
+        "an unknown token is two characters, not one"
+    );
     assert_eq!(
         line("%{no %c expansion}"),
         "no %c expansion",
@@ -185,13 +191,35 @@ fn escapes_are_unwrapped_before_the_tokens_are_read() {
 #[test]
 fn an_unknown_token_is_reported_once_per_occurrence() {
     assert_eq!(
-        warnings("%q %c %q"),
+        warnings("%y %c %y"),
         vec![
-            "note: unknown one-line token `%q` at position 1 is printed literally".to_owned(),
-            "note: unknown one-line token `%q` at position 7 is printed literally".to_owned(),
+            "note: unknown one-line token `%y` at position 1 is printed literally".to_owned(),
+            "note: unknown one-line token `%y` at position 7 is printed literally".to_owned(),
         ]
     );
     assert_eq!(warnings("%c %t %% %{x}"), Vec::<String>::new());
+}
+
+#[test]
+fn the_quality_token_reads_the_selected_scale() {
+    // Without an air reading the token is `n/a`, like every other value the report does not
+    // carry.
+    assert_eq!(line("%q"), "n/a");
+
+    // With one, it is the selected scale's index and category; the fixture's raw numbers are
+    // 43 (US, good) and 42 (European, moderate).
+    let report = common::fixture_report("beijing-air.json");
+    let expand_with = |index| {
+        let i18n = english();
+        let mut ctx = context(&report, UnitSystem::Metric, capable(), &i18n);
+        ctx.aqi_index = index;
+        expand("%q", &report, &ctx).expect("the template expands")
+    };
+    assert_eq!(expand_with(AqiIndex::Us), "US AQI 43 (Good)");
+    assert_eq!(
+        expand_with(AqiIndex::European),
+        "European AQI 42 (Moderate)"
+    );
 }
 
 #[test]
@@ -303,6 +331,7 @@ fn the_width_does_not_change_the_output() {
         lang: i18n.lang(),
         i18n: &i18n,
         alert_credits: &[],
+        aqi_index: cirrocast::air::aqi::AqiIndex::Us,
     };
 
     let template = one_line::preset("full").expect("the full preset exists");

@@ -137,6 +137,7 @@ impl Provider for QWeather {
             current: Some(current_of(&current, now, loc.tz)?),
             days: forecasts,
             alerts: Vec::new(),
+            air: None,
             attribution: attribution(
                 ProviderId::QWeather,
                 url,

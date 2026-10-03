@@ -285,6 +285,21 @@ impl CacheKey {
         }
     }
 
+    /// An air-quality key: one file per source, point and location-local date, beside the weather
+    /// entry it accompanies — `weather/open-meteo-air-52.52-13.41-2026-10-03.json`.
+    ///
+    /// The air API is not a weather backend and has no day count: the reading is "now", so the key
+    /// carries the source, the point and the day, and it lives in the `weather/` namespace because
+    /// it shares the weather TTL and the `cache stat` view of "upstream answers for a place".
+    #[must_use]
+    pub fn air(source: &str, lat: f64, lon: f64, date: NaiveDate) -> Self {
+        let name = format!("{source}-air-{lat:.2}-{lon:.2}-{date}.json");
+        Self {
+            path: PathBuf::from("weather").join(&name),
+            normalised: format!("weather|{source}|air|{lat:.2}|{lon:.2}|{date}"),
+        }
+    }
+
     /// The path below the cache root.
     #[must_use]
     pub fn path(&self) -> &Path {
@@ -867,6 +882,20 @@ mod tests {
             alert.path().parent().and_then(|parent| parent.to_str()),
             Some("alerts")
         );
+
+        // The air key sits beside the weather entry of the same point and day, and cannot collide
+        // with the report key (which carries the day count the air reading does not have).
+        let air = CacheKey::air(
+            "open-meteo",
+            39.9075,
+            116.39723,
+            chrono::NaiveDate::from_ymd_opt(2026, 9, 30).expect("a valid date"),
+        );
+        assert_eq!(
+            air.path().to_string_lossy(),
+            "weather/open-meteo-air-39.91-116.40-2026-09-30.json"
+        );
+        assert_ne!(air, weather);
     }
 
     #[test]

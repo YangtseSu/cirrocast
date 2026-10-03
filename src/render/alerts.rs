@@ -275,6 +275,7 @@ mod tests {
             lang: i18n.lang(),
             i18n,
             alert_credits: credits,
+            aqi_index: crate::air::aqi::AqiIndex::Us,
         }
     }
 
@@ -335,6 +336,7 @@ mod tests {
             current: None,
             days: Vec::new(),
             alerts,
+            air: None,
             attribution: crate::model::Attribution::unregistered(
                 "nws",
                 "https://api.weather.gov/alerts/active",

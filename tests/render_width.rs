@@ -66,6 +66,7 @@ fn render_with(report: &Report, width: usize, format: Format, color: ColorMode) 
         lang: i18n.lang(),
         i18n: &i18n,
         alert_credits: &[],
+        aqi_index: cirrocast::air::aqi::AqiIndex::Us,
     };
     renderer_for(format, &caps, None)
         .expect("the format has a renderer")

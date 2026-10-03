@@ -24,6 +24,7 @@
 //! makes `std::env::set_var` unsafe, so an injectable seam is the only way those rules stay under
 //! test.
 
+pub mod air;
 pub mod alerts;
 pub mod art;
 pub mod art_table;
@@ -38,6 +39,7 @@ use chrono::{DateTime, FixedOffset};
 use chrono_tz::Tz;
 use clap::ValueEnum;
 
+use crate::air::aqi::AqiIndex;
 use crate::error::{Error, Result};
 use crate::i18n::{I18n, LanguageId};
 use crate::model::Report;
@@ -397,6 +399,8 @@ pub struct RenderContext<'a> {
     /// The alert credit lines the run must print, resolved by the caller (they depend on the
     /// selected sources and, for FPAS, on the configured instance).
     pub alert_credits: &'a [String],
+    /// The AQI scale that drives the air panel's colour and the one-line `%q` token.
+    pub aqi_index: AqiIndex,
 }
 
 impl RenderContext<'_> {
@@ -433,17 +437,20 @@ pub enum Format {
     Dumb,
     /// The full severe-weather alert listing.
     Alerts,
+    /// The standalone air-quality panel.
+    Aqi,
 }
 
 impl Format {
     /// Every format, in `--help` and documentation order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::ArtTable,
         Self::OneLine,
         Self::Plain,
         Self::Json,
         Self::Dumb,
         Self::Alerts,
+        Self::Aqi,
     ];
 
     /// The format's command line spelling.
@@ -456,6 +463,7 @@ impl Format {
             Self::Json => "json",
             Self::Dumb => "dumb",
             Self::Alerts => "alerts",
+            Self::Aqi => "aqi",
         }
     }
 
@@ -505,6 +513,7 @@ pub fn renderer_for(
         Format::Plain => Ok(Box::new(plain::Plain)),
         Format::Json => Ok(Box::new(json::Json)),
         Format::Alerts => Ok(Box::new(alerts::Alerts)),
+        Format::Aqi => Ok(Box::new(air::Air)),
         Format::OneLine => Ok(Box::new(one_line::OneLine::new(
             one_line::resolve_template(template)?,
         ))),

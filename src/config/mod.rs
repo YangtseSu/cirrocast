@@ -35,7 +35,15 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 const CONFIG_FILE_MODE: u32 = 0o644;
 
 /// Values accepted by `defaults.format`.
-pub const FORMATS: &[&str] = &["art-table", "one-line", "plain", "json", "dumb", "alerts"];
+pub const FORMATS: &[&str] = &[
+    "art-table",
+    "one-line",
+    "plain",
+    "json",
+    "dumb",
+    "alerts",
+    "aqi",
+];
 
 /// Values accepted by `defaults.units`.
 pub const UNIT_SYSTEMS: &[&str] = &["metric", "us", "uk"];
@@ -74,6 +82,10 @@ const WIDTH_RANGE: (u32, u32) = (40, 500);
 /// unit test keeps the two in step.
 pub const SEVERITY_LEVELS: &[&str] = &["unknown", "minor", "moderate", "severe", "extreme"];
 
+/// Allowed values of `[air] index`; mirrors `air::aqi::AqiIndex::ALL`, and a unit test keeps the
+/// two in step.
+pub const AQI_INDEXES: &[&str] = &["us", "european"];
+
 /// The configuration document, matching the contract's TOML schema exactly.
 ///
 /// Every table and field is optional on input: anything absent falls back to [`Config::default`],
@@ -98,6 +110,8 @@ pub struct Config {
     pub render: RenderConfig,
     /// Severe-weather alert fetching.
     pub alerts: AlertsConfig,
+    /// Air-quality panel settings.
+    pub air: AirConfig,
     /// Per-provider settings.
     pub providers: Providers,
 }
@@ -207,6 +221,14 @@ pub struct AlertsConfig {
     pub cache_ttl_secs: u32,
 }
 
+/// `[air]` — the air-quality panel (`--aqi`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AirConfig {
+    /// Which AQI scale drives the panel's category colour and the `%q` token: `us` or `european`.
+    pub index: String,
+}
+
 /// `[providers]`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -245,6 +267,7 @@ impl Default for Config {
             cache: CacheConfig::default(),
             render: RenderConfig::default(),
             alerts: AlertsConfig::default(),
+            air: AirConfig::default(),
             providers: Providers::default(),
         }
     }
@@ -301,6 +324,14 @@ impl Default for AlertsConfig {
             sources: vec!["auto".to_owned()],
             fpas_url: String::new(),
             cache_ttl_secs: 300,
+        }
+    }
+}
+
+impl Default for AirConfig {
+    fn default() -> Self {
+        Self {
+            index: "us".to_owned(),
         }
     }
 }
@@ -466,6 +497,7 @@ impl Config {
         self.validate_cache()?;
         self.validate_render()?;
         self.validate_alerts()?;
+        self.validate_air()?;
         self.validate_providers()
     }
 
@@ -658,6 +690,11 @@ impl Config {
         check_alert_sources("alerts.sources", &self.alerts.sources)?;
         self.validate_fpas_url()?;
         check_positive("alerts.cache_ttl_secs", self.alerts.cache_ttl_secs)
+    }
+
+    /// `[air] index` must be one of the two documented scales.
+    fn validate_air(&self) -> Result<()> {
+        check_enum("air.index", &self.air.index, AQI_INDEXES)
     }
 
     /// `alerts.fpas_url` must be empty or an http(s) base URL, like `network.nominatim_url`.
@@ -883,6 +920,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "cache",
             "render",
             "alerts",
+            "air",
             "providers",
         ],
         "defaults" => &["provider", "format", "units", "days", "language"],
@@ -903,6 +941,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "fpas_url",
             "cache_ttl_secs",
         ],
+        "air" => &["index"],
         "providers" => &["metar", "qweather"],
         "providers.metar" => &["station"],
         "providers.qweather" => &["host"],
@@ -1125,6 +1164,9 @@ sources = ["auto"]            # ["auto"] (coverage-selected) or ids: nws, meteoa
                               # hko, wmoswic, fpas, visualcrossing
 fpas_url = ""                 # FOSS Public Alert Server base URL; empty = https://alerts.kde.org
 cache_ttl_secs = 300          # 5 minutes
+
+[air]
+index = "us"             # us | european: the AQI scale that drives the panel colour and %q
 
 [providers.metar]
 station = ""             # default ICAO identifier, e.g. "ZBAA"
@@ -1361,6 +1403,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "air.index",
+        kind: KeyKind::Enum(AQI_INDEXES),
+        doc: "AQI scale for the panel colour and %q",
+        env: None,
+    },
+    KeySpec {
         name: "providers.metar.station",
         kind: KeyKind::Str,
         doc: "default ICAO station",
@@ -1433,6 +1481,7 @@ impl Config {
             "alerts.sources" => self.alerts.sources.join(","),
             "alerts.fpas_url" => self.alerts.fpas_url.clone(),
             "alerts.cache_ttl_secs" => self.alerts.cache_ttl_secs.to_string(),
+            "air.index" => self.air.index.clone(),
             "providers.metar.station" => self.providers.metar.station.clone(),
             "providers.qweather.host" => self.providers.qweather.host.clone(),
             _ => return Err(Error::Usage(unknown_key_message(spec.name))),
@@ -1508,6 +1557,10 @@ impl Config {
             "alerts.cache_ttl_secs" => {
                 self.alerts.cache_ttl_secs = u32_value(spec.name, &value)?;
             }
+            "air.index" => {
+                check_enum(spec.name, &value, AQI_INDEXES)?;
+                self.air.index = value;
+            }
             "providers.metar.station" => self.providers.metar.station = value,
             "providers.qweather.host" => self.providers.qweather.host = value,
             _ => return Err(Error::Usage(unknown_key_message(spec.name))),
@@ -1552,6 +1605,7 @@ impl Config {
             "alerts.sources" => check_alert_sources(key, &self.alerts.sources),
             "alerts.fpas_url" => self.validate_fpas_url(),
             "alerts.cache_ttl_secs" => check_positive(key, self.alerts.cache_ttl_secs),
+            "air.index" => self.validate_air(),
             "providers.metar.station" => self.validate_metar_station(),
             "providers.qweather.host" => self.validate_qweather_host(),
             _ => Ok(()),
@@ -1654,6 +1708,8 @@ pub struct Settings {
     pub days: u8,
     /// Output language tag or `auto`.
     pub lang: String,
+    /// AQI scale for the air panel (`us` or `european`).
+    pub aqi_index: String,
     /// Location argument (`location.default`), when one is configured.
     pub location: Option<String>,
     /// Per-request timeout in seconds.
@@ -1685,6 +1741,8 @@ pub struct CliOverrides {
     pub days: Option<u8>,
     /// `--lang`.
     pub lang: Option<String>,
+    /// `--aqi-index`.
+    pub aqi_index: Option<String>,
     /// The positional location argument.
     pub location: Option<String>,
     /// `--timeout`.
@@ -1722,6 +1780,10 @@ impl Settings {
                 .lang
                 .clone()
                 .unwrap_or_else(|| config.defaults.language.clone()),
+            aqi_index: cli
+                .aqi_index
+                .clone()
+                .unwrap_or_else(|| config.air.index.clone()),
             location: cli
                 .location
                 .clone()

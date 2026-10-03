@@ -19,10 +19,12 @@
 //!   itself stores the raw upstream body, never a serialised `Report`, so a provider schema
 //!   change heals by refetching instead of failing on an old document.
 
+pub mod air;
 pub mod alert;
 pub mod condition;
 pub mod units;
 
+pub use air::{AirQuality, AirSource, Pollen};
 pub use alert::{Alert, AlertSource, Certainty, Severity, Urgency};
 pub use condition::Condition;
 
@@ -404,6 +406,16 @@ pub struct Report {
     /// pre-step-15 document parses because the field defaults to empty.
     #[serde(default)]
     pub alerts: Vec<Alert>,
+    /// Air-quality reading for the location, when the run asked for one (`--aqi`) and the fetch
+    /// succeeded.
+    ///
+    /// Like the alerts, it is attached after the weather answer (the air API is a separate
+    /// service), and it is best-effort: a failed air fetch degrades to no panel rather than
+    /// failing the run, which is why this is an `Option` and not an error. `None` also covers a
+    /// run that never asked, so the renderers must shape the panel from the presence of the value
+    /// alone. Older documents parse because the field defaults.
+    #[serde(default)]
+    pub air: Option<AirQuality>,
     /// Where the data came from.
     pub attribution: Attribution,
 }

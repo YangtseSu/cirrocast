@@ -41,6 +41,9 @@ sources = ["auto"]
 fpas_url = ""
 cache_ttl_secs = 300
 
+[air]
+index = "us"
+
 [providers.metar]
 station = ""
 

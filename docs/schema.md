@@ -133,6 +133,30 @@ present).
 | `days[].parts.night.visibility_km` | number | km | yes | horizontal visibility |
 | `days[].parts.night.wind_kmh` | number | km/h | no | wind speed |
 | `days[].parts.night.wind_dir_deg` | integer | degrees | yes | direction the wind blows *from* |
+| `air` | object | — | yes | air quality; `null` when the run did not ask (`--aqi`) or the best-effort fetch degraded |
+| `air.time` | string | — | no | observation time at the location's offset |
+| `air.source` | string | — | no | the air-quality source, e.g. `open-meteo` |
+| `air.aqi_us` | integer | index | yes | US AQI, exactly as the source reports it |
+| `air.aqi_european` | integer | index | yes | European AQI, exactly as the source reports it |
+| `air.category` | object | — | no | the category of each index, derived from the raw number |
+| `air.category.us` | string | — | yes | US category, e.g. `good`, `unhealthy-sensitive` |
+| `air.category.european` | string | — | yes | European category, e.g. `fair`, `extremely-poor` |
+| `air.pm2_5` | number | μg/m³ | yes | fine particulate matter (PM2.5) |
+| `air.pm10` | number | μg/m³ | yes | coarse particulate matter (PM10) |
+| `air.o3` | number | μg/m³ | yes | ground-level ozone |
+| `air.no2` | number | μg/m³ | yes | nitrogen dioxide |
+| `air.so2` | number | μg/m³ | yes | sulphur dioxide |
+| `air.co` | number | μg/m³ | yes | carbon monoxide |
+| `air.pollen` | object | — | yes | pollen forecast; `null` outside the source's pollen domain |
+| `air.pollen.alder` | number | grains/m³ | no | alder pollen |
+| `air.pollen.birch` | number | grains/m³ | no | birch pollen |
+| `air.pollen.grass` | number | grains/m³ | no | grass pollen |
+| `air.pollen.mugwort` | number | grains/m³ | no | mugwort pollen |
+| `air.pollen.olive` | number | grains/m³ | no | olive pollen |
+| `air.pollen.ragweed` | number | grains/m³ | no | ragweed pollen |
+| `air.units` | object | — | no | the units the air numbers are in |
+| `air.units.pollutants` | string | — | no | `μg/m³` |
+| `air.units.pollen` | string | — | no | `grains/m³` |
 | `capabilities` | object | — | yes | what the answering backend offers; `null` for an unknown backend |
 | `capabilities.current` | boolean | — | no | current conditions available |
 | `capabilities.hourly` | boolean | — | no | hourly data available |
@@ -275,6 +299,7 @@ stays pipeable):
       }
     }
   ],
+  "air": null,
   "alerts": [],
   "capabilities": {
     "current": true,

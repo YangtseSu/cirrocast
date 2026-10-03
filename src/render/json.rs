@@ -36,12 +36,15 @@ use std::borrow::Cow;
 use serde::Serialize;
 
 use super::{RenderContext, Renderer};
+use crate::air::aqi::AqiCategory;
 use crate::error::{Error, Result};
 use crate::geo::attribution_line;
 use crate::model::ReportCapabilities as Capabilities;
-use crate::model::units::normalise_zero;
+use crate::model::air::{POLLEN_UNIT, POLLUTANT_UNIT};
+use crate::model::units::{normalise_zero, normalise_zero_f64};
 use crate::model::{
-    Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location, Report,
+    AirQuality, Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
+    Pollen, Report,
 };
 
 /// The schema version this build emits; see the module documentation for what may change within
@@ -71,6 +74,8 @@ struct Document<'a> {
     current: Option<CurrentJson<'a>>,
     /// Forecast days, oldest first.
     days: Vec<DayJson<'a>>,
+    /// Air quality, `null` when the run did not ask for it or the best-effort fetch degraded.
+    air: Option<AirJson>,
     /// Severe-weather warnings in force, strongest first.
     alerts: Vec<AlertJson<'a>>,
     /// What the backend offers, so a consumer can tell "no days because it is an observation"
@@ -98,6 +103,7 @@ impl<'a> Document<'a> {
                 .iter()
                 .map(|day| DayJson::of(day, ctx))
                 .collect(),
+            air: report.air.as_ref().map(AirJson::of),
             alerts: report.alerts.iter().map(AlertJson::of).collect(),
             capabilities: report.attribution.capabilities.as_ref(),
             attribution: AttributionJson::of(&report.attribution, &report.location),
@@ -219,6 +225,120 @@ impl<'a> CurrentJson<'a> {
             is_day: current.is_day,
         }
     }
+}
+
+/// One air-quality reading.
+///
+/// Every key is always present and nullable like the rest of the document: `null` means the
+/// source did not report the value (or, for the whole object, that the run fetched none), never
+/// zero. The units are part of the document because they are not the display units of the
+/// weather: `--units us` does not apply here.
+#[derive(Debug, Serialize)]
+struct AirJson {
+    /// Observation time, ISO 8601 with the location's offset.
+    time: String,
+    /// The source id, e.g. `open-meteo`.
+    source: &'static str,
+    /// US AQI, exactly as the source reports it.
+    aqi_us: Option<u16>,
+    /// European AQI, exactly as the source reports it.
+    aqi_european: Option<u16>,
+    /// Each index's category, derived from the raw number.
+    category: AirCategoryJson,
+    /// Fine particulate matter.
+    pm2_5: Option<f64>,
+    /// Coarse particulate matter.
+    pm10: Option<f64>,
+    /// Ground-level ozone.
+    o3: Option<f64>,
+    /// Nitrogen dioxide.
+    no2: Option<f64>,
+    /// Sulphur dioxide.
+    so2: Option<f64>,
+    /// Carbon monoxide.
+    co: Option<f64>,
+    /// Pollen forecast; `null` outside the source's pollen domain.
+    pollen: Option<PollenJson>,
+    /// The units the numbers are in.
+    units: AirUnitsJson,
+}
+
+impl AirJson {
+    /// Projects a reading.
+    fn of(air: &AirQuality) -> Self {
+        Self {
+            time: iso_local(air.time),
+            source: air.source.as_str(),
+            aqi_us: air.aqi_us,
+            aqi_european: air.aqi_european,
+            category: AirCategoryJson {
+                us: air.aqi_us.map(|index| AqiCategory::from_us(index).as_str()),
+                european: air
+                    .aqi_european
+                    .map(|index| AqiCategory::from_european(index).as_str()),
+            },
+            pm2_5: air.pm2_5.map(normalise_zero_f64),
+            pm10: air.pm10.map(normalise_zero_f64),
+            o3: air.o3.map(normalise_zero_f64),
+            no2: air.no2.map(normalise_zero_f64),
+            so2: air.so2.map(normalise_zero_f64),
+            co: air.co.map(normalise_zero_f64),
+            pollen: air.pollen.as_ref().map(PollenJson::of),
+            units: AirUnitsJson {
+                pollutants: POLLUTANT_UNIT,
+                pollen: POLLEN_UNIT,
+            },
+        }
+    }
+}
+
+/// The two indices' categories.
+#[derive(Debug, Serialize)]
+struct AirCategoryJson {
+    /// The US scale's category, e.g. `good`.
+    us: Option<&'static str>,
+    /// The European scale's category, e.g. `fair`.
+    european: Option<&'static str>,
+}
+
+/// The pollen forecast, in grains/m³.
+#[derive(Debug, Serialize)]
+struct PollenJson {
+    /// Alder pollen.
+    alder: f64,
+    /// Birch pollen.
+    birch: f64,
+    /// Grass pollen.
+    grass: f64,
+    /// Mugwort pollen.
+    mugwort: f64,
+    /// Olive pollen.
+    olive: f64,
+    /// Ragweed pollen.
+    ragweed: f64,
+}
+
+impl PollenJson {
+    /// Projects a pollen forecast.
+    fn of(pollen: &Pollen) -> Self {
+        Self {
+            alder: normalise_zero_f64(pollen.alder),
+            birch: normalise_zero_f64(pollen.birch),
+            grass: normalise_zero_f64(pollen.grass),
+            mugwort: normalise_zero_f64(pollen.mugwort),
+            olive: normalise_zero_f64(pollen.olive),
+            ragweed: normalise_zero_f64(pollen.ragweed),
+        }
+    }
+}
+
+/// The units of the air object, fixed by the contract and never the display units.
+#[derive(Debug, Serialize)]
+struct AirUnitsJson {
+    /// Pollutant unit (`μg/m³`).
+    pollutants: &'static str,
+    /// Pollen unit (`grains/m³`).
+    pollen: &'static str,
 }
 
 /// One forecast day.
@@ -528,6 +648,7 @@ mod tests {
             current,
             days,
             alerts: Vec::new(),
+            air: None,
             attribution: attribution(),
         }
     }
@@ -565,6 +686,7 @@ mod tests {
             lang: LanguageId::EN_US,
             i18n: &i18n,
             alert_credits: &[],
+            aqi_index: crate::air::aqi::AqiIndex::Us,
         };
         let text = Json
             .render(report, &ctx)

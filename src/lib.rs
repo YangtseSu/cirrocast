@@ -8,6 +8,7 @@
 //! the provider trait ([`provider`]), the canonical data model ([`model`]), location resolution
 //! ([`geo`]) and the render layer ([`render`]).
 
+pub mod air;
 pub mod alerts;
 pub mod cache;
 pub mod cli;

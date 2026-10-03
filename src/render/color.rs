@@ -17,6 +17,7 @@ use std::borrow::Cow;
 
 use super::ColorDepth;
 use super::art::ArtStyle;
+use crate::air::aqi::AqiCategory;
 use crate::model::Severity;
 use crate::model::condition::Condition;
 
@@ -176,6 +177,25 @@ pub fn paint_severity(text: &str, severity: Severity, depth: ColorDepth) -> Cow<
         return Cow::Owned(format!("\x1b[1;97;41m{text}\x1b[0m"));
     }
     paint(text, severity_fg(severity), depth)
+}
+
+/// The AQI category ramp, authored here: green → yellow → orange → red → purple → maroon.
+///
+/// The two scales share two words, so the mapping is per *category*, not per position on a scale:
+/// `Good` and `Fair` read green, `Moderate` yellow, the next step orange (`Unhealthy for
+/// sensitive groups` / `Poor`), then red, purple, and finally maroon for `Hazardous`. The European
+/// scale has no maroon band; its `Extremely poor` is the purple top of that scale. A category is
+/// never painted by `--units` or by which scale it came from — only by the air it describes.
+#[must_use]
+pub const fn aqi_fg(category: AqiCategory) -> u8 {
+    match category {
+        AqiCategory::Good | AqiCategory::Fair => 34,
+        AqiCategory::Moderate => 226,
+        AqiCategory::UnhealthyForSensitiveGroups | AqiCategory::Poor => 208,
+        AqiCategory::Unhealthy | AqiCategory::VeryPoor => 160,
+        AqiCategory::VeryUnhealthy | AqiCategory::ExtremelyPoor => 93,
+        AqiCategory::Hazardous => 88,
+    }
 }
 
 /// The RGB values of the sixteen ANSI colours, as xterm defines them.

@@ -105,6 +105,7 @@ impl Live {
             lang: i18n.lang(),
             i18n: &i18n,
             alert_credits: &[],
+            aqi_index: cirrocast::air::aqi::AqiIndex::Us,
             now: Utc::now().fixed_offset(),
             tz: report.location.tz,
         };

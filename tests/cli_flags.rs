@@ -325,26 +325,26 @@ fn a_template_belongs_to_one_line() {
 fn an_unknown_one_line_token_is_warned_about_once_under_verbose() {
     let sandbox = seeded(3);
 
-    let assert = run(&sandbox, &["-f", "one-line", "--template", "%q %c", "-v"])
+    let assert = run(&sandbox, &["-f", "one-line", "--template", "%y %c", "-v"])
         .arg(LOCATION)
         .assert()
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
     assert!(
-        stdout.contains("%q"),
+        stdout.contains("%y"),
         "the unknown token stays literal: {stdout}"
     );
     assert_eq!(
         stderr
-            .matches("unknown one-line token `%q` at position 1")
+            .matches("unknown one-line token `%y` at position 1")
             .count(),
         1,
         "{stderr}"
     );
 
     // Without `-v` the output is identical and the note is gone.
-    let quiet = run(&sandbox, &["-f", "one-line", "--template", "%q %c"])
+    let quiet = run(&sandbox, &["-f", "one-line", "--template", "%y %c"])
         .arg(LOCATION)
         .assert()
         .success();

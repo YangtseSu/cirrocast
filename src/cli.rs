@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum as _};
 
+use crate::air::aqi::AqiIndex;
 use crate::alerts::{self, AlertsRequest};
 use crate::cache::{Cache, CacheMode, CacheStat, Clock, SystemClock};
 use crate::config::keys::{KeySource, KeyStore};
@@ -152,6 +153,7 @@ ONE-LINE TOKENS (--format one-line)
   %d ISO date         %D Wed 30 Sep       %Z zone name   %z +0800
   %S sunrise          %s sunset           %l name        %L 39.90,116.40
   %A strongest alert event, empty when no alerts are in force
+  %q air-quality index on the selected scale (US AQI 43 (Good))
   %% is a literal %, %{...} is verbatim, \\n \\t \\\\ are escapes; an unknown %X stays literal.
   Presets (@NAME), listed with their templates:
     @default  %l: %c %C %t (%f), %w, %h, %p, %P, %v
@@ -166,6 +168,9 @@ ONE-LINE TOKENS (--format one-line)
 /// language the answer is rendered in, how wide and how colourful the layout is, and how the cache
 /// and the transport behave. Everything that also exists as a configuration key carries the
 /// `CIRROCAST_*` override, whose precedence the epilog spells out.
+// The query flags really are independent switches (`--ip`, `--alerts`, `--no-alerts`, `--aqi`);
+// folding them into a state machine would obscure the clap surface rather than simplify it.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Args)]
 pub struct QueryArgs {
     /// Location argument (`Beijing`, `:Beijing`, `~Tsinghua`, `@39.9,116.4`); omitted = the
@@ -240,6 +245,17 @@ pub struct QueryArgs {
     #[arg(long, value_name = "LEVEL", value_parser = parse_severity)]
     pub severity: Option<Severity>,
 
+    /// Append the air-quality panel (US and European AQI, the six pollutants, pollen where the
+    /// source covers it and the report's UV reading) to the table and plain output, and carry it
+    /// as a typed object in `json`. `--format aqi` prints the panel standalone.
+    #[arg(long)]
+    pub aqi: bool,
+
+    /// Which AQI scale drives the panel's colour and the one-line `%q` token: `us` or `european`;
+    /// overrides `[air] index`. Needs `--aqi` or `--format aqi`.
+    #[arg(long, value_name = "SCALE", value_parser = parse_aqi_index)]
+    pub aqi_index: Option<AqiIndex>,
+
     /// Template for `--format one-line`: a literal `%`-token string, or `@PRESET`. The presets
     /// are `@default`, `@short`, `@full`, `@uv` and `@sun`; `--help` lists their templates and
     /// every token.
@@ -291,6 +307,12 @@ fn parse_station(value: &str) -> Result<String, Error> {
 
 /// `--severity`: one of the CAP levels, parsed by the model so flag and config share one message.
 fn parse_severity(value: &str) -> Result<Severity, Error> {
+    value.parse()
+}
+
+/// `--aqi-index`: one of the two AQI scales, parsed by the air module so flag and config share one
+/// message.
+fn parse_aqi_index(value: &str) -> Result<AqiIndex, Error> {
     value.parse()
 }
 
@@ -637,6 +659,8 @@ pub struct Sources {
     pub units: Source,
     /// `--lang` / `CIRROCAST_LANG`.
     pub lang: Source,
+    /// `--aqi-index`.
+    pub aqi_index: Source,
     /// The location argument / `CIRROCAST_LOCATION`.
     pub location: Source,
     /// Whether `--lat/--lon` supplied the location. Kept apart from [`Self::location`] because the
@@ -668,6 +692,7 @@ impl Sources {
             days: source("days"),
             units: source("units"),
             lang: source("lang"),
+            aqi_index: source("aqi_index"),
             location: source("location"),
             coordinates: given("lat") || given("lon"),
             timeout: source("timeout"),
@@ -689,6 +714,11 @@ impl Sources {
         eprintln!("days: {} (from {})", settings.days, self.days.as_str());
         eprintln!("units: {} (from {})", settings.units, self.units.as_str());
         eprintln!("language: {} (from {})", settings.lang, self.lang.as_str());
+        eprintln!(
+            "aqi index: {} (from {})",
+            settings.aqi_index,
+            self.aqi_index.as_str()
+        );
         eprintln!(
             "timeout: {}s (from {})",
             settings.timeout_secs,
@@ -859,6 +889,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
             units: query.units.map(|units| units.to_string()),
             days: query.days,
             lang: query.lang.clone(),
+            aqi_index: query.aqi_index.map(|index| index.to_string()),
             location: location_arg(query),
             timeout_secs: query.timeout,
             no_cache: query.cache.no_cache,
@@ -884,6 +915,13 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         eprintln!("{warning}");
     }
     let setup = RenderSetup::resolve(query, &config, &settings, cli.verbose, cli.quiet)?;
+    // `--aqi-index` shapes the air panel, so it needs a run that fetches one: either `--aqi` or
+    // the standalone `--format aqi` (which implies the fetch). Checked before any traffic.
+    if query.aqi_index.is_some() && !query.aqi && setup.format != Format::Aqi {
+        return Err(Error::Usage(
+            "--aqi-index needs --aqi or `--format aqi`; it shapes the air-quality panel".to_owned(),
+        ));
+    }
     if cli.verbose > 0 {
         sources.note(&settings);
         render_notes(&setup);
@@ -908,17 +946,15 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     );
     let keys = KeyStore::new(&paths);
 
-    let location = match station.as_deref() {
-        // The provider resolves the station (table, then cached stationinfo) and replaces this
-        // provisional location with the real one before anything is rendered.
-        Some(icao) => {
-            if cli.verbose > 0 {
-                eprintln!("location: station {icao}");
-            }
-            crate::provider::metar::placeholder_location(icao)
-        }
-        None => query_location(query, &settings, &config, &http, &cache, cli)?,
-    };
+    let location = location_for_run(
+        station.as_deref(),
+        query,
+        &settings,
+        &config,
+        &http,
+        &cache,
+        cli,
+    )?;
 
     let env = Env {
         http: &http,
@@ -946,6 +982,25 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     }
     let alert_credits = alerts::credits(&report.alerts, &config.alerts, &setup.i18n);
 
+    // Air quality is best-effort by contract: `--aqi` (or `--format aqi`) asks for it, and a
+    // failure is a warning — the weather output the user asked for is already in hand and the exit
+    // code stays 0. The reading travels on the report, where the renderers find it.
+    if query.aqi || setup.format == Format::Aqi {
+        attach_air(&mut report, &env, cli.quiet);
+    }
+
+    output_report(&setup, &report, &alert_credits, &cache, cli)
+}
+
+/// Renders and prints the report: the context `main` builds once, the credits `one-line` cannot
+/// carry, and the `-v` report of catalog misses.
+fn output_report(
+    setup: &RenderSetup,
+    report: &crate::model::Report,
+    alert_credits: &[String],
+    cache: &Cache,
+    cli: &Cli,
+) -> Result<()> {
     let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
     let ctx = RenderContext {
         units: setup.units,
@@ -956,17 +1011,18 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         tz: report.location.tz,
         lang: setup.i18n.lang(),
         i18n: &setup.i18n,
-        alert_credits: &alert_credits,
+        alert_credits,
+        aqi_index: setup.aqi_index,
     };
     // `one-line` is one line by contract, so the credits the licences require cannot travel in the
     // output: they go to stderr, where `plain` (a document) and `json` (an envelope) keep theirs.
-    credit_to_stderr(&setup, &report, &alert_credits);
-    print_line(format_args!("{}", setup.renderer.render(&report, &ctx)?))?;
+    credit_to_stderr(setup, report, alert_credits);
+    print_line(format_args!("{}", setup.renderer.render(report, &ctx)?))?;
     // A message a catalog lacks is a bug in this crate, not a user error: it renders its key and is
     // reported here, after the render — the only point at which every key a renderer will ask for
     // has been asked for — where `-v` asked for exactly this kind of detail.
     if cli.verbose > 0 {
-        report_missing_keys(&setup);
+        report_missing_keys(setup);
     }
     Ok(())
 }
@@ -987,6 +1043,22 @@ fn credit_to_stderr(setup: &RenderSetup, report: &crate::model::Report, alert_cr
     }
     for credit in alert_credits {
         eprintln!("{credit}");
+    }
+}
+
+/// Fetches the air-quality reading and attaches it to the report; a failure is a warning.
+///
+/// Split out of [`run_query`] so the failure policy reads as one sentence: `--aqi` promises a
+/// panel, not a successful second API call, and a broken air source must never change the exit
+/// code of a weather run that already succeeded.
+fn attach_air(report: &mut crate::model::Report, env: &Env<'_>, quiet: bool) {
+    match crate::air::fetch(&report.location, env) {
+        Ok(air) => report.air = Some(air),
+        Err(error) => {
+            if !quiet {
+                eprintln!("warning: air quality unavailable: {error}");
+            }
+        }
     }
 }
 
@@ -1113,6 +1185,30 @@ fn verbose_report(report: &crate::model::Report) {
     }
 }
 
+/// The location this run forecasts for: a station placeholder the provider fills in, or the
+/// resolved location argument.
+fn location_for_run(
+    station: Option<&str>,
+    query: &QueryArgs,
+    settings: &Settings,
+    config: &Config,
+    http: &HttpClient,
+    cache: &Cache,
+    cli: &Cli,
+) -> Result<Location> {
+    match station {
+        // The provider resolves the station (table, then cached stationinfo) and replaces this
+        // provisional location with the real one before anything is rendered.
+        Some(icao) => {
+            if cli.verbose > 0 {
+                eprintln!("location: station {icao}");
+            }
+            Ok(crate::provider::metar::placeholder_location(icao))
+        }
+        None => query_location(query, settings, config, http, cache, cli),
+    }
+}
+
 /// The location a weather query forecasts for, with the commentary a user needs to trust it.
 ///
 /// The ambiguity note (silenced by `-q`) and the `-v` candidate list go to stderr; stdout carries
@@ -1197,6 +1293,8 @@ struct RenderSetup {
     width: crate::render::Width,
     /// The colour mode this run uses.
     color: ColorMode,
+    /// The AQI scale that drives the air panel's colour and `%q`.
+    aqi_index: AqiIndex,
     /// What the terminal supports.
     term: TermCaps,
 }
@@ -1250,6 +1348,12 @@ impl RenderSetup {
                 .map(usize::from)
                 .or((config.render.width > 0).then_some(config.render.width)),
         );
+        // The configuration was validated on load, so a value that does not parse here means the
+        // document was built by hand; the CLI flag already went through clap's parser.
+        let aqi_index = settings
+            .aqi_index
+            .parse::<AqiIndex>()
+            .map_err(|error| Error::Config(format!("air.index: {error}")))?;
         let color = if format == Format::Dumb {
             ColorMode::Never
         } else {
@@ -1266,6 +1370,7 @@ impl RenderSetup {
             i18n,
             width,
             color,
+            aqi_index,
             term,
         })
     }

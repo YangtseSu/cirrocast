@@ -71,6 +71,7 @@ impl Renderer for Plain {
         for day in &report.days {
             lines.push(day_line(day, ctx));
         }
+        lines.extend(super::air::records(report, ctx));
 
         if let Some(credit) = attribution_line(&report.location) {
             lines.push(credit.to_owned());
@@ -106,7 +107,7 @@ fn updated_line(current: &Current, ctx: &RenderContext<'_>) -> String {
 /// English labels are already spelled that way (`location`), so the key a script greps for does not
 /// change; a language whose label contains spaces or capitals gets the same stable shape instead of
 /// a second format.
-fn record_key(label: &str) -> String {
+pub(crate) fn record_key(label: &str) -> String {
     let mut key: String = label
         .chars()
         .map(|character| {
@@ -341,6 +342,7 @@ mod tests {
             current: Some(current()),
             days: vec![day()],
             alerts: Vec::new(),
+            air: None,
             attribution: attribution(),
         }
     }
@@ -358,6 +360,7 @@ mod tests {
             lang: LanguageId::EN_US,
             i18n,
             alert_credits: &[],
+            aqi_index: crate::air::aqi::AqiIndex::Us,
         }
     }
 

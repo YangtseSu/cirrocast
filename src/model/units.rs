@@ -536,6 +536,13 @@ pub fn normalise_zero(value: f32) -> f32 {
     if value == 0.0 { 0.0 } else { value }
 }
 
+/// The `f64` spelling of [`normalise_zero`], for the air-quality readings (which the source
+/// reports as decimal numbers).
+#[must_use]
+pub fn normalise_zero_f64(value: f64) -> f64 {
+    if value == 0.0 { 0.0 } else { value }
+}
+
 /// Rounds to one decimal, ties away from zero, with `-0.0` normalised.
 fn round_1dp(value: f32) -> f32 {
     normalise_zero(round_half_away_from_zero(value * 10.0) / 10.0)

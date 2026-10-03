@@ -102,6 +102,7 @@ expression: "render(&report(), UnitSystem::Metric)"
       }
     }
   ],
+  "air": null,
   "alerts": [],
   "capabilities": {
     "current": true,

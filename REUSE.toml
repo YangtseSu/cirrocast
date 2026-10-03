@@ -28,10 +28,26 @@ path = [
     "tests/fixtures/http/**",
     "tests/fixtures/report/**",
     "tests/fixtures/smhi/point_sentinel_2026-10-01.json",
+    "tests/fixtures/air/truncated.json",
+    "tests/fixtures/air/no-current.json",
+    "tests/fixtures/air/unit-mismatch.json",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Recorded Open-Meteo Air Quality responses (CAMS ENSEMBLE model data, CC BY 4.0): kept verbatim
+# and annotated with the upstream licence; the panel prints the matching credit. The hand-written
+# edge cases stay in the first-party block above, so this list names only the three recordings.
+[[annotations]]
+path = [
+    "tests/fixtures/air/berlin-2026-10-03.json",
+    "tests/fixtures/air/sydney-2026-10-03.json",
+    "tests/fixtures/air/reykjavik-2026-10-03.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com (CAMS ENSEMBLE)"
+SPDX-License-Identifier = "CC-BY-4.0"
 
 # Recorded IP-geolocation payloads (ipwho.is primary, ipapi.co fallback). Their terms forbid
 # redistribution — ipwho.is is "personal or internal use, no redistribution" and ipapi.co is

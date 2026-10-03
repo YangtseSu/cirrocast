@@ -1,0 +1,25 @@
+{
+ "latitude": 52.5,
+ "longitude": 13.400002,
+ "utc_offset_seconds": 7200,
+ "timezone": "Europe/Berlin",
+ "current_units": {
+  "time": "iso8601",
+  "interval": "seconds",
+  "us_aqi": "USAQI",
+  "european_aqi": "EAQI",
+  "pm2_5": "μg/m³",
+  "pm10": "μg/m³",
+  "ozone": "μg/m³",
+  "nitrogen_dioxide": "μg/m³",
+  "sulphur_dioxide": "μg/m³",
+  "carbon_monoxide": "μg/m³",
+  "alder_pollen": "grains/m³",
+  "birch_pollen": "grains/m³",
+  "grass_pollen": "grains/m³",
+  "mugwort_pollen": "grains/m³",
+  "olive_pollen": "grains/m³",
+  "ragweed_pollen": "grains/m³"
+ },
+ "current": null
+}

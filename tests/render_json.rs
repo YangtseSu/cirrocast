@@ -145,6 +145,7 @@ fn render_at(report: &Report, units: UnitSystem, width: usize) -> String {
         lang: i18n.lang(),
         i18n: &i18n,
         alert_credits: &[],
+        aqi_index: cirrocast::air::aqi::AqiIndex::Us,
     };
     Json.render(report, &ctx)
         .expect("the fixture renders as JSON")
@@ -222,10 +223,18 @@ fn the_schema_version_leads_the_document_and_is_the_documented_one() {
 #[test]
 fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
     let documented = documented_keys();
-    let document = document("beijing-alerts.json", UnitSystem::Metric);
+    // The documented set is the union of the documents this build emits: the alert-carrying one
+    // and the air-carrying one. `air` is `null` and `alerts` is `[]` in the other fixture, so the
+    // union is exactly what a run can render.
+    let documents: Vec<Value> = ["beijing-alerts.json", "beijing-air.json"]
+        .into_iter()
+        .map(|file| document(file, UnitSystem::Metric))
+        .collect();
 
     let mut paths = BTreeSet::new();
-    key_paths(&document, "", &mut paths);
+    for document in &documents {
+        key_paths(document, "", &mut paths);
+    }
     let expected: BTreeSet<String> = documented.iter().map(|key| key.path.clone()).collect();
 
     let missing: Vec<&String> = expected.difference(&paths).collect();
@@ -238,8 +247,10 @@ fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
     );
 
     for key in &documented {
-        let value = value_at(&document, &key.path)
-            .unwrap_or_else(|| panic!("`{}` is documented but the fixture has no value", key.path));
+        let value = documents
+            .iter()
+            .find_map(|document| value_at(document, &key.path))
+            .unwrap_or_else(|| panic!("`{}` is documented but no fixture has a value", key.path));
         if value.is_null() {
             assert!(
                 key.nullable,

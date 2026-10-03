@@ -18,9 +18,12 @@
 //! | `%h` | humidity `56%` | `%l` `%L` | name / `39.90,116.40` |
 //! | `%p` | precipitation `0.0mm` | `%m` | moon phase — `n/a` until the moon step lands |
 //! | `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
+//! | `%q` | air-quality index `US AQI 43 (Good)` | `%A` | strongest alert event |
 //!
 //! `%A` is the strongest alert's event name and the empty string when there are no alerts; a
-//! report with alerts also gets the banner lines above the one-liner.
+//! report with alerts also gets the banner lines above the one-liner. `%q` is the air-quality
+//! index of the selected scale (`--aqi-index`/`[air] index`), e.g. `US AQI 43 (Good)`; without an
+//! air reading it prints `n/a`, like every other unknown value.
 //!
 //! A token whose value the provider does not report prints `n/a`; it is never invented, and it is
 //! never a zero. Values come from [`crate::model::units`] like every other renderer's, so a unit
@@ -40,6 +43,7 @@ use std::fmt::Write as _;
 use chrono::{DateTime, FixedOffset, Timelike as _};
 
 use super::{RenderContext, Renderer};
+use crate::air::aqi::{AqiCategory, AqiIndex};
 use crate::error::{Error, Result};
 use crate::i18n::{DateStyle, keys};
 use crate::model::units::{
@@ -184,6 +188,8 @@ pub enum Token {
     Moon,
     /// `%A` — the strongest alert's event, empty when there are none.
     Alert,
+    /// `%q` — the air-quality index on the selected scale.
+    Quality,
 }
 
 /// The token table: the one place a `%` letter is bound to a meaning.
@@ -212,6 +218,7 @@ const TOKENS: &[(char, Token)] = &[
     ('L', Token::Coordinates),
     ('m', Token::Moon),
     ('A', Token::Alert),
+    ('q', Token::Quality),
 ];
 
 /// The token a `%` letter stands for.
@@ -549,6 +556,33 @@ fn value(token: Token, snapshot: &Snapshot, report: &Report, ctx: &RenderContext
             .alerts
             .first()
             .map_or_else(String::new, |alert| alert.event.clone()),
+        Token::Quality => report
+            .air
+            .as_ref()
+            .map_or_else(|| n_a(ctx), |air| quality_summary(air, ctx)),
+    }
+}
+
+/// `US AQI 43 (Good)`: the index and category of the scale [`RenderContext::aqi_index`] selects.
+///
+/// The category word is localised like every other label; an air reading whose selected index is
+/// absent (a source that reports only one of the two scales) prints `n/a` rather than the other
+/// scale's number under the selected scale's name.
+fn quality_summary(air: &crate::model::AirQuality, ctx: &RenderContext<'_>) -> String {
+    let (value, category) = match ctx.aqi_index {
+        AqiIndex::Us => (air.aqi_us, air.aqi_us.map(AqiCategory::from_us)),
+        AqiIndex::European => (
+            air.aqi_european,
+            air.aqi_european.map(AqiCategory::from_european),
+        ),
+    };
+    let Some(value) = value else {
+        return n_a(ctx);
+    };
+    let label = ctx.i18n.text(&ctx.aqi_index.label_key());
+    match category {
+        Some(category) => format!("{label} {value} ({})", ctx.i18n.text(&category.i18n_key())),
+        None => format!("{label} {value}"),
     }
 }
 
@@ -597,10 +631,11 @@ mod tests {
             ('L', Token::Coordinates),
             ('m', Token::Moon),
             ('A', Token::Alert),
+            ('q', Token::Quality),
         ] {
             assert_eq!(token(letter), Some(expected), "%{letter}");
         }
-        assert_eq!(token('q'), None);
+        assert_eq!(token('Q'), None);
         assert_eq!(token('%'), None, "`%%` is an escape, not a token");
         assert_eq!(token('{'), None);
     }
@@ -697,12 +732,12 @@ mod tests {
 
     #[test]
     fn unknown_tokens_are_reported_with_their_position() {
-        assert_eq!(parse("%q"), vec![super::Piece::Unknown('q', 1)]);
+        assert_eq!(parse("%y"), vec![super::Piece::Unknown('y', 1)]);
         assert_eq!(
-            parse("ab%qc%Z"),
+            parse("ab%yc%Z"),
             vec![
                 super::Piece::Text("ab".to_owned()),
-                super::Piece::Unknown('q', 3),
+                super::Piece::Unknown('y', 3),
                 super::Piece::Text("c".to_owned()),
                 super::Piece::Token(Token::TzName),
             ]
@@ -710,10 +745,10 @@ mod tests {
         // A space after `%` is unknown too, and the position counts characters, not bytes.
         assert_eq!(parse("温度 % x")[1], super::Piece::Unknown(' ', 4));
         assert_eq!(
-            warnings("a %q b %q"),
+            warnings("a %y b %y"),
             vec![
-                "note: unknown one-line token `%q` at position 3 is printed literally".to_owned(),
-                "note: unknown one-line token `%q` at position 8 is printed literally".to_owned(),
+                "note: unknown one-line token `%y` at position 3 is printed literally".to_owned(),
+                "note: unknown one-line token `%y` at position 8 is printed literally".to_owned(),
             ],
             "one warning per occurrence, each with its own position"
         );

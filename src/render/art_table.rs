@@ -173,6 +173,13 @@ impl Renderer for ArtTable {
                 lines.extend(columns(&report.days, ctx, charset, depth));
             }
         }
+        // The air panel sits between the forecast and the credits: the air credit is part of the
+        // panel (it belongs to those numbers), the place and forecast credits stay last.
+        let panel = super::air::panel(report, ctx, depth);
+        if !panel.is_empty() {
+            lines.push(String::new());
+            lines.extend(panel);
+        }
         let credits = credits(report, ctx);
         if !credits.is_empty() {
             lines.push(String::new());
@@ -736,12 +743,12 @@ fn folded(text: &str, charset: Charset) -> String {
 }
 
 /// The 7-bit spelling of the few glyphs the table composes itself and that have no ASCII form:
-/// the degree sign of a temperature, the em dash of a credit line and the middle dot of a
-/// moonlit block.
+/// the degree sign of a temperature, the em dash of a credit line, the middle dot of a moonlit
+/// block and the micro/superscript of the air panel's units.
 ///
 /// Only the renderer's own chrome is folded. A place name is the user's data: replacing a city
 /// with question marks would be worse than the byte a dumb terminal cannot draw.
-fn fold_ascii(text: &str) -> String {
+pub(crate) fn fold_ascii(text: &str) -> String {
     if text.is_ascii() {
         return text.to_owned();
     }
@@ -751,6 +758,10 @@ fn fold_ascii(text: &str) -> String {
             '\u{b0}' => {}
             '\u{2014}' => folded.push_str("--"),
             '\u{b7}' => folded.push('.'),
+            // `μ` (micro sign) and `μ` (Greek mu) are both in use for μg/m³, and `³` has no ASCII
+            // form either; the unit reads `ug/m3` on a dumb terminal.
+            '\u{b5}' | '\u{3bc}' => folded.push('u'),
+            '\u{b3}' => folded.push('3'),
             other => folded.push(other),
         }
     }
@@ -758,7 +769,7 @@ fn fold_ascii(text: &str) -> String {
 }
 
 /// The display width of a line: escape sequences take no columns.
-fn display_width(line: &str) -> usize {
+pub(crate) fn display_width(line: &str) -> usize {
     let mut width = 0;
     let mut chars = line.chars();
     while let Some(character) = chars.next() {
@@ -790,7 +801,7 @@ const fn ellipsis(charset: Charset) -> &'static str {
 /// the last line of defence of the width invariant: the cell builders size their metrics first.
 ///
 /// A line that already fits is returned **borrowed**, so the common case allocates nothing.
-fn fit(line: &str, width: usize, charset: Charset) -> Cow<'_, str> {
+pub(crate) fn fit(line: &str, width: usize, charset: Charset) -> Cow<'_, str> {
     if display_width(line) <= width {
         return Cow::Borrowed(line);
     }
@@ -1030,6 +1041,7 @@ mod tests {
             current,
             days,
             alerts: Vec::new(),
+            air: None,
             attribution: attribution(),
         }
     }
@@ -1047,6 +1059,7 @@ mod tests {
             lang: LanguageId::EN_US,
             i18n,
             alert_credits: &[],
+            aqi_index: crate::air::aqi::AqiIndex::Us,
         }
     }
 
