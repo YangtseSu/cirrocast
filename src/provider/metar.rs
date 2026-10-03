@@ -113,6 +113,7 @@ impl Provider for Metar {
             days: Vec::new(),
             alerts: Vec::new(),
             air: None,
+            astro: None,
             attribution: attribution(
                 ProviderId::Metar,
                 observation_request(&icao).redacted_url(),

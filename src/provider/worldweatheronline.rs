@@ -347,6 +347,7 @@ fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> 
         days: forecasts,
         alerts: Vec::new(),
         air: None,
+        astro: None,
         attribution: attribution(
             ProviderId::WorldWeatherOnline,
             url,

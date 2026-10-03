@@ -21,11 +21,13 @@
 
 pub mod air;
 pub mod alert;
+pub mod astro;
 pub mod condition;
 pub mod units;
 
 pub use air::{AirQuality, AirSource, Pollen};
 pub use alert::{Alert, AlertSource, Certainty, Severity, Urgency};
+pub use astro::{Astro, Moon, MoonPhase, Polar, Sun, SunSource};
 pub use condition::Condition;
 
 use chrono::{
@@ -416,6 +418,15 @@ pub struct Report {
     /// alone. Older documents parse because the field defaults.
     #[serde(default)]
     pub air: Option<AirQuality>,
+    /// Moon phase, sun times and the next phase instants, computed locally when the run asked for
+    /// them (`--moon` or `--format moon`).
+    ///
+    /// Unlike the air reading this costs no request — it is arithmetic on the location, the
+    /// report's own sun times and the run's clock — but it follows the same rule: the renderers
+    /// draw what the field carries, and `None` means the run never asked. Older documents parse
+    /// because the field defaults.
+    #[serde(default)]
+    pub astro: Option<Astro>,
     /// Where the data came from.
     pub attribution: Attribution,
 }

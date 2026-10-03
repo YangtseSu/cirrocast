@@ -1317,6 +1317,7 @@ mod tests {
             days: Vec::new(),
             alerts: Vec::new(),
             air: None,
+            astro: None,
             attribution: Attribution::unregistered(
                 id.to_string(),
                 "https://example.invalid/forecast",

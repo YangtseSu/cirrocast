@@ -138,6 +138,7 @@ impl Provider for QWeather {
             days: forecasts,
             alerts: Vec::new(),
             air: None,
+            astro: None,
             attribution: attribution(
                 ProviderId::QWeather,
                 url,

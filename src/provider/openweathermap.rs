@@ -135,6 +135,7 @@ impl Provider for OpenWeatherMap {
             days: forecasts,
             alerts: Vec::new(),
             air: None,
+            astro: None,
             attribution: attribution(
                 ProviderId::OpenWeatherMap,
                 url,

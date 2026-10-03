@@ -343,6 +343,7 @@ mod tests {
             days: vec![day()],
             alerts: Vec::new(),
             air: None,
+            astro: None,
             attribution: attribution(),
         }
     }

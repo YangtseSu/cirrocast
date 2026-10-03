@@ -337,6 +337,7 @@ mod tests {
             days: Vec::new(),
             alerts,
             air: None,
+            astro: None,
             attribution: crate::model::Attribution::unregistered(
                 "nws",
                 "https://api.weather.gov/alerts/active",
