@@ -27,7 +27,7 @@ location no source covers is reported as such instead of being silently asked.
 
 ## Deliverables
 
-- ⬜ `src/model/alert.rs` (re-exported by `src/alerts/mod.rs`): `Alert { id, source, event, severity:
+- ✅ `src/model/alert.rs` (re-exported by `src/alerts/mod.rs`): `Alert { id, source, event, severity:
       Severity, urgency: Urgency, certainty: Certainty, onset: Option<DateTime<FixedOffset>>,
       expires: Option<..>, ends: Option<..>, areas: Vec<String>, headline, description:
       Option<String>, instruction: Option<String>, sender: Option<String> }`; enums with CAP v1.2
@@ -40,25 +40,25 @@ location no source covers is reported as such instead of being silently asked.
       `src/alerts` re-exports the names so the documented paths stay valid. `ends` was added to the
       model (the liveness rule needs it) but stays out of the JSON document, which keeps the key
       list of the next bullet.
-- ⬜ `src/alerts/mod.rs`: CAP v1.2 **subset** actually parsed, listed here so it cannot drift:
+- ✅ `src/alerts/mod.rs`: CAP v1.2 **subset** actually parsed, listed here so it cannot drift:
       alert level `identifier` (`id`), `sender`, `sent`, `status`, `msgType`, `scope`, `references`;
       info level `language`, `category`, `event`, `responseType`, `urgency`, `severity`, `certainty`,
       `effective`, `onset`, `expires`, `senderName`, `headline`, `description`, `instruction`, `web`,
       `contact`, `parameter`, `eventCode`; area level `areaDesc`, `polygon`, `circle`, `geocode`,
       `altitude`, `ceiling`. Multi-`info` alerts: pick the `language` matching the requested locale,
       else the first; areas from every `info` block, de-duplicated.
-- ⬜ `src/alerts/nws.rs`: `https://api.weather.gov/alerts/active?point=<lat>,<lon>` (keyless, US
+- ✅ `src/alerts/nws.rs`: `https://api.weather.gov/alerts/active?point=<lat>,<lon>` (keyless, US
       only, `Accept: application/geo+json`), maps `features[].properties` (`id`, `event`, `severity`,
       `urgency`, `certainty`, `onset`, `expires`, `ends`, `areaDesc`, `headline`, `description`,
       `instruction`, `senderName`, `status`, `messageType`); mandatory descriptive `User-Agent`
       `cirrocast/<version> (+https://github.com/yangtse/cirrocast; yangtsesu@gmail.com)`.
-- ⬜ `src/alerts/meteoalarm.rs`: `https://api.meteoalarm.org/edr/v1/collections/warnings/locations/
+- ✅ `src/alerts/meteoalarm.rs`: `https://api.meteoalarm.org/edr/v1/collections/warnings/locations/
       {COUNTRY}?datetime=<sent-interval>&active=<active-interval>&language=en-GB`, `Authorization:
       Bearer $CIRROCAST_METEOALARM_KEY` (optional BYOK; missing key ⇒ this source is skipped with a
       `--verbose` note, never an error). Country = ISO 3166-1 alpha-2 from the resolved location
       (Open-Meteo geocoding `country_code`); features are bbox-only, so the point is tested against
       the feature polygon (`properties.alertId`, `countryCode`, `hubLink` → CAP XML/JSON payload).
-- ⬜ `src/alerts/qweather.rs`: `https://devapi.qweather.com/weatheralert/v7/alert/now?
+- ✅ `src/alerts/qweather.rs`: `https://devapi.qweather.com/weatheralert/v7/alert/now?
       location=<lon>,<lat>&key=<KEY>` on the configured `[providers.qweather] host`, reusing the
       existing `CIRROCAST_QWEATHER_KEY`; maps `warning[].{id,sender,pubTime,title,startTime,endTime,
       status,severity,urgency,certainty,typeName,text,related,color}` (`color.code` → severity when
@@ -66,7 +66,7 @@ location no source covers is reported as such instead of being silently asked.
       the credential through the same `Credential` resolver and header helper as the forecast
       provider, so a JWT-configured account works for both. If step 25 has not landed, the adapter
       uses the existing `X-QW-Api-Key` path and step 25 switches it in its own commit.
-- ⬜ `src/alerts/wmoswic.rs`: the WMO Severe Weather Information Centre aggregator (keyless,
+- ✅ `src/alerts/wmoswic.rs`: the WMO Severe Weather Information Centre aggregator (keyless,
       worldwide, 130+ issuing agencies; operated by HKO). Two steps: `GET
       https://severeweather.wmo.int/f/wfs?request=GetFeature&version=1.1.0&outputFormat=json&
       typeName=local_postgis:postgis_geojsons&cql_filter=INTERSECTS(wkb_geometry,POINT(<lat>
@@ -79,7 +79,7 @@ location no source covers is reported as such instead of being silently asked.
       the CAP documents are cached per identifier so a repeated run is offline-capable. Credit:
       `Warnings by the WMO Severe Weather Information Centre (severeweather.wmo.int), © the issuing
       agencies`.
-- ⬜ `src/alerts/fpas.rs`: the FOSS Public Alert Server (keyless, self-hostable, worldwide).
+- ✅ `src/alerts/fpas.rs`: the FOSS Public Alert Server (keyless, self-hostable, worldwide).
       `GET <fpas_url>/alert/area?min_lat=&max_lat=&min_lon=&max_lon=` → a JSON array of alert UUIDs
       (measured 2026-10-03: the Beijing box returned 19, a mid-Atlantic box 0, the whole world
       3 659 — the bbox filter works), then `GET <fpas_url>/alert/<uuid>` with redirects followed
@@ -90,7 +90,7 @@ location no source covers is reported as such instead of being silently asked.
       (default `https://alerts.kde.org`) makes the instance configurable like `nominatim_url`, and
       the source stays optional: an unreachable instance is a `--verbose` line, not an error.
       Credit: `Warnings via the FOSS Public Alert Server (alerts.kde.org)`.
-- ⬜ `src/alerts/hko.rs`: the Hong Kong Observatory's keyless JSON warning summary —
+- ✅ `src/alerts/hko.rs`: the Hong Kong Observatory's keyless JSON warning summary —
       `GET https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en`
       (measured 2026-10-03: HTTP 200 JSON; an empty object means no active warnings) plus
       `dataType=warningInfo` for the detail document when a summary entry is present; maps HKO's
@@ -116,7 +116,7 @@ location no source covers is reported as such instead of being silently asked.
       `sources = ["auto"]`, `fpas_url = ""` (empty = the public instance),
       `cache_ttl_secs = 300`; absent keys keep these defaults, so no `schema_version` bump of the
       config file is needed (documented in `config show`).
-- ⬜ `src/cache.rs`: `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json`, TTL 300 s, honouring
+- ✅ `src/cache.rs`: `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json`, TTL 300 s, honouring
       `--no-cache` / `--refresh` / `--offline` (offline replays the last cached set, expired or not,
       with a `--verbose` staleness note).
 - ⬜ `src/render/`: severity-coloured banner above `art-table` (one line per alert, strongest
@@ -291,3 +291,12 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
   dropped, syntax errors and eventless documents refused) and `src/alerts/geometry.rs` (GeoJSON
   polygon/multipolygon and CAP polygon/circle point tests, with the circle test on haversine
   distance). The config `[alerts]` table also landed with validation and dotted-key access.
+- 2026-10-03 — every alert source adapter and the registry plumbing landed: `src/alerts/mod.rs`
+  (coverage selection with the provider-bound sources gated on the chain, `explicit_sources` with
+  the "does not cover 39.90,116.40; covered here: …" usage error, the best-effort-versus-explicit
+  failure policy, `prepare` for liveness/threshold/order/dedup, and the cached_text/cached_json-less
+  fetch path honouring the cache modes including the offline stale replay) plus `nws.rs`,
+  `meteoalarm.rs`, `qweather.rs`, `wmoswic.rs`, `fpas.rs` and `hko.rs` with unit tests per adapter.
+  Deliverable bullets for the model, the CAP subset and the six adapters were ticked in this commit;
+  the registry bullet stays open until `provider info` prints the alert row, and the tests/docs
+  bullets follow.

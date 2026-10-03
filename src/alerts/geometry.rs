@@ -3,12 +3,12 @@
 
 //! Point-in-area tests for the alert sources that filter client-side.
 //!
-//! WMO SWIC runs the test server-side (its WFS query is an `INTERSECTS` against the point), but
-//! `MeteoAlarm`'s EDR features and FPAS's CAP areas arrive whole, and an alert whose area does not
+//! WMO `SWIC` runs the test server-side (its WFS query is an `INTERSECTS` against the point), but
+//! `MeteoAlarm`'s EDR features and `FPAS`'s CAP areas arrive whole, and an alert whose area does not
 //! contain the requested point is dropped here. Two shapes occur:
 //!
 //! * **`GeoJSON` geometry** (`Polygon`/`MultiPolygon`, coordinates `[lon, lat]`) in `MeteoAlarm`'s
-//!   feature collection and FPAS's `/alert/<uuid>` documents;
+//!   feature collection and `FPAS`'s `/alert/<uuid>` documents;
 //! * **CAP area strings** (`polygon` = `lat,lon lat,lon …`, `circle` = `lat,lon radius-km`) in CAP
 //!   documents.
 //!

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The CAP v1.2 reader shared by the `MeteoAlarm`, WMO SWIC and FPAS adapters.
+//! The CAP v1.2 reader shared by the `MeteoAlarm`, WMO `SWIC` and `FPAS` adapters.
 //!
 //! Common Alerting Protocol documents are the federation lingua franca: three of this step's six
-//! sources serve them (`MeteoAlarm`'s `hubLink`, WMO SWIC's `capurl`, FPAS's `/alert/<uuid>`), and
+//! sources serve them (`MeteoAlarm`'s `hubLink`, WMO `SWIC`'s `capurl`, `FPAS`'s `/alert/<uuid>`), and
 //! parsing them once is what keeps the alert model free of per-source quirks. The **parsed subset
 //! is deliberately fixed** and is exactly this list:
 //!
@@ -452,7 +452,7 @@ fn local_name(event: &quick_xml::events::BytesStart<'_>) -> String {
 }
 
 /// A CAP `dateTime`: RFC 3339 with an offset, else a plain local timestamp read as UTC.
-fn instant(text: &str) -> Option<DateTime<FixedOffset>> {
+pub(crate) fn instant(text: &str) -> Option<DateTime<FixedOffset>> {
     let text = text.trim();
     if let Ok(at) = DateTime::parse_from_rfc3339(text) {
         return Some(at);
