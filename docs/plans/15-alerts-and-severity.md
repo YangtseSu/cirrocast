@@ -132,7 +132,7 @@ location no source covers is reported as such instead of being silently asked.
 - ✅ `src/i18n.rs` + `locales/{en-US,zh-CN}/main.ftl`: `alert-severity-{unknown,minor,moderate,
       severe,extreme}`, `alert-urgency-*`, `alert-certainty-*`, `alert-banner-line`,
       `alert-more-count`, `alert-none`, `alert-source-{nws,meteoalarm,qweather,hko,wmoswic,fpas}`.
-- ⬜ Tests (`tests/alerts.rs` + fixtures): US tornado warning (NWS GeoJSON), EU heat warning
+- ✅ Tests (`tests/alerts.rs` + fixtures): US tornado warning (NWS GeoJSON), EU heat warning
       (MeteoAlarm CAP XML), CN rainstorm warning (QWeather JSON), a WMO SWIC pair (WFS index
       feature + its CAP document), a FPAS pair (UUID list + a redirect-followed CAP document, plus
       a non-`Met` category and a `Cancel` message that must be dropped), an HKO `warnsum` +
@@ -315,3 +315,14 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
   `-f json` v2 with one severe Flood Warning and the WMO credit), and the explicit-source error
   above. The CLI test sandbox now sets `CIRROCAST_FORBID_NETWORK=1` for every child, as CI does, so
   a test that reaches a socket fails instead of silently using the developer's network.
+- 2026-10-04 — the test suite landed: `tests/alerts.rs` (18 tests) over the fixture set in
+  `tests/fixtures/alerts/` (hand-written to the source schemas, provenance in its README, REUSE
+  annotation added): every adapter against a scripted transport, the FPAS category/msgType/geometry
+  filters, HKO's code table and empty summary, QWeather's header/credential reuse, cross-source
+  dedup, expired-alert dropping at the fetch level, malformed CAP (explicit fails, auto degrades,
+  neighbours survive), the WMO index+document cache path, and the CLI over seeded caches: all
+  formats from one alert set, stale offline replay, empty sets, `--no-alerts`, the coverage usage
+  error, MeteoAlarm token skip/degradation and its geometry-filtered CAP read, and `provider info`.
+  Also in this round: `tests/common` fixes the CLI sandbox to `CIRROCAST_FORBID_NETWORK=1` like CI,
+  and the alert policy is resolved before the weather fetch so a source-list mistake costs no
+  request. Remaining: the docs bullet and the exit-criteria pass.

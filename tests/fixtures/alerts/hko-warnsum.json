@@ -1,0 +1,29 @@
+{
+  "WTCSGNL": {
+    "name": "Tropical Cyclone Warning Signal",
+    "code": "WTCSGNL",
+    "actionCode": "ISSUE",
+    "issueTime": "2026-10-03T09:45:00+08:00",
+    "updateTime": "2026-10-03T09:45:00+08:00",
+    "expireTime": "2026-10-03T18:00:00+08:00",
+    "type": "T8"
+  },
+  "WRAIN": {
+    "name": "Rainstorm Warning",
+    "code": "WRAIN",
+    "actionCode": "ISSUE",
+    "issueTime": "2026-10-03T08:00:00+08:00",
+    "updateTime": "2026-10-03T08:00:00+08:00",
+    "expireTime": "2026-10-03T20:00:00+08:00",
+    "type": "Amber"
+  },
+  "WHOT": {
+    "name": "Very Hot Weather Warning",
+    "code": "WHOT",
+    "actionCode": "CANCEL",
+    "issueTime": "2026-10-02T09:00:00+08:00",
+    "updateTime": "2026-10-03T07:00:00+08:00",
+    "expireTime": "2026-10-03T07:00:00+08:00",
+    "type": ""
+  }
+}

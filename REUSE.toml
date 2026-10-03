@@ -69,6 +69,7 @@ path = [
     "tests/fixtures/geo/open_meteo_geocode_no_hits.json",
     "tests/fixtures/geo/open_meteo_geocode_bad_timezone.json",
     "tests/fixtures/geo/open_meteo_geocode_xinxiang_zh.json",
+    "tests/fixtures/geo/open_meteo_geocode_vienna.json",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "GeoNames (geocoding data served by Open-Meteo)"
@@ -162,6 +163,17 @@ path = [
     "tests/fixtures/metar/ZZZZ/current.json",
     "tests/fixtures/metar/ZZZZ/truncated.json",
 ]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Alert fixtures (step 15): hand-written or hand-trimmed first-party data in the field shapes of
+# the NWS, MeteoAlarm, QWeather, WMO SWIC, FPAS and HKO alert feeds. No live payload is stored
+# verbatim: the redistribution terms of warning data are not uniform across the sources, so the
+# fixtures were authored to the schemas instead of recorded. Provenance per file is in
+# `tests/fixtures/alerts/README.md`.
+[[annotations]]
+path = "tests/fixtures/alerts/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>fpas-quake-1</identifier>
+  <sender>Geological_Service</sender>
+  <sent>2026-10-03T08:32:00+08:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-US</language>
+    <category>Geo</category>
+    <event>earthquake</event>
+    <urgency>Past</urgency>
+    <severity>Moderate</severity>
+    <certainty>Observed</certainty>
+    <onset>2026-10-03T08:20:00+08:00</onset>
+    <headline>A minor earthquake was recorded.</headline>
+    <area>
+      <areaDesc>Beijing</areaDesc>
+      <polygon>39.5,116.0 40.3,116.0 40.3,116.9 39.5,116.9 39.5,116.0</polygon>
+    </area>
+  </info>
+</alert>

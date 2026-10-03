@@ -1,0 +1,33 @@
+{
+  "code": "200",
+  "updateTime": "2026-10-03T13:10+08:00",
+  "warning": [
+    {
+      "id": "20261003120001",
+      "sender": "北京市气象台",
+      "pubTime": "2026-10-03T12:00+08:00",
+      "title": "北京市气象台发布暴雨橙色预警",
+      "startTime": "2026-10-03T12:00+08:00",
+      "endTime": "2026-10-03T20:00+08:00",
+      "status": "Active",
+      "severity": "Severe",
+      "urgency": "Immediate",
+      "certainty": "Likely",
+      "typeName": "暴雨",
+      "text": "预计未来6小时<BR/>降雨量将达50毫米以上。",
+      "related": "",
+      "color": { "code": "Orange" }
+    },
+    {
+      "id": "20261003070003",
+      "sender": "北京市气象台",
+      "pubTime": "2026-10-03T07:00+08:00",
+      "title": "北京市气象台发布高温黄色预警",
+      "startTime": "2026-10-03T07:00+08:00",
+      "endTime": "2026-10-03T19:00+08:00",
+      "status": "Cancel",
+      "typeName": "高温",
+      "severityColor": "Yellow"
+    }
+  ]
+}

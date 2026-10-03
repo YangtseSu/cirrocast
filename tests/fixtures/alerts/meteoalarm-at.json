@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "AT-2026-101",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [16.0, 48.0],
+            [16.8, 48.0],
+            [16.8, 48.4],
+            [16.0, 48.4],
+            [16.0, 48.0]
+          ]
+        ]
+      },
+      "properties": {
+        "alertId": "AT-2026-101",
+        "countryCode": "AT",
+        "hubLink": "https://api.meteoalarm.org/cap/AT-2026-101.xml"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "AT-2026-102",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [9.0, 46.0],
+            [10.0, 46.0],
+            [10.0, 47.0],
+            [9.0, 47.0],
+            [9.0, 46.0]
+          ]
+        ]
+      },
+      "properties": {
+        "alertId": "AT-2026-102",
+        "countryCode": "AT",
+        "hubLink": "https://api.meteoalarm.org/cap/AT-2026-102.xml"
+      }
+    }
+  ]
+}

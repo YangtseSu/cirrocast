@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "identifier": "20261003T0832Z_cn_gale",
+        "capurl": "20261003T0832Z_cn_gale.xml",
+        "rlink": "20261003T0832Z_cn_gale_en.xml"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "identifier": "boundary-row",
+        "capurl": null,
+        "rlink": null
+      }
+    }
+  ]
+}

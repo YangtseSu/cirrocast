@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>20261003T0832Z_cn_gale</identifier>
+  <sender>Wuqing_District_Meteorological_Observatory</sender>
+  <sent>2026-10-03T08:32:00+08:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-US</language>
+    <category>Met</category>
+    <event>gale</event>
+    <urgency>Unknown</urgency>
+    <severity>Minor</severity>
+    <certainty>Unknown</certainty>
+    <effective>2026-10-03T08:32:00+08:00</effective>
+    <onset>2026-10-03T08:32:00+08:00</onset>
+    <expires>2026-10-04T08:32:00+08:00</expires>
+    <senderName>Wuqing District Warning Release</senderName>
+    <headline>The Wuqing District Meteorological Observatory has issued a blue warning for strong winds on land.</headline>
+    <description>Strong northerly winds of force 4 to 5 are expected, with gusts of force 7.</description>
+    <instruction>Take precautions against falling objects.</instruction>
+    <area>
+      <areaDesc>Wuqing District, Tianjin</areaDesc>
+      <polygon>39.2,116.8 39.9,116.8 39.9,117.4 39.2,117.4 39.2,116.8</polygon>
+    </area>
+  </info>
+  <info>
+    <language>zh-CN</language>
+    <category>Met</category>
+    <event>大风</event>
+    <urgency>Unknown</urgency>
+    <severity>Minor</severity>
+    <certainty>Unknown</certainty>
+    <onset>2026-10-03T08:32:00+08:00</onset>
+    <expires>2026-10-04T08:32:00+08:00</expires>
+    <senderName>武清区预警发布中心</senderName>
+    <headline>武清区气象台发布陆地大风蓝色预警</headline>
+    <description>预计有4到5级偏北风，阵风7级。</description>
+    <area><areaDesc>天津市武清区</areaDesc></area>
+  </info>
+</alert>

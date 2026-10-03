@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>malformed-truncated</identifier>
+  <info>
+    <language>en-US</language>
+    <category>Met</category>
+    <event>gale</event>

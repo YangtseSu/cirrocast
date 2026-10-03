@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>fpas-cancel-1</identifier>
+  <sender>Beijing_Meteorological_Service</sender>
+  <sent>2026-10-03T08:40:00+08:00</sent>
+  <status>Actual</status>
+  <msgType>Cancel</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-US</language>
+    <category>Met</category>
+    <event>gale</event>
+    <severity>Minor</severity>
+    <area>
+      <areaDesc>Beijing</areaDesc>
+      <polygon>39.5,116.0 40.3,116.0 40.3,116.9 39.5,116.9 39.5,116.0</polygon>
+    </area>
+  </info>
+</alert>

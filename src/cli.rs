@@ -928,6 +928,10 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         quiet: cli.quiet,
         verbose: cli.verbose,
     };
+    // The alert policy is resolved before the forecast is fetched: a coverage or source-list
+    // mistake is a usage error that must not cost a request, and `--alerts-from nws` at a Beijing
+    // point fails here, not after the weather round trip.
+    let alert_request = alert_request(query, &config, &location, &ids, setup.format, cli.verbose)?;
     let request = FetchRequest::new(days, HourlyResolution::Hourly);
     let mut report = fetch_chain(&ids, &location, &request, &env)?;
 
@@ -936,11 +940,8 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     }
 
     // Alerts are a separate source registry, so they are fetched after the weather answer: a
-    // forecast failure is then reported without any alert traffic, and the location the selection
-    // needs is already resolved.
-    if let Some(alert_request) =
-        alert_request(query, &config, &location, &ids, setup.format, cli.verbose)?
-    {
+    // forecast failure is then reported without any alert traffic.
+    if let Some(alert_request) = alert_request {
         report.alerts = alerts::fetch(&location, &env, &alert_request, setup.i18n.lang().tag())?;
     }
     let alert_credits = alerts::credits(&report.alerts, &config.alerts, &setup.i18n);

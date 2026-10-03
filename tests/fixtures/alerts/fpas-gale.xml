@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>fpas-gale-1</identifier>
+  <sender>Beijing_Meteorological_Service</sender>
+  <sent>2026-10-03T08:32:00+08:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-US</language>
+    <category>Met</category>
+    <event>gale</event>
+    <urgency>Unknown</urgency>
+    <severity>Minor</severity>
+    <certainty>Unknown</certainty>
+    <onset>2026-10-03T08:32:00+08:00</onset>
+    <expires>2026-10-04T08:32:00+08:00</expires>
+    <senderName>Beijing Warning Centre</senderName>
+    <headline>A blue warning for strong winds is in force.</headline>
+    <description>Northerly winds of force 4 to 5 are expected.</description>
+    <instruction>Secure loose objects.</instruction>
+    <area>
+      <areaDesc>Beijing</areaDesc>
+      <polygon>39.5,116.0 40.3,116.0 40.3,116.9 39.5,116.9 39.5,116.0</polygon>
+    </area>
+  </info>
+</alert>

@@ -1,0 +1,49 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.test-tornado.001",
+        "@type": "wx:Alert",
+        "id": "urn:oid:2.49.0.1.840.0.test-tornado.001",
+        "areaDesc": "Cleveland, OK; McClain, OK",
+        "sent": "2026-10-03T07:37:00-05:00",
+        "effective": "2026-10-03T07:37:00-05:00",
+        "onset": "2026-10-03T07:37:00-05:00",
+        "expires": "2026-10-03T08:15:00-05:00",
+        "ends": "2026-10-03T08:15:00-05:00",
+        "status": "Actual",
+        "messageType": "Alert",
+        "category": "Met",
+        "severity": "Extreme",
+        "certainty": "Observed",
+        "urgency": "Immediate",
+        "event": "Tornado Warning",
+        "sender": "w-nws.webmaster@noaa.gov",
+        "senderName": "NWS Norman OK",
+        "headline": "Tornado Warning issued October 3 at 7:37AM CDT until October 3 at 8:15AM CDT by NWS Norman OK",
+        "description": "At 737 AM CDT, a confirmed tornado was located near Norman, moving northeast at 30 mph.",
+        "instruction": "Take shelter now. Mobile homes will be damaged or destroyed."
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@type": "wx:Alert",
+        "id": "urn:oid:2.49.0.1.840.0.test-tornado.001.cancel",
+        "areaDesc": "Cleveland, OK",
+        "sent": "2026-10-03T07:50:00-05:00",
+        "expires": "2026-10-03T08:15:00-05:00",
+        "status": "Actual",
+        "messageType": "Cancel",
+        "severity": "Extreme",
+        "urgency": "Immediate",
+        "certainty": "Observed",
+        "event": "Tornado Warning",
+        "senderName": "NWS Norman OK",
+        "headline": "Tornado Warning cancelled"
+      }
+    }
+  ]
+}

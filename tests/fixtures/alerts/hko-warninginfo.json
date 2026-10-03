@@ -1,0 +1,17 @@
+{
+  "details": [
+    {
+      "warningStatementCode": "WTCSGNL",
+      "updateTime": "2026-10-03T09:45:00+08:00",
+      "contents": [
+        "The No. 8 signal is in force.",
+        "Stay away from the shoreline and do not engage in water sports."
+      ]
+    },
+    {
+      "warningStatementCode": "WRAIN",
+      "updateTime": "2026-10-03T08:00:00+08:00",
+      "contents": ["The Amber Rainstorm Warning is in force.", "Avoid low-lying areas."]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>AT-2026-101</identifier>
+  <sender>op@zamg.ac.at</sender>
+  <sent>2026-10-03T06:00:00+02:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <references>op@zamg.ac.at,AT-2026-100,2026-10-02T06:00:00+02:00</references>
+  <info>
+    <language>de</language>
+    <category>Met</category>
+    <event>Hitzewarnung</event>
+    <responseType>Prepare</responseType>
+    <urgency>Expected</urgency>
+    <severity>Severe</severity>
+    <certainty>Likely</certainty>
+    <effective>2026-10-03T08:00:00+02:00</effective>
+    <onset>2026-10-03T10:00:00+02:00</onset>
+    <expires>2026-10-04T18:00:00+02:00</expires>
+    <senderName>ZAMG</senderName>
+    <headline>Schwere Hitzewelle</headline>
+    <description>Es wird heiß und schwül.</description>
+    <instruction>Suchen Sie Schatten und trinken Sie Wasser.</instruction>
+    <parameter><valueName>eventId</valueName><value>42</value></parameter>
+    <eventCode><valueName>SAME</valueName><value>EHT</value></eventCode>
+    <area>
+      <areaDesc>Wien</areaDesc>
+      <polygon>48.1,16.2 48.3,16.5 48.0,16.6 48.1,16.2</polygon>
+      <circle>48.2,16.37 25</circle>
+      <geocode><valueName>NUTS</valueName><value>AT13</value></geocode>
+      <altitude>200</altitude>
+      <ceiling>5000</ceiling>
+    </area>
+  </info>
+  <info>
+    <language>en-GB</language>
+    <category>Met</category>
+    <event>Heat warning</event>
+    <responseType>Prepare</responseType>
+    <urgency>Expected</urgency>
+    <severity>Severe</severity>
+    <certainty>Likely</certainty>
+    <onset>2026-10-03T09:00:00Z</onset>
+    <expires>2026-10-04T16:00:00Z</expires>
+    <senderName>Austrian Federal Warning Centre</senderName>
+    <headline>Severe heat wave</headline>
+    <description>It will be hot and humid.</description>
+    <instruction>Find shade and drink water.</instruction>
+    <area><areaDesc>Vienna</areaDesc></area>
+  </info>
+  <info>
+    <language>fr</language>
+    <category>Met</category>
+    <event>Alerte chaleur</event>
+    <severity>Severe</severity>
+  </info>
+</alert>
