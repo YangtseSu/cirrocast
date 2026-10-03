@@ -229,3 +229,46 @@ format-humidity = { $value }%
 format-uv = { $value }（{ $band }）
 format-precip-mm = { $value }mm
 format-precip-in = { $value }in
+
+# --- 警报（步骤 15） -------------------------------------------------------------------------
+# CAP 的严重度三元组、来源名称与横幅片段。alert-banner-line 是所有格式中每条警报的首行；
+# 图标与颜色由渲染器添加，因此翻译只决定文字和标点。WMO SWIC 与 FPAS 的署名行是它们的
+# 使用条款要求在警报旁显示的内容。
+
+label-alert = 警报
+
+alert-none = 无生效中的天气警报
+alert-banner-line = { $event } — { $severity }
+alert-until = 持续至 { $time }
+alert-since = 自 { $time } 起
+alert-more-count = …另有 { $count } 条
+
+alert-severity-unknown = 未知
+alert-severity-minor = 轻度
+alert-severity-moderate = 中度
+alert-severity-severe = 严重
+alert-severity-extreme = 极端
+
+alert-urgency-unknown = 未知
+alert-urgency-past = 已过去
+alert-urgency-future = 未来
+alert-urgency-expected = 预计
+alert-urgency-immediate = 立即
+
+alert-certainty-unknown = 未知
+alert-certainty-unobserved = 未观测
+alert-certainty-possible = 可能
+alert-certainty-unlikely = 不太可能
+alert-certainty-likely = 很可能
+alert-certainty-observed = 已观测
+
+alert-source-nws = 美国国家气象局
+alert-source-meteoalarm = MeteoAlarm
+alert-source-qweather = 和风天气
+alert-source-hko = 香港天文台
+alert-source-wmoswic = WMO 严重天气信息中心
+alert-source-fpas = FOSS 公共警报服务器
+alert-source-visualcrossing = Visual Crossing
+
+alert-credit-wmoswic = 警报由 WMO 严重天气信息中心（severeweather.wmo.int）提供，© 各发布机构
+alert-credit-fpas = 警报经由 FOSS 公共警报服务器（{ $host }）提供

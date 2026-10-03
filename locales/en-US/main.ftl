@@ -240,3 +240,47 @@ format-humidity = { $value }%
 format-uv = { $value } ({ $band })
 format-precip-mm = { $value }mm
 format-precip-in = { $value }in
+
+# --- Alerts (step 15) ------------------------------------------------------------------------
+# The CAP severity triple, the source names and the banner fragments. `alert-banner-line` is the
+# first line of every alert in every format; the glyph and the colour are added by the renderer,
+# so a translation controls the words and the punctuation only. The WMO SWIC and FPAS credits are
+# the lines their terms require next to the warnings.
+
+label-alert = alert
+
+alert-none = no active weather alerts
+alert-banner-line = { $event } — { $severity }
+alert-until = until { $time }
+alert-since = since { $time }
+alert-more-count = … and { $count } more
+
+alert-severity-unknown = Unknown
+alert-severity-minor = Minor
+alert-severity-moderate = Moderate
+alert-severity-severe = Severe
+alert-severity-extreme = Extreme
+
+alert-urgency-unknown = Unknown
+alert-urgency-past = Past
+alert-urgency-future = Future
+alert-urgency-expected = Expected
+alert-urgency-immediate = Immediate
+
+alert-certainty-unknown = Unknown
+alert-certainty-unobserved = Unobserved
+alert-certainty-possible = Possible
+alert-certainty-unlikely = Unlikely
+alert-certainty-likely = Likely
+alert-certainty-observed = Observed
+
+alert-source-nws = US National Weather Service
+alert-source-meteoalarm = MeteoAlarm
+alert-source-qweather = QWeather
+alert-source-hko = Hong Kong Observatory
+alert-source-wmoswic = WMO Severe Weather Information Centre
+alert-source-fpas = FOSS Public Alert Server
+alert-source-visualcrossing = Visual Crossing
+
+alert-credit-wmoswic = Warnings by the WMO Severe Weather Information Centre (severeweather.wmo.int), © the issuing agencies
+alert-credit-fpas = Warnings via the FOSS Public Alert Server ({ $host })

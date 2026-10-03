@@ -37,6 +37,7 @@ use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
 
 use crate::model::DayPartKind;
+use crate::model::alert::{AlertSource, Certainty, Severity, Urgency};
 use crate::model::condition::Condition;
 
 /// The catalogs embedded in the binary: `(tag, source)`, in the order the completeness test and
@@ -143,6 +144,8 @@ pub mod keys {
     pub const LABEL_SUNSET: MessageKey = MessageKey::new("label-sunset");
     /// The observation line's label (`observed`).
     pub const LABEL_OBSERVED: MessageKey = MessageKey::new("label-observed");
+    /// The `alert` record key of `plain`, and the heading of the alert listing.
+    pub const LABEL_ALERT: MessageKey = MessageKey::new("label-alert");
     /// The age of an observation in minutes, for the observation line.
     pub const FORMAT_AGE_MINUTES: MessageKey = MessageKey::new("format-age-minutes");
     /// The age of an observation in hours, for the observation line.
@@ -254,6 +257,58 @@ pub mod keys {
     ];
     /// The condition of a code no WMO row describes.
     pub const CONDITION_UNKNOWN: MessageKey = MessageKey::new("cond-unknown");
+
+    // --- Alerts (step 15) -------------------------------------------------------------------
+
+    /// `no active weather alerts`.
+    pub const ALERT_NONE: MessageKey = MessageKey::new("alert-none");
+    /// `{ $event } — { $severity }`, the first line of every alert.
+    pub const ALERT_BANNER_LINE: MessageKey = MessageKey::new("alert-banner-line");
+    /// `until { $time }`.
+    pub const ALERT_UNTIL: MessageKey = MessageKey::new("alert-until");
+    /// `since { $time }`.
+    pub const ALERT_SINCE: MessageKey = MessageKey::new("alert-since");
+    /// `… and { $count } more`, the banner cap's tail.
+    pub const ALERT_MORE_COUNT: MessageKey = MessageKey::new("alert-more-count");
+    /// The five severity names, weakest first (indexed by `Severity`).
+    pub const ALERT_SEVERITIES: [MessageKey; 5] = [
+        MessageKey::new("alert-severity-unknown"),
+        MessageKey::new("alert-severity-minor"),
+        MessageKey::new("alert-severity-moderate"),
+        MessageKey::new("alert-severity-severe"),
+        MessageKey::new("alert-severity-extreme"),
+    ];
+    /// The five urgency names (indexed by `Urgency`).
+    pub const ALERT_URGENCIES: [MessageKey; 5] = [
+        MessageKey::new("alert-urgency-unknown"),
+        MessageKey::new("alert-urgency-past"),
+        MessageKey::new("alert-urgency-future"),
+        MessageKey::new("alert-urgency-expected"),
+        MessageKey::new("alert-urgency-immediate"),
+    ];
+    /// The six certainty names (indexed by `Certainty`).
+    pub const ALERT_CERTAINTIES: [MessageKey; 6] = [
+        MessageKey::new("alert-certainty-unknown"),
+        MessageKey::new("alert-certainty-unobserved"),
+        MessageKey::new("alert-certainty-possible"),
+        MessageKey::new("alert-certainty-unlikely"),
+        MessageKey::new("alert-certainty-likely"),
+        MessageKey::new("alert-certainty-observed"),
+    ];
+    /// The seven source display names, in registry order (indexed by `AlertSource`).
+    pub const ALERT_SOURCES: [MessageKey; 7] = [
+        MessageKey::new("alert-source-nws"),
+        MessageKey::new("alert-source-meteoalarm"),
+        MessageKey::new("alert-source-qweather"),
+        MessageKey::new("alert-source-hko"),
+        MessageKey::new("alert-source-wmoswic"),
+        MessageKey::new("alert-source-fpas"),
+        MessageKey::new("alert-source-visualcrossing"),
+    ];
+    /// The WMO SWIC credit its terms require beside the warnings.
+    pub const ALERT_CREDIT_WMOSWIC: MessageKey = MessageKey::new("alert-credit-wmoswic");
+    /// The FPAS credit, naming the instance.
+    pub const ALERT_CREDIT_FPAS: MessageKey = MessageKey::new("alert-credit-fpas");
 }
 
 /// Every static message key a renderer, a token or the CLI can ask for, in one list.
@@ -281,6 +336,37 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::LABEL_SUNRISE,
     keys::LABEL_SUNSET,
     keys::LABEL_OBSERVED,
+    keys::LABEL_ALERT,
+    keys::ALERT_NONE,
+    keys::ALERT_BANNER_LINE,
+    keys::ALERT_UNTIL,
+    keys::ALERT_SINCE,
+    keys::ALERT_MORE_COUNT,
+    keys::ALERT_SEVERITIES[0],
+    keys::ALERT_SEVERITIES[1],
+    keys::ALERT_SEVERITIES[2],
+    keys::ALERT_SEVERITIES[3],
+    keys::ALERT_SEVERITIES[4],
+    keys::ALERT_URGENCIES[0],
+    keys::ALERT_URGENCIES[1],
+    keys::ALERT_URGENCIES[2],
+    keys::ALERT_URGENCIES[3],
+    keys::ALERT_URGENCIES[4],
+    keys::ALERT_CERTAINTIES[0],
+    keys::ALERT_CERTAINTIES[1],
+    keys::ALERT_CERTAINTIES[2],
+    keys::ALERT_CERTAINTIES[3],
+    keys::ALERT_CERTAINTIES[4],
+    keys::ALERT_CERTAINTIES[5],
+    keys::ALERT_SOURCES[0],
+    keys::ALERT_SOURCES[1],
+    keys::ALERT_SOURCES[2],
+    keys::ALERT_SOURCES[3],
+    keys::ALERT_SOURCES[4],
+    keys::ALERT_SOURCES[5],
+    keys::ALERT_SOURCES[6],
+    keys::ALERT_CREDIT_WMOSWIC,
+    keys::ALERT_CREDIT_FPAS,
     keys::FORMAT_AGE_MINUTES,
     keys::FORMAT_AGE_HOURS,
     keys::NOTE_NO_FORECAST,
@@ -771,6 +857,30 @@ impl I18n {
         self.text(&direction_key(degrees))
     }
 
+    /// The name of one alert severity (`Minor`, `Extreme`, …).
+    #[must_use]
+    pub fn alert_severity(&self, severity: Severity) -> Cow<'_, str> {
+        self.text(&alert_severity_key(severity))
+    }
+
+    /// The name of one alert urgency.
+    #[must_use]
+    pub fn alert_urgency(&self, urgency: Urgency) -> Cow<'_, str> {
+        self.text(&alert_urgency_key(urgency))
+    }
+
+    /// The name of one alert certainty.
+    #[must_use]
+    pub fn alert_certainty(&self, certainty: Certainty) -> Cow<'_, str> {
+        self.text(&alert_certainty_key(certainty))
+    }
+
+    /// The display name of one alert source (`US National Weather Service`, `香港天文台`, …).
+    #[must_use]
+    pub fn alert_source(&self, source: AlertSource) -> Cow<'_, str> {
+        self.text(&alert_source_key(source))
+    }
+
     /// A temperature in the resolved unit, e.g. `+22°C` or `73°F`.
     ///
     /// `signed` is what the art table wants (`+22°C`); the prose-like formats leave it off. The
@@ -962,6 +1072,57 @@ pub fn direction_key(degrees: u16) -> MessageKey {
         .position(|candidate| *candidate == point)
         .unwrap_or(0);
     keys::DIRECTIONS[index]
+}
+
+/// The key of one alert severity.
+#[must_use]
+pub const fn alert_severity_key(severity: Severity) -> MessageKey {
+    match severity {
+        Severity::Unknown => keys::ALERT_SEVERITIES[0],
+        Severity::Minor => keys::ALERT_SEVERITIES[1],
+        Severity::Moderate => keys::ALERT_SEVERITIES[2],
+        Severity::Severe => keys::ALERT_SEVERITIES[3],
+        Severity::Extreme => keys::ALERT_SEVERITIES[4],
+    }
+}
+
+/// The key of one alert urgency.
+#[must_use]
+pub const fn alert_urgency_key(urgency: Urgency) -> MessageKey {
+    match urgency {
+        Urgency::Unknown => keys::ALERT_URGENCIES[0],
+        Urgency::Past => keys::ALERT_URGENCIES[1],
+        Urgency::Future => keys::ALERT_URGENCIES[2],
+        Urgency::Expected => keys::ALERT_URGENCIES[3],
+        Urgency::Immediate => keys::ALERT_URGENCIES[4],
+    }
+}
+
+/// The key of one alert certainty.
+#[must_use]
+pub const fn alert_certainty_key(certainty: Certainty) -> MessageKey {
+    match certainty {
+        Certainty::Unknown => keys::ALERT_CERTAINTIES[0],
+        Certainty::Unobserved => keys::ALERT_CERTAINTIES[1],
+        Certainty::Possible => keys::ALERT_CERTAINTIES[2],
+        Certainty::Unlikely => keys::ALERT_CERTAINTIES[3],
+        Certainty::Likely => keys::ALERT_CERTAINTIES[4],
+        Certainty::Observed => keys::ALERT_CERTAINTIES[5],
+    }
+}
+
+/// The key of one alert source's display name.
+#[must_use]
+pub const fn alert_source_key(source: AlertSource) -> MessageKey {
+    match source {
+        AlertSource::Nws => keys::ALERT_SOURCES[0],
+        AlertSource::MeteoAlarm => keys::ALERT_SOURCES[1],
+        AlertSource::QWeather => keys::ALERT_SOURCES[2],
+        AlertSource::Hko => keys::ALERT_SOURCES[3],
+        AlertSource::WmoSwic => keys::ALERT_SOURCES[4],
+        AlertSource::Fpas => keys::ALERT_SOURCES[5],
+        AlertSource::VisualCrossing => keys::ALERT_SOURCES[6],
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
