@@ -140,7 +140,14 @@ impl Renderer for ArtTable {
             ctx.depth()
         };
 
-        let mut lines = vec![header(report, ctx)];
+        let mut lines: Vec<String> = Vec::new();
+        for line in super::alerts::banner(&report.alerts, charset, ctx) {
+            lines.push(match line.severity {
+                Some(severity) => color::paint_severity(&line.text, severity, depth).into_owned(),
+                None => line.text,
+            });
+        }
+        lines.push(header(report, ctx));
         if let Some(current) = &report.current {
             lines.push(String::new());
             lines.extend(current_block(current, ctx, charset, depth));
@@ -688,6 +695,7 @@ fn credits(report: &Report, ctx: &RenderContext<'_>) -> Vec<String> {
     if let Some(licence) = report.attribution.licence.as_deref() {
         lines.push(format!("{} {licence}", ctx.i18n.text(&keys::LABEL_DATA)));
     }
+    lines.extend(ctx.alert_credits.iter().cloned());
     lines
 }
 
@@ -1038,6 +1046,7 @@ mod tests {
             tz: Tz::Asia__Shanghai,
             lang: LanguageId::EN_US,
             i18n,
+            alert_credits: &[],
         }
     }
 

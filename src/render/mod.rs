@@ -24,6 +24,7 @@
 //! makes `std::env::set_var` unsafe, so an injectable seam is the only way those rules stay under
 //! test.
 
+pub mod alerts;
 pub mod art;
 pub mod art_table;
 pub mod color;
@@ -393,6 +394,9 @@ pub struct RenderContext<'a> {
     pub lang: LanguageId,
     /// The message catalog behind every label a renderer prints.
     pub i18n: &'a I18n,
+    /// The alert credit lines the run must print, resolved by the caller (they depend on the
+    /// selected sources and, for FPAS, on the configured instance).
+    pub alert_credits: &'a [String],
 }
 
 impl RenderContext<'_> {
@@ -427,16 +431,19 @@ pub enum Format {
     Json,
     /// `art-table` in pure ASCII, with no colour.
     Dumb,
+    /// The full severe-weather alert listing.
+    Alerts,
 }
 
 impl Format {
     /// Every format, in `--help` and documentation order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::ArtTable,
         Self::OneLine,
         Self::Plain,
         Self::Json,
         Self::Dumb,
+        Self::Alerts,
     ];
 
     /// The format's command line spelling.
@@ -448,6 +455,7 @@ impl Format {
             Self::Plain => "plain",
             Self::Json => "json",
             Self::Dumb => "dumb",
+            Self::Alerts => "alerts",
         }
     }
 
@@ -496,6 +504,7 @@ pub fn renderer_for(
         Format::Dumb => Ok(Box::new(art_table::ArtTable::dumb())),
         Format::Plain => Ok(Box::new(plain::Plain)),
         Format::Json => Ok(Box::new(json::Json)),
+        Format::Alerts => Ok(Box::new(alerts::Alerts)),
         Format::OneLine => Ok(Box::new(one_line::OneLine::new(
             one_line::resolve_template(template)?,
         ))),

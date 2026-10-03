@@ -36,7 +36,7 @@ const BOX: f64 = 0.5;
 
 /// Fetches the warnings whose areas contain the point.
 pub fn fetch(loc: &Location, env: &Env<'_>, language: &str) -> Result<Vec<Alert>> {
-    let base = base_url(env);
+    let base = base_url(&env.config.alerts.fpas_url);
     let request = HttpRequest::get(format!("{base}/alert/area"))
         .query("min_lat", format!("{:.4}", loc.lat - BOX))
         .query("max_lat", format!("{:.4}", loc.lat + BOX))
@@ -74,13 +74,26 @@ pub fn fetch(loc: &Location, env: &Env<'_>, language: &str) -> Result<Vec<Alert>
 
 /// The configured instance, or the public default.
 #[must_use]
-pub fn base_url(env: &Env<'_>) -> String {
-    let configured = env.config.alerts.fpas_url.trim().trim_end_matches('/');
+pub fn base_url(configured: &str) -> String {
+    let configured = configured.trim().trim_end_matches('/');
     if configured.is_empty() {
         DEFAULT_URL.to_owned()
     } else {
         configured.to_owned()
     }
+}
+
+/// The instance label for the credit line: the host of the configured URL, or the public host.
+#[must_use]
+pub fn instance_label(configured: &str) -> String {
+    let base = base_url(configured);
+    let host = base
+        .split_once("://")
+        .map_or(base.as_str(), |(_, rest)| rest)
+        .split('/')
+        .next()
+        .unwrap_or(base.as_str());
+    host.to_owned()
 }
 
 /// Fetches one UUID's CAP document and applies the client-side filters.

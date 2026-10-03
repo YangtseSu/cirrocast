@@ -281,7 +281,7 @@ fn cache_stat_and_clean_report_an_empty_cache() {
         .assert()
         .success()
         .stdout(predicate::eq(
-            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\nstation      0 entries       0 B\n",
+            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\nstation      0 entries       0 B\nalerts       0 entries       0 B\n",
         ));
 
     sandbox

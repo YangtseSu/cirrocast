@@ -21,9 +21,9 @@ The crate version, the JSON schema version and the config schema version move **
 release that adds a backend is not a schema change, and a schema change is not a crate release. A
 `schema_version` bump is named in `CHANGELOG.md` and in the release notes.
 
-## JSON output schema (v1)
+## JSON output schema (v2)
 
-Written by `--format json` (`src/render/json.rs`, `SCHEMA_VERSION = 1`). The rules that make the
+Written by `--format json` (`src/render/json.rs`, `SCHEMA_VERSION = 2`). The rules that make the
 document scriptable, in the order they matter:
 
 * every key is **always present**; a value the provider did not report is `null`, never an omitted
@@ -49,7 +49,7 @@ present).
 <!-- schema-key-index:begin -->
 | Key | Type | Unit | Null | Meaning |
 |---|---|---|---|---|
-| `schema_version` | integer | — | no | schema version of this document; `1` |
+| `schema_version` | integer | — | no | schema version of this document; `2` |
 | `location` | object | — | no | the place the report is for |
 | `location.name` | string | — | no | display name |
 | `location.admin1` | string | — | yes | first-level administrative division |
@@ -151,6 +151,21 @@ present).
 | `attribution.notice` | string | — | yes | data-licence credit; `null` when the backend has none |
 | `attribution.location_notice` | string | — | yes | place-data credit; `null` when the source asks for none |
 | `attribution.retrieved_at` | string | — | no | when the data was fetched or read from the cache, UTC |
+| `alerts` | array | — | no | severe-weather warnings in force, strongest first |
+| `alerts[].id` | string | — | no | the source's own identifier |
+| `alerts[].source` | string | — | no | `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas` or `visualcrossing` |
+| `alerts[].event` | string | — | no | event name, e.g. `Tornado Warning` |
+| `alerts[].severity` | string | — | no | `unknown`, `minor`, `moderate`, `severe` or `extreme` |
+| `alerts[].urgency` | string | — | no | `unknown`, `past`, `future`, `expected` or `immediate` |
+| `alerts[].certainty` | string | — | no | `unknown`, `unobserved`, `possible`, `unlikely`, `likely` or `observed` |
+| `alerts[].onset` | string | — | yes | when the event starts, at its own offset |
+| `alerts[].expires` | string | — | yes | when the alert stops being live (`ends` when present, else CAP `expires`), at its own offset |
+| `alerts[].areas` | array | — | no | affected areas, de-duplicated across `info` blocks |
+| `alerts[].headline` | string | — | no | one-line summary |
+| `alerts[].description` | string | — | yes | full description |
+| `alerts[].instruction` | string | — | yes | what the reader is told to do |
+| `alerts[].sender` | string | — | yes | issuing agency |
+| `alert_credits` | array | — | no | the alert sources' required credit lines; empty when none apply |
 <!-- schema-key-index:end -->
 
 ### Worked example
@@ -161,7 +176,7 @@ stays pipeable):
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "location": {
     "name": "Beijing",
     "admin1": "Beijing Municipality",
@@ -260,6 +275,7 @@ stays pipeable):
       }
     }
   ],
+  "alerts": [],
   "capabilities": {
     "current": true,
     "hourly": true,
@@ -280,7 +296,8 @@ stays pipeable):
     "notice": "Open-Meteo.com (CC BY 4.0)",
     "location_notice": "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
     "retrieved_at": "2026-10-01T14:09:33Z"
-  }
+  },
+  "alert_credits": []
 }
 ```
 

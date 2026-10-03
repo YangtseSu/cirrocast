@@ -54,6 +54,16 @@ impl Renderer for Plain {
             location_line(&report.location)
         )];
 
+        // The banner, degraded to the record shape: the warning sign and the colour are dropped
+        // (a pipe gets no escapes), and the record key keeps the line greppable.
+        for alert in &report.alerts {
+            lines.push(format!(
+                "{} {}",
+                record_key(&ctx.i18n.text(&keys::LABEL_ALERT)),
+                super::alerts::banner_text(alert, ctx)
+            ));
+        }
+
         if let Some(current) = &report.current {
             lines.push(updated_line(current, ctx));
             lines.push(current_line(current, ctx));
@@ -68,6 +78,7 @@ impl Renderer for Plain {
         if let Some(licence) = report.attribution.licence.as_deref() {
             lines.push(format!("{} {licence}", ctx.i18n.text(&keys::LABEL_DATA)));
         }
+        lines.extend(ctx.alert_credits.iter().cloned());
         lines.push(format!(
             "{} {} {}",
             record_key(&ctx.i18n.text(&keys::LABEL_ATTRIBUTION)),
@@ -346,6 +357,7 @@ mod tests {
             tz: Tz::Asia__Shanghai,
             lang: LanguageId::EN_US,
             i18n,
+            alert_credits: &[],
         }
     }
 

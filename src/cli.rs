@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum as _};
 
+use crate::alerts::{self, AlertsRequest};
 use crate::cache::{Cache, CacheMode, CacheStat, Clock, SystemClock};
 use crate::config::keys::{KeySource, KeyStore};
 use crate::config::{Config, Settings};
@@ -29,6 +30,8 @@ use crate::geo::{
 use crate::http::{HttpClient, UreqTransport};
 use crate::i18n::{I18n, LanguageRequest};
 use crate::model::Location;
+use crate::model::Severity;
+use crate::model::alert::AlertSource;
 use crate::model::units::{ResolvedUnits, UnitSystem};
 use crate::paths::Paths;
 use crate::provider::{Env, fetch_chain, licence_line, select};
@@ -95,7 +98,8 @@ impl std::io::Write for StdoutSink {
     about,
     long_about = None,
     after_long_help = HELP_EPILOG,
-    propagate_version = true
+    propagate_version = true,
+    allow_negative_numbers = true
 )]
 pub struct Cli {
     /// Print more detail: settings, resolution notes, the upstream request behind the answer
@@ -147,6 +151,7 @@ ONE-LINE TOKENS (--format one-line)
   %v visibility       %u UV index         %U UV + band   %m moon (n/a)
   %d ISO date         %D Wed 30 Sep       %Z zone name   %z +0800
   %S sunrise          %s sunset           %l name        %L 39.90,116.40
+  %A strongest alert event, empty when no alerts are in force
   %% is a literal %, %{...} is verbatim, \\n \\t \\\\ are escapes; an unknown %X stays literal.
   Presets (@NAME), listed with their templates:
     @default  %l: %c %C %t (%f), %w, %h, %p, %P, %v
@@ -214,6 +219,27 @@ pub struct QueryArgs {
     #[arg(long, value_name = "ICAO", value_parser = parse_station)]
     pub station: Option<String>,
 
+    /// Fetch severe-weather warnings: the sources covering the location are selected automatically
+    /// (national services first, the global aggregators after). Also on by default unless
+    /// `[alerts] enabled = false`; `--no-alerts` turns it off for one run.
+    #[arg(long, conflicts_with = "no_alerts")]
+    pub alerts: bool,
+
+    /// Do not fetch severe-weather warnings in this run.
+    #[arg(long)]
+    pub no_alerts: bool,
+
+    /// Alert sources to query instead of the coverage-selected set, comma separated: `nws`,
+    /// `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas`. A source that does not cover the
+    /// location is refused.
+    #[arg(long, value_name = "LIST")]
+    pub alerts_from: Option<String>,
+
+    /// Lowest alert severity to show (`unknown`, `minor`, `moderate`, `severe`, `extreme`);
+    /// overrides `[alerts] severity_threshold`.
+    #[arg(long, value_name = "LEVEL", value_parser = parse_severity)]
+    pub severity: Option<Severity>,
+
     /// Template for `--format one-line`: a literal `%`-token string, or `@PRESET`. The presets
     /// are `@default`, `@short`, `@full`, `@uv` and `@sun`; `--help` lists their templates and
     /// every token.
@@ -261,6 +287,11 @@ fn parse_station(value: &str) -> Result<String, Error> {
             "`{station}` is not an ICAO station identifier; expected four characters starting with a letter, e.g. `--station EGLL`"
         )))
     }
+}
+
+/// `--severity`: one of the CAP levels, parsed by the model so flag and config share one message.
+fn parse_severity(value: &str) -> Result<Severity, Error> {
+    value.parse()
 }
 
 /// `--lat`: degrees in `-90..=90`, the same range and wording the `@lat,lon` argument uses.
@@ -898,11 +929,21 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         verbose: cli.verbose,
     };
     let request = FetchRequest::new(days, HourlyResolution::Hourly);
-    let report = fetch_chain(&ids, &location, &request, &env)?;
+    let mut report = fetch_chain(&ids, &location, &request, &env)?;
 
     if cli.verbose > 0 {
         verbose_report(&report);
     }
+
+    // Alerts are a separate source registry, so they are fetched after the weather answer: a
+    // forecast failure is then reported without any alert traffic, and the location the selection
+    // needs is already resolved.
+    if let Some(alert_request) =
+        alert_request(query, &config, &location, &ids, setup.format, cli.verbose)?
+    {
+        report.alerts = alerts::fetch(&location, &env, &alert_request, setup.i18n.lang().tag())?;
+    }
+    let alert_credits = alerts::credits(&report.alerts, &config.alerts, &setup.i18n);
 
     let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
     let ctx = RenderContext {
@@ -914,10 +955,11 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         tz: report.location.tz,
         lang: setup.i18n.lang(),
         i18n: &setup.i18n,
+        alert_credits: &alert_credits,
     };
     // `one-line` is one line by contract, so the credits the licences require cannot travel in the
     // output: they go to stderr, where `plain` (a document) and `json` (an envelope) keep theirs.
-    credit_to_stderr(&setup, &report);
+    credit_to_stderr(&setup, &report, &alert_credits);
     print_line(format_args!("{}", setup.renderer.render(&report, &ctx)?))?;
     // A message a catalog lacks is a bug in this crate, not a user error: it renders its key and is
     // reported here, after the render — the only point at which every key a renderer will ask for
@@ -929,7 +971,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
 }
 
 /// Prints the `one-line` credits to stderr; other formats carry them in the document itself.
-fn credit_to_stderr(setup: &RenderSetup, report: &crate::model::Report) {
+fn credit_to_stderr(setup: &RenderSetup, report: &crate::model::Report, alert_credits: &[String]) {
     if setup.format != Format::OneLine {
         return;
     }
@@ -942,6 +984,89 @@ fn credit_to_stderr(setup: &RenderSetup, report: &crate::model::Report) {
             setup.i18n.text(&crate::i18n::keys::LABEL_DATA)
         );
     }
+    for credit in alert_credits {
+        eprintln!("{credit}");
+    }
+}
+
+/// The alert policy of this run, or `None` when it fetches no alerts.
+///
+/// Precedence, from `--help`: `--no-alerts` wins over everything; `--alerts`, `--alerts-from` and
+/// `--format alerts` force a fetch; without any of those, `[alerts] enabled` decides. A forced run
+/// whose source set is empty is a usage error — the user asked for warnings and there is nothing
+/// to query — while the automatic path skips with a `--verbose` line (which cannot happen while a
+/// global aggregator is available, but is the honest answer for a build that disables one).
+fn alert_request(
+    query: &QueryArgs,
+    config: &Config,
+    location: &Location,
+    ids: &[ProviderId],
+    format: Format,
+    verbose: u8,
+) -> Result<Option<AlertsRequest>> {
+    if query.no_alerts {
+        if query.alerts_from.is_some() {
+            return Err(Error::Usage(
+                "--no-alerts cannot be combined with --alerts-from".to_owned(),
+            ));
+        }
+        if format == Format::Alerts {
+            return Err(Error::Usage(
+                "--no-alerts cannot be combined with `--format alerts`".to_owned(),
+            ));
+        }
+        return Ok(None);
+    }
+
+    let named: Option<Vec<String>> = query.alerts_from.as_deref().map(|spec| {
+        spec.split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(str::to_owned)
+            .collect()
+    });
+    let forced = query.alerts || format == Format::Alerts || named.is_some();
+    if !forced && !config.alerts.enabled {
+        return Ok(None);
+    }
+    let explicit = named.is_some();
+    let sources = match &named {
+        Some(specs) if !specs.is_empty() => alerts::explicit_sources(location, specs)?,
+        Some(_) => {
+            return Err(Error::Usage(
+                "--alerts-from needs at least one source id".to_owned(),
+            ));
+        }
+        None => alerts::sources_for(location, ids, &config.alerts)?,
+    };
+    if sources.is_empty() {
+        if forced {
+            return Err(Error::Usage(format!(
+                "no alert source covers {:.2},{:.2}; name one with --alerts-from",
+                location.lat, location.lon
+            )));
+        }
+        if verbose > 0 {
+            eprintln!(
+                "alerts: no source covers {:.2},{:.2}; skipping",
+                location.lat, location.lon
+            );
+        }
+        return Ok(None);
+    }
+    let threshold = match query.severity {
+        Some(severity) => severity,
+        None => config
+            .alerts
+            .severity_threshold
+            .parse::<Severity>()
+            .map_err(|error| Error::Config(format!("alerts.severity_threshold: {error}")))?,
+    };
+    Ok(Some(AlertsRequest {
+        sources,
+        explicit,
+        threshold,
+    }))
 }
 
 /// Prints the catalog misses the render recorded, one line each, under `-v`.
@@ -1642,6 +1767,30 @@ fn run_provider(command: &ProviderCommand) -> Result<()> {
     }
 }
 
+/// The alert row of `provider info`: the alert sources this provider brings with it.
+///
+/// The registry's alert sources are independent of the weather chain — the global aggregators
+/// apply everywhere — so this row names only what follows *this* provider: a backend whose own
+/// payload carries warnings, or an alert source bound to its credential and host (`qweather`,
+/// and `visualcrossing` once step 19 wires it). A provider with neither prints `none`, and the
+/// coverage-selected sources still apply at run time.
+fn provider_alerts(meta: &ProviderMeta) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    if meta.alerts {
+        names.push("its own payload");
+    }
+    for source in AlertSource::ALL {
+        if source.provider() == Some(meta.id.as_str()) && source.available() {
+            names.push(source.as_str());
+        }
+    }
+    if names.is_empty() {
+        "none".to_owned()
+    } else {
+        names.join(", ")
+    }
+}
+
 /// Runs the user's editor on the configuration file and validates what came back.
 fn edit_config(paths: &Paths) -> Result<()> {
     if !paths.config_file.exists() {
@@ -1770,7 +1919,7 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
         info_line("current:", yes_no(meta.current)),
         info_line("hourly:", yes_no(meta.hourly)),
         info_line("daily:", yes_no(meta.daily)),
-        info_line("alerts:", yes_no(meta.alerts)),
+        info_line("alerts:", provider_alerts(meta)),
         info_line("max days:", meta.max_days),
         info_line("locations:", locations),
         info_line("coverage:", meta.coverage),

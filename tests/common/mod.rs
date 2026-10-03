@@ -101,6 +101,12 @@ impl Sandbox {
         for name in ["LANG", "LC_MESSAGES", "LC_CTYPE", "CIRROCAST_LANG"] {
             command.env_remove(name);
         }
+        // Every CLI test runs with the network guard on, exactly as CI runs them: a test that
+        // reaches a socket fails loudly instead of silently depending on the developer's network.
+        // Tests that exercise the guard's own message set the variable themselves; a run with a
+        // warm cache never needs the network, and the best-effort alert sources degrade to
+        // `--verbose` notes when blocked.
+        command.env("CIRROCAST_FORBID_NETWORK", "1");
         command
     }
 

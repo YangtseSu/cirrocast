@@ -65,6 +65,7 @@ fn render_with(report: &Report, width: usize, format: Format, color: ColorMode) 
         tz: report.location.tz,
         lang: i18n.lang(),
         i18n: &i18n,
+        alert_credits: &[],
     };
     renderer_for(format, &caps, None)
         .expect("the format has a renderer")

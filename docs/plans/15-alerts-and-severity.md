@@ -7,8 +7,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Status: ⬜ not-started
 Depends on: 10, 12
-Touches: `src/alerts/{mod,nws,meteoalarm,qweather,wmoswic,fpas,hko}.rs`, `src/provider/mod.rs`, `src/cli.rs`,
-`src/config/mod.rs`, `src/cache.rs`, `src/render/{mod,art_table,one_line,plain,json,color}.rs`,
+Touches: `src/alerts/{mod,cap,geometry,nws,meteoalarm,qweather,wmoswic,fpas,hko}.rs`,
+`src/model/alert.rs`, `src/provider/mod.rs`, `src/cli.rs`,
+`src/config/mod.rs`, `src/cache.rs`, `src/render/{alerts,mod,art_table,one_line,plain,json,color}.rs`,
 `src/i18n.rs`, `locales/{en-US,zh-CN}/main.ftl`, `tests/alerts.rs`, `tests/fixtures/alerts/`,
 `tests/fixtures/alerts/README.md`, `REUSE.toml`, `docs/plans/README.md`, `CHANGELOG.md`
 
@@ -97,7 +98,7 @@ location no source covers is reported as such instead of being silently asked.
       warning codes (`WRAIN`, `WTCSGNL`, `WTCPRE8`, `WHOT`, …) to CAP `event` + `severity` through
       an explicit table, with `actionCode`/`updateTime` feeding `onset`/`updated`; coverage:
       Hong Kong. Credit: `Warnings by the Hong Kong Observatory`.
-- ⬜ `src/alerts/mod.rs` + `src/provider/mod.rs`: alert sources become their **own registry**,
+- ✅ `src/alerts/mod.rs` + `src/provider/mod.rs`: alert sources become their **own registry**,
       independent of the weather chain: `pub enum AlertSource { Nws, MeteoAlarm, QWeather, Hko,
       WmoSwic, Fpas, VisualCrossing }` with `fn covers(&self, loc: &Location) -> bool` (NWS: US +
       GU/MP/PR/VI; HKO: HK; MeteoAlarm: the EUMETNET member country codes; QWeather: CN; the
@@ -108,27 +109,27 @@ location no source covers is reported as such instead of being silently asked.
       list) and `--alerts-from <id[,id…]>` override the set; `ProviderMeta.alerts` keeps its meaning
       for backends whose own payload carries warnings. `provider info <id>` prints the alert sources
       that apply to the answering chain.
-- ⬜ `src/cli.rs`: `--alerts` (fetch alerts; auto-on when config `[alerts] enabled = true` and at
+- ✅ `src/cli.rs`: `--alerts` (fetch alerts; auto-on when config `[alerts] enabled = true` and at
       least one covered source exists for the location), `--no-alerts`, `--alerts-from <id[,id…]>`,
       `--severity <minor|moderate|severe|extreme>` filter, `--format alerts`; precedence documented
       in `--help`.
-- ⬜ `src/config/mod.rs`: `[alerts] enabled = true`, `severity_threshold = "minor"`,
+- ✅ `src/config/mod.rs`: `[alerts] enabled = true`, `severity_threshold = "minor"`,
       `sources = ["auto"]`, `fpas_url = ""` (empty = the public instance),
       `cache_ttl_secs = 300`; absent keys keep these defaults, so no `schema_version` bump of the
       config file is needed (documented in `config show`).
 - ✅ `src/cache.rs`: `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json`, TTL 300 s, honouring
       `--no-cache` / `--refresh` / `--offline` (offline replays the last cached set, expired or not,
       with a `--verbose` staleness note).
-- ⬜ `src/render/`: severity-coloured banner above `art-table` (one line per alert, strongest
+- ✅ `src/render/`: severity-coloured banner above `art-table` (one line per alert, strongest
       first: `⚠ Tornado Warning — Extreme · until 18:30 CDT · Take shelter now`), full listing for
       `--format alerts`, `plain` degrades the banner to a prefix-less line, `json` gains
       `"alerts": [{id, source, event, severity, urgency, certainty, onset, expires, areas,
       headline, description, instruction, sender}]` and `schema_version` 2; `one-line` gains `%A`
       (strongest alert's event, empty when none).
-- ⬜ Severity ordering and collapsing: sort `Extreme > Severe > Moderate > Minor > Unknown`;
+- ✅ Severity ordering and collapsing: sort `Extreme > Severe > Moderate > Minor > Unknown`;
       dedup by `id`, then by `(event, onset, areas)` across sources; drop everything whose
       `coalesce(ends, expires) <= ctx.now`; cap the banner at 3 lines with `… N more`.
-- ⬜ `src/i18n.rs` + `locales/{en-US,zh-CN}/main.ftl`: `alert-severity-{unknown,minor,moderate,
+- ✅ `src/i18n.rs` + `locales/{en-US,zh-CN}/main.ftl`: `alert-severity-{unknown,minor,moderate,
       severe,extreme}`, `alert-urgency-*`, `alert-certainty-*`, `alert-banner-line`,
       `alert-more-count`, `alert-none`, `alert-source-{nws,meteoalarm,qweather,hko,wmoswic,fpas}`.
 - ⬜ Tests (`tests/alerts.rs` + fixtures): US tornado warning (NWS GeoJSON), EU heat warning
@@ -300,3 +301,17 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
   Deliverable bullets for the model, the CAP subset and the six adapters were ticked in this commit;
   the registry bullet stays open until `provider info` prints the alert row, and the tests/docs
   bullets follow.
+- 2026-10-03/04 — the integration landed: `--alerts`/`--no-alerts`/`--alerts-from`/`--severity`
+  (with `--format alerts`, auto-on from `[alerts] enabled`, the "does not cover 39.90,116.40;
+  covered here: qweather, wmoswic, fpas" usage error and the best-effort-versus-explicit failure
+  policy), the `alerts` format and the RenderContext `alert_credits`, the banner in `art-table` and
+  `one-line` (`%A` added), alert records and credits in `plain`, JSON `schema_version 2` with
+  `alerts`/`alert_credits`, the severity palette, `provider info`'s alert row, and the fixes the
+  first live runs demanded: `allow_negative_numbers` (the plan's own `--lon -97.0892` verification
+  was a clap usage error), a bounding-box fallback for `qweather`/`hko` coverage at coordinate-only
+  locations (the plan expects qweather in the Beijing coverage message), and an instruction
+  single-line cap plus day-qualified until times in the banner. Live smoke: FPAS at Beijing (gale,
+  zh-CN listing with the FPAS credit), NWS at the plan's Oklahoma point (`-f one-line` banner,
+  `-f json` v2 with one severe Flood Warning and the WMO credit), and the explicit-source error
+  above. The CLI test sandbox now sets `CIRROCAST_FORBID_NETWORK=1` for every child, as CI does, so
+  a test that reaches a socket fails instead of silently using the developer's network.

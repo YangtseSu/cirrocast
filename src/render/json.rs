@@ -46,7 +46,7 @@ use crate::model::{
 
 /// The schema version this build emits; see the module documentation for what may change within
 /// one version.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// The JSON renderer.
 #[derive(Debug, Clone, Copy, Default)]
@@ -71,11 +71,16 @@ struct Document<'a> {
     current: Option<CurrentJson<'a>>,
     /// Forecast days, oldest first.
     days: Vec<DayJson<'a>>,
+    /// Severe-weather warnings in force, strongest first.
+    alerts: Vec<AlertJson<'a>>,
     /// What the backend offers, so a consumer can tell "no days because it is an observation"
     /// from "no days because the request asked for none". `null` when the provider is unknown.
     capabilities: Option<&'a Capabilities>,
     /// Where the data came from and what has to be credited.
     attribution: AttributionJson<'a>,
+    /// The credits the alert sources require, one line each; empty when there are no alerts or
+    /// none of the sources asks for a credit.
+    alert_credits: &'a [String],
 }
 
 impl<'a> Document<'a> {
@@ -93,8 +98,10 @@ impl<'a> Document<'a> {
                 .iter()
                 .map(|day| DayJson::of(day, ctx))
                 .collect(),
+            alerts: report.alerts.iter().map(AlertJson::of).collect(),
             capabilities: report.attribution.capabilities.as_ref(),
             attribution: AttributionJson::of(&report.attribution, &report.location),
+            alert_credits: ctx.alert_credits,
         }
     }
 }
@@ -336,6 +343,63 @@ impl<'a> ConditionJson<'a> {
     }
 }
 
+/// One severe-weather alert, projected onto the schema.
+///
+/// `expires` is the instant the alert stops being live — CAP `ends` when the source carries one,
+/// else CAP `expires` — so a consumer's own filtering matches the renderers' liveness rule. Every
+/// key is always present; the ones the source did not report are `null`.
+#[derive(Debug, Serialize)]
+struct AlertJson<'a> {
+    /// The source's own identifier.
+    id: &'a str,
+    /// Which source reported it: `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas` or
+    /// `visualcrossing`.
+    source: &'static str,
+    /// The event name, e.g. `Tornado Warning`.
+    event: &'a str,
+    /// CAP severity: `unknown`, `minor`, `moderate`, `severe` or `extreme`.
+    severity: &'static str,
+    /// CAP urgency: `unknown`, `past`, `future`, `expected` or `immediate`.
+    urgency: &'static str,
+    /// CAP certainty: `unknown`, `unobserved`, `possible`, `unlikely`, `likely` or `observed`.
+    certainty: &'static str,
+    /// When the event starts, at its own offset; `null` when unreported.
+    onset: Option<String>,
+    /// When the alert stops being live, at its own offset; `null` when unreported.
+    expires: Option<String>,
+    /// The affected areas, de-duplicated across `info` blocks.
+    areas: &'a [String],
+    /// A one-line summary.
+    headline: &'a str,
+    /// The full description; `null` when the source carries none.
+    description: Option<&'a str>,
+    /// What the reader is told to do; `null` when the source carries none.
+    instruction: Option<&'a str>,
+    /// The issuing agency; `null` when unreported.
+    sender: Option<&'a str>,
+}
+
+impl<'a> AlertJson<'a> {
+    /// Projects one alert.
+    fn of(alert: &'a crate::model::Alert) -> Self {
+        Self {
+            id: &alert.id,
+            source: alert.source.as_str(),
+            event: &alert.event,
+            severity: alert.severity.as_str(),
+            urgency: alert.urgency.as_str(),
+            certainty: alert.certainty.as_str(),
+            onset: alert.onset.map(iso_local),
+            expires: alert.effective_end().map(iso_local),
+            areas: &alert.areas,
+            headline: &alert.headline,
+            description: alert.description.as_deref(),
+            instruction: alert.instruction.as_deref(),
+            sender: alert.sender.as_deref(),
+        }
+    }
+}
+
 /// Where the data came from, and the credits the licences require.
 #[derive(Debug, Serialize)]
 struct AttributionJson<'a> {
@@ -500,6 +564,7 @@ mod tests {
             tz: Tz::Asia__Shanghai,
             lang: LanguageId::EN_US,
             i18n: &i18n,
+            alert_credits: &[],
         };
         let text = Json
             .render(report, &ctx)

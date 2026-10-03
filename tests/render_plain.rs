@@ -49,6 +49,7 @@ fn render(report: &Report, units: UnitSystem) -> String {
         term: TermCaps::default(),
         lang: i18n.lang(),
         i18n: &i18n,
+        alert_credits: &[],
         now: Utc
             .with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
             .single()
@@ -163,6 +164,7 @@ fn the_width_does_not_change_the_output() {
         term: TermCaps::default(),
         lang: i18n.lang(),
         i18n: &i18n,
+        alert_credits: &[],
         now: Utc
             .with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
             .single()

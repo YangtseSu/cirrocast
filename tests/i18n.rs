@@ -341,7 +341,7 @@ fn the_language_of_a_document_is_the_language_of_its_values() {
         document
             .pointer("/schema_version")
             .and_then(serde_json::Value::as_u64),
-        Some(1),
+        Some(2),
         "translation never touches the machine-readable keys"
     );
 

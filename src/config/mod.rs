@@ -35,7 +35,7 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 const CONFIG_FILE_MODE: u32 = 0o644;
 
 /// Values accepted by `defaults.format`.
-pub const FORMATS: &[&str] = &["art-table", "one-line", "plain", "json", "dumb"];
+pub const FORMATS: &[&str] = &["art-table", "one-line", "plain", "json", "dumb", "alerts"];
 
 /// Values accepted by `defaults.units`.
 pub const UNIT_SYSTEMS: &[&str] = &["metric", "us", "uk"];

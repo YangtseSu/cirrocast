@@ -144,6 +144,7 @@ fn render_at(report: &Report, units: UnitSystem, width: usize) -> String {
         tz: report.location.tz,
         lang: i18n.lang(),
         i18n: &i18n,
+        alert_credits: &[],
     };
     Json.render(report, &ctx)
         .expect("the fixture renders as JSON")
@@ -201,11 +202,19 @@ fn the_document_is_exactly_this() {
 }
 
 #[test]
+fn a_document_with_an_alert_is_exactly_this() {
+    let report = common::fixture_report("beijing-alerts.json");
+    insta::with_settings!({ prepend_module_to_snapshot => false }, {
+        insta::assert_snapshot!("json_beijing_alerts", render(&report, UnitSystem::Metric));
+    });
+}
+
+#[test]
 fn the_schema_version_leads_the_document_and_is_the_documented_one() {
     let text = render(&report(), UnitSystem::Metric);
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
     assert!(
-        text.starts_with("{\n  \"schema_version\": 1,"),
+        text.starts_with("{\n  \"schema_version\": 2,"),
         "a consumer peeks at the first key to check the version: {text}"
     );
 }
@@ -213,7 +222,7 @@ fn the_schema_version_leads_the_document_and_is_the_documented_one() {
 #[test]
 fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
     let documented = documented_keys();
-    let document = document("beijing-1d.json", UnitSystem::Metric);
+    let document = document("beijing-alerts.json", UnitSystem::Metric);
 
     let mut paths = BTreeSet::new();
     key_paths(&document, "", &mut paths);

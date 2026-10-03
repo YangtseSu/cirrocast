@@ -330,6 +330,46 @@ pub(crate) fn cached_text(
     Ok(body)
 }
 
+/// The credit lines the alert terms require for the sources that produced alerts.
+///
+/// Only the two aggregators ask for one (WMO SWIC names the issuing agencies, FPAS names the
+/// instance); the national services' display names already travel in the listing. The lines are
+/// resolved here, where the catalog and the configured FPAS instance are both at hand, and the
+/// renderers print them verbatim.
+#[must_use]
+pub fn credits(alerts: &[Alert], config: &AlertsConfig, i18n: &crate::i18n::I18n) -> Vec<String> {
+    let mut lines = Vec::new();
+    for source in AlertSource::ALL {
+        if !alerts.iter().any(|alert| alert.source == source) {
+            continue;
+        }
+        match source {
+            AlertSource::WmoSwic => {
+                lines.push(
+                    i18n.text(&crate::i18n::keys::ALERT_CREDIT_WMOSWIC)
+                        .into_owned(),
+                );
+            }
+            AlertSource::Fpas => {
+                lines.push(
+                    i18n.format(
+                        &crate::i18n::keys::ALERT_CREDIT_FPAS,
+                        &[(
+                            "host",
+                            fluent_bundle::FluentValue::from(fpas::instance_label(
+                                &config.fpas_url,
+                            )),
+                        )],
+                    )
+                    .into_owned(),
+                );
+            }
+            _ => {}
+        }
+    }
+    lines
+}
+
 /// A `401` means the credential is wrong and only its owner can fix it; every other error keeps
 /// its taxonomy.
 fn rejected_key(error: Error, source: AlertSource) -> Error {
@@ -449,11 +489,20 @@ mod tests {
             ]
         );
 
-        // A coordinate-only location has no jurisdiction: only the aggregators answer.
+        // A coordinate-only location has no jurisdiction: the aggregators, plus the two services
+        // whose compact territory a bounding box can name.
         let nowhere = location("39.90, 116.40", None, Tz::Asia__Shanghai);
         assert_eq!(
             auto_sources(&nowhere, &[ProviderId::OpenMeteo]),
             [AlertSource::WmoSwic, AlertSource::Fpas]
+        );
+        assert_eq!(
+            covered_sources(&nowhere),
+            [
+                AlertSource::QWeather,
+                AlertSource::WmoSwic,
+                AlertSource::Fpas
+            ]
         );
     }
 

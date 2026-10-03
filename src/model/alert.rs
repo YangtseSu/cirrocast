@@ -272,16 +272,22 @@ impl AlertSource {
 
     /// Whether this source is responsible for `loc`, judged by the resolved country code.
     ///
-    /// A location resolved from raw coordinates can carry no country code, and then only the
-    /// global aggregators cover it: guessing a jurisdiction from a bounding box is how a reader
-    /// ends up with a warning for the wrong country.
+    /// A location resolved from raw coordinates carries no country code, and then the two services
+    /// whose territory is a compact, well-known rectangle fall back to a bounding box (`QWeather`
+    /// over mainland China, HKO over Hong Kong); every other national service answers `false` for a
+    /// coordinate — guessing a jurisdiction from a bounding box is how a reader ends up with a
+    /// warning for the wrong country — and only the global aggregators cover it.
     #[must_use]
     pub fn covers(self, loc: &super::Location) -> bool {
         if self.is_global() {
             return true;
         }
         let Some(code) = loc.country_code.as_deref() else {
-            return false;
+            return match self {
+                Self::QWeather => in_box(loc, 73.0, 135.0, 18.0, 54.0),
+                Self::Hko => in_box(loc, 113.8, 114.5, 22.1, 22.7),
+                _ => false,
+            };
         };
         let code = code.trim().to_ascii_uppercase();
         match self {
@@ -306,6 +312,11 @@ const METEOALARM_COUNTRIES: [&str; 38] = [
     "IE", "IL", "IS", "IT", "LT", "LU", "LV", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO",
     "RS", "SE", "SI", "SK", "TR", "UA",
 ];
+
+/// Whether `loc` lies inside a lon/lat rectangle; the coordinate fallback of [`AlertSource::covers`].
+fn in_box(loc: &super::Location, min_lon: f64, max_lon: f64, min_lat: f64, max_lat: f64) -> bool {
+    (min_lon..=max_lon).contains(&loc.lon) && (min_lat..=max_lat).contains(&loc.lat)
+}
 
 impl fmt::Display for AlertSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

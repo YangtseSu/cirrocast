@@ -17,6 +17,7 @@ use std::borrow::Cow;
 
 use super::ColorDepth;
 use super::art::ArtStyle;
+use crate::model::Severity;
 use crate::model::condition::Condition;
 
 /// The neutral grey a value with nothing to report is painted in.
@@ -145,6 +146,36 @@ pub fn paint(text: &str, fg: u8, depth: ColorDepth) -> Cow<'_, str> {
 /// One `38;5` foreground escape plus a reset.
 fn sgr(text: &str, colour: u8) -> String {
     format!("\x1b[38;5;{colour}m{text}\x1b[0m")
+}
+
+/// The colour of an alert severity, authored here: grey for unknown, blue for minor, yellow for
+/// moderate, red for severe; extreme is white on red and handled by [`paint_severity`].
+#[must_use]
+pub const fn severity_fg(severity: Severity) -> u8 {
+    match severity {
+        Severity::Unknown => FG_DEFAULT,
+        Severity::Minor => 111,
+        Severity::Moderate => 226,
+        // `Extreme` never reaches the foreground table; the value is the red of the background.
+        Severity::Severe | Severity::Extreme => 196,
+    }
+}
+
+/// Paints `text` in an alert severity's colour.
+///
+/// `Extreme` is white on a red background rather than a foreground colour — the strongest level has
+/// to read as a block, not as one more shade of red — and every other level is a foreground colour
+/// from [`severity_fg`]. With colour off the text is returned borrowed, so a monochrome run keeps
+/// the severity as a word and emits no escapes.
+#[must_use]
+pub fn paint_severity(text: &str, severity: Severity, depth: ColorDepth) -> Cow<'_, str> {
+    if depth == ColorDepth::Mono || text.is_empty() {
+        return Cow::Borrowed(text);
+    }
+    if severity == Severity::Extreme {
+        return Cow::Owned(format!("\x1b[1;97;41m{text}\x1b[0m"));
+    }
+    paint(text, severity_fg(severity), depth)
 }
 
 /// The RGB values of the sixteen ANSI colours, as xterm defines them.

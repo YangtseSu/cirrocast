@@ -64,6 +64,7 @@ fn context<'a>(
         tz: report.location.tz,
         lang: i18n.lang(),
         i18n,
+        alert_credits: &[],
     }
 }
 
@@ -301,6 +302,7 @@ fn the_width_does_not_change_the_output() {
         tz: report.location.tz,
         lang: i18n.lang(),
         i18n: &i18n,
+        alert_credits: &[],
     };
 
     let template = one_line::preset("full").expect("the full preset exists");

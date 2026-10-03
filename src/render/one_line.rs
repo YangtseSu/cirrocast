@@ -19,6 +19,9 @@
 //! | `%p` | precipitation `0.0mm` | `%m` | moon phase — `n/a` until the moon step lands |
 //! | `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
 //!
+//! `%A` is the strongest alert's event name and the empty string when there are no alerts; a
+//! report with alerts also gets the banner lines above the one-liner.
+//!
 //! A token whose value the provider does not report prints `n/a`; it is never invented, and it is
 //! never a zero. Values come from [`crate::model::units`] like every other renderer's, so a unit
 //! conversion happens exactly once in this crate.
@@ -120,7 +123,15 @@ impl OneLine {
 
 impl Renderer for OneLine {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
-        expand(&self.template, report, ctx)
+        // The banner travels above the one-liner: it is data, not a credit, and `%A` alone would
+        // drop the until/instruction details. The glyph follows the terminal's charset.
+        let mut out = String::new();
+        for line in super::alerts::banner(&report.alerts, ctx.term.charset(), ctx) {
+            out.push_str(&line.text);
+            out.push('\n');
+        }
+        out.push_str(&expand(&self.template, report, ctx)?);
+        Ok(out)
     }
 }
 
@@ -171,6 +182,8 @@ pub enum Token {
     Coordinates,
     /// `%m` — the moon phase, `n/a` until step 17.
     Moon,
+    /// `%A` — the strongest alert's event, empty when there are none.
+    Alert,
 }
 
 /// The token table: the one place a `%` letter is bound to a meaning.
@@ -198,6 +211,7 @@ const TOKENS: &[(char, Token)] = &[
     ('l', Token::Location),
     ('L', Token::Coordinates),
     ('m', Token::Moon),
+    ('A', Token::Alert),
 ];
 
 /// The token a `%` letter stands for.
@@ -529,6 +543,12 @@ fn value(token: Token, snapshot: &Snapshot, report: &Report, ctx: &RenderContext
         Token::Location => report.location.name.clone(),
         Token::Coordinates => coordinates(&report.location),
         Token::Moon => ctx.i18n.text(&keys::MOON_NA).into_owned(),
+        // Unlike every other token, an absent alert is the empty string, not `n/a`: a template is
+        // a sentence, and `%A` there reads as "the warning, if any".
+        Token::Alert => report
+            .alerts
+            .first()
+            .map_or_else(String::new, |alert| alert.event.clone()),
     }
 }
 
@@ -576,6 +596,7 @@ mod tests {
             ('l', Token::Location),
             ('L', Token::Coordinates),
             ('m', Token::Moon),
+            ('A', Token::Alert),
         ] {
             assert_eq!(token(letter), Some(expected), "%{letter}");
         }

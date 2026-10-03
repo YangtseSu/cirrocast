@@ -104,6 +104,7 @@ impl Live {
             term: TermCaps::default(),
             lang: i18n.lang(),
             i18n: &i18n,
+            alert_credits: &[],
             now: Utc::now().fixed_offset(),
             tz: report.location.tz,
         };

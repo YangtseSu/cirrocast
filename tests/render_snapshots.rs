@@ -108,6 +108,7 @@ fn render(case: Case) -> String {
         tz: report.location.tz,
         lang: i18n.lang(),
         i18n: &i18n,
+        alert_credits: &[],
     };
     renderer_for(case.format, &caps, None)
         .expect("the format has a renderer")
