@@ -190,7 +190,6 @@ uv-band-very-high = 很强
 uv-band-extreme = 极强
 
 na = 无数据
-moon-na = 无数据
 
 # The compass rose: the sixteen points, each spelled with the direction the wind blows from.
 # The arrow is the renderer's, so it is not repeated here.
@@ -314,3 +313,33 @@ pollen-ragweed = 豚草
 
 unit-ug-m3 = 微克/立方米
 unit-grains-m3 = 粒/立方米
+
+# --- 月亮与太阳（步骤 17）-----------------------------------------------------------------------
+# 月相名称按 `MoonPhase::index` 索引；月出/月落等标签用于各格式中的数值；`astro-no-rise`
+# 表示当天没有该事件（月亮的一个日历日可能缺其中一次）。极昼/极夜标签在极圈内替代整行太阳
+# 数据，绝不编造时刻。`astro-computed` 是独立视图的数据来源说明，只在该视图出现。
+
+label-moon = 月亮
+label-sun = 太阳
+
+moon-phase-new = 新月
+moon-phase-waxing-crescent = 娥眉月
+moon-phase-first-quarter = 上弦月
+moon-phase-waxing-gibbous = 盈凸月
+moon-phase-full = 满月
+moon-phase-waning-gibbous = 亏凸月
+moon-phase-last-quarter = 下弦月
+moon-phase-waning-crescent = 残月
+
+astro-moonrise = 月出
+astro-moonset = 月落
+astro-sunrise = 日出
+astro-sunset = 日落
+astro-daylight = 昼长
+astro-polar-day = 极昼
+astro-polar-night = 极夜
+astro-no-rise = —
+astro-illumination = 光照 { $percent }%（地心）
+astro-age-days = 月龄 { $days } 天
+astro-next = 接下来的月相
+astro-computed = 本地计算，无需网络

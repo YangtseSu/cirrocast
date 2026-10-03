@@ -155,8 +155,6 @@ pub mod keys {
 
     /// `n/a`, for a value the provider does not report.
     pub const NA: MessageKey = MessageKey::new("na");
-    /// `n/a` for the moon phase, separate so the two can drift apart.
-    pub const MOON_NA: MessageKey = MessageKey::new("moon-na");
 
     /// Temperature in Celsius.
     pub const FORMAT_TEMP_C: MessageKey = MessageKey::new("format-temp-c");
@@ -363,6 +361,48 @@ pub mod keys {
     pub const UNIT_UG_M3: MessageKey = MessageKey::new("unit-ug-m3");
     /// The pollen unit (`grains/m³`).
     pub const UNIT_GRAINS_M3: MessageKey = MessageKey::new("unit-grains-m3");
+
+    // --- Moon and sun (step 17) -------------------------------------------------------------
+
+    /// The Moon block's own label (`Moon`), also the `plain` record key.
+    pub const LABEL_MOON: MessageKey = MessageKey::new("label-moon");
+    /// The Sun block's own label (`Sun`), also the `plain` record key.
+    pub const LABEL_SUN: MessageKey = MessageKey::new("label-sun");
+    /// The eight phase names, indexed by [`crate::model::MoonPhase::index`].
+    pub const MOON_PHASES: [MessageKey; 8] = [
+        MessageKey::new("moon-phase-new"),
+        MessageKey::new("moon-phase-waxing-crescent"),
+        MessageKey::new("moon-phase-first-quarter"),
+        MessageKey::new("moon-phase-waxing-gibbous"),
+        MessageKey::new("moon-phase-full"),
+        MessageKey::new("moon-phase-waning-gibbous"),
+        MessageKey::new("moon-phase-last-quarter"),
+        MessageKey::new("moon-phase-waning-crescent"),
+    ];
+    /// The moonrise label.
+    pub const ASTRO_MOONRISE: MessageKey = MessageKey::new("astro-moonrise");
+    /// The moonset label.
+    pub const ASTRO_MOONSET: MessageKey = MessageKey::new("astro-moonset");
+    /// The sunrise label.
+    pub const ASTRO_SUNRISE: MessageKey = MessageKey::new("astro-sunrise");
+    /// The sunset label.
+    pub const ASTRO_SUNSET: MessageKey = MessageKey::new("astro-sunset");
+    /// The daylight label (`daylight`).
+    pub const ASTRO_DAYLIGHT: MessageKey = MessageKey::new("astro-daylight");
+    /// `polar day`: the Sun stays up for the whole local day.
+    pub const ASTRO_POLAR_DAY: MessageKey = MessageKey::new("astro-polar-day");
+    /// `polar night`: the Sun stays down for the whole local day.
+    pub const ASTRO_POLAR_NIGHT: MessageKey = MessageKey::new("astro-polar-night");
+    /// The placeholder for a rise or set that does not happen on the day.
+    pub const ASTRO_NO_RISE: MessageKey = MessageKey::new("astro-no-rise");
+    /// `{ $percent }% illuminated`.
+    pub const ASTRO_ILLUMINATION: MessageKey = MessageKey::new("astro-illumination");
+    /// `age { $days } d`.
+    pub const ASTRO_AGE_DAYS: MessageKey = MessageKey::new("astro-age-days");
+    /// The heading of the next-phase list in the standalone view.
+    pub const ASTRO_NEXT: MessageKey = MessageKey::new("astro-next");
+    /// The provenance line of the standalone view (`computed locally (no network)`).
+    pub const ASTRO_COMPUTED: MessageKey = MessageKey::new("astro-computed");
 }
 
 /// Every static message key a renderer, a token or the CLI can ask for, in one list.
@@ -453,11 +493,32 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::POLLEN_SPECIES[5],
     keys::UNIT_UG_M3,
     keys::UNIT_GRAINS_M3,
+    keys::LABEL_MOON,
+    keys::LABEL_SUN,
+    keys::MOON_PHASES[0],
+    keys::MOON_PHASES[1],
+    keys::MOON_PHASES[2],
+    keys::MOON_PHASES[3],
+    keys::MOON_PHASES[4],
+    keys::MOON_PHASES[5],
+    keys::MOON_PHASES[6],
+    keys::MOON_PHASES[7],
+    keys::ASTRO_MOONRISE,
+    keys::ASTRO_MOONSET,
+    keys::ASTRO_SUNRISE,
+    keys::ASTRO_SUNSET,
+    keys::ASTRO_DAYLIGHT,
+    keys::ASTRO_POLAR_DAY,
+    keys::ASTRO_POLAR_NIGHT,
+    keys::ASTRO_NO_RISE,
+    keys::ASTRO_ILLUMINATION,
+    keys::ASTRO_AGE_DAYS,
+    keys::ASTRO_NEXT,
+    keys::ASTRO_COMPUTED,
     keys::FORMAT_AGE_MINUTES,
     keys::FORMAT_AGE_HOURS,
     keys::NOTE_NO_FORECAST,
     keys::NA,
-    keys::MOON_NA,
     keys::FORMAT_TEMP_C,
     keys::FORMAT_TEMP_F,
     keys::FORMAT_WIND_KMH,
@@ -943,6 +1004,12 @@ impl I18n {
         self.text(&direction_key(degrees))
     }
 
+    /// The name of a moon phase (`Waxing Crescent`, `上弦月`, …).
+    #[must_use]
+    pub fn moon_phase(&self, phase: crate::model::MoonPhase) -> Cow<'_, str> {
+        self.text(&moon_phase_key(phase))
+    }
+
     /// The name of one alert severity (`Minor`, `Extreme`, …).
     #[must_use]
     pub fn alert_severity(&self, severity: Severity) -> Cow<'_, str> {
@@ -1158,6 +1225,12 @@ pub fn direction_key(degrees: u16) -> MessageKey {
         .position(|candidate| *candidate == point)
         .unwrap_or(0);
     keys::DIRECTIONS[index]
+}
+
+/// The key of a moon phase.
+#[must_use]
+pub const fn moon_phase_key(phase: crate::model::MoonPhase) -> MessageKey {
+    keys::MOON_PHASES[phase.index()]
 }
 
 /// The key of one alert severity.

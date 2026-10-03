@@ -200,7 +200,6 @@ uv-band-very-high = very high
 uv-band-extreme = extreme
 
 na = n/a
-moon-na = n/a
 
 # The compass rose: the sixteen points a wind direction can name. The arrow is deliberately not
 # here — it is charset-dependent (a dumb terminal gets `^` where a UTF-8 one gets `^`'s arrow), which
@@ -327,3 +326,35 @@ pollen-ragweed = ragweed
 
 unit-ug-m3 = μg/m³
 unit-grains-m3 = grains/m³
+
+# --- Moon and sun (step 17) --------------------------------------------------------------------
+# The phase names are keyed by `MoonPhase::index`; the rise/set labels head the values in every
+# format, and `astro-no-rise` is the placeholder for an event that does not happen on the day
+# (the Moon's calendar day can miss one). The polar labels replace the whole sun line inside the
+# circles, so no clock time is invented. `astro-computed` is the standalone view's provenance
+# line, spoken only there.
+
+label-moon = Moon
+label-sun = Sun
+
+moon-phase-new = New Moon
+moon-phase-waxing-crescent = Waxing Crescent
+moon-phase-first-quarter = First Quarter
+moon-phase-waxing-gibbous = Waxing Gibbous
+moon-phase-full = Full Moon
+moon-phase-waning-gibbous = Waning Gibbous
+moon-phase-last-quarter = Last Quarter
+moon-phase-waning-crescent = Waning Crescent
+
+astro-moonrise = Moonrise
+astro-moonset = Moonset
+astro-sunrise = Sunrise
+astro-sunset = Sunset
+astro-daylight = daylight
+astro-polar-day = polar day
+astro-polar-night = polar night
+astro-no-rise = —
+astro-illumination = { $percent }% illuminated (geocentric)
+astro-age-days = age { $days } d
+astro-next = Next phases
+astro-computed = computed locally (no network)
