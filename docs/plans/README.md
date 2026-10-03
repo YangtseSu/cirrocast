@@ -63,7 +63,7 @@ wait on ten unrelated steps.
 | 12 | C | [quality-hardening](12-quality-hardening.md) | ✅ done | 08, 09, 10 |
 | 13 | C | [packaging-and-release](13-packaging-and-release.md) | ✅ done | 08, 12 |
 | 14 | C | [v1-acceptance](14-v1-acceptance.md) | ✅ done | all of A–C |
-| 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | ⬜ not-started | 10, 12 |
+| 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | ✅ done | 10, 12 |
 | 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ⬜ not-started | 03, 08 |
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ⬜ not-started | 03, 08 |
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ⬜ not-started | 04, 05 |
@@ -252,10 +252,14 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
 * The `json` document carries a `capabilities` object (the registry row of the answering backend:
   `current`, `hourly`, `daily`, `alerts`, `max_days`, `requires_key`, `key_env`, `locations`), so a
   consumer can tell "no `days` because the backend is an observation" from "no `days` because the
-  request asked for none". Additive within `schema_version = 1`.
+  request asked for none". Additive within `schema_version = 2`, which added the `alerts` array
+  (the CAP-shaped warning set, strongest first) and `alert_credits` (step 15). The alert key set
+  is listed in `docs/schema.md`, and the CAP subset actually parsed is the list at the top of
+  `docs/plans/15-alerts-and-severity.md`.
 * Formats: `art-table` (default, wttr.in's classic four-row coloured columns), `one-line`
-  (wttr.in-compatible `%` tokens), `plain`, `json`. `dumb` is not a fourth layout: it is the
-  art table in the ASCII character set (`+ - |`, ASCII art, no degree sign), selected by
+  (wttr.in-compatible `%` tokens), `plain`, `json`, `alerts` (the full severe-weather warning
+  listing; `no active weather alerts` when there are none). `dumb` is not a fourth layout: it is
+  the art table in the ASCII character set (`+ - |`, ASCII art, no degree sign), selected by
   `--format dumb` and automatically for `TERM=dumb` or a non-UTF-8 locale.
 * Width handling: `--width` > `COLUMNS` > terminal size > 80, and never below 20 columns (a
   narrower source is raised and reported under `--verbose`). The terminal's own size comes from
@@ -306,7 +310,7 @@ schema_version = 1
 [cache]     enabled = true  weather_ttl_secs = 600  ip_ttl_secs = 86400  geocode_ttl_secs = 2592000
             # ip_ttl_secs is capped at 86400: ipapi.co's terms allow caching an IP answer for at most 24 hours
 [render]    color = "auto"  width = 0
-[alerts]    enabled = true  sources = ["auto"]  fpas_url = ""   # step 15
+[alerts]    enabled = true  severity_threshold = "minor"  sources = ["auto"]  fpas_url = ""  cache_ttl_secs = 300  # step 15
 [normals]   period = "1991-2020"  max_distance_km = 60          # step 29
 [providers.metar]    station = ""
 [providers.qweather] host = ""
@@ -328,8 +332,10 @@ schema_version = 1
 * A `keys.toml` with any group/other permission bits is refused with `Error::Config`, not silently used.
 * Cache layout: `geocode/<sha256(query)>.json`, `ip/<service>.json`,
   `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json`,
-  `weather/metar-<ICAO>-{current,taf}.json` for the station resources and `station/<ICAO>.json` for
-  30-day station metadata; writes are `tmp` + `rename`. Steps 28 and 29 add two namespaces with the
+  `weather/metar-<ICAO>-{current,taf}.json` for the station resources, `station/<ICAO>.json` for
+  30-day station metadata, and `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json` for alert
+  responses (a CAP document fetched per identifier hashes the identifier instead of a place);
+  writes are `tmp` + `rename`. Steps 28 and 29 add two namespaces with the
   same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
   mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
   reports every namespace it finds.
@@ -350,13 +356,17 @@ tests; `unsafe` is denied by lint.
 cirrocast [OPTIONS] [LOCATION]
   -p, --provider <ID[,ID...]>   open-meteo | openweathermap | weatherapi | worldweatheronline
                                 | pirateweather | qweather | smhi | metar | auto
-  -f, --format <NAME>           art-table | one-line | plain | json | dumb
+  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts
   -d, --days <N>                0..=14 (clamped per provider, warned once)
   -u, --units <metric|us|uk>
       --lang <TAG>              BCP-47, or "auto"
       --lat <DEG> --lon <DEG>
       --ip                      locate from the public IP
       --station <ICAO>          METAR station; selects `metar` when no provider is given
+      --alerts                  fetch severe-weather warnings (auto-on from `[alerts] enabled`)
+      --no-alerts               do not fetch warnings in this run
+      --alerts-from <LIST>      explicit alert sources: nws, meteoalarm, qweather, hko, wmoswic, fpas
+      --severity <LEVEL>        lowest alert severity to show (unknown..extreme)
       --no-cache / --refresh / --offline
       --timeout <SECS>
       --color <auto|always|never>
@@ -412,9 +422,10 @@ geocoder-independent spec and are what the selection echo prints back.
 
 * Rust 2024, MSRV 1.98 (the latest stable toolchain: the project tracks stable rather than holding
   a floor below it), no async runtime, `ureq` + `rustls`, `serde` for all wire formats.
-  `tzf-rs` (step 11) is the one coordinate → IANA zone lookup; the manifest accepts any 2.x and
-  `Cargo.lock` records the resolved release — no dependency is pinned to a version the manifest
-  could not float past.
+  `tzf-rs` (step 11) is the one coordinate → IANA zone lookup and `quick-xml` (step 15, MIT) the
+  one XML reader, used for CAP 1.2 alert documents through a hand-written state machine; the
+  manifest accepts any 2.x of the former and 0.42 of the latter, and `Cargo.lock` records the
+  resolved release — no dependency is pinned to a version the manifest could not float past.
 * New dependencies require a one-line justification in the step doc's design notes; prefer std +
   already-present crates. `cargo deny`/`cargo audit` are introduced in step 12.
 * Every provider and renderer ships tests against **recorded fixtures** (`tests/fixtures/`). No test

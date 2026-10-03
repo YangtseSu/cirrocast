@@ -123,13 +123,16 @@ cirrocast [OPTIONS] [LOCATION]
 
   -p, --provider <ID[,ID...]>   open-meteo | smhi | metar | openweathermap | weatherapi
                                 | worldweatheronline | pirateweather | qweather | auto
-  -f, --format <NAME>           art-table | one-line | plain | json | dumb
+  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts
   -d, --days <N>                0..=14, clamped to what the provider serves
   -u, --units <SYSTEM>          metric | us | uk
       --lang <TAG>              BCP-47, or "auto"
       --lat <DEG> --lon <DEG>   coordinates instead of a location argument
       --ip                      locate from the public IP
       --station <ICAO>          METAR station; selects --provider metar when no provider is given
+      --alerts | --no-alerts    force / suppress severe-weather warnings (they are on by default)
+      --alerts-from <LIST>      explicit alert sources: nws, meteoalarm, qweather, hko, wmoswic, fpas
+      --severity <LEVEL>        lowest alert severity shown: unknown | minor | moderate | severe | extreme
       --template <TEMPLATE>     one-line template or @PRESET
       --no-cache | --refresh | --offline
       --timeout <SECS>
@@ -198,7 +201,8 @@ notes, never errors.
 | `dumb` | the same table in 7-bit ASCII, no colour; automatic for `TERM=dumb` or a non-UTF-8 locale | as above |
 | `one-line` | one line driven by `%` tokens, for a prompt or status bar | fixed |
 | `plain` | box-free `label: value` lines, one record per line | ignores `--width`: a record is never truncated |
-| `json` | the stable machine-readable document (`schema_version: 1`) | ignores `--width` and `--units` |
+| `json` | the stable machine-readable document (`schema_version: 2`) | ignores `--width` and `--units` |
+| `alerts` | the full severe-weather warning listing for the location, strongest first; `no active weather alerts` when there are none | ignores `--width` |
 
 `one-line` takes a template with `--template`, either a literal string or a preset:
 
@@ -211,6 +215,7 @@ notes, never errors.
 | `%h` | humidity `56%` | `%l` `%L` | name / `39.90,116.40` |
 | `%p` | precipitation `0.0mm` | `%m` | moon phase — `n/a` until the moon step lands |
 | `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
+| `%A` | strongest alert's event, empty when nothing is in force | | |
 
 `%%` is a literal `%`, a trailing lone `%` is one too, `%{…}` is verbatim (`\}` escapes the brace),
 `\n`/`\t`/`\\` are unescaped, and an unknown `%X` prints literally and is reported once under `-v`.
@@ -223,10 +228,39 @@ A value the provider does not report prints `n/a` — never an invented number. 
 `json` is the scripting surface: keys are always present (`null` when the provider has no value), all
 numbers are canonical metric with the unit in the key (`temp_c`, `wind_kmh`, `precip_mm`,
 `pressure_hpa`, `visibility_km`), timestamps carry the location's offset, and `attribution` carries
-the credits. Within `schema_version: 1` changes are additive only — new keys may appear and existing
+the credits. Within `schema_version` changes are additive only — new keys may appear and existing
 ones keep their name, type and unit — so a consumer must ignore keys it does not know; a breaking
-change bumps the version and is named in [`CHANGELOG.md`](CHANGELOG.md). Every key, its type and its
+change bumps the version and is named in [`CHANGELOG.md`](CHANGELOG.md). Version 2 added the
+`alerts` array (id, source, event, severity/urgency/certainty, onset, expires, areas, headline,
+description, instruction, sender) and `alert_credits`; version 1 documents still parse. Every key, its type and its
 unit are listed in [`docs/schema.md`](docs/schema.md).
+
+### Alerts
+
+Severe-weather warnings are fetched by default (`[alerts] enabled = true`). The sources covering
+the location are chosen automatically — the national services first (`nws` for the US and its
+territories, `meteoalarm` for the EUMETNET members, `hko` for Hong Kong, `qweather` for China when
+that provider is on the chain) and the two global aggregators last (`wmoswic`, the WMO Severe
+Weather Information Centre, and `fpas`, the FOSS Public Alert Server, which answer anywhere).
+Warnings are normalised to CAP 1.2 and appear as a severity-coloured banner above `art-table` and
+`one-line` (the strongest one is also `%A`), as `alert: …` records in `plain`, as the full listing
+under `--format alerts`, and as the `alerts` array in `json`. Alerts whose end (`ends`, else
+`expires`) has passed are never shown, duplicates from two sources are collapsed, the banner caps at
+three lines with a `… and N more` tail, and the strongest is first.
+
+| Flag | Effect |
+|---|---|
+| `--no-alerts` | skip the extra requests for this run |
+| `--alerts` | force the fetch even if `[alerts] enabled = false` |
+| `--alerts-from <LIST>` | query exactly these sources, comma separated; one that does not cover the point is a usage error |
+| `--severity <LEVEL>` | show only warnings at or above the level (default `minor`, from `[alerts] severity_threshold`) |
+
+MeteoAlarm's endpoints need a token in `CIRROCAST_METEOALARM_KEY`; without one that source is
+skipped with a `-v` note and the aggregators still answer. Its portal states access is for members
+and re-distributors, and cached warnings are for the local user only — not for redistribution.
+Alert responses are cached for `[alerts] cache_ttl_secs` (300 s) under
+`$XDG_CACHE_HOME/cirrocast/alerts/`, so a repeated run is served from disk; `--offline` replays the
+last set with a `-v` staleness note. A self-hosted FPAS is configured with `[alerts] fpas_url`.
 
 ### Weather
 
@@ -368,10 +402,17 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [QWeather](https://www.qweather.com/) | `-p qweather` | free allowance: first 50 000 requests/month at ¥0, QPM 3 000; needs the account API host in `[providers.qweather].host` | data proprietary; the rendered report ends with `Data: QWeather — https://www.qweather.com/` |
 | [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding | — | CC-BY-4.0 |
 | [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
+| [api.weather.gov](https://api.weather.gov/) (NOAA/NWS) | alerts for the US and territories | a descriptive `User-Agent` (sent); public-domain data | no credit mandated; the source is named in the listing |
+| [MeteoAlarm](https://api.meteoalarm.org/) | alerts for EUMETNET members | a bearer token (`CIRROCAST_METEOALARM_KEY`) that the portal issues to members and re-distributors; the source is optional | cached warnings are for the local user only, not for redistribution |
+| [WMO SWIC](https://severeweather.wmo.int/) | global alert aggregator | keyless; the WFS index and one CAP document per warning are cached | credit printed with the warnings: `Warnings by the WMO Severe Weather Information Centre (severeweather.wmo.int), © the issuing agencies` |
+| [FPAS](https://alerts.kde.org/) | global alert aggregator, self-hostable | keyless donated instance (`[alerts] fpas_url` points at your own) | credit printed with the warnings: `Warnings via the FOSS Public Alert Server (<host>)` |
+| [Hong Kong Observatory](https://data.weather.gov.hk/) | alerts for Hong Kong | keyless open data | credit printed with the warnings: `Warnings by the Hong Kong Observatory` |
 | [ipwho.is](https://ipwho.is/) | `--ip` (primary) | free endpoint: 1 000 requests/day per client IP, then `429` + `Retry-After` | personal or internal use, no redistribution |
 | [ipapi.co](https://ipapi.co/) | `--ip` (fallback) | free tier: up to 1 000 requests/day | internal use, no resale; its terms allow keeping an answer for **at most 24 hours**, which is why `cache.ip_ttl_secs` is capped there |
 
-Weather output carries the credit the data licence asks for — `Data: Open-Meteo.com (CC BY 4.0)` or
+Alert output carries its own credits: WMO SWIC names the issuing agencies and FPAS the instance,
+printed in the `alerts` listing, the `art-table`/`plain` footers, the `json` `alert_credits` array
+and, for `one-line`, on stderr. The weather output carries the credit the data licence asks for — `Data: Open-Meteo.com (CC BY 4.0)` or
 `Data: SMHI (CC BY 4.0 SE)` — plus a provenance line (`attribution: open-meteo
 https://api.open-meteo.com/v1/forecast`), both taken from the provider registry rather than
 hard-coded, and a geocoded place adds the GeoNames line next to them. Where the credit travels
@@ -431,7 +472,7 @@ write and the first one read — and `config validate` reports the file that was
 | Key | Default | Values |
 |---|---|---|
 | `defaults.provider` | `open-meteo` | provider id, comma separated chain, or `auto` |
-| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb` |
+| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts` |
 | `defaults.units` | `metric` | `metric`, `us`, `uk` |
 | `defaults.days` | `3` | `0..=14`, clamped per provider |
 | `defaults.language` | `auto` | `auto` or a BCP-47 tag such as `zh-CN` |
@@ -451,6 +492,11 @@ write and the first one read — and `config validate` reports the file that was
 | `cache.geocode_ttl_secs` | `2592000` | `> 0` (30 days) |
 | `render.color` | `auto` | `auto`, `always`, `never` |
 | `render.width` | `0` | `0` (detect from the terminal) or `40..=500` |
+| `alerts.enabled` | `true` | `true`, `false` |
+| `alerts.severity_threshold` | `minor` | `unknown`, `minor`, `moderate`, `severe`, `extreme` |
+| `alerts.sources` | `["auto"]` | `["auto"]` or source ids: `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas` |
+| `alerts.fpas_url` | empty | FOSS Public Alert Server base URL; empty = `https://alerts.kde.org` |
+| `alerts.cache_ttl_secs` | `300` | `> 0` (5 minutes) |
 | `providers.metar.station` | empty | ICAO identifier, e.g. `ZBAA` |
 | `providers.qweather.host` | empty | your QWeather API host, from <https://console.qweather.com/setting> (e.g. `https://<account-id>.re.qweatherapi.com`) |
 
@@ -484,6 +530,10 @@ Provider keys are BYOK and never enter `config.toml` (which is world readable, s
 and hand edited). First hit wins: `CIRROCAST_<PROVIDER>_KEY` (provider id upper-cased, `-` → `_`,
 e.g. `CIRROCAST_OPENWEATHERMAP_KEY`) → `keys.toml` in the configuration directory → the OS keyring
 (feature-gated, later release).
+
+The MeteoAlarm alert token is the one credential outside the provider key store: it is read from
+`CIRROCAST_METEOALARM_KEY` only (the service is not a weather provider, so `key set` does not know
+it), and `[alerts] sources`/`--alerts-from` decide whether that source is used at all.
 
 ```bash
 printf %s "$CIRROCAST_OPENWEATHERMAP_KEY" | cirrocast key set openweathermap

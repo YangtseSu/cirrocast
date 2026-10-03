@@ -13,9 +13,27 @@ records how each of them changes and which changes are breaking.
 
 ## [Unreleased]
 
-The fixes from the 2026-10-02 full-project review
-([`docs/reviews/02-review-01-fixes-2026-10-02.md`](docs/reviews/02-review-01-fixes-2026-10-02.md)),
-landed after the `v1.0.0` tag.
+Post-`v1.0.0` work: the step-15 alert surface, on top of the 2026-10-02 review fixes
+([`docs/reviews/02-review-01-fixes-2026-10-02.md`](docs/reviews/02-review-01-fixes-2026-10-02.md)).
+
+### Added
+
+* **Severe-weather alerts (step 15).** `cirrocast` now fetches official warnings by default —
+  `--no-alerts` opts out, `--alerts` forces them, `--alerts-from nws,meteoalarm,…` names the sources —
+  and renders them as a severity-coloured banner above `art-table`/`one-line`, as `alert:` records in
+  `plain`, as the new `--format alerts` listing and as the `alerts` array in `json`. Sources are
+  selected by coverage: NWS (US and territories), MeteoAlarm (EUMETNET members, optional
+  `CIRROCAST_METEOALARM_KEY`), HKO (Hong Kong), QWeather (China, on its provider's chain) and the two
+  global aggregators WMO SWIC and FPAS (self-hostable through `[alerts] fpas_url`). Warnings are
+  normalised to CAP 1.2, expired ones are dropped (`ends`, else `expires`), duplicates across sources
+  are collapsed, and strongest comes first. The threshold is `[alerts] severity_threshold`/`--severity`
+  (default `minor`); the cache namespace `alerts/` has a 300 s TTL and `--offline` replays the last
+  set. One-line's `%A` expands to the strongest alert's event (empty when none).
+* JSON output: `schema_version` is now **2**, adding the `alerts` array and `alert_credits`
+  (`docs/schema.md`); version 1 documents still parse. `provider info` gained the alert row
+  (`provider info qweather` → `alerts: qweather`, `provider info smhi` → `alerts: none`).
+* `[alerts]` configuration table (`enabled`, `severity_threshold`, `sources`, `fpas_url`,
+  `cache_ttl_secs`) with `config get`/`set` support.
 
 ### Changed
 

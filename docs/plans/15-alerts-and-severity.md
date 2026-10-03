@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 15 — alerts and severity
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: 10, 12
 Touches: `src/alerts/{mod,cap,geometry,nws,meteoalarm,qweather,wmoswic,fpas,hko}.rs`,
 `src/model/alert.rs`, `src/provider/mod.rs`, `src/cli.rs`,
@@ -141,7 +141,7 @@ location no source covers is reported as such instead of being silently asked.
       a frozen `RenderContext::now`; empty result; malformed CAP (truncated XML, `info` without
       `event`); `sources_for` coverage for US/HK/CN/EU/global points and `--alerts-from` override;
       `%A` empty when there are no alerts.
-- ⬜ Docs: `docs/plans/README.md` (JSON `schema_version` 2 note, `alerts` capability meaning,
+- ✅ Docs: `docs/plans/README.md` (JSON `schema_version` 2 note, `alerts` capability meaning,
       CAP-subset pointer), `CHANGELOG.md`, `provider info` row text, `REUSE.toml` annotation for
       the recorded fixtures (the fixtures stay GPL-3.0-or-later — they are hand-trimmed
       public-domain/CC0-derivable CAP payloads, see `tests/fixtures/alerts/README.md`).
@@ -222,7 +222,8 @@ cargo run -q -- --lat 39.7456 --lon -97.0892 -f one-line
 #   banner line above the one-liner; %A expands to the same event name
 cargo run -q -- --lat 39.7456 --lon -97.0892 -f json | jq '.schema_version, (.alerts|length)'
 #   2 and >= 1
-cargo run -q -- --alerts Beijing -v          # "qweather: alert source enabled" (no meteoalarm key)
+cargo run -q -- --alerts Beijing -v          # the coverage-selected set (wmoswic, fpas) is
+#   queried; qweather joins only with -p qweather, and meteoalarm's missing token is a -v note
 cargo run -q -- --alerts --lat 22.3 --lon 114.17 -f alerts -v    # HKO warnsum (or "no active alerts")
 cargo run -q -- --alerts --lat 39.9 --lon 116.4 --alerts-from fpas -f alerts
 #   FPAS-only run: cached UUID list + CAP documents; the source and its credit named in the footer
@@ -231,24 +232,32 @@ cargo run -q -- --alerts --lat 0 --lon 0 --alerts-from wmoswic,fpas -f alerts
 cargo run -q -- --alerts --lat 39.9 --lon 116.4 --alerts-from nws; echo $?
 #   an explicit source that does not cover the point: exit 2,
 #   `error: alert source `nws` does not cover 39.90,116.40; covered here: qweather, wmoswic, fpas`
-CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v; echo $?
-#   exit 0, warning-free degradation to the global sources, one --verbose line about the 401
+CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts Vienna -v; echo $?
+#   exit 0, warning-free degradation to the global sources, one --verbose line naming
+#   CIRROCAST_METEOALARM_KEY and the 401 (a coordinate pair has no country, so the geocoded
+#   `Vienna` spelling is what selects meteoalarm)
 ```
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ All fixtures are recorded files; no test performs a network call (`tests/alerts.rs` passes
-      with the loopback blocked).
-- ⬜ Banner, `--format alerts`, `%A` and `json.alerts` show the same alert set for the same
-      location and cache entry.
-- ⬜ An alert whose `coalesce(ends, expires)` is in the past never appears in any format.
-- ⬜ `--alerts` with an explicit `--alerts-from` set that answers nothing exits 0 with "no active
-      alerts"; an explicit source that does not cover the point exits 2 with
-      `error: alert source \`nws\` does not cover 39.90,116.40; covered here: qweather, wmoswic, fpas`.
-- ⬜ WMO SWIC's server-side polygon filter, FPAS's client-side filter (`category`, `msgType`,
-      geometry) and HKO's warning-code table each have a positive and a negative fixture.
-- ⬜ `provider info qweather` prints its alert source; `provider info smhi` prints `alerts: none`.
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ✅ All fixtures are hand-written to the source schemas (provenance in
+      `tests/fixtures/alerts/README.md`); no test performs a network call (`tests/alerts.rs` runs
+      over `StubTransport` and the CLI sandbox carries `CIRROCAST_FORBID_NETWORK=1`).
+- ✅ Banner, `--format alerts`, `%A` and `json.alerts` show the same alert set for the same
+      location and cache entry (`a_cached_alert_set_renders_in_every_format` asserts one seeded set
+      across all four).
+- ✅ An alert whose `coalesce(ends, expires)` is in the past never appears in any format
+      (`prepare` unit tests plus the fetch-level expiry test).
+- ✅ `--alerts-from fpas` with a cached empty list exits 0 with "no active weather alerts"; an
+      explicit source that does not cover the point exits 2 with
+      `error: alert source \`nws\` does not cover 39.90,116.40; covered here: qweather, wmoswic, fpas`
+      (live-verified and covered by `an_explicit_source_outside_its_coverage_is_a_usage_error`).
+- ✅ WMO SWIC's server-side polygon filter (the exact CQL point query), FPAS's client-side filter
+      (`category`, `msgType`, geometry) and HKO's warning-code table each have a positive and a
+      negative fixture; the WMO index's boundary row and the FPAS Geo/Cancel documents are the
+      negatives.
+- ✅ `provider info qweather` prints its alert source; `provider info smhi` prints `alerts: none`.
 
 ## Risks
 
@@ -326,3 +335,18 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts --lat 48.2 --lon 16.37 -v;
   Also in this round: `tests/common` fixes the CLI sandbox to `CIRROCAST_FORBID_NETWORK=1` like CI,
   and the alert policy is resolved before the weather fetch so a source-list mistake costs no
   request. Remaining: the docs bullet and the exit-criteria pass.
+- 2026-10-04 — docs and the exit pass: `docs/plans/README.md` (formats incl. `alerts`, the alert
+  flags, the `[alerts]` schema keys, the `alerts/` cache namespace, JSON `schema_version = 2` and
+  the CAP-subset pointer, the `quick-xml` dependency note), the user README (an Alerts section, the
+  source rows with their credits, the config table, `%A`, the JSON v2 note), `CHANGELOG.md`
+  (Unreleased/Added) and `docs/schema.md` (v2 key index, including `alerts[]` and `alert_credits`).
+  The verification block was corrected where the amended registry design moved the ground: the
+  Beijing `-v` line and the MeteoAlarm bad-key command (a coordinate pair carries no country, so
+  the geocoded spelling is what selects the source); the 401 message now names
+  `CIRROCAST_METEOALARM_KEY` through the new `Error::InvalidToken` instead of pointing at
+  `key set`, which does not know the service. Every verification command was run: FPAS at Beijing
+  (gale, credits), NWS at the Oklahoma point (banner, `%A`, JSON v2 with the WMO credit), HKO at
+  22.3/114.17 (live `{}` → "no active alerts"), both aggregators at 0,0 (no alerts), the explicit
+  non-covering `nws` error (exit 2 with the documented message) and the bad MeteoAlarm token
+  (exit 0, one `-v` line). `cargo fmt --check`, `cargo clippy --all-targets -D warnings`,
+  `cargo test` and `reuse lint` are clean; the step is done.
