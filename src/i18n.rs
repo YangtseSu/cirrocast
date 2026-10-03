@@ -309,6 +309,60 @@ pub mod keys {
     pub const ALERT_CREDIT_WMOSWIC: MessageKey = MessageKey::new("alert-credit-wmoswic");
     /// The FPAS credit, naming the instance.
     pub const ALERT_CREDIT_FPAS: MessageKey = MessageKey::new("alert-credit-fpas");
+
+    // --- Air quality (step 16) --------------------------------------------------------------
+
+    /// The air panel's title (`Air quality`); the renderers add the colon.
+    pub const AQI_PANEL_TITLE: MessageKey = MessageKey::new("aqi-panel-title");
+    /// The US AQI scale's name.
+    pub const AQI_US_LABEL: MessageKey = MessageKey::new("aqi-us-label");
+    /// The European AQI scale's name.
+    pub const AQI_EUROPEAN_LABEL: MessageKey = MessageKey::new("aqi-european-label");
+    /// The pollen block's title.
+    pub const AQI_POLLEN_TITLE: MessageKey = MessageKey::new("aqi-pollen-title");
+    /// `not covered at this location`: the source has no pollen forecast here.
+    pub const AQI_NO_COVERAGE: MessageKey = MessageKey::new("aqi-no-coverage");
+    /// Shown by `--format aqi` when the reading could not be fetched.
+    pub const AQI_UNAVAILABLE: MessageKey = MessageKey::new("aqi-unavailable");
+    /// The UV label in the panel (`UV`).
+    pub const AQI_UV_LABEL: MessageKey = MessageKey::new("aqi-uv-label");
+    /// Where the panel's UV reading comes from (`weather data`), since it is not an air field.
+    pub const AQI_UV_SOURCE: MessageKey = MessageKey::new("aqi-uv-source");
+    /// The ten category names, indexed by `AqiCategory::index`.
+    pub const AQI_CATEGORIES: [MessageKey; 10] = [
+        MessageKey::new("aqi-category-good"),
+        MessageKey::new("aqi-category-moderate"),
+        MessageKey::new("aqi-category-unhealthy-sensitive"),
+        MessageKey::new("aqi-category-unhealthy"),
+        MessageKey::new("aqi-category-very-unhealthy"),
+        MessageKey::new("aqi-category-hazardous"),
+        MessageKey::new("aqi-category-fair"),
+        MessageKey::new("aqi-category-poor"),
+        MessageKey::new("aqi-category-very-poor"),
+        MessageKey::new("aqi-category-extremely-poor"),
+    ];
+    /// The six regulated pollutants, in the order the panel prints them.
+    pub const POLLUTANTS: [MessageKey; 6] = [
+        MessageKey::new("pm2-5"),
+        MessageKey::new("pm10"),
+        MessageKey::new("o3"),
+        MessageKey::new("no2"),
+        MessageKey::new("so2"),
+        MessageKey::new("co"),
+    ];
+    /// The six pollen species, in `Pollen::SPECIES` order.
+    pub const POLLEN_SPECIES: [MessageKey; 6] = [
+        MessageKey::new("pollen-alder"),
+        MessageKey::new("pollen-birch"),
+        MessageKey::new("pollen-grass"),
+        MessageKey::new("pollen-mugwort"),
+        MessageKey::new("pollen-olive"),
+        MessageKey::new("pollen-ragweed"),
+    ];
+    /// The pollutant unit (`μg/m³`).
+    pub const UNIT_UG_M3: MessageKey = MessageKey::new("unit-ug-m3");
+    /// The pollen unit (`grains/m³`).
+    pub const UNIT_GRAINS_M3: MessageKey = MessageKey::new("unit-grains-m3");
 }
 
 /// Every static message key a renderer, a token or the CLI can ask for, in one list.
@@ -367,6 +421,38 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::ALERT_SOURCES[6],
     keys::ALERT_CREDIT_WMOSWIC,
     keys::ALERT_CREDIT_FPAS,
+    keys::AQI_PANEL_TITLE,
+    keys::AQI_US_LABEL,
+    keys::AQI_EUROPEAN_LABEL,
+    keys::AQI_POLLEN_TITLE,
+    keys::AQI_NO_COVERAGE,
+    keys::AQI_UNAVAILABLE,
+    keys::AQI_UV_LABEL,
+    keys::AQI_UV_SOURCE,
+    keys::AQI_CATEGORIES[0],
+    keys::AQI_CATEGORIES[1],
+    keys::AQI_CATEGORIES[2],
+    keys::AQI_CATEGORIES[3],
+    keys::AQI_CATEGORIES[4],
+    keys::AQI_CATEGORIES[5],
+    keys::AQI_CATEGORIES[6],
+    keys::AQI_CATEGORIES[7],
+    keys::AQI_CATEGORIES[8],
+    keys::AQI_CATEGORIES[9],
+    keys::POLLUTANTS[0],
+    keys::POLLUTANTS[1],
+    keys::POLLUTANTS[2],
+    keys::POLLUTANTS[3],
+    keys::POLLUTANTS[4],
+    keys::POLLUTANTS[5],
+    keys::POLLEN_SPECIES[0],
+    keys::POLLEN_SPECIES[1],
+    keys::POLLEN_SPECIES[2],
+    keys::POLLEN_SPECIES[3],
+    keys::POLLEN_SPECIES[4],
+    keys::POLLEN_SPECIES[5],
+    keys::UNIT_UG_M3,
+    keys::UNIT_GRAINS_M3,
     keys::FORMAT_AGE_MINUTES,
     keys::FORMAT_AGE_HOURS,
     keys::NOTE_NO_FORECAST,

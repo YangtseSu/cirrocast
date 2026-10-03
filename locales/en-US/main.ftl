@@ -284,3 +284,46 @@ alert-source-visualcrossing = Visual Crossing
 
 alert-credit-wmoswic = Warnings by the WMO Severe Weather Information Centre (severeweather.wmo.int), © the issuing agencies
 alert-credit-fpas = Warnings via the FOSS Public Alert Server ({ $host })
+
+# --- Air quality (step 16) ---------------------------------------------------------------------
+# The panel's labels, the two AQI category scales and the pollutant/pollen names. The category
+# names are keyed by `AqiCategory::index`; `aqi-no-coverage` is the whole answer for a point the
+# pollen model does not cover, and `aqi-uv-source` marks the panel's UV reading as weather data
+# rather than an air measurement.
+
+aqi-panel-title = Air quality
+aqi-us-label = US AQI
+aqi-european-label = European AQI
+aqi-pollen-title = Pollen
+aqi-no-coverage = not covered at this location
+aqi-unavailable = air quality unavailable
+aqi-uv-label = UV
+aqi-uv-source = weather data
+
+aqi-category-good = Good
+aqi-category-moderate = Moderate
+aqi-category-unhealthy-sensitive = Unhealthy for sensitive groups
+aqi-category-unhealthy = Unhealthy
+aqi-category-very-unhealthy = Very unhealthy
+aqi-category-hazardous = Hazardous
+aqi-category-fair = Fair
+aqi-category-poor = Poor
+aqi-category-very-poor = Very poor
+aqi-category-extremely-poor = Extremely poor
+
+pm2-5 = PM2.5
+pm10 = PM10
+o3 = O3
+no2 = NO2
+so2 = SO2
+co = CO
+
+pollen-alder = alder
+pollen-birch = birch
+pollen-grass = grass
+pollen-mugwort = mugwort
+pollen-olive = olive
+pollen-ragweed = ragweed
+
+unit-ug-m3 = μg/m³
+unit-grains-m3 = grains/m³

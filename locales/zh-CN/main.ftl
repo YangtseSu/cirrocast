@@ -272,3 +272,45 @@ alert-source-visualcrossing = Visual Crossing
 
 alert-credit-wmoswic = 警报由 WMO 严重天气信息中心（severeweather.wmo.int）提供，© 各发布机构
 alert-credit-fpas = 警报经由 FOSS 公共警报服务器（{ $host }）提供
+
+# --- 空气质量（步骤 16） -------------------------------------------------------------------------
+# 面板标签、两套 AQI 分级名称以及污染物/花粉名称。分级名称按 `AqiCategory::index` 索引；
+# `aqi-no-coverage` 表示该地点不在花粉预报范围内；`aqi-uv-source` 标明面板中的紫外线数值
+# 来自天气数据而非空气质量测量。
+
+aqi-panel-title = 空气质量
+aqi-us-label = 美国 AQI
+aqi-european-label = 欧洲 AQI
+aqi-pollen-title = 花粉
+aqi-no-coverage = 该地点未覆盖
+aqi-unavailable = 空气质量数据不可用
+aqi-uv-label = 紫外线
+aqi-uv-source = 天气数据
+
+aqi-category-good = 良好
+aqi-category-moderate = 中度
+aqi-category-unhealthy-sensitive = 敏感人群不健康
+aqi-category-unhealthy = 不健康
+aqi-category-very-unhealthy = 非常不健康
+aqi-category-hazardous = 危险
+aqi-category-fair = 尚可
+aqi-category-poor = 较差
+aqi-category-very-poor = 很差
+aqi-category-extremely-poor = 极差
+
+pm2-5 = PM2.5
+pm10 = PM10
+o3 = O3
+no2 = NO2
+so2 = SO2
+co = CO
+
+pollen-alder = 桤木
+pollen-birch = 桦树
+pollen-grass = 禾本科
+pollen-mugwort = 蒿草
+pollen-olive = 橄榄
+pollen-ragweed = 豚草
+
+unit-ug-m3 = 微克/立方米
+unit-grains-m3 = 粒/立方米
