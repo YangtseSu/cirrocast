@@ -14,31 +14,24 @@
 //! deflate member), so zip64, encryption and unknown methods are typed errors instead of a
 //! dependency. `--from` a local `.txt` is the escape hatch when an archive ever stops matching.
 
+use std::fs;
+use std::io::Read as _;
+
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
+use flate2::read::DeflateDecoder;
 use serde_json::json;
 
 use crate::cache::Cache;
-
-#[cfg(feature = "offline-geo")]
-use std::path::PathBuf;
-
-#[cfg(feature = "offline-geo")]
 use crate::error::{Error, Result};
-#[cfg(feature = "offline-geo")]
-use crate::paths::Paths;
-#[cfg(feature = "offline-geo")]
-use std::fs;
-#[cfg(feature = "offline-geo")]
-use std::io::Read as _;
+use crate::geo::table;
+use crate::http::{HttpClient, HttpRequest};
 
 #[cfg(feature = "offline-geo")]
 use crate::geo::offline::table_dir;
 #[cfg(feature = "offline-geo")]
-use crate::geo::table;
+use crate::paths::Paths;
 #[cfg(feature = "offline-geo")]
-use crate::http::{HttpClient, HttpRequest};
-#[cfg(feature = "offline-geo")]
-use flate2::read::DeflateDecoder;
+use std::path::PathBuf;
 
 /// The official dump `location update-data` fetches when nothing else is configured.
 pub const OFFICIAL_URL: &str = "https://download.geonames.org/export/dump/cities15000.zip";
@@ -50,7 +43,6 @@ pub(crate) const NOTICE_STATE: &str = "geo/update-notice.json";
 const NOTICE_INTERVAL_HOURS: i64 = 24;
 
 /// The largest a dump may decompress to; the real one is ~8.4 MB.
-#[cfg(feature = "offline-geo")]
 const MAX_DUMP_BYTES: u64 = 64 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------------------------
@@ -104,19 +96,29 @@ pub(crate) fn record_notice(cache: &Cache, now: DateTime<Utc>) {
 // ---------------------------------------------------------------------------------------------
 
 /// A dump built into the two members, not yet written anywhere.
-#[cfg(feature = "offline-geo")]
-pub(crate) struct Candidate {
-    pub(crate) cities_gz: Vec<u8>,
-    pub(crate) keys_gz: Vec<u8>,
-    pub(crate) snapshot: String,
-    pub(crate) dump_date: String,
-    pub(crate) rows: usize,
-    pub(crate) keys: usize,
-    pub(crate) input_sha256: String,
+///
+/// Public because the dev-only `geo-table` builder shares this exact build path with
+/// `location update-data`: fetch or read, extract, parse, encode, prove by decoding back.
+pub struct Candidate {
+    /// The compressed row member.
+    pub cities_gz: Vec<u8>,
+    /// The compressed key-index member.
+    pub keys_gz: Vec<u8>,
+    /// The `SNAPSHOT` record beside them.
+    pub snapshot: String,
+    /// The dump's newest row modification date (`YYYY-MM-DD`).
+    pub dump_date: String,
+    /// How many rows the dump carried.
+    pub rows: usize,
+    /// How many rows were dropped (no display name or no time zone).
+    pub skipped: usize,
+    /// How many folded keys the index carries.
+    pub keys: usize,
+    /// The SHA-256 of the input, as the `SNAPSHOT` record spells it.
+    pub input_sha256: String,
 }
 
 /// What kind of dump a source names.
-#[cfg(feature = "offline-geo")]
 #[derive(Debug)]
 enum Kind {
     Text,
@@ -124,7 +126,6 @@ enum Kind {
 }
 
 /// Classifies a path or URL by the extension of its path part.
-#[cfg(feature = "offline-geo")]
 fn source_kind(source: &str) -> Result<Kind> {
     let path = source.split(['?', '#']).next().unwrap_or(source);
     let extension = std::path::Path::new(path)
@@ -142,7 +143,6 @@ fn source_kind(source: &str) -> Result<Kind> {
 
 /// Reads a dump from a path or URL. URLs go through the shared client, so the guard, the proxy and
 /// the retry policy all apply.
-#[cfg(feature = "offline-geo")]
 fn read_source(source: &str, http: &HttpClient, verbose: u8) -> Result<Vec<u8>> {
     if source.starts_with("http://") || source.starts_with("https://") {
         if verbose > 0 {
@@ -156,17 +156,19 @@ fn read_source(source: &str, http: &HttpClient, verbose: u8) -> Result<Vec<u8>> 
 }
 
 /// Reads a dump, parses it and builds the two members, proving they decode.
-#[cfg(feature = "offline-geo")]
-pub(crate) fn build_candidate(source: &str, http: &HttpClient, verbose: u8) -> Result<Candidate> {
+pub fn build_candidate(source: &str, http: &HttpClient, verbose: u8) -> Result<Candidate> {
+    // Classify before reading: an unsupported source fails as a usage error, without a fetch.
+    let kind = source_kind(source)?;
     let raw = read_source(source, http, verbose)?;
-    // The checksum is taken before the bytes are consumed, so the text path needs no copy.
-    let input_sha256 = table::input_sha256(&raw);
-    let text = match source_kind(source)? {
+    let text = match kind {
         Kind::Zip => extract_cities_txt(&raw)
             .map_err(|message| Error::Other(format!("{source}: {message}")))?,
         Kind::Text => String::from_utf8(raw)
             .map_err(|error| Error::Other(format!("{source} is not UTF-8: {error}")))?,
     };
+    // The checksum is of the *dump text*, so the same dump records the same value whether it
+    // arrived as a `.txt` or inside a `.zip` — which is what makes `--check` container-agnostic.
+    let input_sha256 = table::input_sha256(text.as_bytes());
     let dump =
         table::parse_dump(&text).map_err(|message| Error::Other(format!("{source}: {message}")))?;
     let cities_gz = table::gzip(
@@ -179,7 +181,10 @@ pub(crate) fn build_candidate(source: &str, http: &HttpClient, verbose: u8) -> R
             .map_err(|message| Error::Other(format!("{source}: {message}")))?,
     )
     .map_err(|message| Error::Other(format!("{source}: {message}")))?;
-    // Prove the pair decodes before it can replace a working table.
+    // Prove the pair decodes before it can replace a working table. The decoder only exists
+    // where the runtime reads tables (`offline-geo`), and the one caller of this function without
+    // that feature is the builder, whose canary tests are the check there.
+    #[cfg(feature = "offline-geo")]
     table::validate(&cities_gz, &keys_gz)
         .map_err(|message| Error::Other(format!("the built table does not decode: {message}")))?;
     let snapshot = table::snapshot_text(&dump, &input_sha256);
@@ -189,6 +194,7 @@ pub(crate) fn build_candidate(source: &str, http: &HttpClient, verbose: u8) -> R
         snapshot,
         dump_date: dump.dump_date,
         rows: dump.cities.len(),
+        skipped: dump.skipped,
         keys: dump.keys.len(),
         input_sha256,
     })
@@ -276,13 +282,10 @@ pub(crate) fn compare(candidate: &Candidate, paths: &Paths) -> Result<Comparison
 // ---------------------------------------------------------------------------------------------
 
 /// The end-of-central-directory record's signature.
-#[cfg(feature = "offline-geo")]
 const EOCD_SIGNATURE: &[u8; 4] = b"PK\x05\x06";
 /// A central-directory file header's signature.
-#[cfg(feature = "offline-geo")]
 const CENTRAL_SIGNATURE: &[u8; 4] = b"PK\x01\x02";
 /// A local file header's signature.
-#[cfg(feature = "offline-geo")]
 const LOCAL_SIGNATURE: &[u8; 4] = b"PK\x03\x04";
 
 /// Extracts `cities15000.txt` from a ZIP archive.
@@ -290,7 +293,6 @@ const LOCAL_SIGNATURE: &[u8; 4] = b"PK\x03\x04";
 /// The reader handles what `GeoNames` publishes: one or more plain entries, stored or deflated,
 /// with the sizes in the central directory. zip64, encrypted entries and unknown methods are
 /// refused with a message naming the problem.
-#[cfg(feature = "offline-geo")]
 fn extract_cities_txt(zip: &[u8]) -> std::result::Result<String, String> {
     let entry = choose_entry(zip)?;
     if entry.flags & 0x1 != 0 {
@@ -348,7 +350,6 @@ fn extract_cities_txt(zip: &[u8]) -> std::result::Result<String, String> {
 
 /// Walks the central directory and picks the dump member: `cities15000.txt` when it is there,
 /// else the first `.txt` member.
-#[cfg(feature = "offline-geo")]
 fn choose_entry(zip: &[u8]) -> std::result::Result<Entry, String> {
     let eocd = find_eocd(zip).ok_or_else(|| "no ZIP end-of-central-directory record".to_owned())?;
     let disk = read_u16(zip, eocd + 4)?;
@@ -411,7 +412,6 @@ fn choose_entry(zip: &[u8]) -> std::result::Result<Entry, String> {
 }
 
 /// Whether a member name carries `extension`, case-insensitively.
-#[cfg(feature = "offline-geo")]
 fn has_extension(name: &str, extension: &str) -> bool {
     std::path::Path::new(name)
         .extension()
@@ -420,7 +420,6 @@ fn has_extension(name: &str, extension: &str) -> bool {
 }
 
 /// One central-directory entry, reduced to the fields the extractor needs.
-#[cfg(feature = "offline-geo")]
 struct Entry {
     name: String,
     flags: u16,
@@ -433,7 +432,6 @@ struct Entry {
 
 /// The last end-of-central-directory record, searched backwards over the largest comment a ZIP
 /// may carry.
-#[cfg(feature = "offline-geo")]
 fn find_eocd(zip: &[u8]) -> Option<usize> {
     if zip.len() < 22 {
         return None;
@@ -445,7 +443,6 @@ fn find_eocd(zip: &[u8]) -> Option<usize> {
         .find(|&at| zip.get(at..at + 4) == Some(EOCD_SIGNATURE))
 }
 
-#[cfg(feature = "offline-geo")]
 fn read_u16(zip: &[u8], at: usize) -> std::result::Result<u16, String> {
     let bytes = zip
         .get(at..at + 2)
@@ -453,7 +450,6 @@ fn read_u16(zip: &[u8], at: usize) -> std::result::Result<u16, String> {
     Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
 }
 
-#[cfg(feature = "offline-geo")]
 fn read_u32(zip: &[u8], at: usize) -> std::result::Result<u32, String> {
     let bytes = zip
         .get(at..at + 4)
@@ -463,7 +459,6 @@ fn read_u32(zip: &[u8], at: usize) -> std::result::Result<u32, String> {
 
 /// The CRC-32 the ZIP format stores (reflected polynomial 0xEDB88320), bitwise because one
 /// download per refresh does not need a table.
-#[cfg(feature = "offline-geo")]
 fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFF_u32;
     for &byte in bytes {
@@ -481,7 +476,6 @@ mod tests {
     use chrono::{TimeZone as _, Utc};
 
     use super::note_due;
-    #[cfg(feature = "offline-geo")]
     use super::{crc32, extract_cities_txt, find_eocd, source_kind};
 
     #[test]
@@ -499,7 +493,6 @@ mod tests {
         assert_eq!(note_due(now, old, 90, Some(day_ago)), Some(276));
     }
 
-    #[cfg(feature = "offline-geo")]
     #[test]
     fn sources_are_classified_by_extension() {
         assert!(matches!(
@@ -514,7 +507,6 @@ mod tests {
         assert_eq!(error.exit_code(), 2);
     }
 
-    #[cfg(feature = "offline-geo")]
     #[test]
     fn the_zip_reader_extracts_a_stored_and_a_deflated_member() {
         // Built by `tests/fixtures/geo/make_sample_zip.py`? No: the fixture is committed, and the
@@ -528,7 +520,6 @@ mod tests {
         assert!(text.contains('X'), "{text}");
     }
 
-    #[cfg(feature = "offline-geo")]
     #[test]
     fn the_committed_fixture_zip_extracts() {
         let path = concat!(
@@ -540,7 +531,6 @@ mod tests {
         assert!(text.contains("Sampleville"), "{text}");
     }
 
-    #[cfg(feature = "offline-geo")]
     #[test]
     fn the_zip_reader_refuses_garbage_and_missing_members() {
         assert!(extract_cities_txt(b"not a zip").is_err());
@@ -549,7 +539,6 @@ mod tests {
         assert!(error.contains("no .txt member"), "{error}");
     }
 
-    #[cfg(feature = "offline-geo")]
     #[test]
     fn the_zip_reader_refuses_truncated_zip64_and_encrypted_archives() {
         let archive = stored_zip(
@@ -583,7 +572,6 @@ mod tests {
         assert!(error.contains("encrypted"), "{error}");
     }
 
-    #[cfg(feature = "offline-geo")]
     #[test]
     fn crc32_matches_the_known_check_value() {
         // The standard check value: CRC-32 of "123456789".
@@ -592,7 +580,6 @@ mod tests {
 
     /// A one-entry ZIP with a stored member, built in memory so the reader's happy path is
     /// exercised without depending on how `zip` tooling happens to write archives.
-    #[cfg(feature = "offline-geo")]
     fn stored_zip(name: &str, body: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
         let crc = crc32(body);

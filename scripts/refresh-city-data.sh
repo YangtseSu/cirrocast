@@ -5,13 +5,18 @@
 # Refreshes the embedded GeoNames city table (`src/geo/data`) from a `cities15000` dump, or checks
 # whether the committed snapshot is still what that dump produces.
 #
-#   scripts/refresh-city-data.sh                       # refresh from the official dump
+#   scripts/refresh-city-data.sh                       # the official dump
 #   scripts/refresh-city-data.sh --check               # only report whether it differs
-#   scripts/refresh-city-data.sh --from <path-or-url>  # a local `.txt`, or a `.zip` (path or URL)
+#   scripts/refresh-city-data.sh --from <path-or-url>  # a local `.txt`/`.zip`, or a URL of either
+#
+# The source is read, fetched, extracted and built by `cargo run -p geo-table` — the same
+# `geo::update::build_candidate` that `cirrocast location update-data` runs — so this script only
+# decides where the files go, runs the canary tests and shows the diff. A URL goes through the
+# shared HTTP client, so `CIRROCAST_FORBID_NETWORK`, the proxy and the retry policy apply here too.
 #
 # `--check` builds into a temporary directory and compares the three files byte for byte; it never
-# touches the working tree and exits 1 when the dump differs (0 when the committed snapshot is
-# current, 2 on a usage error).
+# touches the working tree and exits 0 when the committed snapshot is current, 1 when the dump
+# differs (or the source cannot be read), 2 on a usage error.
 #
 # A refresh runs the canary tests that pin rows of the committed snapshot but never edits them: when
 # the dump moves a pinned value the tests fail and the operator updates the expectation
@@ -19,16 +24,12 @@
 # input SHA-256, row and key counts) is rewritten by the builder itself; the size and timing numbers
 # in `docs/plans/21-perf-and-resource-budget.md` are re-recorded by hand.
 #
-# The official host is reachable directly (a China IP and a US egress both work; verified
-# 2026-10-04), so a timeout is a transient routing problem rather than an access restriction —
-# retry, or pass `--from` with a local copy or a mirror of the dump.
-#
-# Requirements: `curl` and `unzip` for the URL/zip path (nothing else beyond the Rust toolchain).
+# Requirements: nothing beyond the Rust toolchain — the URL and ZIP handling live in the binary.
 
 set -euo pipefail
 
 usage() {
-    sed -n '5,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '5,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 mode=refresh
@@ -62,32 +63,15 @@ cd "$repo_root"
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
 
-case "$source" in
-    *.txt)
-        dump=$source
-        [ -f "$dump" ] || { echo "error: $dump does not exist" >&2; exit 1; }
-        ;;
-    *.zip)
-        archive=$source
-        if [[ $source == http://* || $source == https://* ]]; then
-            command -v curl >/dev/null || { echo "error: curl is required to download a dump" >&2; exit 1; }
-            archive=$workdir/cities15000.zip
-            echo "downloading $source"
-            curl --fail --location --silent --show-error --output "$archive" "$source"
-        fi
-        command -v unzip >/dev/null || { echo "error: unzip is required to extract a dump" >&2; exit 1; }
-        dump=$workdir/cities15000.txt
-        unzip -p "$archive" cities15000.txt >"$dump"
-        ;;
-    *)
-        echo "error: --from expects a .txt or a .zip, got \`$source\`" >&2
-        exit 2
-        ;;
-esac
+# One build entry point: `geo-table` classifies the source (`.txt`/`.zip`, path or URL), fetches it
+# through the shared HTTP client and writes the three files into the given directory.
+build() {
+    cargo run -q -p geo-table -- "$source" "$1"
+}
 
 if [ "$mode" = check ]; then
     built=$workdir/out
-    cargo run -q -p geo-table -- "$dump" "$built" >/dev/null
+    build "$built" >/dev/null
     echo "== committed snapshot vs this dump =="
     changed=0
     for file in cities.bin.gz keys.bin.gz SNAPSHOT; do
@@ -112,7 +96,7 @@ if [ "$mode" = check ]; then
     exit 1
 fi
 
-cargo run -q -p geo-table -- "$dump" src/geo/data
+build src/geo/data
 
 echo
 echo "== src/geo/data/SNAPSHOT =="
