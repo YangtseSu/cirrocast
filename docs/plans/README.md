@@ -84,7 +84,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ✅ done | 04, 05 |
 | 18b | D | [user-city-data-update](18b-user-city-data-update.md) | ✅ done | 18 |
 | 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ✅ done | 08, 14 |
-| 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
+| 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ✅ done | 04, 05, 08, 18 |
 | 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ⬜ not-started | 12, 18, 19 |
 | 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ⬜ not-started | 13, 19 |
 | 23 | F | [more-providers](23-more-providers.md) | ⬜ not-started | 10, 15, 16 |
@@ -169,6 +169,7 @@ src/
     ip.rs            ipwho.is primary, ipapi.co fallback
     offline.rs       bundled GeoNames city table: folded-key search, no network (step 18)
     rank.rs          the one candidate ordering every source feeds
+    pick.rs          the step-20 prompt: the ranked list, one line of input, the three-strike rule
     fold.rs          the NFKD name folding shared by the builder and the runtime
     tz.rs            offline coordinate → IANA zone lookup (`tzf-rs`), for payloads that carry none
     data/            cities.bin.gz + keys.bin.gz + SNAPSHOT, produced by `build/geo-table`
@@ -490,11 +491,16 @@ edit-distance-2 suggestions); empty = config `location.default`, else public IP.
 deterministically (exact name, then a name prefix, then population, then source order — one
 implementation in `src/geo/rank.rs` for both sources) and the chosen location is echoed in the
 header. When a lookup yields **more than one candidate** — a
-name search, the offline table, a coordinate or IP answer named by several nearby places — the tool
-asks: on a terminal (stdin and stderr) the ranked list is printed on stderr and one line is read
-(step 20); `--pick` forces the prompt, `--yes`/`[location] pick = "never"` and any non-terminal run
-take the ranked winner and print the extended note, so a script is never prompted and never hangs.
-Aborting the choice is `Error::Location` (exit 5). Coordinates (`@lat,lon`) remain the only
+name search, the offline table, or (step 25) a reverse lookup that names several nearby places —
+the tool can ask: with `--pick`, or on a run whose stdin and stderr are terminals under
+`[location] pick = "auto"`, the ranked list is printed on stderr (`[1]`…`[N]`, the winner marked
+`*`) and one line is read — an index in range, Enter for the winner, `q`/`Q` or EOF to abort with
+`Error::LocationNotFound` (exit 5, `no location selected for <query>`), three invalid answers with
+`Error::Usage` (exit 2). `--yes`, `[location] pick = "never"` and every non-terminal run take the
+ranked winner and print the step-04 note extended with the picker hints, so a script is never
+prompted and never hangs; `--pick` and `--yes` are a clap conflict group. A selection echoes
+`selected: <place> — use @<lat>,<lon> to skip the prompt` at full float precision, because a name
+spec would re-run the ranking that produced the ambiguity. Coordinates (`@lat,lon`) remain the only
 geocoder-independent spec and are what the selection echo prints back.
 
 ### Licensing and REUSE (binding)

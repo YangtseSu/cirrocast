@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 20 — location candidate selection
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: `04-geocoding-and-location-syntax.md` (ranking, `location search`), `05-http-cache-and-ip-location.md` (cache, IP chain), `08-cli-surface-and-formats.md` (flag surface), `18-offline-city-database.md` (the offline candidate source and the `--all` listing share its index)
 Touches: `src/geo/{mod,pick}.rs`, `src/cli.rs`, `src/main.rs`, `src/config/mod.rs`, `src/error.rs`, `tests/location_pick.rs`, `tests/cli_pick.rs`, `docs/plans/README.md`, `README.md`, `CHANGELOG.md`
 
@@ -50,7 +50,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   cache key path.
 - ✅ `src/config/mod.rs`: `[location] pick = "auto"` (`auto` | `never`) with a `KEY_TABLE` row and
   `CIRROCAST_LOCATION_PICK`; an invalid value is `Error::Config` (exit 4) listing the two.
-- ⬜ `docs/plans/README.md`: the location-syntax paragraph of the architecture contract changes from
+- ✅ `docs/plans/README.md`: the location-syntax paragraph of the architecture contract changes from
   "ambiguity is resolved by ranking and reported" to the picker policy above; `README.md` gains the
   flag rows and an example session; `CHANGELOG.md` records the behaviour change (a terminal run can
   now ask; non-terminals are unchanged).
@@ -110,14 +110,14 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ `--pick` end-to-end selects the second candidate from scripted stdin; `q` and EOF exit 5 with the
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ✅ `--pick` end-to-end selects the second candidate from scripted stdin; `q` and EOF exit 5 with the
       message above; three invalid answers exit 2.
-- ⬜ A non-terminal run and `--yes` produce exactly the pre-step stdout and the extended note; no
+- ✅ A non-terminal run and `--yes` produce exactly the pre-step stdout and the extended note; no
       stdin is consumed.
-- ⬜ `location search` keeps its one-line default; `--all` matches the picker's list order for the
+- ✅ `location search` keeps its one-line default; `--all` matches the picker's list order for the
       same query and limit.
-- ⬜ README contract and CHANGELOG updated in the same commit as the behaviour.
+- ✅ README contract and CHANGELOG updated in the same commit as the behaviour.
 
 ## Risks
 
@@ -166,3 +166,13 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   pins that the search form never prompts and that its `--all` order is byte-identical to the
   picker's list for the same query, and adds the `--pick`/`--yes`/policy/reply taxonomy end to end
   through the real binary (recorded geocode fixture + cached forecast, network guard on).
+- 2026-10-04 — deliverable 7 and closure: the architecture contract paragraph now spells the prompt
+  precisely (`Error::LocationNotFound`/exit 5, the three-strike usage error, the `selected:` echo),
+  the module map lists `geo/pick.rs`, README gained the flag row, the precedence row, the
+  `location.pick` key, the env variable, the example session and the picker paragraph, and the
+  CHANGELOG records the behaviour. Gates: `cargo fmt --check`, `cargo clippy --workspace
+  --all-targets -D warnings`, `CIRROCAST_FORBID_NETWORK=1 cargo test --workspace` and `reuse lint`
+  all clean, plus the offline smoke run over the bundled table. Unrelated time bomb surfaced by the
+  clock rollover: `tests/fixtures/alerts/meteoalarm-heat-cap.xml` expires 2026-10-04T16:00Z and the
+  alert pipeline drops expired alerts, so that test began failing mid-step; the CAP's two `expires`
+  stamps are now shifted to now+6h at seed time, the way `live_gale_fixture` already did for FPAS.

@@ -149,6 +149,7 @@ cirrocast [OPTIONS] [LOCATION]...
       --timeout <SECS>
       --color <WHEN>            auto | always | never
       --width <COLS>            layout width for the table formats, 1..=500
+      --pick | --yes            ask which candidate a name means / take the ranked winner (conflict)
   -q, --quiet    -v, --verbose (repeat `-vv` for every HTTP attempt, its status and the cache decisions)
   -h, --help     -V, --version
 ```
@@ -209,6 +210,7 @@ tier it came from.
 | Width | `--width` | — | `render.width` |
 | AQI scale | `--aqi-index` | — | `air.index` |
 | Offline policy | `--offline[=<weather\|geo\|all>]` | — | `network.offline` |
+| Candidate pick | `--pick` / `--yes` | `CIRROCAST_LOCATION_PICK` | `location.pick` |
 | Geo strategy | — | — | `geo.strategy` |
 | City table source | — | — | `geo.data` |
 | Freshness note | — | — | `geo.update` |
@@ -481,10 +483,27 @@ the same command twice gets the same answer:
 | *(empty)* | `location.default`, else the public-IP lookup |
 
 Multiple fuzzy candidates are ranked by exact name, then a name prefix, then population, then the
-source's own order, and the ambiguity is reported once on stderr (suppressed by `-q`) with the
-winning place; add `:` (or `--exact`) to demand an exact name. Coordinates and `~` results carry a
+source's own order. When more than one survives, a terminal run asks which one to use — the ranked
+list goes to stderr (`[1]`…`[N]`, the winner marked `*`) and one line is read from stdin: an index,
+Enter for the winner, or `q` to give up (exit 5; three invalid answers are a usage error, exit 2).
+`--pick` forces the prompt even without a terminal, `--yes` takes the ranked winner without asking,
+and `[location] pick = "never"` makes that the default; a piped or redirected run never prompts.
+The pick is echoed as `selected: Beijing, Beijing Municipality, China — use @39.9042,116.4074 to
+skip the prompt`, so the next run can skip the ranking entirely. Without a prompt the ambiguity is
+reported once on stderr (suppressed by `-q`) with the winning place and the same `--pick`/`--yes`
+hints; add `:` (or `--exact`) to demand an exact name. Coordinates and `~` results carry a
 provisional time zone until the forecast response supplies the location's real one, and `~` output
 prints `Location data © OpenStreetMap contributors` (ODbL).
+
+```console
+$ cirrocast Beijing --pick
+[1] * Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai (pop. 18960744)
+[2]   Basingstoke, GB (51.26, -1.09) Europe/London (pop. 107642)
+[3]   Beckingen, DE (49.40, 6.70) Europe/Berlin (pop. 15983)
+choose a location [1-3, Enter=1, q=quit]: 2
+selected: Basingstoke, GB — use @51.26249,-1.08708 to skip the prompt
+…the Basingstoke forecast follows on stdout…
+```
 
 **Offline names.** A `GeoNames` `cities15000` snapshot is embedded in the binary (about 3.3 MiB
 compressed, decoded lazily and never written), so a plain name resolves with no network at all:
@@ -680,6 +699,7 @@ write and the first one read — and `config validate` reports the file that was
 | `defaults.days` | `3` | `0..=14`, clamped per provider |
 | `defaults.language` | `auto` | `auto` or a BCP-47 tag such as `zh-CN` |
 | `location.default` | empty | `Beijing`, `:Beijing`, `@39.9,116.4`, `~Tsinghua`, `@home` (an alias) |
+| `location.pick` | `auto` | `auto` (ask on a terminal when a name has several candidates), `never` |
 | `locations.<NAME>` | none | any location argument; define `@NAME` (values may name other aliases) |
 | `templates.<NAME>` | none | a literal `%`-token template for `--template @NAME` / `--format NAME` |
 | `units.temp` | unset | `c`, `f` |
@@ -729,7 +749,8 @@ compact = "%c%t"                # cirrocast -f compact  /  --template @compact
 Precedence, highest first: **command line flag → `CIRROCAST_*` environment variable → `config.toml`
 → built-in default**. The variables are `CIRROCAST_PROVIDER`, `CIRROCAST_FORMAT`,
 `CIRROCAST_UNITS`, `CIRROCAST_DAYS`, `CIRROCAST_LANG`, `CIRROCAST_LOCATION`,
-`CIRROCAST_TIMEOUT`, `CIRROCAST_NOMINATIM_URL` and `CIRROCAST_IP_SERVICE`; API keys use their own
+`CIRROCAST_LOCATION_PICK`, `CIRROCAST_TIMEOUT`, `CIRROCAST_NOMINATIM_URL` and
+`CIRROCAST_IP_SERVICE`; API keys use their own
 `CIRROCAST_<PROVIDER>_KEY` namespace (below). `cirrocast config get <KEY>` prints the effective
 value, environment override included.
 

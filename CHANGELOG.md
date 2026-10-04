@@ -15,6 +15,18 @@ records how each of them changes and which changes are breaking.
 
 ### Added
 
+* **Interactive location candidates (step 20).** When a name resolves to several places — the ten
+  hits a geocoder returns, or the offline table's near-matches — a terminal
+  run now asks which one: the ranked list is printed on stderr (`[1]`…`[N]`, the ranked winner
+  marked `*`, population where known) and one line is read from stdin — an index, Enter for the
+  winner, `q`/`Q` or EOF to abort with exit 5 (`no location selected for <query>`); three invalid
+  answers are a usage error (exit 2). New `--pick` (force the prompt — the scriptable way in) and
+  `--yes` (take the ranked winner without asking) are a clap conflict group, `[location] pick =
+  "auto" | "never"` and `CIRROCAST_LOCATION_PICK` set the default, and anything non-interactive —
+  pipes, cron, CI — is unchanged: the ranked winner on stdout. A selection is echoed as
+  `selected: Beijing, Beijing Municipality, China — use @39.9042,116.4074 to skip the prompt`, so
+  the choice can be pinned without re-ranking a name. The ambiguous-name note now ends with the
+  picker hints (`--pick` to choose one, or `--yes` to keep the winner).
 * **Multi-location runs (step 19).** `cirrocast Beijing Shanghai Tokyo` fetches the arguments at
   most four at a time and prints them in **argument order**, whatever order the network answers in
   (results are written into per-argument slots, so a slow request cannot reorder the output). A
