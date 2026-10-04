@@ -1,0 +1,2 @@
+9900001	Sampleville	Sampleville	Sampletown	10.5	20.25	P	PPL	ZZ		01				1234	100	100	Etc/UTC	2020-01-01
+9900002	Sampleburg	Sampleburg		-10.5	-20.25	P	PPL	ZZ		02				4321	100	100	Etc/UTC	2020-01-01

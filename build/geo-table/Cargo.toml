@@ -14,12 +14,11 @@ description = "Builds cirrocast's embedded city table from a GeoNames cities1500
 license = "GPL-3.0-or-later"
 
 [dependencies]
-# The root crate supplies the one name-folding function (and nothing is enabled that needs the
-# table the builder is about to write). `default-features = false` keeps this build free of the
-# `offline-geo` feature, so a fresh checkout can run the builder before the blobs exist.
+# The root crate supplies the whole format (`geo::table`: the dump parser, the encoders, the gzip
+# writer and the SNAPSHOT record), so this binary is only the command line and the file writing.
+# `default-features = false` keeps this build free of the `offline-geo` feature, so a fresh
+# checkout can run the builder before the blobs exist.
 cirrocast = { path = "../..", default-features = false }
-flate2 = "1"
-sha2 = "0.11"
 
 [lints]
 workspace = true

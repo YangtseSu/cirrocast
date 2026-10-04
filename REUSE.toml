@@ -31,6 +31,8 @@ path = [
     "tests/fixtures/air/truncated.json",
     "tests/fixtures/air/no-current.json",
     "tests/fixtures/air/unit-mismatch.json",
+    "tests/fixtures/geo/cities-sample.txt",
+    "tests/fixtures/geo/cities-sample.zip",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"

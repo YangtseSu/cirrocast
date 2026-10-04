@@ -13,8 +13,9 @@
 
 mod common;
 
-use cirrocast::geo::offline::{self, MatchMode};
+use cirrocast::geo::offline::OfflineTable;
 use cirrocast::geo::rank;
+use cirrocast::geo::table::MatchMode;
 use cirrocast::model::Location;
 
 use common::Sandbox;
@@ -269,7 +270,9 @@ fn the_recorded_geocoder_fixtures_pick_the_same_winner_offline() {
         let network = rank::rank(hits, Some(query), 10);
         let network_winner = network.first().expect("the fixture has hits");
 
-        let offline = offline::search(query, MatchMode::Prefix, 10).expect("the table decodes");
+        let offline = OfflineTable::bundled()
+            .search(query, MatchMode::Prefix, 10)
+            .expect("the table decodes");
         let offline_winner = offline
             .first()
             .expect("the table has the winner")
@@ -286,8 +289,13 @@ fn the_recorded_geocoder_fixtures_pick_the_same_winner_offline() {
 fn both_candidate_shapes_feed_one_ranking() {
     // The same rows ranked as `City` values (with ascii spellings) and as `Location`s (without)
     // must come out in the same order: the ordering lives in one function, not one per source.
-    let cities = offline::search("Springfield", MatchMode::Prefix, 10).expect("the table decodes");
-    let locations: Vec<Location> = cities.iter().map(offline::City::location).collect();
+    let cities = OfflineTable::bundled()
+        .search("Springfield", MatchMode::Prefix, 10)
+        .expect("the table decodes");
+    let locations: Vec<Location> = cities
+        .iter()
+        .map(cirrocast::geo::table::City::location)
+        .collect();
     let ranked_cities = rank::rank(cities, Some("Springfield"), 10);
     let ranked_locations = rank::rank(locations, Some("Springfield"), 10);
     let by_city: Vec<(f64, f64)> = ranked_cities
@@ -299,4 +307,229 @@ fn both_candidate_shapes_feed_one_ranking() {
         .map(|location| (location.lat, location.lon))
         .collect();
     assert_eq!(by_city, by_location);
+}
+
+// ---------------------------------------------------------------------------------------------
+// User-installed tables (step 18b)
+// ---------------------------------------------------------------------------------------------
+
+/// The committed sample dump and its zip, as absolute paths (`--from` resolves against the cwd).
+fn sample(name: &str) -> String {
+    common::fixture_path(name).to_string_lossy().into_owned()
+}
+
+/// Runs `location update-data` with the fixture zip and asserts success, returning stdout.
+fn install_sample(sandbox: &Sandbox) -> String {
+    let output = sandbox
+        .cirrocast()
+        .args([
+            "location",
+            "update-data",
+            "--from",
+            &sample("geo/cities-sample.zip"),
+        ])
+        .output()
+        .expect("the binary runs");
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("stdout is UTF-8")
+}
+
+#[test]
+fn a_user_table_installs_and_answers() {
+    let sandbox = Sandbox::new();
+    let stdout = install_sample(&sandbox);
+    assert!(
+        stdout.contains("installed the city table: dump 2020-01-01, 2 rows, 3 keys"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("cities-sample.zip"), "{stdout}");
+
+    // The installed table answers, and `-v` names it.
+    let verbose = search(&sandbox, &["--offline", "Sampleville", "-v"]);
+    assert!(verbose.status.success(), "{verbose:?}");
+    let stdout = String::from_utf8(verbose.stdout).expect("stdout is UTF-8");
+    assert!(
+        stdout.starts_with("Sampleville, ZZ (10.50, 20.25) Etc/UTC"),
+        "{stdout}"
+    );
+    let stderr = String::from_utf8(verbose.stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("the user city table in"), "{stderr}");
+    assert!(stderr.contains("dump 2020-01-01"), "{stderr}");
+
+    // The user table *replaces* the bundled one while it is installed (the fixture has no
+    // Beijing); removing it hands resolution back to the bundled table.
+    let output = search(&sandbox, &["--offline", "Beijing"]);
+    assert_eq!(output.status.code(), Some(5), "{output:?}");
+    std::fs::remove_dir_all(sandbox.home().join("data/cirrocast/geo"))
+        .expect("the user table is removed");
+    assert!(search_ok(&sandbox, &["--offline", "Beijing"]).starts_with("Beijing, CN "));
+}
+
+#[test]
+fn a_txt_dump_installs_like_the_zip() {
+    let sandbox = Sandbox::new();
+    let output = sandbox
+        .cirrocast()
+        .args([
+            "location",
+            "update-data",
+            "--from",
+            &sample("geo/cities-sample.txt"),
+        ])
+        .output()
+        .expect("the binary runs");
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(search_ok(&sandbox, &["--offline", "Sampleville"]).starts_with("Sampleville, ZZ "));
+}
+
+#[test]
+fn data_bundled_ignores_the_user_table() {
+    let sandbox = Sandbox::new();
+    install_sample(&sandbox);
+    sandbox.write_config("[geo]\ndata = \"bundled\"\n");
+    let output = search(&sandbox, &["--offline", "Sampleville"]);
+    assert_eq!(output.status.code(), Some(5), "{output:?}");
+    // The bundled table is unaffected.
+    assert!(search_ok(&sandbox, &["--offline", "Beijing"]).starts_with("Beijing, CN "));
+}
+
+#[test]
+fn data_user_requires_a_table_and_names_the_fix() {
+    let sandbox = Sandbox::new();
+    sandbox.write_config("[geo]\ndata = \"user\"\n");
+    let output = search(&sandbox, &["--offline", "Beijing"]);
+    assert_eq!(output.status.code(), Some(4), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("location update-data"), "{stderr}");
+    assert!(stderr.contains("cannot read"), "{stderr}");
+}
+
+#[test]
+fn a_corrupt_user_table_falls_back_with_a_warning_or_fails_loudly() {
+    let sandbox = Sandbox::new();
+    install_sample(&sandbox);
+    std::fs::write(
+        sandbox.home().join("data/cirrocast/geo/cities.bin.gz"),
+        b"garbage",
+    )
+    .expect("the user table is overwritten");
+
+    // `auto` (the default): the warning names the table and the fix, and the bundled table answers.
+    let output = search(&sandbox, &["--offline", "Beijing"]);
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("warning: the user city table"), "{stderr}");
+    assert!(stderr.contains("using the bundled city table"), "{stderr}");
+
+    // `user`: the same diagnosis, as an error.
+    sandbox.write_config("[geo]\ndata = \"user\"\n");
+    let output = search(&sandbox, &["--offline", "Beijing"]);
+    assert_eq!(output.status.code(), Some(4), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("is unusable"), "{stderr}");
+}
+
+#[test]
+fn check_reports_what_would_change() {
+    let sandbox = Sandbox::new();
+    // Against the bundled table: every file differs.
+    let output = sandbox
+        .cirrocast()
+        .args([
+            "location",
+            "update-data",
+            "--check",
+            "--from",
+            &sample("geo/cities-sample.zip"),
+        ])
+        .output()
+        .expect("the binary runs");
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(
+        stderr.contains("differs from the bundled city table"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("cities.bin.gz"), "{stderr}");
+
+    // After installing it: up to date.
+    install_sample(&sandbox);
+    let output = sandbox
+        .cirrocast()
+        .args([
+            "location",
+            "update-data",
+            "--check",
+            "--from",
+            &sample("geo/cities-sample.zip"),
+        ])
+        .output()
+        .expect("the binary runs");
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    assert!(stdout.contains("up to date"), "{stdout}");
+    assert!(stdout.contains("the user city table in"), "{stdout}");
+}
+
+#[test]
+fn update_data_refuses_offline_and_the_network_guard_stops_a_url() {
+    let sandbox = Sandbox::new();
+    let output = sandbox
+        .cirrocast()
+        .args(["location", "update-data", "--offline"])
+        .output()
+        .expect("the binary runs");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+
+    // A URL goes through the shared client, so the guard turns it into a loud failure and nothing
+    // is installed.
+    let output = sandbox
+        .cirrocast()
+        .args([
+            "location",
+            "update-data",
+            "--from",
+            "https://example.invalid/cities15000.zip",
+        ])
+        .output()
+        .expect("the binary runs");
+    assert_eq!(output.status.code(), Some(3), "{output:?}");
+    assert!(
+        !sandbox.home().join("data/cirrocast/geo").exists(),
+        "a failed fetch must not install anything"
+    );
+}
+
+#[test]
+fn the_freshness_note_fires_once_and_is_silenced_by_q() {
+    let sandbox = Sandbox::new();
+    install_sample(&sandbox);
+    sandbox.write_config("[geo]\nupdate = \"check\"\n");
+
+    let first = search(&sandbox, &["--offline", "Sampleville"]);
+    let stderr = String::from_utf8(first.stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("days old"), "{stderr}");
+    assert!(stderr.contains("location update-data"), "{stderr}");
+
+    // The state file throttles the next run.
+    let second = search(&sandbox, &["--offline", "Sampleville"]);
+    let stderr = String::from_utf8(second.stderr).expect("stderr is UTF-8");
+    assert!(!stderr.contains("days old"), "{stderr}");
+
+    // `-q` silences it even on a fresh cache state.
+    let quiet = Sandbox::new();
+    install_sample(&quiet);
+    quiet.write_config("[geo]\nupdate = \"check\"\n");
+    let output = search(&quiet, &["--offline", "-q", "Sampleville"]);
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(!stderr.contains("days old"), "{stderr}");
+    assert!(output.status.success());
 }

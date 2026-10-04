@@ -322,11 +322,14 @@ impl HttpRequest {
 }
 
 /// A response the client decided to accept.
+///
+/// The body is kept as raw bytes because one endpoint answers with a ZIP archive (the city-dump
+/// download, step 18b); every other consumer reads it as text through [`HttpResponse::body`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpResponse {
     status: u16,
     headers: Vec<(String, String)>,
-    body: String,
+    body: Vec<u8>,
     url: String,
 }
 
@@ -337,9 +340,18 @@ impl HttpResponse {
         self.status
     }
 
-    /// The body, as text (the only wire formats this project consumes are JSON and plain text).
+    /// The body, as text: the wire formats this project consumes are JSON, XML and plain text.
+    ///
+    /// A body that is not valid UTF-8 (only the city-dump download produces one) reads as an empty
+    /// string here — use [`HttpResponse::bytes`] for it.
     #[must_use]
     pub fn body(&self) -> &str {
+        std::str::from_utf8(&self.body).unwrap_or_default()
+    }
+
+    /// The raw body bytes, for the one endpoint that answers with an archive.
+    #[must_use]
+    pub fn bytes(&self) -> &[u8] {
         &self.body
     }
 
@@ -367,7 +379,7 @@ impl HttpResponse {
     /// Deserialises the body; a body that does not parse is an [`Error::Upstream`] naming the
     /// service, never a panic.
     pub fn json<T: DeserializeOwned>(&self) -> Result<T> {
-        serde_json::from_str(&self.body).map_err(|error| Error::Upstream {
+        serde_json::from_str(self.body()).map_err(|error| Error::Upstream {
             provider: host_of(&self.url),
             status: Some(self.status),
             message: format!("cannot parse the response body as JSON: {error}"),
@@ -520,8 +532,7 @@ impl Transport for UreqTransport {
             .body_mut()
             .with_config()
             .limit(MAX_BODY_BYTES)
-            .lossy_utf8(true)
-            .read_to_string()
+            .read_to_vec()
             .map_err(ureq_error)?;
         Ok(HttpResponse {
             status,
@@ -625,7 +636,7 @@ impl Transport for StubTransport {
             Ok(body) => Ok(HttpResponse {
                 status: reply.status,
                 headers: reply.headers,
-                body,
+                body: body.into_bytes(),
                 url,
             }),
             Err(error) => Err(error),
@@ -865,7 +876,7 @@ mod tests {
                 .into_iter()
                 .map(|(name, value)| (name.to_owned(), value.to_owned()))
                 .collect(),
-            body: String::new(),
+            body: Vec::new(),
             url: "https://example.invalid/answered".to_owned(),
         }
     }

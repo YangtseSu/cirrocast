@@ -22,7 +22,9 @@ pub mod nominatim;
 pub mod offline;
 pub mod open_meteo;
 pub mod rank;
+pub mod table;
 pub mod tz;
+pub mod update;
 
 use std::fmt;
 use std::str::FromStr;

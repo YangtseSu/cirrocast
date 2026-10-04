@@ -486,8 +486,6 @@ name = "geo-table"
 version = "0.1.0"
 dependencies = [
  "cirrocast",
- "flate2",
- "sha2",
 ]
 
 [[package]]

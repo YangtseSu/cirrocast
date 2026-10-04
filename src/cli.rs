@@ -415,6 +415,31 @@ pub enum LocationCommand {
     /// Resolve `QUERY` and print the place it means.
     #[command(after_help = crate::geo::USAGE_FORMS)]
     Search(SearchArgs),
+
+    /// Build a city table from a `GeoNames` `cities15000` dump and install it under
+    /// `$XDG_DATA_HOME/cirrocast/geo/`, where name resolution prefers it over the bundled table.
+    UpdateData(UpdateDataArgs),
+}
+
+/// Arguments of `cirrocast location update-data`.
+#[derive(Debug, Args)]
+pub struct UpdateDataArgs {
+    /// Read the dump from this path or URL (`.txt` or `.zip`) instead of `[geo] update_url` and
+    /// the official `https://download.geonames.org/export/dump/cities15000.zip`.
+    #[arg(long, value_name = "PATH|URL")]
+    pub from: Option<String>,
+
+    /// Only report whether the source differs from the table this run would use; write nothing.
+    #[arg(long)]
+    pub check: bool,
+
+    /// Per-request timeout in seconds; overrides `network.timeout_secs`.
+    #[arg(long, value_name = "SECS", value_parser = clap::value_parser!(u32).range(1..=300))]
+    pub timeout: Option<u32>,
+
+    /// Refused on purpose: the update command fetches by definition.
+    #[arg(long)]
+    pub offline: bool,
 }
 
 /// Arguments of `cirrocast location search`.
@@ -974,6 +999,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
 
     let geo_request = GeoRequest {
         config: &config,
+        paths: &paths,
         http: &http,
         cache: &geo_cache,
         offline,
@@ -1489,6 +1515,7 @@ fn render_notes(setup: &RenderSetup) {
 fn run_location(command: &LocationCommand, cli: &Cli) -> Result<()> {
     match command {
         LocationCommand::Search(args) => run_location_search(args, cli),
+        LocationCommand::UpdateData(args) => run_location_update_data(args, cli),
     }
 }
 
@@ -1525,6 +1552,7 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
     let spec = exact_spec(spec, args.exact)?;
     let geo_request = GeoRequest {
         config: &config,
+        paths: &paths,
         http: &http,
         cache: &cache,
         offline,
@@ -1567,6 +1595,85 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Runs `cirrocast location update-data`: build a table from a dump and install it (step 18b).
+#[cfg(feature = "offline-geo")]
+fn run_location_update_data(args: &UpdateDataArgs, cli: &Cli) -> Result<()> {
+    if args.offline {
+        return Err(Error::Usage(
+            "`location update-data` fetches by definition; drop `--offline`".to_owned(),
+        ));
+    }
+    let paths = Paths::resolve()?;
+    let config = Config::load(&paths)?;
+    config.validate()?;
+
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let timeout = Duration::from_secs(u64::from(
+        args.timeout.unwrap_or(config.network.timeout_secs),
+    ));
+    let transport = UreqTransport::new(&config.network, timeout)?;
+    let http = HttpClient::new(
+        Box::new(transport),
+        config.network.retries,
+        clock,
+        cli.verbose,
+    );
+    let source = args
+        .from
+        .as_deref()
+        .map(str::trim)
+        .filter(|source| !source.is_empty())
+        .map_or_else(
+            || {
+                let configured = config.geo.update_url.trim();
+                if configured.is_empty() {
+                    crate::geo::update::OFFICIAL_URL.to_owned()
+                } else {
+                    configured.to_owned()
+                }
+            },
+            str::to_owned,
+        );
+
+    let candidate = crate::geo::update::build_candidate(&source, &http, cli.verbose)?;
+    if args.check {
+        let comparison = crate::geo::update::compare(&candidate, &paths)?;
+        if comparison.same {
+            print_line(format_args!(
+                "up to date: {} matches {source} (dump {}, {} rows, {} keys)",
+                comparison.against, candidate.dump_date, candidate.rows, candidate.keys
+            ))?;
+            return Ok(());
+        }
+        return Err(Error::Other(format!(
+            "{source} differs from {} in {}; run without `--check` to install it",
+            comparison.against,
+            comparison.differences.join(", ")
+        )));
+    }
+
+    let dir = crate::geo::update::install(&candidate, &paths)?;
+    print_line(format_args!(
+        "installed the city table: dump {}, {} rows, {} keys",
+        candidate.dump_date, candidate.rows, candidate.keys
+    ))?;
+    print_line(format_args!(
+        "  from {source} (input sha256 {})",
+        candidate.input_sha256
+    ))?;
+    print_line(format_args!("  into {}", dir.display()))?;
+    Ok(())
+}
+
+/// A build without the `offline-geo` feature has no table to install.
+#[cfg(not(feature = "offline-geo"))]
+fn run_location_update_data(_args: &UpdateDataArgs, _cli: &Cli) -> Result<()> {
+    Err(Error::Config(
+        "this build has no offline city table (the `offline-geo` feature is off); nothing to install"
+            .to_owned(),
+    ))
 }
 
 /// One `--all` row: the rank number and the shared place line.
@@ -1699,14 +1806,15 @@ fn name_location(
     let geocoder = !matches!(strategy, GeoStrategy::Bundled);
 
     if bundled {
-        // `bundled_hits` already returns the rows in the shared ranking order (the `City` rows
-        // carry the ascii spellings the ranking uses), so the list is used as it comes: re-ranking
-        // the converted `Location`s would drop that spelling and reorder an exonym match.
-        let hits = bundled_hits(query, matches!(spec, LocationSpec::Exact(_)), geo.limit)?;
-        if !hits.is_empty() {
+        // `local_lookup` returns the rows in the shared ranking order (the `City` rows carry the
+        // ascii spellings the ranking uses), so the list is used as it comes: re-ranking the
+        // converted `Location`s would drop that spelling and reorder an exonym match.
+        if let Some(answer) = local_lookup(geo, query, matches!(spec, LocationSpec::Exact(_)), cli)?
+        {
             if cli.verbose > 0 {
-                eprintln!("location: {query} resolved from the bundled city database");
+                eprintln!("location: {query} resolved from {}", answer.table);
             }
+            let hits = answer.hits;
             let resolution = match spec {
                 LocationSpec::Exact(_) => Resolution::Exact,
                 _ if hits.len() == 1 => Resolution::Only,
@@ -1723,6 +1831,7 @@ fn name_location(
                 .first()
                 .cloned()
                 .ok_or_else(|| offline_not_found(query))?;
+            freshness_note(geo, cli, &answer.table, answer.dump_date);
             return Ok((winner, resolution, candidates));
         }
     }
@@ -1754,32 +1863,92 @@ fn name_location(
     Err(offline_not_found(query))
 }
 
-/// The rows the bundled city table has for `query`, in the shared ranking order, or an empty list
-/// when it has none.
+/// What the local city table answered, when it did.
+struct LocalAnswer {
+    /// The ranked rows, already in the shared order.
+    hits: Vec<Location>,
+    /// A phrase naming the table, for the `-v` line and the freshness note.
+    table: String,
+    /// The table's dump date, for the freshness note.
+    dump_date: Option<chrono::NaiveDate>,
+}
+
+/// The rows the local city table (`[geo] data`) has for `query`, in the shared ranking order, or
+/// `None` when it has no match.
 ///
-/// The rows are ranked as `geo::offline::City` values — with their ascii spellings — and only then
+/// The rows are ranked as `geo::table::City` values — with their ascii spellings — and only then
 /// converted, so the order (and the `--all` table and the ambiguity note built from it) is the one
-/// the table decided.
+/// the table decided. The table itself is opened here, so a run that never resolves a name never
+/// touches it (and `--version` never decodes anything).
 ///
-/// A build without the `offline-geo` feature has no table at all; `name_location` checks
-/// `cfg!(feature = "offline-geo")` before calling this, so the fallback body below is unreachable
-/// there and exists only to keep the call sites free of `#[cfg]`.
+/// A build without the `offline-geo` feature has no table at all; the fallback below keeps the
+/// call sites free of `#[cfg]`.
 #[cfg(feature = "offline-geo")]
-fn bundled_hits(query: &str, exact: bool, limit: u8) -> Result<Vec<Location>> {
+fn local_lookup(
+    geo: &GeoRequest<'_>,
+    query: &str,
+    exact: bool,
+    cli: &Cli,
+) -> Result<Option<LocalAnswer>> {
+    let table =
+        crate::geo::offline::OfflineTable::open(geo.paths, &geo.config.geo.data, cli.quiet)?;
     let mode = if exact {
-        crate::geo::offline::MatchMode::Exact
+        crate::geo::table::MatchMode::Exact
     } else {
-        crate::geo::offline::MatchMode::Prefix
+        crate::geo::table::MatchMode::Prefix
     };
-    Ok(crate::geo::offline::search(query, mode, limit)?
+    let hits: Vec<Location> = table
+        .search(query, mode, geo.limit)?
         .into_iter()
         .map(|city| city.location())
-        .collect())
+        .collect();
+    if hits.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(LocalAnswer {
+        hits,
+        table: table.describe(),
+        dump_date: table.dump_date(),
+    }))
 }
 
 #[cfg(not(feature = "offline-geo"))]
-fn bundled_hits(_query: &str, _exact: bool, _limit: u8) -> Result<Vec<Location>> {
-    Ok(Vec::new())
+fn local_lookup(
+    _geo: &GeoRequest<'_>,
+    _query: &str,
+    _exact: bool,
+    _cli: &Cli,
+) -> Result<Option<LocalAnswer>> {
+    Ok(None)
+}
+
+/// The once-a-day nudge that a newer dump exists (`[geo] update = "check"`).
+///
+/// It never fetches: it compares the answering table's dump date with the configured interval and
+/// points at `location update-data`, at most once per 24 hours (a state file in the cache dir).
+fn freshness_note(
+    geo: &GeoRequest<'_>,
+    cli: &Cli,
+    table: &str,
+    dump_date: Option<chrono::NaiveDate>,
+) {
+    if cli.quiet || geo.config.geo.update != "check" {
+        return;
+    }
+    let Some(dump_date) = dump_date else {
+        return;
+    };
+    let now: chrono::DateTime<chrono::Utc> = geo.cache.clock().now().into();
+    let last = crate::geo::update::last_notice(geo.cache);
+    let Some(age_days) =
+        crate::geo::update::note_due(now, dump_date, geo.config.geo.update_interval_days, last)
+    else {
+        return;
+    };
+    crate::geo::update::record_notice(geo.cache, now);
+    eprintln!(
+        "note: {table} is {age_days} days old; run `cirrocast location update-data` to install a fresh one"
+    );
 }
 
 /// `[geo] strategy`: how a name query picks its source (step 18).
@@ -1830,8 +1999,12 @@ fn exact_spec(spec: LocationSpec, exact: bool) -> Result<LocationSpec> {
 /// Bundled so the resolution helpers keep one parameter instead of six, and so the offline policy
 /// and the geo-scoped cache cannot be passed inconsistently.
 struct GeoRequest<'a> {
-    /// The effective configuration (the strategy and the geocode TTL).
+    /// The effective configuration (the strategy, the table source and the geocode TTL).
     config: &'a Config,
+    /// The XDG directories, for the user-installed table (step 18b). Unread in a build without
+    /// the `offline-geo` feature, where there is no local table to open.
+    #[cfg_attr(not(feature = "offline-geo"), allow(dead_code))]
+    paths: &'a Paths,
     /// The shared HTTP client.
     http: &'a HttpClient,
     /// The cache view for the geo scope: pinned to `CacheMode::Offline` when the policy silences
