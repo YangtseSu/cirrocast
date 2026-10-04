@@ -309,7 +309,7 @@ pub(crate) fn cached_text(
             return Ok(entry.body);
         }
         return Err(Error::Network(format!(
-            "offline mode: no cached {source} {what} at {}; rerun without `--offline` to fetch it",
+            "offline: no cached {source} {what} at {}; rerun without `--offline` to fetch it",
             key.path().display()
         )));
     }

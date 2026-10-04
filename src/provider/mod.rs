@@ -593,6 +593,7 @@ pub fn fetch_json<T: DeserializeOwned>(
             &fetch.key,
             fetch.ttl,
             fetch.provider.as_str(),
+            "forecast",
             &place,
             || {
                 let response = env.http.send(&fetch.request)?;

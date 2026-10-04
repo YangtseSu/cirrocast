@@ -501,15 +501,18 @@ fn offline_never_asks_for_a_socket_even_with_the_guard_on() {
 }
 
 #[test]
-fn a_cold_cache_with_offline_exits_three_and_names_the_rerun() {
+fn a_cold_weather_cache_with_offline_exits_three_and_names_the_rerun() {
+    // The name resolves (from the bundled table, or from the seeded geocode entry in a build
+    // without the `offline-geo` feature); the *weather* cache is what is cold.
     let sandbox = Sandbox::new();
+    seed_geocode(&sandbox);
     sandbox
         .cirrocast()
         .args(["--offline", "Beijing", "-f", "plain"])
         .assert()
         .code(3)
         .stderr(
-            predicate::str::contains("offline mode: no cached open-meteo answer for")
+            predicate::str::contains("offline: no cached open-meteo forecast for")
                 .and(predicate::str::contains("rerun without `--offline`")),
         );
 }

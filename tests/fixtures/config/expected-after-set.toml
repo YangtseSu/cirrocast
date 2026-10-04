@@ -16,6 +16,9 @@ language = "auto"
 [location]
 default = ""
 
+[geo]
+strategy = "auto"
+
 [units]
 
 [network]
@@ -23,6 +26,7 @@ timeout_secs = 15
 retries = 3
 proxy = ""
 nominatim_url = ""
+offline = "off"
 
 [cache]
 enabled = true

@@ -163,9 +163,7 @@ fn offline_never_touches_the_network_and_names_the_missing_entry() {
     assert_eq!(error.exit_code(), 3);
     let text = error.to_string();
     assert!(
-        text.contains(
-            "offline mode: no cached openweathermap answer for Beijing (39.90, 116.41) at"
-        ),
+        text.contains("offline: no cached openweathermap forecast for Beijing (39.90, 116.41) at"),
         "{text}"
     );
     assert!(text.contains("openweathermap-current-"), "{text}");

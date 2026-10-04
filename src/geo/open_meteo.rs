@@ -64,6 +64,7 @@ impl Geocoder for OpenMeteoGeocoder<'_> {
             &key,
             self.ttl,
             "open-meteo",
+            "geocoding answer",
             &format!("the query `{query}`"),
             || {
                 let request = HttpRequest::get(GEOCODE_URL)

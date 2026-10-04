@@ -238,7 +238,7 @@ fn a_station_needs_the_station_backend() {
         .args(["--station", "ZBAA", "-p", "open-meteo,metar", "--offline"])
         .assert()
         .code(3)
-        .stderr(predicate::str::contains("offline mode"));
+        .stderr(predicate::str::contains("offline:"));
 
     // Without `--provider`, `--station` selects `metar` itself; the same offline miss proves the
     // run reached the station backend rather than failing on the flag combination.
@@ -248,7 +248,7 @@ fn a_station_needs_the_station_backend() {
         .assert()
         .code(3)
         .stderr(predicate::str::contains(
-            "offline mode: no cached metar current observation for station ZBAA at weather/metar-ZBAA-current.json",
+            "offline: no cached metar current observation for station ZBAA at weather/metar-ZBAA-current.json",
         ));
 
     // `auto` gains `metar` for a station run; the station backend is tried first.
@@ -509,7 +509,7 @@ fn the_exit_code_table_is_reachable_end_to_end() {
         .assert()
         .code(3)
         .stderr(predicate::str::contains(
-            "offline mode: no cached open-meteo answer for",
+            "offline: no cached open-meteo forecast for",
         ));
 
     // 4 — configuration: a file that does not parse.
@@ -522,15 +522,16 @@ fn the_exit_code_table_is_reachable_end_to_end() {
         .code(4)
         .stderr(predicate::str::contains("config error:"));
 
-    // 5 — location: the geocoder answers with no hits (seeded, `--offline`).
-    let empty = seed_geocode("Atlantis");
+    // 5 — location: nothing answers (the bundled table has no `Nowhereville`, and `--offline`
+    // forbids the network geocoder).
+    let empty = Sandbox::new();
     empty
         .cirrocast()
-        .args(["location", "search", "Atlantis", "--offline"])
+        .args(["location", "search", "Nowhereville", "--offline"])
         .assert()
         .code(5)
         .stderr(predicate::str::contains(
-            "location not found: no location found for `Atlantis`",
+            "location not found: no location found for `Nowhereville`",
         ));
 
     // 6 — a missing key is only reachable once a key-requiring backend exists (step 10); the
@@ -543,26 +544,6 @@ fn the_exit_code_table_is_reachable_end_to_end() {
         .exit_code(),
         6
     );
-}
-
-/// A sandbox whose geocode cache answers `query` with the recorded "no hits" response.
-fn seed_geocode(query: &str) -> Sandbox {
-    let sandbox = Sandbox::new();
-    let body = common::fixture("geo/open_meteo_geocode_no_hits.json");
-    let key = CacheKey::hash(
-        "geocode",
-        &format!("open-meteo|{}|10|en", query.to_lowercase()),
-    );
-    let cache = Cache::with_root(
-        sandbox.cache_dir(),
-        CacheMode::Normal,
-        Arc::new(SystemClock),
-        0,
-    );
-    cache
-        .write(&key, 200, &body, Duration::from_secs(600))
-        .expect("the cache entry is written");
-    sandbox
 }
 
 #[test]

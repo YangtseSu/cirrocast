@@ -242,7 +242,7 @@ fn cached_json<T>(
     }
     if env.cache.mode() == CacheMode::Offline {
         return Err(Error::Network(format!(
-            "offline mode: no cached {PROVIDER} {what} for {place} at {}; \
+            "offline: no cached {PROVIDER} {what} for {place} at {}; \
              rerun without `--offline` to fetch it",
             key.path().display()
         )));

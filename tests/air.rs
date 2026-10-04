@@ -689,7 +689,7 @@ fn a_failed_air_fetch_is_a_warning_with_the_weather_intact() {
     assert!(plain.contains("current:"), "{plain}");
     assert!(!plain.contains("air_quality:"), "{plain}");
     assert!(stderr.contains("air quality unavailable"), "{stderr}");
-    assert!(stderr.contains("offline mode"), "{stderr}");
+    assert!(stderr.contains("offline:"), "{stderr}");
 
     // The standalone view reports the absence instead of printing an empty document.
     let (standalone, stderr) = offline(&sandbox, &["-f", "aqi"]);

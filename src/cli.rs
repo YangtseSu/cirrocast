@@ -17,7 +17,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum as _};
 
 use crate::air::aqi::AqiIndex;
 use crate::alerts::{self, AlertsRequest};
-use crate::cache::{Cache, CacheMode, CacheStat, Clock, SystemClock};
+use crate::cache::{Cache, CacheMode, CacheStat, Clock, OfflineMode, Scope, SystemClock};
 use crate::config::keys::{KeySource, KeyStore};
 use crate::config::{Config, Settings};
 use crate::error::{Error, Result};
@@ -27,7 +27,7 @@ use crate::geo::open_meteo::OpenMeteoGeocoder;
 use crate::geo::rank::rank;
 use crate::geo::{
     Geocoder, LocationSpec, Resolution, ambiguity_note, attribution_line, location_line,
-    osm_ambiguity_note, resolve,
+    offline_not_found, osm_ambiguity_note, resolve,
 };
 use crate::http::{HttpClient, UreqTransport};
 use crate::i18n::{I18n, LanguageRequest};
@@ -431,6 +431,15 @@ pub struct SearchArgs {
     #[arg(long)]
     pub ip: bool,
 
+    /// Only count candidates whose name is exactly the query (folded), the same narrowing as the
+    /// `:query` spelling.
+    #[arg(long)]
+    pub exact: bool,
+
+    /// Print the ranked candidate table instead of the single winning line.
+    #[arg(long)]
+    pub all: bool,
+
     /// How many geocoder candidates to rank (1..=100).
     #[arg(long, value_name = "N", default_value_t = 10, value_parser = clap::value_parser!(u8).range(1..=100))]
     pub limit: u8,
@@ -454,9 +463,24 @@ pub struct CacheFlags {
     #[arg(long, conflicts_with_all = ["no_cache", "offline"])]
     pub refresh: bool,
 
-    /// Serve cached answers only and never touch the network.
-    #[arg(long, conflicts_with_all = ["no_cache", "refresh"])]
-    pub offline: bool,
+    /// Run offline: `=weather` serves the weather from the cache only, `=geo` resolves names from
+    /// the bundled city table only, and bare `--offline` (same as `=all`) never opens a socket.
+    /// Overrides `[network] offline`.
+    #[arg(
+        long,
+        value_name = "MODE",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "all",
+        value_parser = parse_offline_mode
+    )]
+    pub offline: Option<OfflineMode>,
+}
+
+/// `--offline[=<weather|geo|all>]`, parsed by the cache module so flag and configuration share one
+/// vocabulary.
+fn parse_offline_mode(value: &str) -> Result<OfflineMode, Error> {
+    OfflineMode::from_str(value)
 }
 
 /// Arguments of `cirrocast cache`.
@@ -906,6 +930,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         },
     )?;
     validate_query(query, sources, &settings)?;
+    let offline = offline_policy(query.cache, &config)?;
 
     let ids = provider_chain(&settings, query.station.as_deref(), sources.provider)?;
     // A station is the location: `--station` when it is given, else `[providers.metar] station`
@@ -927,15 +952,14 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     if cli.verbose > 0 {
         sources.note(&settings);
         render_notes(&setup);
+        if !offline.is_off() {
+            eprintln!("offline: {offline} mode");
+        }
     }
 
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
-    let cache = Cache::open(
-        &paths,
-        cache_mode(&config, query.cache)?,
-        Arc::clone(&clock),
-        cli.verbose,
-    );
+    let (geo_cache, cache) =
+        open_query_caches(&paths, &config, query.cache, offline, &clock, cli.verbose)?;
     let transport = UreqTransport::new(
         &config.network,
         Duration::from_secs(u64::from(settings.timeout_secs)),
@@ -943,20 +967,20 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
     let http = HttpClient::new(
         Box::new(transport),
         config.network.retries,
-        clock,
+        Arc::clone(&clock),
         cli.verbose,
     );
     let keys = KeyStore::new(&paths);
 
-    let location = location_for_run(
-        station.as_deref(),
-        query,
-        &settings,
-        &config,
-        &http,
-        &cache,
-        cli,
-    )?;
+    let geo_request = GeoRequest {
+        config: &config,
+        http: &http,
+        cache: &geo_cache,
+        offline,
+        limit: QUERY_CANDIDATES,
+        keep_candidates: false,
+    };
+    let location = location_for_run(station.as_deref(), query, &settings, &geo_request, cli)?;
 
     let env = Env {
         http: &http,
@@ -1247,9 +1271,7 @@ fn location_for_run(
     station: Option<&str>,
     query: &QueryArgs,
     settings: &Settings,
-    config: &Config,
-    http: &HttpClient,
-    cache: &Cache,
+    geo: &GeoRequest<'_>,
     cli: &Cli,
 ) -> Result<Location> {
     match station {
@@ -1261,7 +1283,7 @@ fn location_for_run(
             }
             Ok(crate::provider::metar::placeholder_location(icao))
         }
-        None => query_location(query, settings, config, http, cache, cli),
+        None => query_location(query, settings, geo, cli),
     }
 }
 
@@ -1272,14 +1294,11 @@ fn location_for_run(
 fn query_location(
     query: &QueryArgs,
     settings: &Settings,
-    config: &Config,
-    http: &HttpClient,
-    cache: &Cache,
+    geo: &GeoRequest<'_>,
     cli: &Cli,
 ) -> Result<Location> {
-    let (spec, text) = location_target(settings.location.as_deref(), query.ip, config)?;
-    let (location, resolution, candidates) =
-        resolve_location(&spec, QUERY_CANDIDATES, config, http, cache, cli)?;
+    let (spec, text) = location_target(settings.location.as_deref(), query.ip, geo.config)?;
+    let (location, resolution, candidates) = resolve_location(&spec, geo, cli)?;
     if let Some(text) = &text
         && !cli.quiet
     {
@@ -1475,18 +1494,20 @@ fn run_location(command: &LocationCommand, cli: &Cli) -> Result<()> {
 
 /// Resolves one location argument and prints the place it means.
 ///
-/// The resolved location goes to stdout on its own line; everything that is commentary — the
-/// ambiguity note, the `ODbL` attribution, the IP-lookup disclosure and the `-v` candidate list —
-/// goes to stderr, so stdout stays pipeable and a script never has to filter prose.
+/// The winner line goes to stdout by default; `--all` replaces it with the ranked candidate table.
+/// Everything that is commentary — the ambiguity note, the source attribution, the IP-lookup
+/// disclosure and the `-v` candidate list — goes to stderr, so stdout stays pipeable and a script
+/// never has to filter prose.
 fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
     let paths = Paths::resolve()?;
     let config = Config::load(&paths)?;
     config.validate()?;
+    let offline = offline_policy(args.cache, &config)?;
 
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let cache = Cache::open(
         &paths,
-        cache_mode(&config, args.cache)?,
+        cache_mode(&config, args.cache, offline, Scope::Geo)?,
         Arc::clone(&clock),
         cli.verbose,
     );
@@ -1501,12 +1522,27 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
         cli.verbose,
     );
     let (spec, text) = location_target(args.query.as_deref(), args.ip, &config)?;
-    let (location, resolution, candidates) =
-        resolve_location(&spec, args.limit, &config, &http, &cache, cli)?;
+    let spec = exact_spec(spec, args.exact)?;
+    let geo_request = GeoRequest {
+        config: &config,
+        http: &http,
+        cache: &cache,
+        offline,
+        limit: args.limit,
+        keep_candidates: args.all,
+    };
+    let (location, resolution, candidates) = resolve_location(&spec, &geo_request, cli)?;
 
-    print_line(format_args!("{}", location_line(&location)))?;
+    if args.all {
+        for (index, candidate) in candidates.iter().enumerate() {
+            print_line(format_args!("{}", candidate_line(index + 1, candidate)))?;
+        }
+    } else {
+        print_line(format_args!("{}", location_line(&location)))?;
+    }
     if let Some(text) = &text
         && !cli.quiet
+        && !args.all
     {
         let note = if matches!(spec, LocationSpec::Osm(_)) {
             osm_ambiguity_note(text, &location, resolution)
@@ -1522,19 +1558,33 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
     }
     if cli.verbose > 0 {
         for (index, candidate) in candidates.iter().enumerate() {
-            let population = candidate
-                .population
-                .map(|population| format!(" (population {population})"))
-                .unwrap_or_default();
             eprintln!(
-                "location: candidate {}/{}: {}{population}",
+                "location: candidate {}/{}: {}",
                 index + 1,
                 candidates.len(),
-                location_line(candidate)
+                candidate_text(candidate)
             );
         }
     }
     Ok(())
+}
+
+/// One `--all` row: the rank number and the shared place line.
+///
+/// The shape is the winner line plus a number and a population, so the two search outputs — and
+/// the offline and network sources behind them — cannot drift apart.
+fn candidate_line(index: usize, location: &Location) -> String {
+    format!("{index:>2}. {}", candidate_text(location))
+}
+
+/// The place line `--all` and the `-v` listing share: the location header plus the population
+/// that broke ties, when the source reports one.
+fn candidate_text(location: &Location) -> String {
+    let population = location
+        .population
+        .map(|population| format!(" (population {population})"))
+        .unwrap_or_default();
+    format!("{}{population}", location_line(location))
 }
 
 /// The spec to resolve and the text a note quotes: `--ip` wins, then an explicit argument, then
@@ -1566,40 +1616,44 @@ fn location_target(
     }
 }
 
-/// The ranked candidate list the `-v` listing prints, or an empty one when nobody will look at it.
+/// The ranked candidate list for `--all` or the `-v` listing, or an empty one when nobody will
+/// look at it.
 ///
-/// Ranking is a clone of every hit plus a second sort of the whole list, and the list is consumed
-/// only under `--verbose`; a normal run must not pay for it. `hits` is borrowed here so the caller
-/// can still consume it for the resolution itself.
-fn verbose_candidates(
+/// Ranking is a clone of every hit plus a sort of the whole list, and the list is consumed only
+/// under `--verbose` or `--all`; a normal run must not pay for it. `hits` is borrowed here so the
+/// caller can still consume it for the resolution itself.
+fn ranked_candidates(
     hits: &[Location],
     spec: &LocationSpec,
     limit: u8,
+    always: bool,
     cli: &Cli,
 ) -> Vec<Location> {
-    if cli.verbose == 0 {
+    if !always && cli.verbose == 0 {
         return Vec::new();
     }
     rank(hits.to_vec(), spec.query(), limit)
 }
 
-/// Resolves `spec` through the geocoder it names, returning the winner, how it was chosen and the
-/// ranked candidates the `-v` listing prints.
+/// Resolves `spec` through the sources this run may use, returning the winner, how it was chosen
+/// and the ranked candidates the `--all` output or the `-v` listing prints.
+///
+/// Name queries go to the bundled city table first under the default `geo.strategy = "auto"` and
+/// fall back to the network geocoder only when it has no hit; `--offline=geo|all` removes the
+/// fallback entirely (step 18). `keep_candidates` is `--all`, which needs the whole ranked list
+/// whatever the verbosity.
 fn resolve_location(
     spec: &LocationSpec,
-    limit: u8,
-    config: &Config,
-    http: &HttpClient,
-    cache: &Cache,
+    geo: &GeoRequest<'_>,
     cli: &Cli,
 ) -> Result<(Location, Resolution, Vec<Location>)> {
     match spec {
         LocationSpec::Default => {
             let chain = IpLocatorChain::new(
-                http,
-                cache,
+                geo.http,
+                geo.cache,
                 IpService::chain(&ip_service_setting())?,
-                ip_ttl(config, cli.verbose),
+                ip_ttl(geo.config, cli.verbose),
             );
             let (location, service) = chain.locate_with_service()?;
             if !cli.quiet {
@@ -1607,31 +1661,226 @@ fn resolve_location(
             }
             Ok((location, Resolution::Only, Vec::new()))
         }
-        spec @ (LocationSpec::Fuzzy(_) | LocationSpec::Exact(_)) => {
-            let geocoder = OpenMeteoGeocoder::new(
-                http,
-                cache,
-                Duration::from_secs(u64::from(config.cache.geocode_ttl_secs)),
-            );
-            let hits = geocoder.search(spec.query().unwrap_or_default(), limit)?;
-            // The ranked list is only ever printed under `-v`, so a normal run must not pay for the
-            // clone and the second sort.
-            let candidates = verbose_candidates(&hits, spec, limit, cli);
-            let (location, resolution) = resolve(hits, spec, limit)?;
-            Ok((location, resolution, candidates))
-        }
+        spec @ (LocationSpec::Fuzzy(_) | LocationSpec::Exact(_)) => name_location(spec, geo, cli),
         spec @ LocationSpec::Osm(_) => {
-            let nominatim = Nominatim::new(http, cache, nominatim_url(config));
-            let hits = nominatim.search(spec.query().unwrap_or_default(), limit)?;
-            let candidates = verbose_candidates(&hits, spec, limit, cli);
-            let (location, resolution) = resolve(hits, spec, limit)?;
+            if geo.offline.silences(Scope::Geo) {
+                return Err(Error::Network(format!(
+                    "offline: `~{}` searches ask OpenStreetMap over the network; \
+                     use a plain name (the bundled table) or `@lat,lon` instead",
+                    spec.query().unwrap_or_default()
+                )));
+            }
+            let nominatim = Nominatim::new(geo.http, geo.cache, nominatim_url(geo.config));
+            let hits = nominatim.search(spec.query().unwrap_or_default(), geo.limit)?;
+            let candidates = ranked_candidates(&hits, spec, geo.limit, geo.keep_candidates, cli);
+            let (location, resolution) = resolve(hits, spec, geo.limit)?;
             Ok((location, resolution, candidates))
         }
         spec @ LocationSpec::LatLon(..) => {
-            let (location, resolution) = resolve(Vec::new(), spec, limit)?;
+            let (location, resolution) = resolve(Vec::new(), spec, geo.limit)?;
             Ok((location, resolution, Vec::new()))
         }
     }
+}
+
+/// A name query through the bundled table and/or the network geocoder.
+fn name_location(
+    spec: &LocationSpec,
+    geo: &GeoRequest<'_>,
+    cli: &Cli,
+) -> Result<(Location, Resolution, Vec<Location>)> {
+    let query = spec.query().unwrap_or_default();
+    let strategy = GeoStrategy::from_config(geo.config)?;
+    // The bundled table is skipped by `strategy = "network"` and by a build without the feature.
+    let bundled = cfg!(feature = "offline-geo") && !matches!(strategy, GeoStrategy::Network);
+    // The geocoder is skipped by `strategy = "bundled"`; whether it may open a socket is the cache
+    // mode's decision (`Scope::Geo` is pinned to `CacheMode::Offline` by an offline policy), which
+    // is also what keeps a previously cached answer servable offline (step 04).
+    let geocoder = !matches!(strategy, GeoStrategy::Bundled);
+
+    if bundled {
+        // `bundled_hits` already returns the rows in the shared ranking order (the `City` rows
+        // carry the ascii spellings the ranking uses), so the list is used as it comes: re-ranking
+        // the converted `Location`s would drop that spelling and reorder an exonym match.
+        let hits = bundled_hits(query, matches!(spec, LocationSpec::Exact(_)), geo.limit)?;
+        if !hits.is_empty() {
+            if cli.verbose > 0 {
+                eprintln!("location: {query} resolved from the bundled city database");
+            }
+            let resolution = match spec {
+                LocationSpec::Exact(_) => Resolution::Exact,
+                _ if hits.len() == 1 => Resolution::Only,
+                _ => Resolution::Fuzzy {
+                    candidates: hits.len(),
+                },
+            };
+            let candidates = if geo.keep_candidates || cli.verbose > 0 {
+                hits.clone()
+            } else {
+                Vec::new()
+            };
+            let winner = hits
+                .first()
+                .cloned()
+                .ok_or_else(|| offline_not_found(query))?;
+            return Ok((winner, resolution, candidates));
+        }
+    }
+
+    if geocoder {
+        let geocoder = OpenMeteoGeocoder::new(
+            geo.http,
+            geo.cache,
+            Duration::from_secs(u64::from(geo.config.cache.geocode_ttl_secs)),
+        );
+        if cli.verbose > 0 && bundled {
+            eprintln!("location: {query} not in the bundled city database; asking the geocoder");
+        }
+        let hits = match geocoder.search(query, geo.limit) {
+            Ok(hits) => hits,
+            // Offline, the only failure a search can meet is a cache miss: the transport is never
+            // reached, so "nothing on disk" means this name cannot be resolved at all and is the
+            // same not-found answer as a table miss.
+            Err(Error::Network(_)) if geo.offline.silences(Scope::Geo) => Vec::new(),
+            Err(error) => return Err(error),
+        };
+        if !hits.is_empty() {
+            let candidates = ranked_candidates(&hits, spec, geo.limit, geo.keep_candidates, cli);
+            let (location, resolution) = resolve(hits, spec, geo.limit)?;
+            return Ok((location, resolution, candidates));
+        }
+    }
+
+    Err(offline_not_found(query))
+}
+
+/// The rows the bundled city table has for `query`, in the shared ranking order, or an empty list
+/// when it has none.
+///
+/// The rows are ranked as `geo::offline::City` values — with their ascii spellings — and only then
+/// converted, so the order (and the `--all` table and the ambiguity note built from it) is the one
+/// the table decided.
+///
+/// A build without the `offline-geo` feature has no table at all; `name_location` checks
+/// `cfg!(feature = "offline-geo")` before calling this, so the fallback body below is unreachable
+/// there and exists only to keep the call sites free of `#[cfg]`.
+#[cfg(feature = "offline-geo")]
+fn bundled_hits(query: &str, exact: bool, limit: u8) -> Result<Vec<Location>> {
+    let mode = if exact {
+        crate::geo::offline::MatchMode::Exact
+    } else {
+        crate::geo::offline::MatchMode::Prefix
+    };
+    Ok(crate::geo::offline::search(query, mode, limit)?
+        .into_iter()
+        .map(|city| city.location())
+        .collect())
+}
+
+#[cfg(not(feature = "offline-geo"))]
+fn bundled_hits(_query: &str, _exact: bool, _limit: u8) -> Result<Vec<Location>> {
+    Ok(Vec::new())
+}
+
+/// `[geo] strategy`: how a name query picks its source (step 18).
+///
+/// The configuration validates the spelling on load, so a parse failure here means the document
+/// was built by hand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GeoStrategy {
+    /// The bundled table first, the network geocoder on a miss (the default).
+    Auto,
+    /// The bundled table only.
+    Bundled,
+    /// The network geocoder only.
+    Network,
+}
+
+impl GeoStrategy {
+    fn from_config(config: &Config) -> Result<Self> {
+        match config.geo.strategy.as_str() {
+            "auto" => Ok(Self::Auto),
+            "bundled" => Ok(Self::Bundled),
+            "network" => Ok(Self::Network),
+            other => Err(Error::Config(format!(
+                "geo.strategy: `{other}` is not auto, bundled or network"
+            ))),
+        }
+    }
+}
+
+/// `--exact` on `location search`: the same narrowing as the `:query` spelling.
+///
+/// A `~` search or an IP lookup has no name to match exactly, so the flag is a usage error there
+/// rather than a silent no-op.
+fn exact_spec(spec: LocationSpec, exact: bool) -> Result<LocationSpec> {
+    if !exact {
+        return Ok(spec);
+    }
+    match spec {
+        LocationSpec::Fuzzy(query) | LocationSpec::Exact(query) => Ok(LocationSpec::Exact(query)),
+        other => Err(Error::Usage(format!(
+            "--exact needs a name query; {other} is not one"
+        ))),
+    }
+}
+
+/// The location-resolution inputs a run shares between the weather query and `location search`.
+///
+/// Bundled so the resolution helpers keep one parameter instead of six, and so the offline policy
+/// and the geo-scoped cache cannot be passed inconsistently.
+struct GeoRequest<'a> {
+    /// The effective configuration (the strategy and the geocode TTL).
+    config: &'a Config,
+    /// The shared HTTP client.
+    http: &'a HttpClient,
+    /// The cache view for the geo scope: pinned to `CacheMode::Offline` when the policy silences
+    /// it, so a socket can never be opened on this path.
+    cache: &'a Cache,
+    /// The run's offline policy.
+    offline: OfflineMode,
+    /// How many candidates to rank.
+    limit: u8,
+    /// Whether the ranked list is needed even without `--verbose` (`location search --all`).
+    keep_candidates: bool,
+}
+
+/// Opens the two cache views of a weather query: the geo scope and the weather scope, each under
+/// its own offline policy.
+///
+/// An offline policy silences only its own scope (`--offline=geo` still fetches live weather,
+/// `--offline=weather` still geocodes), and two `Cache` handles over the same root are what keep
+/// that split out of every provider and geocoder call site.
+fn open_query_caches(
+    paths: &Paths,
+    config: &Config,
+    flags: CacheFlags,
+    offline: OfflineMode,
+    clock: &Arc<dyn Clock>,
+    verbose: u8,
+) -> Result<(Cache, Cache)> {
+    let geo = Cache::open(
+        paths,
+        cache_mode(config, flags, offline, Scope::Geo)?,
+        Arc::clone(clock),
+        verbose,
+    );
+    let weather = Cache::open(
+        paths,
+        cache_mode(config, flags, offline, Scope::Weather)?,
+        Arc::clone(clock),
+        verbose,
+    );
+    Ok((geo, weather))
+}
+
+/// The offline policy of this run: `--offline` wins over `[network] offline`, and the combination
+/// the configuration cannot serve (a silenced weather scope with caching disabled) is refused
+/// before any request.
+fn offline_policy(flags: CacheFlags, config: &Config) -> Result<OfflineMode> {
+    let mode = config.offline_mode(flags.offline)?;
+    config.check_offline(mode)?;
+    Ok(mode)
 }
 
 /// Runs `cirrocast cache …`.
@@ -1759,13 +2008,24 @@ fn ip_ttl(config: &Config, verbose: u8) -> Duration {
     Duration::from_secs(u64::from(configured))
 }
 
-/// The cache mode of this run: the flags win, then `[cache] enabled`.
-fn cache_mode(config: &Config, flags: CacheFlags) -> Result<CacheMode> {
-    config.check_offline(flags.offline)?;
-    if !flags.no_cache && !flags.refresh && !flags.offline && !config.cache.enabled {
+/// The cache mode one scope of this run uses.
+///
+/// An offline policy silences its scope by pinning it to [`CacheMode::Offline`] (reads only, and a
+/// miss is a hard error naming the missing entry); every other scope follows the
+/// `--no-cache`/`--refresh` flags and `[cache] enabled` exactly as before step 18.
+fn cache_mode(
+    config: &Config,
+    flags: CacheFlags,
+    offline: OfflineMode,
+    scope: Scope,
+) -> Result<CacheMode> {
+    if offline.silences(scope) {
+        return Ok(CacheMode::Offline);
+    }
+    if !flags.no_cache && !flags.refresh && !config.cache.enabled {
         return Ok(CacheMode::NoCache);
     }
-    CacheMode::from_flags(flags.no_cache, flags.refresh, flags.offline)
+    CacheMode::from_flags(flags.no_cache, flags.refresh, false)
 }
 
 /// The configured default location, when there is one.
@@ -1852,7 +2112,11 @@ fn run_config(command: &ConfigCommand) -> Result<()> {
                 None => None,
             };
             config.validate()?;
-            config.check_offline(*offline)?;
+            if *offline {
+                // The flag asks about the harshest policy: with `--offline` (all) the weather and
+                // the names both come from disk, so a disabled cache can never serve it.
+                config.check_offline(OfflineMode::All)?;
+            }
             for note in config.unit_override_notes()? {
                 eprintln!("{note}");
             }

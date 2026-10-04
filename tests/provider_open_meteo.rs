@@ -415,7 +415,7 @@ fn offline_without_an_entry_names_the_key_path() {
     let text = error.to_string();
     assert!(
         text.contains(
-            "offline mode: no cached open-meteo answer for Beijing (39.90, 116.41) at weather/open-meteo-39.90-116.41-3-2026-07-15.json"
+            "offline: no cached open-meteo forecast for Beijing (39.90, 116.41) at weather/open-meteo-39.90-116.41-3-2026-07-15.json"
         ),
         "{text}"
     );

@@ -22,6 +22,7 @@ use std::str::FromStr as _;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::cache::{OFFLINE_MODES, OfflineMode, Scope};
 use crate::error::{Error, Result};
 use crate::geo::LocationSpec;
 use crate::model::units::UnitSystem;
@@ -87,6 +88,10 @@ pub const SEVERITY_LEVELS: &[&str] = &["unknown", "minor", "moderate", "severe",
 /// two in step.
 pub const AQI_INDEXES: &[&str] = &["us", "european"];
 
+/// Allowed values of `[geo] strategy` (step 18): the bundled table first with a network fallback,
+/// the bundled table only, or the network geocoder only.
+pub const GEO_STRATEGIES: &[&str] = &["auto", "bundled", "network"];
+
 /// The configuration document, matching the contract's TOML schema exactly.
 ///
 /// Every table and field is optional on input: anything absent falls back to [`Config::default`],
@@ -101,6 +106,8 @@ pub struct Config {
     pub defaults: Defaults,
     /// Default location handling.
     pub location: LocationDefaults,
+    /// Place-name resolution strategy.
+    pub geo: GeoConfig,
     /// Per-quantity display overrides.
     pub units: UnitOverrides,
     /// Network behaviour.
@@ -180,6 +187,17 @@ pub struct Network {
     /// The OSM usage policy allows a service to be swapped without a software update, which is why
     /// this is configuration rather than a constant.
     pub nominatim_url: String,
+    /// The default `--offline` policy: `off`, `weather`, `geo` or `all` (step 18).
+    pub offline: String,
+}
+
+/// `[geo]` — how a place name is resolved (step 18).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GeoConfig {
+    /// `auto` (bundled table first, network geocoder on a miss), `bundled` (the table only) or
+    /// `network` (the geocoder only).
+    pub strategy: String,
 }
 
 /// `[cache]`.
@@ -263,6 +281,7 @@ impl Default for Config {
             schema_version: CURRENT_SCHEMA_VERSION,
             defaults: Defaults::default(),
             location: LocationDefaults::default(),
+            geo: GeoConfig::default(),
             units: UnitOverrides::default(),
             network: Network::default(),
             cache: CacheConfig::default(),
@@ -293,6 +312,15 @@ impl Default for Network {
             retries: 3,
             proxy: String::new(),
             nominatim_url: String::new(),
+            offline: "off".to_owned(),
+        }
+    }
+}
+
+impl Default for GeoConfig {
+    fn default() -> Self {
+        Self {
+            strategy: "auto".to_owned(),
         }
     }
 }
@@ -493,6 +521,7 @@ impl Config {
         self.validate_schema_version()?;
         self.validate_defaults()?;
         self.validate_location()?;
+        self.validate_geo()?;
         self.validate_units()?;
         self.validate_network()?;
         self.validate_cache()?;
@@ -504,17 +533,35 @@ impl Config {
 
     /// Rejects a run that asks for something the configuration forbids.
     ///
-    /// Today that is one combination: `cache.enabled = false` with `--offline` asks the cache to
-    /// serve an answer it was told never to store. The message names the key and both ways out.
-    pub fn check_offline(&self, offline: bool) -> Result<()> {
-        if offline && !self.cache.enabled {
-            return Err(Error::Config(
-                "cache.enabled = false, so `--offline` could never be served: \
+    /// Today that is one combination: `cache.enabled = false` with an offline policy that needs
+    /// the weather cache (`--offline` / `--offline=weather`) asks the cache to serve an answer it
+    /// was told never to store. `--offline=geo` still fetches the weather live, so it is allowed.
+    /// The message names the key and both ways out.
+    pub fn check_offline(&self, mode: OfflineMode) -> Result<()> {
+        if mode.silences(Scope::Weather) && !self.cache.enabled {
+            return Err(Error::Config(format!(
+                "cache.enabled = false, so `--offline={mode}` could never be served: \
                  set cache.enabled = true or drop `--offline`"
-                    .to_owned(),
-            ));
+            )));
         }
         Ok(())
+    }
+
+    /// The offline policy of a run: the `--offline` flag wins over `[network] offline`.
+    ///
+    /// [`Config::validate`] has already checked the configured value, so the parse here only fails
+    /// on a document built by hand.
+    pub fn offline_mode(&self, flag: Option<OfflineMode>) -> Result<OfflineMode> {
+        if let Some(mode) = flag {
+            return Ok(mode);
+        }
+        OfflineMode::from_str(&self.network.offline).map_err(|_| {
+            Error::Config(format!(
+                "network.offline: `{}` is not one of {}",
+                self.network.offline,
+                OFFLINE_MODES.join(", ")
+            ))
+        })
     }
 
     /// One note per `[units]` override that changes the quantity away from what `defaults.units`
@@ -605,6 +652,11 @@ impl Config {
             .map_err(|error| Error::Config(format!("location.default: {error}")))
     }
 
+    /// `[geo] strategy`: one of `auto`, `bundled`, `network` (step 18).
+    fn validate_geo(&self) -> Result<()> {
+        check_enum("geo.strategy", &self.geo.strategy, GEO_STRATEGIES)
+    }
+
     fn validate_units(&self) -> Result<()> {
         check_optional_enum("units.temp", self.units.temp.as_deref(), TEMP_UNITS)?;
         check_optional_enum("units.wind", self.units.wind.as_deref(), WIND_UNITS)?;
@@ -629,6 +681,7 @@ impl Config {
             TIMEOUT_RANGE,
         )?;
         check_range("network.retries", self.network.retries, RETRIES_RANGE)?;
+        check_enum("network.offline", &self.network.offline, &OFFLINE_MODES)?;
         self.validate_proxy()?;
         self.validate_nominatim_url()
     }
@@ -916,6 +969,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "schema_version",
             "defaults",
             "location",
+            "geo",
             "units",
             "network",
             "cache",
@@ -926,8 +980,15 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
         ],
         "defaults" => &["provider", "format", "units", "days", "language"],
         "location" => &["default"],
+        "geo" => &["strategy"],
         "units" => &["temp", "wind", "pressure", "distance", "precip"],
-        "network" => &["timeout_secs", "retries", "proxy", "nominatim_url"],
+        "network" => &[
+            "timeout_secs",
+            "retries",
+            "proxy",
+            "nominatim_url",
+            "offline",
+        ],
         "cache" => &[
             "enabled",
             "weather_ttl_secs",
@@ -1133,6 +1194,9 @@ language = "auto"        # "auto" or a BCP-47 tag such as "en-US", "zh-CN"
 [location]
 default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"; empty = ask for the IP location
 
+[geo]
+strategy = "auto"        # auto (bundled GeoNames table first, network on a miss) | bundled | network
+
 [units]
 # Per-quantity overrides on top of `defaults.units`. Remove the `#` to pin one
 # quantity; an absent key follows the unit system.
@@ -1147,6 +1211,7 @@ timeout_secs = 15        # 1..=300
 retries = 3              # 0..=10
 proxy = ""               # e.g. "http://127.0.0.1:8080"; empty = connect directly
 nominatim_url = ""       # Nominatim base URL for `~name` searches; empty = the public OpenStreetMap service
+offline = "off"          # off | weather (cache-only forecast) | geo (bundled names, live weather) | all
 
 [cache]
 enabled = true
@@ -1284,6 +1349,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: Some("CIRROCAST_LOCATION"),
     },
     KeySpec {
+        name: "geo.strategy",
+        kind: KeyKind::Enum(GEO_STRATEGIES),
+        doc: "bundled table, network geocoder or auto",
+        env: None,
+    },
+    KeySpec {
         name: "units.temp",
         kind: KeyKind::Enum(TEMP_UNITS),
         doc: "temperature override",
@@ -1336,6 +1407,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         kind: KeyKind::Str,
         doc: "Nominatim base URL; empty = the public service",
         env: Some("CIRROCAST_NOMINATIM_URL"),
+    },
+    KeySpec {
+        name: "network.offline",
+        kind: KeyKind::Enum(&OFFLINE_MODES),
+        doc: "default offline policy: off, weather, geo or all",
+        env: None,
     },
     KeySpec {
         name: "cache.enabled",
@@ -1462,6 +1539,7 @@ impl Config {
             "defaults.days" => self.defaults.days.to_string(),
             "defaults.language" => self.defaults.language.clone(),
             "location.default" => self.location.default.clone(),
+            "geo.strategy" => self.geo.strategy.clone(),
             "units.temp" => self.units.temp.clone().unwrap_or_default(),
             "units.wind" => self.units.wind.clone().unwrap_or_default(),
             "units.pressure" => self.units.pressure.clone().unwrap_or_default(),
@@ -1471,6 +1549,7 @@ impl Config {
             "network.retries" => self.network.retries.to_string(),
             "network.proxy" => self.network.proxy.clone(),
             "network.nominatim_url" => self.network.nominatim_url.clone(),
+            "network.offline" => self.network.offline.clone(),
             "cache.enabled" => self.cache.enabled.to_string(),
             "cache.weather_ttl_secs" => self.cache.weather_ttl_secs.to_string(),
             "cache.ip_ttl_secs" => self.cache.ip_ttl_secs.to_string(),
@@ -1515,6 +1594,10 @@ impl Config {
                 self.defaults.language = value;
             }
             "location.default" => self.location.default = value,
+            "geo.strategy" => {
+                check_enum(spec.name, &value, GEO_STRATEGIES)?;
+                self.geo.strategy = value;
+            }
             "units.temp" => self.units.temp = optional_enum(spec.name, &value, TEMP_UNITS)?,
             "units.wind" => self.units.wind = optional_enum(spec.name, &value, WIND_UNITS)?,
             "units.pressure" => {
@@ -1528,6 +1611,10 @@ impl Config {
             "network.retries" => self.network.retries = u32_value(spec.name, &value)?,
             "network.proxy" => self.network.proxy = value,
             "network.nominatim_url" => self.network.nominatim_url = value,
+            "network.offline" => {
+                check_enum(spec.name, &value, &OFFLINE_MODES)?;
+                self.network.offline = value;
+            }
             "cache.enabled" => self.cache.enabled = bool_value(spec.name, &value)?,
             "cache.weather_ttl_secs" => {
                 self.cache.weather_ttl_secs = u32_value(spec.name, &value)?;
@@ -1582,6 +1669,7 @@ impl Config {
             "defaults.days" => check_range(key, u32::from(self.defaults.days), DAYS_RANGE),
             "defaults.language" => check_language(key, &self.defaults.language),
             "location.default" => self.validate_location(),
+            "geo.strategy" => check_enum(key, &self.geo.strategy, GEO_STRATEGIES),
             "units.temp" => check_optional_enum(key, self.units.temp.as_deref(), TEMP_UNITS),
             "units.wind" => check_optional_enum(key, self.units.wind.as_deref(), WIND_UNITS),
             "units.pressure" => {
@@ -1595,6 +1683,7 @@ impl Config {
             "network.retries" => check_range(key, self.network.retries, RETRIES_RANGE),
             "network.proxy" => self.validate_proxy(),
             "network.nominatim_url" => self.validate_nominatim_url(),
+            "network.offline" => check_enum(key, &self.network.offline, &OFFLINE_MODES),
             "cache.weather_ttl_secs" => check_positive(key, self.cache.weather_ttl_secs),
             "cache.ip_ttl_secs" => check_positive(key, self.cache.ip_ttl_secs),
             "cache.geocode_ttl_secs" => check_positive(key, self.cache.geocode_ttl_secs),
@@ -1721,8 +1810,8 @@ pub struct Settings {
     pub no_cache: bool,
     /// `--refresh`.
     pub refresh: bool,
-    /// `--offline`.
-    pub offline: bool,
+    /// The resolved offline policy (`--offline`, else `network.offline`).
+    pub offline: OfflineMode,
 }
 
 /// The command line overrides applied on top of the configuration file.
@@ -1752,8 +1841,8 @@ pub struct CliOverrides {
     pub no_cache: bool,
     /// `--refresh`.
     pub refresh: bool,
-    /// `--offline`.
-    pub offline: bool,
+    /// `--offline`, when the flag was given (`None` = follow `network.offline`).
+    pub offline: Option<OfflineMode>,
 }
 
 impl Settings {
@@ -1793,7 +1882,7 @@ impl Settings {
             proxy: non_empty(&config.network.proxy),
             no_cache: cli.no_cache,
             refresh: cli.refresh,
-            offline: cli.offline,
+            offline: config.offline_mode(cli.offline)?,
         })
     }
 }
@@ -1813,6 +1902,7 @@ mod tests {
     use std::path::Path;
 
     use super::{CliOverrides, Config, DEFAULT_DOCUMENT, KEY_TABLE, migrate};
+    use crate::cache::OfflineMode;
 
     /// Parses a document the way `Config::load` does.
     fn parse(text: &str) -> super::Result<Config> {
@@ -1829,10 +1919,12 @@ mod tests {
         assert_eq!(config.defaults.days, 3);
         assert_eq!(config.defaults.language, "auto");
         assert_eq!(config.location.default, "");
+        assert_eq!(config.geo.strategy, "auto");
         assert_eq!(config.units, super::UnitOverrides::default());
         assert_eq!(config.network.timeout_secs, 15);
         assert_eq!(config.network.retries, 3);
         assert_eq!(config.network.proxy, "");
+        assert_eq!(config.network.offline, "off");
         assert!(config.cache.enabled);
         assert_eq!(config.cache.weather_ttl_secs, 600);
         assert_eq!(config.cache.ip_ttl_secs, 86_400);
@@ -2190,7 +2282,8 @@ mod tests {
         assert_eq!(from_file.provider, "open-meteo");
         assert_eq!(from_file.location.as_deref(), Some("Beijing"));
         assert_eq!(from_file.proxy, None);
-        assert!(!from_file.no_cache && !from_file.refresh && !from_file.offline);
+        assert!(!from_file.no_cache && !from_file.refresh);
+        assert_eq!(from_file.offline, OfflineMode::Off);
 
         let overridden = CliOverrides {
             provider: Some("smhi".to_owned()),
@@ -2334,23 +2427,63 @@ mod tests {
     }
 
     #[test]
-    fn offline_needs_an_enabled_cache() {
+    fn offline_needs_an_enabled_cache_only_for_the_weather_half() {
         let mut config = Config::default();
-        config
-            .check_offline(true)
-            .expect("an enabled cache serves offline");
+        for mode in [OfflineMode::Weather, OfflineMode::All] {
+            config
+                .check_offline(mode)
+                .expect("an enabled cache serves offline");
+        }
 
         config.cache.enabled = false;
-        config.check_offline(false).expect("no flags, no problem");
+        config.check_offline(OfflineMode::Off).expect("no flags");
+        config
+            .check_offline(OfflineMode::Geo)
+            .expect("--offline=geo fetches the weather live");
         let error = config
-            .check_offline(true)
-            .expect_err("--offline and cache.enabled = false cannot be served");
+            .check_offline(OfflineMode::All)
+            .expect_err("--offline with cache.enabled = false cannot be served");
         assert_eq!(error.exit_code(), 4);
         assert!(
             error.to_string().contains("cache.enabled = false"),
             "{error}"
         );
         assert!(error.to_string().contains("drop `--offline`"), "{error}");
+    }
+
+    #[test]
+    fn the_offline_policy_resolves_flag_then_config() {
+        let mut config = Config::default();
+        assert_eq!(
+            config.offline_mode(None).expect("the default parses"),
+            OfflineMode::Off
+        );
+        assert_eq!(
+            config
+                .offline_mode(Some(OfflineMode::Geo))
+                .expect("the flag wins"),
+            OfflineMode::Geo
+        );
+
+        config.network.offline = "all".to_owned();
+        assert_eq!(
+            config
+                .offline_mode(None)
+                .expect("the configured value parses"),
+            OfflineMode::All
+        );
+        assert_eq!(
+            config
+                .offline_mode(Some(OfflineMode::Weather))
+                .expect("the flag still wins"),
+            OfflineMode::Weather
+        );
+
+        config.network.offline = "sometimes".to_owned();
+        let error = config
+            .offline_mode(None)
+            .expect_err("an unknown policy is rejected");
+        assert!(error.to_string().contains("network.offline"), "{error}");
     }
 
     #[test]

@@ -21,9 +21,11 @@
 //! Time is never read directly: everything that needs "now" asks the [`Clock`], so TTL boundaries
 //! and the Nominatim throttle are tested by asserting the requested waits instead of sleeping.
 
+use std::fmt;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
@@ -183,6 +185,92 @@ impl CacheMode {
             Self::Refresh => "refresh",
             Self::Offline => "offline",
         }
+    }
+}
+
+/// Every accepted spelling of `[network] offline`; `--offline` takes the same set.
+pub const OFFLINE_MODES: [&str; 4] = ["off", "weather", "geo", "all"];
+
+/// The run-wide offline policy behind `--offline[=<weather|geo|all>]` and `[network] offline`.
+///
+/// The policy names which subsystems may not touch the network; each silenced subsystem runs its
+/// [`Cache`] in [`CacheMode::Offline`], where a miss is a hard error instead of a request. The
+/// split matters because "cache-only weather" and "local geocoding" are different needs: a
+/// traveller may want a deterministic weather answer while still resolving a new city name, or the
+/// reverse (step 18).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OfflineMode {
+    /// The network is allowed everywhere (the default).
+    #[default]
+    Off,
+    /// The weather answer comes from the cache only; name resolution may use the bundled table
+    /// and the network geocoder.
+    Weather,
+    /// Name resolution uses the bundled city table only (no geocoder, no Nominatim, no IP
+    /// lookup); the weather is fetched live.
+    Geo,
+    /// No socket at all: bundled name resolution, cache-only weather, no IP lookup.
+    All,
+}
+
+/// The subsystems an [`OfflineMode`] can silence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    /// The forecast and everything fetched alongside it (the alert and air-quality panels).
+    Weather,
+    /// Name resolution: the bundled table, the network geocoder, Nominatim and the IP lookup.
+    Geo,
+}
+
+impl OfflineMode {
+    /// The policy as it is spelled on the command line and in the configuration.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Weather => "weather",
+            Self::Geo => "geo",
+            Self::All => "all",
+        }
+    }
+
+    /// Whether the policy leaves the network alone.
+    #[must_use]
+    pub const fn is_off(self) -> bool {
+        matches!(self, Self::Off)
+    }
+
+    /// Whether this policy silences `scope`.
+    #[must_use]
+    pub const fn silences(self, scope: Scope) -> bool {
+        match self {
+            Self::Off => false,
+            Self::Weather => matches!(scope, Scope::Weather),
+            Self::Geo => matches!(scope, Scope::Geo),
+            Self::All => true,
+        }
+    }
+}
+
+impl FromStr for OfflineMode {
+    type Err = Error;
+
+    fn from_str(text: &str) -> Result<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "off" => Ok(Self::Off),
+            "weather" => Ok(Self::Weather),
+            "geo" => Ok(Self::Geo),
+            "all" => Ok(Self::All),
+            value => Err(Error::Usage(format!(
+                "`{value}` is not an offline mode; expected off, weather, geo or all"
+            ))),
+        }
+    }
+}
+
+impl fmt::Display for OfflineMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 
@@ -544,14 +632,16 @@ impl Cache {
     ///
     /// A cached body that no longer parses counts as a miss and is fetched again (so a provider
     /// schema change heals itself instead of failing forever); a miss in [`CacheMode::Offline`] is
-    /// [`Error::Network`] naming the provider, the place the answer was for and the exact key
-    /// path, plus the one command that can fix it. `provider` is only the name a decode failure
-    /// reports, so the error points at the upstream that changed rather than at the cache.
+    /// [`Error::Network`] naming the provider, what was asked for, the place the answer was for
+    /// and the exact key path, plus the one command that can fix it. `provider` and `what` are
+    /// only the names a failure reports, so the error points at the upstream that changed (or the
+    /// answer that is missing) rather than at the cache.
     pub fn read_or_fetch_json<T: DeserializeOwned>(
         &self,
         key: &CacheKey,
         ttl: Duration,
         provider: &str,
+        what: &str,
         place: &str,
         fetch: impl FnOnce() -> Result<(u16, String)>,
     ) -> Result<T> {
@@ -566,7 +656,7 @@ impl Cache {
         }
         if self.mode == CacheMode::Offline {
             return Err(Error::Network(format!(
-                "offline mode: no cached {provider} answer for {place} at {}; \
+                "offline: no cached {provider} {what} for {place} at {}; \
                  rerun without `--offline` to fetch it",
                 key.path().display()
             )));

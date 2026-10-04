@@ -574,5 +574,5 @@ fn a_station_from_the_configuration_is_the_default_location() {
     run(&sandbox, &["--offline", "-f", "plain"])
         .assert()
         .code(3)
-        .stderr(predicate::str::contains("offline mode"));
+        .stderr(predicate::str::contains("offline:"));
 }

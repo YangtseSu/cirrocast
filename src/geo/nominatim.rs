@@ -152,6 +152,7 @@ impl Geocoder for Nominatim<'_> {
             &key,
             self.ttl,
             "nominatim",
+            "search answer",
             &format!("the OSM query `{query}`"),
             || self.fetch(query, limit),
         )?;

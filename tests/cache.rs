@@ -102,6 +102,7 @@ fn a_future_envelope_version_is_a_miss_and_a_corrupt_entry_self_heals() {
             &key(),
             Duration::from_secs(600),
             "test",
+            "answer",
             "the test key",
             || {
                 fetches.fetch_add(1, Ordering::SeqCst);
@@ -118,6 +119,7 @@ fn a_future_envelope_version_is_a_miss_and_a_corrupt_entry_self_heals() {
             &key(),
             Duration::from_secs(600),
             "test",
+            "answer",
             "the test key",
             || {
                 fetches.fetch_add(1, Ordering::SeqCst);
@@ -144,6 +146,7 @@ fn a_failed_cache_write_does_not_discard_the_fetched_answer() {
             &key(),
             Duration::from_secs(600),
             "test",
+            "answer",
             "the test key",
             || Ok((200, "{\"results\":[\"served\"]}".to_owned())),
         )
@@ -173,6 +176,7 @@ fn no_cache_reads_and_writes_nothing() {
             &key(),
             Duration::from_secs(600),
             "test",
+            "answer",
             "the test key",
             || {
                 fetches.fetch_add(1, Ordering::SeqCst);
@@ -199,6 +203,7 @@ fn refresh_bypasses_a_fresh_entry_and_replaces_it() {
             &key(),
             Duration::from_secs(600),
             "test",
+            "answer",
             "the test key",
             || Ok((200, "{\"generation\":2}".to_owned())),
         )
@@ -229,6 +234,7 @@ fn offline_serves_hits_and_fails_loudly_on_misses() {
             &key(),
             Duration::from_secs(600),
             "test",
+            "answer",
             "the test key",
             || {
                 fetches.fetch_add(1, Ordering::SeqCst);
@@ -245,6 +251,7 @@ fn offline_serves_hits_and_fails_loudly_on_misses() {
             &missing,
             Duration::from_secs(600),
             "test",
+            "answer",
             "the test key",
             || panic!("offline mode must not fetch"),
         )
@@ -253,7 +260,7 @@ fn offline_serves_hits_and_fails_loudly_on_misses() {
     assert!(
         error
             .to_string()
-            .contains("offline mode: no cached test answer for the test key at geocode/"),
+            .contains("offline: no cached test answer for the test key at geocode/"),
         "{error}"
     );
     assert!(

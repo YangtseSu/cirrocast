@@ -181,6 +181,7 @@ impl<'a> IpLocatorChain<'a> {
             &key,
             self.ttl,
             service.slug(),
+            "location answer",
             "the public IP",
             || {
                 let request = HttpRequest::get(service.endpoint());

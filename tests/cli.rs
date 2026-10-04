@@ -418,7 +418,7 @@ fn metar_is_selectable_and_reaches_the_fetch() {
         .args(["-p", "metar", "--station", "ZBAA", "--offline"])
         .assert()
         .code(3)
-        .stderr(predicate::str::contains("offline mode: no cached metar"));
+        .stderr(predicate::str::contains("offline: no cached metar"));
 }
 
 #[test]
