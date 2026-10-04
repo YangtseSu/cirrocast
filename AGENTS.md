@@ -109,6 +109,29 @@ exported for the whole test job. The `gates` job additionally enforces the rende
 `deny.toml`: an audited licence allow list, duplicates and wildcards denied, crates.io as the only
 source, and no advisory ignore without a reason and an expiry date.
 
+### Releasing
+
+The bundled city table is refreshed and verified **locally, before the tag**: the release workflow
+stays off the network for it, and a tag must never be cut against a stale snapshot. The check
+downloads the official dump, so run it where the network is reachable — and not under
+`CIRROCAST_FORBID_NETWORK=1`:
+
+```bash
+cargo run -p geo-table -- https://download.geonames.org/export/dump/cities15000.zip --check
+```
+
+`unchanged` for all three files → tag. `CHANGED` → refresh, test, re-record, commit, then tag:
+
+```bash
+cargo run -p geo-table -- https://download.geonames.org/export/dump/cities15000.zip   # writes src/geo/data
+cargo test --workspace          # the suite pins rows of the committed snapshot
+# re-record the blob sizes and timings in docs/plans/21-perf-and-resource-budget.md
+git add src/geo/data docs/plans/21-perf-and-resource-budget.md && git commit
+```
+
+The README's release checklist mirrors this. The full development/release guide is step 28's
+`CONTRIBUTING.md`; this rule moves there once that file exists.
+
 ## Plan-driven workflow
 
 1. Pick the lowest-numbered step in `docs/plans/README.md` with `Status: ⬜ not-started` (or continue a

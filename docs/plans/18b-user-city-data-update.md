@@ -212,3 +212,9 @@ CIRROCAST_FORBID_NETWORK=1 cargo run -q -- location update-data; echo $?   # lou
   `cargo run -p geo-table -- <path-or-url> [--check]` and `cargo test --workspace` — with no shell
   script to keep in step. Verified against the local dump, the official URL and a truncated dump
   (0/0/1), with the working tree untouched in check mode.
+- 2026-10-04 — the refresh became part of the release process, locally: `AGENTS.md` gained a
+  "Releasing" rule (run `cargo run -p geo-table -- <official dump> --check` before tagging; a
+  `CHANGED` answer means refresh, test, re-record and commit first), the README's Install section
+  states the guarantee and the release checklist gained the pre-tag step. The release workflow is
+  deliberately untouched: it has no network for the data and the check belongs on the machine that
+  cuts the tag.
