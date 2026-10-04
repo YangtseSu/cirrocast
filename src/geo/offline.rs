@@ -33,11 +33,15 @@ use crate::model::Location;
 use crate::paths::Paths;
 
 /// The two embedded members; the builder writes both under `src/geo/data/`.
-const CITIES_GZ: &[u8] = include_bytes!("data/cities.bin.gz");
-const KEYS_GZ: &[u8] = include_bytes!("data/keys.bin.gz");
+///
+/// `static`, not `const`: a `const` holding an `include_bytes!` value is inlined into every use
+/// site, and with more than one codegen unit the linker keeps one anonymous copy per unit — the
+/// table was embedded twice (3.4 MB) until this became a `static` with a single address.
+static CITIES_GZ: &[u8] = include_bytes!("data/cities.bin.gz");
+static KEYS_GZ: &[u8] = include_bytes!("data/keys.bin.gz");
 
 /// The embedded provenance record: the bundled table's dump date comes from it.
-const SNAPSHOT: &str = include_str!("data/SNAPSHOT");
+static SNAPSHOT: &str = include_str!("data/SNAPSHOT");
 
 /// What a corrupt embedded member tells the reader to do about it.
 const REBUILD_HINT: &str =

@@ -122,6 +122,7 @@ step 18's progress log).
 | embedded total | 3 436 210 B ≈ **3.28 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-10-04 dump: 34 152 rows, 310 502 keys) |
 | release binary before step 18 | 12 270 752 B |
 | release binary after step 18 | 15 928 616 B (+3 657 864 B ≈ +3.49 MiB: the data plus ≈220 KB of decoder/`unicode-normalization` code) |
+| release binary after step 18b | 16 047 296 B (+118 KB over step 18 for the shared table codec, the update command and its ZIP reader; the members are embedded once — a `const` holding `include_bytes!` was duplicated across codegen units and cost 3.4 MB until it became a `static`) |
 | `--version`, median of 5 | **1.6 ms** (budget: 20 ms) |
 | `--help`, median of 3 | 2.0 ms |
 | `location search --offline Beijing`, median of 5 | **52 ms** (index + row decode, ranking; the step-18 contract is "well under a second") |

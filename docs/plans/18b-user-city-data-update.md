@@ -184,3 +184,10 @@ CIRROCAST_FORBID_NETWORK=1 cargo run -q -- location update-data; echo $?   # lou
   XDG sandbox (install → resolve from the user table → `--check` 0/1 → `--offline` refusal → the
   network guard failing a URL without installing anything → the note firing once and being silenced
   by `-q`).
+- 2026-10-04 — post-commit size check found and fixed a real regression: after the feature landed the
+  release binary had grown by 3.44 MB instead of ~120 KB, and a byte scan showed both embedded
+  members present **twice**. Cause: `const CITIES_GZ: &[u8] = include_bytes!(...)` is inlined into
+  every use site, and with two use sites in different codegen units the linker kept one anonymous
+  copy per unit. Turning the three embedded values into `static`s (one address each) restored the
+  single copy: 19 485 440 → 16 047 296 B, i.e. +118 KB over step 18's binary. The step-21 measured
+  table carries the corrected figure.
