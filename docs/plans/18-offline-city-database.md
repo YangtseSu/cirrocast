@@ -143,9 +143,9 @@ offline path produces the same ranking as the network path for the same query.
   budget cannot absorb 2.7 MiB, flipping the default is a one-line change recorded there.
 * **Snapshot cadence**: GeoNames regenerates dumps daily; we pin one dated snapshot, record its date
   and SHA-256 in `src/geo/data/SNAPSHOT`, and refresh at release time only (step 28 documents the
-  command; `scripts/refresh-city-data.sh` is the command — download → build → canary tests, with the
-  pinned expectations left for the operator to move deliberately). Nothing in the runtime ever
-  downloads the dataset.
+  command; `cargo run -p geo-table -- <path-or-url> [--check]` is the command — fetch/read → build
+  (or compare), with the pinned expectations left for the operator to move deliberately). Nothing in
+  the runtime ever downloads the dataset.
 * **Ranking identity**: the offline index stores exactly the fields the step-04 ranking consumes, and
   `geo/rank.rs` is the single implementation, so the offline and online paths cannot drift; the test
   compares the ordering of the recorded step-04 fixtures with the offline ordering for the same
@@ -291,3 +291,7 @@ not materialised eagerly.
   `location update-data` installs a dump-derived table under `$XDG_DATA_HOME`; "automatic" = the
   user's own timer; an in-run auto-fetch is rejected there for privacy, latency and determinism).
   This step's deliverable set and status are unchanged.
+- 2026-10-04 — the refresh script this step introduced as a follow-up (see the entry above) was
+  removed once its last unique capability moved into the builder: `geo-table --check` compares a
+  dump against `src/geo/data` without writing, and the workflow is `cargo run -p geo-table -- <source>
+  [--check]` plus `cargo test --workspace`. Step 18b's progress log records the change.

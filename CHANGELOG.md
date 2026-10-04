@@ -43,11 +43,10 @@ records how each of them changes and which changes are breaking.
   keys with `config get`/`set` support.
 * `cirrocast`'s workspace gained the dev-only `build/geo-table` builder that produces
   `src/geo/data/*.bin.gz` from a `cities15000.txt` (`cargo run -p geo-table -- <file> src/geo/data`);
-  its output is byte-for-byte deterministic. `scripts/refresh-city-data.sh` wraps the refresh —
-  the same fetch/extract/build code as `location update-data`, then the canary tests that pin rows
-  of the committed snapshot — and refuses to hide a data change behind a passing build; `--check`
-  reports whether the committed snapshot still matches a dump without touching the tree (exit 1
-  when it differs).
+  its output is byte-for-byte deterministic and it runs the same fetch/extract/build code as
+  `location update-data` (a `.txt`/`.zip` path or URL); `cargo run -p geo-table -- <source> --check`
+  reports whether the committed snapshot still matches a dump without writing anything (exit 1 when
+  it differs), and the test suite pins rows of the committed data so a refresh cannot pass unnoticed.
 
 ### Changed
 

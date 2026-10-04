@@ -8,7 +8,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Status: ✅ done
 Depends on: 18
 Touches: `src/geo/table.rs` (new), `src/geo/update.rs` (new), `src/geo/offline.rs`, `src/geo/mod.rs`,
-`scripts/refresh-city-data.sh`,
 `src/cli.rs`, `src/config/mod.rs`, `src/paths.rs`, `build/geo-table/` (switches to the shared
 encoder), `README.md`, `docs/plans/README.md`, `CHANGELOG.md`, `REUSE.toml`,
 `tests/{offline_geo,offline_lazy,config,cli,cli_flags}.rs`,
@@ -37,10 +36,9 @@ free of hidden requests.
   End-of-Central-Directory, a `cities15000.txt` member (or the first `.txt`), deflate through
   `flate2`, CRC-32 checked; zip64, encrypted entries and unknown methods are typed errors — and
   encodes the blobs with `geo::table`, proving them by decoding them back. `build_candidate` is
-  public on purpose: the dev-only `geo-table` builder and `scripts/refresh-city-data.sh` call the
-  same function for the *committed* snapshot, so the maintainer path and the user path share one
-  fetch/ZIP/encode implementation (the script is now only "where the files go, the canary run and
-  the diff" and needs no `curl`/`unzip`). `install(candidate,
+  public on purpose: the dev-only `geo-table` builder calls the same function for the *committed*
+  snapshot (with `--check` for the no-write comparison), so the maintainer path and the user path
+  share one fetch/ZIP/encode implementation. `install(candidate,
   paths)` writes `$XDG_DATA_HOME/cirrocast/geo/{cities.bin.gz,keys.bin.gz,SNAPSHOT}` atomically
   (`tmp` + rename, the previous table kept until the new one validates); `compare(candidate,
   paths)` is the `--check` half and writes nothing. No new dependency.
@@ -207,3 +205,10 @@ CIRROCAST_FORBID_NETWORK=1 cargo run -q -- location update-data; echo $?   # lou
   dump records the same value whether it arrived as `.txt` or in a `.zip` — verified: building from
   either source reproduces the committed `src/geo/data` byte for byte, and the script's `--check`
   reports unchanged for both.
+- 2026-10-04 — the shell wrapper is gone: `scripts/refresh-city-data.sh` was removed after its last
+  unique capability moved into the builder. `geo-table --check` builds the candidate and compares
+  the three files with `src/geo/data` byte for byte (per-file `unchanged`/`CHANGED`, a committed-vs-
+  this-dump summary line, exit 1 on a difference), so the maintainer workflow is now two commands —
+  `cargo run -p geo-table -- <path-or-url> [--check]` and `cargo test --workspace` — with no shell
+  script to keep in step. Verified against the local dump, the official URL and a truncated dump
+  (0/0/1), with the working tree untouched in check mode.

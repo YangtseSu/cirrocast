@@ -448,12 +448,12 @@ folding is NFKD-based, which is why `São Paulo`/`Sao Paulo`, `MÜNCHEN`/`munche
 `network` (the geocoder only) — and the offline path ranks with the same function as the network
 path. The table carries the ISO country code rather than the country name the geocoder reports, and
 no admin-1 division; `-v` says which source answered. Refresh the snapshot with
-`scripts/refresh-city-data.sh` — it runs the same fetch/extract/build code as `location update-data`
-(no `curl`/`unzip` of its own) and then the tests that pin rows of the committed data, so a refresh
-is a reviewable diff, never a silent one; `--check` builds into a temporary directory and only
-reports whether the committed snapshot still matches a dump (exit 1 when it does not), and
-`--from <path-or-url>` takes a local dump (the `SNAPSHOT` file records the dump date and the dump's
-SHA-256). A user who does not maintain the repository can install a
+`cargo run -p geo-table -- <path-or-url>` — the same fetch/extract/build code as
+`location update-data`, writing into `src/geo/data` — and `cargo run -p geo-table -- <path-or-url>
+--check` reports whether the committed snapshot still matches a dump (exit 1 when it does not)
+without writing anything; run `cargo test --workspace` afterwards, because the suite pins rows of
+the committed data, so a refresh is a reviewable diff, never a silent one (the `SNAPSHOT` file
+records the dump date and the dump's SHA-256). A user who does not maintain the repository can install a
 newer table for their own account instead — see [Updating the city data](#updating-the-city-data).
 
 ### Updating the city data
