@@ -29,6 +29,18 @@ records how each of them changes and which changes are breaking.
   `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/`, and a build with
   `--no-default-features` drops the table (`offline-geo` is a default feature) and falls back to
   the network geocoder.
+* **User-installed city tables (step 18b).** `cirrocast location update-data` builds a city table
+  from a `GeoNames` `cities15000` dump — the official ZIP, a mirror through `[geo] update_url`, or a
+  local `.txt`/`.zip` with `--from` — and installs it under `$XDG_DATA_HOME/cirrocast/geo/`, where
+  name resolution prefers it: `[geo] data = "auto"` (the default) uses the user table when one is
+  installed and valid, `bundled` ignores it, and `user` requires it. `--check` reports whether a
+  source would change anything (exit 1 when it would) without writing. The bundled table stays the
+  default and the fallback, and a corrupt user table warns once and falls back. Nothing in a query
+  ever fetches city data: `[geo] update = "check"` only prints a once-a-day note when the answering
+  table is older than `update_interval_days` (90 by default), and automatic refresh is the user's
+  own timer running the same idempotent command (systemd and cron examples ship in the README).
+* `[geo] data`, `[geo] update`, `[geo] update_interval_days` and `[geo] update_url` configuration
+  keys with `config get`/`set` support.
 * `cirrocast`'s workspace gained the dev-only `build/geo-table` builder that produces
   `src/geo/data/*.bin.gz` from a `cities15000.txt` (`cargo run -p geo-table -- <file> src/geo/data`);
   its output is byte-for-byte deterministic. `scripts/refresh-city-data.sh` wraps the refresh —

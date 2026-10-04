@@ -46,7 +46,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | A — Foundation | 01–06 | real end-to-end run: `cirrocast Beijing -f plain` prints live data from a keyless backend |
 | B — Output parity | 07–11 | wttr.in-style `art-table` plus `one-line`/`plain`/`json`, en-US + zh-CN, all v1 backends |
 | C — Quality and release | 12–14 | **v1.0.0 = "basically formed"**, packaged and reproducible |
-| D — Reach and location | 15–20 + 18b | v1.1 shipped alerts, air quality, moon/astro (15–17) and the offline city database (18); the user-updatable table (18b), multi-location output and the candidate picker remain |
+| D — Reach and location | 15–20 + 18b | v1.1 shipped alerts, air quality, moon/astro (15–17), the offline city database (18) and the user-updatable table (18b); multi-location output (19) and the candidate picker (20) remain |
 | E — Quality and integration | 21–22 | performance and resource budgets; the `status` probe, ecosystem recipes and frozen output contracts |
 | F — Sources and auth | 23–27 | extra backends, keyless national providers with coverage-aware `auto`, second-generation location sources, climate normals, QWeather JWT |
 | G — Documentation | 28 | the documentation set, the generated reference and the frozen JSON schemas |
@@ -82,7 +82,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ✅ done | 03, 08 |
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ✅ done | 03, 08 |
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ✅ done | 04, 05 |
-| 18b | D | [user-city-data-update](18b-user-city-data-update.md) | ⬜ not-started | 18 |
+| 18b | D | [user-city-data-update](18b-user-city-data-update.md) | ✅ done | 18 |
 | 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ⬜ not-started | 08, 14 |
 | 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
 | 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ⬜ not-started | 12, 18, 19 |

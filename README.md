@@ -183,6 +183,9 @@ tier it came from.
 | AQI scale | `--aqi-index` | — | `air.index` |
 | Offline policy | `--offline[=<weather\|geo\|all>]` | — | `network.offline` |
 | Geo strategy | — | — | `geo.strategy` |
+| City table source | — | — | `geo.data` |
+| Freshness note | — | — | `geo.update` |
+| Update source | `--from` (`update-data`) | — | `geo.update_url` |
 
 ### Exit codes
 
@@ -449,7 +452,64 @@ no admin-1 division; `-v` says which source answered. Refresh the snapshot with
 rows of the committed data, so a refresh is a reviewable diff, never a silent one; `--check` builds
 into a temporary directory and only reports whether the committed snapshot still matches a dump
 (exit 1 when it does not), and `--from <path-or-url>` takes a local dump (the `SNAPSHOT` file records
-the dump date and the input's SHA-256).
+the dump date and the input's SHA-256). A user who does not maintain the repository can install a
+newer table for their own account instead — see [Updating the city data](#updating-the-city-data).
+
+### Updating the city data
+
+The bundled table is the default and the fallback; a newer dump can be installed per user without
+waiting for a release:
+
+```bash
+cirrocast location update-data                 # the official GeoNames cities15000 dump
+cirrocast location update-data --from ~/Downloads/cities15000.zip   # a local .txt or .zip
+cirrocast location update-data --check         # only report whether it would change (exit 1 if so)
+```
+
+The command fetches through the same HTTP stack as everything else (proxy, timeout, retries and the
+`CIRROCAST_FORBID_NETWORK` guard apply), builds the table with the tool's own encoder, proves it
+decodes and installs it atomically under `$XDG_DATA_HOME/cirrocast/geo/`. Name resolution then
+prefers it — `-v` names the table and its dump date — while the bundled table stays the fallback:
+
+| `[geo] data` | Behaviour |
+|---|---|
+| `auto` (default) | the user table when one is installed and valid, else the bundled table |
+| `bundled` | always the bundled table (the user table is ignored) |
+| `user` | the user table only; a missing or corrupt one is an error naming `location update-data` |
+
+A corrupt user table is diagnosed once, with a warning, and the run falls back to the bundled table
+unless `data = "user"` was set. The source is `[geo] update_url` when set (a mirror), else the
+official dump; `--from` overrides both for one run.
+
+**Automatic updates are yours to schedule.** Nothing in a query ever fetches city data:
+`[geo] update = "check"` only prints a once-a-day note (silenced by `-q`) when the answering table
+is older than `update_interval_days` (default 90). To refresh on a schedule, run the idempotent
+command from a timer — a run against an unchanged dump rewrites identical bytes:
+
+```ini
+# ~/.config/systemd/user/cirrocast-data.service
+[Unit]
+Description=Refresh cirrocast's city table
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/cirrocast location update-data
+```
+```ini
+# ~/.config/systemd/user/cirrocast-data.timer
+[Unit]
+Description=Weekly cirrocast city-table refresh
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+(The cron equivalent is `0 4 * * 1 cirrocast location update-data`. The `GeoNames` credit prints for
+either table: `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/`.)
 
 Non-Latin names are searched in their own script — `新乡`, `Москва`, `Αθήνα`, `القاهرة`, `תל אביב`,
 `กรุงเทพ` — because the geocoding service indexes place names per language and an English request
@@ -492,7 +552,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [World Weather Online](https://www.worldweatheronline.com/) | `-p worldweatheronline` | free tier: 100 requests/day, up to 5 forecast days per its FAQ; `format=json` is sent explicitly | data proprietary; free keys must credit WorldWeatherOnline.com — the rendered report ends with `Data: WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/` |
 | [Pirate Weather](https://pirateweather.net/) | `-p pirateweather` | free tier: 10 000 calls/month, 1–4 requests/second; `extend=hourly` is sent for the 7-day horizon | data proprietary; no attribution is mandated — the rendered report ends with `Data: Pirate Weather — https://pirateweather.net/` |
 | [QWeather](https://www.qweather.com/) | `-p qweather` | free allowance: first 50 000 requests/month at ¥0, QPM 3 000; needs the account API host in `[providers.qweather].host` | data proprietary; the rendered report ends with `Data: QWeather — https://www.qweather.com/` |
-| [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding, and the bundled offline city table (`src/geo/data`, snapshot `cities15000`, dump date in `SNAPSHOT`) | — | CC-BY-4.0; the bundled path prints `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` |
+| [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding, and the city tables: the bundled one (`src/geo/data`, snapshot `cities15000`, dump date in `SNAPSHOT`) and any the user installs with `location update-data` under `$XDG_DATA_HOME/cirrocast/geo/` | — | CC-BY-4.0; both paths print `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` |
 | [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
 | [api.weather.gov](https://api.weather.gov/) (NOAA/NWS) | alerts for the US and territories | a descriptive `User-Agent` (sent); public-domain data | no credit mandated; the source is named in the listing |
 | [MeteoAlarm](https://api.meteoalarm.org/) | alerts for EUMETNET members | a bearer token (`CIRROCAST_METEOALARM_KEY`) that the portal issues to members and re-distributors; the source is optional | cached warnings are for the local user only, not for redistribution |
