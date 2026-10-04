@@ -25,7 +25,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   beside the shipped `resolve` (which becomes a thin wrapper), so both `location search` and the
   weather path see the same ranked list. Ranking stays exactly step 04's three keys (exact
   case-insensitive name, then population, then upstream order); the winner is element 0.
-- ⬜ `src/geo/pick.rs`: `pub struct Picker<'a> { input: &'a mut dyn BufRead, output: &'a mut dyn
+- ✅ `src/geo/pick.rs`: `pub struct Picker<'a> { input: &'a mut dyn BufRead, output: &'a mut dyn
   Write }` with `choose(&mut self, query: &str, candidates: &[Location]) -> Result<Location>`:
   one line per candidate, `[1]`…`[N]` with the ranked winner marked `*`, formatted through the
   shipped `location_line` plus a `pop. <n>` tail when the population is known; prompt
@@ -148,3 +148,8 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   `KEY_TABLE`/`config get|set` vocabulary and the `CIRROCAST_LOCATION_PICK` family; the built-in
   default is `auto`, an invalid value is refused with the two spellings listed. The CLI policy that
   reads it lands with the picker wiring.
+- 2026-10-04 — deliverable 2: `src/geo/pick.rs` ships the stream-injected `Picker` (numbered list,
+  `*` on the ranked winner, `pop. <n>` tail, one-line prompt) plus `prompt_lock`, which serializes
+  prompts so a multi-location run cannot interleave two of them on the shared stdin/stderr.
+  `tests/location_pick.rs` drives it with a `Cursor` and a `Vec<u8>`: Enter, `2`, `q`/`Q`, EOF,
+  out-of-range and junk answers, the three-strike usage error and the exact rendered list.

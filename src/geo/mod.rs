@@ -21,6 +21,7 @@ pub mod nominatim;
 #[cfg(feature = "offline-geo")]
 pub mod offline;
 pub mod open_meteo;
+pub mod pick;
 pub mod rank;
 pub mod table;
 pub mod tz;
