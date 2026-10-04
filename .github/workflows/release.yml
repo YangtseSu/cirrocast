@@ -66,7 +66,15 @@ jobs:
       - name: the tag names the crate version
         run: |
           set -eu
-          version="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version')"
+          # By name, not by position: the workspace has a second member (the dev-only `geo-table`
+          # builder), and `packages[0]` picked that one — the tag check then failed, and the
+          # publish job's "already on crates.io" probe would have compared the wrong version.
+          version="$(cargo metadata --format-version 1 --no-deps \
+            | jq -r '.packages[] | select(.name == "cirrocast") | .version')"
+          if [ -z "$version" ]; then
+            echo "::error::the workspace has no cirrocast package"
+            exit 1
+          fi
           if [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml's version $version"
             exit 1
@@ -157,7 +165,15 @@ jobs:
           CURL_USER_AGENT: cirrocast-release-workflow (+https://github.com/YangtseSu/cirrocast)
         run: |
           set -eu
-          version="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version')"
+          # By name, not by position: the workspace has a second member (the dev-only `geo-table`
+          # builder), and `packages[0]` picked that one — the tag check then failed, and the
+          # publish job's "already on crates.io" probe would have compared the wrong version.
+          version="$(cargo metadata --format-version 1 --no-deps \
+            | jq -r '.packages[] | select(.name == "cirrocast") | .version')"
+          if [ -z "$version" ]; then
+            echo "::error::the workspace has no cirrocast package"
+            exit 1
+          fi
           if curl -sSf -A "$CURL_USER_AGENT" "https://crates.io/api/v1/crates/cirrocast/$version" > /dev/null; then
             echo "::notice::cirrocast $version is already on crates.io; nothing to publish"
             exit 0
