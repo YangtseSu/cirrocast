@@ -16,7 +16,7 @@ records how each of them changes and which changes are breaking.
 ### Added
 
 * **Offline city database (step 18).** A `GeoNames` `cities15000` snapshot (CC BY 4.0, dump date and
-  input checksum in `src/geo/data/SNAPSHOT`) is embedded in the binary — about 3.2 MiB compressed,
+  input checksum in `src/geo/data/SNAPSHOT`) is embedded in the binary — about 3.3 MiB compressed,
   decoded lazily on the first name lookup and never written — so a plain city name resolves to
   coordinates, a time zone and a country code with no network at all. Folding is NFKD-based, so
   `São Paulo`/`Sao Paulo`, `MÜNCHEN`/`munchen`, `北京`/`Beijing`/`Peking` and `Wien`/`Vienna` all

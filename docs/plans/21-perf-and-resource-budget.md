@@ -112,18 +112,20 @@ evidence — keeping the decision, recording why.
 The offline city database is the largest single asset the binary carries, so its numbers are recorded
 here as the budget's input rather than discovered later. Machine: the maintainer's CachyOS box,
 `x86_64`, release profile as shipped in `Cargo.toml` (`lto = "thin"`, `strip = true`), rustc stable.
+Re-recorded on 2026-10-04 after the snapshot was refreshed to the official 2026-10-04 dump (see
+step 18's progress log).
 
 | Measurement | Value |
 |---|---|
-| `src/geo/data/cities.bin.gz` | 877 510 B |
-| `src/geo/data/keys.bin.gz` | 2 503 121 B |
-| embedded total | 3 380 631 B ≈ **3.22 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-09-03 dump: 34 133 rows, 304 557 keys) |
+| `src/geo/data/cities.bin.gz` | 878 055 B |
+| `src/geo/data/keys.bin.gz` | 2 558 155 B |
+| embedded total | 3 436 210 B ≈ **3.28 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-10-04 dump: 34 152 rows, 310 502 keys) |
 | release binary before step 18 | 12 270 752 B |
-| release binary after step 18 | 15 875 368 B (+3 604 616 B ≈ +3.44 MiB: the data plus ≈220 KB of decoder/`unicode-normalization` code) |
-| `--version`, median of 5 | **2.0 ms** (budget: 20 ms) |
+| release binary after step 18 | 15 928 616 B (+3 657 864 B ≈ +3.49 MiB: the data plus ≈220 KB of decoder/`unicode-normalization` code) |
+| `--version`, median of 5 | **1.6 ms** (budget: 20 ms) |
 | `--help`, median of 3 | 2.0 ms |
-| `location search --offline Beijing`, median of 5 | **50 ms** (index + row decode, ranking; the step-18 contract is "well under a second") |
-| `location search --offline --all Springfield`, median of 5 | 49 ms |
+| `location search --offline Beijing`, median of 5 | **52 ms** (index + row decode, ranking; the step-18 contract is "well under a second") |
+| `location search --offline --all Springfield`, median of 5 | 51 ms |
 | RSS, `--version` / an offline search | ≈14 MB / ≈25 MB (`ru_maxrss` of the child, coarse; the step-18 decode holds the decompressed members transiently) |
 
 Two consequences for this step: the 5 MB default-binary budget is already exceeded by the pre-step-18

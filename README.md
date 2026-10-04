@@ -437,7 +437,7 @@ winning place; add `:` (or `--exact`) to demand an exact name. Coordinates and `
 provisional time zone until the forecast response supplies the location's real one, and `~` output
 prints `Location data © OpenStreetMap contributors` (ODbL).
 
-**Offline names.** A `GeoNames` `cities15000` snapshot is embedded in the binary (about 3.2 MiB
+**Offline names.** A `GeoNames` `cities15000` snapshot is embedded in the binary (about 3.3 MiB
 compressed, decoded lazily and never written), so a plain name resolves with no network at all:
 folding is NFKD-based, which is why `São Paulo`/`Sao Paulo`, `MÜNCHEN`/`munchen`,
 `北京`/`Beijing`/`Peking` and `Wien`/`Vienna` all reach their city. `[geo] strategy` picks the order —

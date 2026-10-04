@@ -89,9 +89,10 @@ offline path produces the same ranking as the network path for the same query.
 - ✅ Size accounting task: `ls -l src/geo/data/*.bin.gz` and `cargo build --release` before/after
       this step, with both numbers recorded in `docs/plans/21-perf-and-resource-budget.md` (phase E
       owns the budget; the measured total is its input, not a surprise). The committed snapshot is
-      877 510 B (`cities.bin.gz`) + 2 503 121 B (`keys.bin.gz`) = 3 380 631 B ≈ 3.22 MiB, larger than
+      878 055 B (`cities.bin.gz`) + 2 558 155 B (`keys.bin.gz`) = 3 436 210 B ≈ 3.28 MiB, larger than
       the 2.55 MiB projection because the rows carry the display *and* ascii name plus the
-      geonameid, and the dump is the 2026-09-03 one (34 133 rows, 304 557 keys).
+      geonameid, and the dump is the 2026-10-04 one (34 152 rows, 310 502 keys; refreshed from the
+      official download, see the Progress log).
 - ✅ Tests (`tests/offline_geo.rs`, plus `tests/offline_lazy.rs` for the startup assertion):
       Springfield (`--all` prints 10 rows — the 8 exact-name rows in population order, then the
       exact-key/prefix rows — ordering pinned), São Paulo with and without the diacritic,
@@ -272,3 +273,12 @@ not materialised eagerly.
   the read-only answer to "is the vendored snapshot still current?" that the first version of the
   script only gave after overwriting the tree. Verified against the unmodified dump and a truncated
   one; the working tree is untouched in check mode.
+- 2026-10-04 — snapshot refreshed to the official 2026-10-04 dump (34 152 rows, 310 502 keys,
+  input SHA-256 `d4822b90…`), replacing the 2026-09-03 one. The dump was downloaded from
+  `download.geonames.org` (first through a US egress, then confirmed to work from a direct China IP
+  as well): the timeouts that pushed the 2026-09-03 snapshot through the Wayback Machine, and a
+  Singapore route's failure, were transient routing problems, **not** an access restriction — the
+  refresh script's help records that a failed fetch should be retried rather than worked around.
+  The canaries did not move — no pinned expectation changed — and the blob sizes and step-21
+  numbers were re-recorded; `--check` against the downloaded zip now reports all three files
+  unchanged.

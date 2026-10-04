@@ -19,12 +19,16 @@
 # input SHA-256, row and key counts) is rewritten by the builder itself; the size and timing numbers
 # in `docs/plans/21-perf-and-resource-budget.md` are re-recorded by hand.
 #
+# The official host is reachable directly (a China IP and a US egress both work; verified
+# 2026-10-04), so a timeout is a transient routing problem rather than an access restriction —
+# retry, or pass `--from` with a local copy or a mirror of the dump.
+#
 # Requirements: `curl` and `unzip` for the URL/zip path (nothing else beyond the Rust toolchain).
 
 set -euo pipefail
 
 usage() {
-    sed -n '5,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '5,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 mode=refresh
