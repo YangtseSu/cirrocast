@@ -12,6 +12,7 @@
 //! constructors receive the shared HTTP client and cache of steps 05/06. It performs no I/O of its
 //! own, which is what makes the parse table and the ranking rules testable without a network.
 
+pub mod fold;
 pub mod ip;
 pub mod nominatim;
 pub mod open_meteo;

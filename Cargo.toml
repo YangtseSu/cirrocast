@@ -37,6 +37,10 @@ clap = { version = "4.6", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.6"
 clap_mangen = "0.3"
 etcetera = "0.11"
+# gzip for the embedded city table (step 18). Already in the tree as ureq's response decoder; this
+# promotes it to a direct dependency so the offline decoder can use the same pure-Rust miniz_oxide
+# backend without a C toolchain.
+flate2 = "1"
 fluent-bundle = "0.16"
 percent-encoding = "2.3.2"
 quick-xml = "0.42"
@@ -53,6 +57,9 @@ toml = "1.1.6"
 # crate's own command line front end, which this project does not use.
 tzf-rs = { version = "2", default-features = false, features = ["bundled"] }
 unic-langid = { version = "0.9", features = ["macros"] }
+# NFKD name folding for the offline city index (step 18): the builder folds the index keys and the
+# runtime folds the query, and both sides must agree byte for byte. MIT OR Apache-2.0, no unsafe.
+unicode-normalization = "0.1.24"
 unicode-width = "0.2.2"
 ureq = { version = "3.4.2", features = ["rustls"] }
 
@@ -63,10 +70,19 @@ predicates = "3"
 serde_json = "1"
 tempfile = "3"
 
-[lints.rust]
+[lints]
+workspace = true
+
+[workspace]
+# The dev-only table builder (step 18). It is not part of the published crate, and because the
+# root manifest is a package, `cargo build`/`test`/`clippy` from the repository root still act on
+# the root package alone — the builder is reached explicitly, `cargo run -p geo-table`.
+members = ["build/geo-table"]
+
+[workspace.lints.rust]
 unsafe_code = "forbid"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"

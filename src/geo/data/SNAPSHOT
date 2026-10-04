@@ -1,0 +1,10 @@
+# GeoNames cities15000 — the dataset behind cirrocast's offline geocoder (step 18).
+# Kept verbatim under CC BY 4.0; see REUSE.toml and the README credits section.
+# Rebuild with:
+#   cargo run -p geo-table -- <path to cities15000.txt> src/geo/data
+dump = cities15000
+source = https://download.geonames.org/export/dump/cities15000.zip
+dump-date = 2026-09-02
+input-sha256 = 714c6d09950d80890522e2754df62473f031bdef641b35fe1e4befe05ec4a808
+rows = 34133
+keys = 304557

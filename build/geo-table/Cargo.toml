@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Dev-only builder for the embedded GeoNames city table (`src/geo/data/*.bin.gz`, step 18).
+# `publish = false`: it is not part of the crate the release publishes, and `cargo package` on the
+# root manifest never picks it up.
+[package]
+name = "geo-table"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+description = "Builds cirrocast's embedded city table from a GeoNames cities15000.txt"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+# The root crate supplies the one name-folding function (and nothing is enabled that needs the
+# table the builder is about to write). `default-features = false` keeps this build free of the
+# `offline-geo` feature, so a fresh checkout can run the builder before the blobs exist.
+cirrocast = { path = "../..", default-features = false }
+flate2 = "1"
+sha2 = "0.11"
+
+[lints]
+workspace = true

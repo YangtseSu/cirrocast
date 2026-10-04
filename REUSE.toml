@@ -154,6 +154,21 @@ precedence = "override"
 SPDX-FileCopyrightText = "SMHI (Swedish Meteorological and Hydrological Institute)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# The embedded GeoNames city table (step 18): the vendored `cities15000` snapshot
+# (`src/geo/data/cities.bin.gz`, `keys.bin.gz`) and the provenance record beside it. GeoNames
+# publishes the data under CC BY 4.0, so the members keep that licence and are *not* relicensed to
+# GPL; the `geo-table` builder that produces them is first-party and carries the GPL header. The
+# runtime prints the matching credit (`Location data by GeoNames (CC BY 4.0)`).
+[[annotations]]
+path = [
+    "src/geo/data/cities.bin.gz",
+    "src/geo/data/keys.bin.gz",
+    "src/geo/data/SNAPSHOT",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "GeoNames (https://www.geonames.org/)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
 # Recorded OpenStreetMap/Nominatim responses: ODbL requires attribution, and the fixtures keep the
 # upstream licence rather than being relicensed.
 [[annotations]]
