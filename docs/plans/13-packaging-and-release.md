@@ -159,7 +159,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
 * Windows, deb/rpm, Homebrew, AppImage/Flatpak, container images and other ecosystem packages: step B02.
 * A `cirrocast-git` AUR package and a copy of the packaging files in this tree: declined 2026-10-01 (see the
   design notes); revisit in step B02.
-* Documentation set beyond README/schema/plan files (guides, website, translations of docs): step 28.
+* Documentation set beyond README/schema/step files (guides, website, translations of docs): step 28.
 * Performance and size budgets printed in release notes: step 21 (the binary size note in step 14 is informational).
 * Code signing, notarization and reproducible-build attestations: no step file owns them; they are recorded in
   step 14's non-goals until a platform requires them.

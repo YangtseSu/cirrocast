@@ -74,7 +74,7 @@ ships no new features: defects found are fixed in the step that owns the code, n
   completed, AUR packages updated to `1.0.0`, and `v1.0.0` tagged with the changelog as release notes.
 - ✅ Defect handling policy applied: a defect found here is fixed in the step that owns the code (with a
   progress-log entry there), this step re-runs the affected rows and replaces their transcripts; a defect no step
-  owns becomes a deliverable in the owning phase D/E plan file (steps 15–22), never a silent fix here.
+  owns becomes a deliverable in the owning step file (steps 15–22), never a silent fix here.
 - ✅ Sign-off table below completed — one row per requirement and per "basically formed" check, each with the
   proving command, evidence pointer, verdict and a human name plus date — and the final commit flips this file to
   `Status: done`, updates the index row (14 → done) and dates the CHANGELOG's `1.0.0` section.
@@ -112,20 +112,22 @@ Sign-off table (a human fills the last three columns; tick the checkbox when the
   does not restate it, so a mapping change is a one-place edit and cannot drift between two documents.
 * Version semantics for this milestone: `1.0.0` means the CLI, config, cache and JSON output are stable contracts
   for the scope of the index's "Definition of basically formed"; the JSON and config schemas carry their own
-  versions (step 13), so phases D and E cannot silently break consumers.
+  versions (step 13), so the later phases cannot silently break consumers.
 
 ## Out of scope
 
-* Everything planned as follow-up work with its own plan file, not a roadmap wish: alerts and severity (step 15),
+* Everything planned as follow-up work with its own step file, not a roadmap wish: alerts and severity (step 15),
   air quality and pollen (16), moon phase and astro (17), the offline bundled city database (18), additional
-  providers such as met.no/visualcrossing/open-meteo archive and marine (19), the wttr.in-compatible local service
-  (20), multi-location output and user templates (21), enforced performance and resource budgets (22), the
-  documentation set and guides (23), ecosystem packaging (24) — phases D and E of `docs/plans/README.md`.
+  providers such as met.no/visualcrossing/open-meteo archive and marine (23), the wttr.in-compatible local service
+  (backlog B01), multi-location output and user templates (19), enforced performance and resource budgets (21), the
+  status probe and ecosystem recipes (22), keyless national backends (24), second-generation location sources (25),
+  climate normals (26), QWeather JWT (27) and the documentation set (28) — phases D–G and the backlog of
+  `docs/plans/README.md`. Ecosystem packaging beyond the AUR and release archives is backlog B02.
 * True non-goals for v1 and beyond, recorded so no future step is expected to deliver them: no GUI, no
   daemon/server mode in v1 (step B01's `serve` is a separate, explicitly started command), no telemetry, no TUI, no
   plugin or scripting engine, no PNG/SVG image output, no code signing/notarization or build attestations (no step
   file owns those; revisit if a target platform requires them).
-* Fixing defects inside this step: every defect is fixed in the owning step (or its phase plan file) and re-proved.
+* Fixing defects inside this step: every defect is fixed in the owning step file and re-proved.
 
 ## Verification
 

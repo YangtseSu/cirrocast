@@ -15,6 +15,9 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 * One file per step: `NN-kebab-case-title.md` (A-series, ordered by execution) or
   `B01-kebab-case-title.md` (backlog, `⏸`; see below).
 * A step is worked on alone, top to bottom. Every `- ⬜` item in a step is one committable unit.
+* Terminology: `docs/plans/` is the *plan set*; each file in it is a **step file** describing one
+  execution unit. The identifier is `step NN` (backlog: `B01`, `B02`, …) — the same word the code
+  comments use when they cite a plan.
 * Progress is tracked with emoji, **inside each step file**:
   * a `Status:` header line — one of `⬜ not-started`, `🚧 in-progress`, `⛔ blocked`, `✅ done`,
     `⏸ backlog`
@@ -95,7 +98,7 @@ backends selectable (three keyless), BYOK keys never touching `config.toml`, cit
 and IP location resolution, four text output formats with the wttr.in-style `art-table` as default,
 metric/us/uk units with per-quantity overrides, en-US + zh-CN output, XDG-compliant config, cache and
 data directories, and a packaged, REUSE-compliant, CI-clean release. Everything in phases D–G and
-the backlog is *planned work with a plan file*, not a roadmap wish and not a stub in `src/`.
+the backlog is *planned work with a step file*, not a roadmap wish and not a stub in `src/`.
 
 ## Requirement traceability
 
