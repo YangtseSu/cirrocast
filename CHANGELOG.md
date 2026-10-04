@@ -33,7 +33,8 @@ records how each of them changes and which changes are breaking.
   `src/geo/data/*.bin.gz` from a `cities15000.txt` (`cargo run -p geo-table -- <file> src/geo/data`);
   its output is byte-for-byte deterministic. `scripts/refresh-city-data.sh` wraps the refresh —
   download, extract, build, then run the canary tests that pin rows of the committed snapshot — and
-  refuses to hide a data change behind a passing build.
+  refuses to hide a data change behind a passing build; `--check` reports whether the committed
+  snapshot still matches a dump without touching the tree (exit 1 when it differs).
 
 ### Changed
 

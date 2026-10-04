@@ -266,3 +266,9 @@ not materialised eagerly.
   runs the two canary suites and exits non-zero when a pinned row moved — the refresh stays a
   reviewable diff instead of a silent rewrite. Verified with both a local `.txt` and the Wayback
   zip URL; a rebuild of the same input leaves the tree unchanged.
+- 2026-10-04 — `--check` added to the refresh script: it builds the given dump into a temporary
+  directory and compares `cities.bin.gz`, `keys.bin.gz` and `SNAPSHOT` byte for byte with the
+  committed files (exit 0 unchanged, 1 changed with the SNAPSHOT diff printed, 2 usage), which is
+  the read-only answer to "is the vendored snapshot still current?" that the first version of the
+  script only gave after overwriting the tree. Verified against the unmodified dump and a truncated
+  one; the working tree is untouched in check mode.
