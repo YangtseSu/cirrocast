@@ -13,8 +13,16 @@ records how each of them changes and which changes are breaking.
 
 ## [Unreleased]
 
-Post-`v1.0.0` work: the step-15 alert surface, on top of the 2026-10-02 review fixes
+Nothing yet.
+
+## [1.1.0] - 2026-10-04
+
+Phase D's first three steps — severe-weather alerts (15), air quality (16) and moon/astro (17) —
+on top of the 2026-10-02 review fixes
 ([`docs/reviews/02-review-01-fixes-2026-10-02.md`](docs/reviews/02-review-01-fixes-2026-10-02.md)).
+The v1 CLI contract is unchanged; the JSON document moves to `schema_version` 2 because the
+`alerts` array arrived with the alerts work (see below), and the config document stays at
+`schema_version` 1 — the `[alerts]` and `[air]` tables are additive.
 
 ### Added
 
@@ -113,6 +121,10 @@ Post-`v1.0.0` work: the step-15 alert surface, on top of the 2026-10-02 review f
 * A non-absolute `XDG_CONFIG_DIRS` entry is ignored instead of read.
 * A `days` array whose parts are not exactly `[Morning, Noon, Evening, Night]` is rejected at
   deserialisation, so no renderer can show a part under another part's label.
+* `defaults.format` accepts `moon`: the validator's list stopped at `aqi` and the template comment
+  at `dumb`, so `config set defaults.format moon` failed and a hand-written `format = "moon"` was
+  refused on every run although `-f moon` and `CIRROCAST_FORMAT=moon` worked. The three lists are
+  now pinned to each other by a test.
 
 ## [1.0.0] - 2026-10-02
 
@@ -179,6 +191,7 @@ landed. `1.0.0` freezes it.
 * Exit codes `0`–`6` documented in `--help` and the README, with `error: …` on stderr and the
   cause chain under `-v`.
 
-[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.1.0
 [1.0.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.0.0
 [0.1.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v0.1.0
