@@ -20,7 +20,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
 
 ## Deliverables
 
-- ⬜ `src/geo/mod.rs`: `pub struct Resolved { pub location: Location, pub candidates: Vec<Location>,
+- ✅ `src/geo/mod.rs`: `pub struct Resolved { pub location: Location, pub candidates: Vec<Location>,
   pub resolution: Resolution }` and a `resolve_candidates(results, spec, limit) -> Result<Resolved>`
   beside the shipped `resolve` (which becomes a thin wrapper), so both `location search` and the
   weather path see the same ranked list. Ranking stays exactly step 04's three keys (exact
@@ -139,3 +139,8 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   non-interactive path; the picker is additive on top of it. Written as a new step because steps 04
   and 08 are shipped and their tests pin the current behaviour.
 - 2026-10-04 — renumbered from 26 to 20 by the plan reorganization (serve → B01, packaging matrix → B02); dependencies unchanged, `18-offline-city-database.md` is still the offline candidate source.
+- 2026-10-04 — deliverable 1: `Resolved`/`resolve_candidates` land in `src/geo/mod.rs` and the CLI
+  resolves through them, so the ranked list is built once and shared (`keep_candidates` and the
+  second `rank` pass in `ranked_candidates` are gone); `resolve` stays as the same decision without
+  the list. `location search --all`, the `-v` listing and the upcoming picker therefore print the
+  one ranking; the `--exact` filter now applies to the network path's `--all` rows too.

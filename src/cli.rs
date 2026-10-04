@@ -24,10 +24,9 @@ use crate::error::{Error, Result};
 use crate::geo::ip::{IpLocatorChain, IpService};
 use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
 use crate::geo::open_meteo::OpenMeteoGeocoder;
-use crate::geo::rank::rank;
 use crate::geo::{
-    Geocoder, LocationSpec, Resolution, ambiguity_note, attribution_line, location_line,
-    offline_not_found, osm_ambiguity_note, resolve,
+    Geocoder, LocationSpec, Resolution, Resolved, ambiguity_note, attribution_line, location_line,
+    offline_not_found, osm_ambiguity_note, resolve_candidates,
 };
 use crate::http::{HttpClient, UreqTransport};
 use crate::i18n::{I18n, LanguageRequest};
@@ -1039,7 +1038,6 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
         cache: &geo_cache,
         offline,
         limit: QUERY_CANDIDATES,
-        keep_candidates: false,
     };
     let targets = location_targets(query, &settings, &config)?;
 
@@ -1555,7 +1553,11 @@ fn location_targets(
 /// The ambiguity note (silenced by `-q`) and the `-v` candidate list go to stderr; stdout carries
 /// only the report, so a script piping the query never has to filter prose out of the answer.
 fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> Result<Location> {
-    let (location, resolution, candidates) = resolve_location(&target.spec, geo, cli)?;
+    let Resolved {
+        location,
+        candidates,
+        resolution,
+    } = resolve_location(&target.spec, geo, cli)?;
     if let Some(text) = target.spec.query()
         && !cli.quiet
     {
@@ -1844,31 +1846,35 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
         cache: &cache,
         offline,
         limit: args.limit,
-        keep_candidates: args.all,
     };
-    let (location, resolution, candidates) = resolve_location(&spec, &geo_request, cli)?;
+    let resolved = resolve_location(&spec, &geo_request, cli)?;
+    let Resolved {
+        location,
+        candidates,
+        resolution,
+    } = &resolved;
 
     if args.all {
         for (index, candidate) in candidates.iter().enumerate() {
             print_line(format_args!("{}", candidate_line(index + 1, candidate)))?;
         }
     } else {
-        print_line(format_args!("{}", location_line(&location)))?;
+        print_line(format_args!("{}", location_line(location)))?;
     }
     if let Some(text) = spec.query()
         && !cli.quiet
         && !args.all
     {
         let note = if matches!(spec, LocationSpec::Osm(_)) {
-            osm_ambiguity_note(text, &location, resolution)
+            osm_ambiguity_note(text, location, *resolution)
         } else {
-            ambiguity_note(text, &location, resolution)
+            ambiguity_note(text, location, *resolution)
         };
         if let Some(note) = note {
             eprintln!("{note}");
         }
     }
-    if let Some(attribution) = attribution_line(&location) {
+    if let Some(attribution) = attribution_line(location) {
         eprintln!("{attribution}");
     }
     if cli.verbose > 0 {
@@ -2015,37 +2021,13 @@ fn search_target(requested: Option<&str>, ip: bool, config: &Config) -> Result<L
     Ok(LocationTarget { text, spec })
 }
 
-/// The ranked candidate list for `--all` or the `-v` listing, or an empty one when nobody will
-/// look at it.
-///
-/// Ranking is a clone of every hit plus a sort of the whole list, and the list is consumed only
-/// under `--verbose` or `--all`; a normal run must not pay for it. `hits` is borrowed here so the
-/// caller can still consume it for the resolution itself.
-fn ranked_candidates(
-    hits: &[Location],
-    spec: &LocationSpec,
-    limit: u8,
-    always: bool,
-    cli: &Cli,
-) -> Vec<Location> {
-    if !always && cli.verbose == 0 {
-        return Vec::new();
-    }
-    rank(hits.to_vec(), spec.query(), limit)
-}
-
-/// Resolves `spec` through the sources this run may use, returning the winner, how it was chosen
-/// and the ranked candidates the `--all` output or the `-v` listing prints.
+/// Resolves `spec` through the sources this run may use: the winner, how it was chosen and the
+/// ranked candidates the picker, the `--all` output and the `-v` listing share.
 ///
 /// Name queries go to the bundled city table first under the default `geo.strategy = "auto"` and
 /// fall back to the network geocoder only when it has no hit; `--offline=geo|all` removes the
-/// fallback entirely (step 18). `keep_candidates` is `--all`, which needs the whole ranked list
-/// whatever the verbosity.
-fn resolve_location(
-    spec: &LocationSpec,
-    geo: &GeoRequest<'_>,
-    cli: &Cli,
-) -> Result<(Location, Resolution, Vec<Location>)> {
+/// fallback entirely (step 18).
+fn resolve_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Result<Resolved> {
     match spec {
         LocationSpec::Default => {
             let chain = IpLocatorChain::new(
@@ -2058,7 +2040,11 @@ fn resolve_location(
             if !cli.quiet {
                 eprintln!("ip: located from the public IP via {}", service.label());
             }
-            Ok((location, Resolution::Only, Vec::new()))
+            Ok(Resolved {
+                location,
+                candidates: Vec::new(),
+                resolution: Resolution::Only,
+            })
         }
         spec @ (LocationSpec::Fuzzy(_) | LocationSpec::Exact(_)) => name_location(spec, geo, cli),
         spec @ LocationSpec::Osm(_) => {
@@ -2071,14 +2057,9 @@ fn resolve_location(
             }
             let nominatim = Nominatim::new(geo.http, geo.cache, nominatim_url(geo.config));
             let hits = nominatim.search(spec.query().unwrap_or_default(), geo.limit)?;
-            let candidates = ranked_candidates(&hits, spec, geo.limit, geo.keep_candidates, cli);
-            let (location, resolution) = resolve(hits, spec, geo.limit)?;
-            Ok((location, resolution, candidates))
+            resolve_candidates(hits, spec, geo.limit)
         }
-        spec @ LocationSpec::LatLon(..) => {
-            let (location, resolution) = resolve(Vec::new(), spec, geo.limit)?;
-            Ok((location, resolution, Vec::new()))
-        }
+        spec @ LocationSpec::LatLon(..) => resolve_candidates(Vec::new(), spec, geo.limit),
         // `@name` is expanded against `[locations]` before this function is reached; a spec that
         // slips through is a wiring bug, not a user error, and must not be resolved as a name.
         spec @ LocationSpec::Alias(_) => Err(Error::Config(format!(
@@ -2088,11 +2069,7 @@ fn resolve_location(
 }
 
 /// A name query through the bundled table and/or the network geocoder.
-fn name_location(
-    spec: &LocationSpec,
-    geo: &GeoRequest<'_>,
-    cli: &Cli,
-) -> Result<(Location, Resolution, Vec<Location>)> {
+fn name_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Result<Resolved> {
     let query = spec.query().unwrap_or_default();
     let strategy = GeoStrategy::from_config(geo.config)?;
     // The bundled table is skipped by `strategy = "network"` and by a build without the feature.
@@ -2119,17 +2096,16 @@ fn name_location(
                     candidates: hits.len(),
                 },
             };
-            let candidates = if geo.keep_candidates || cli.verbose > 0 {
-                hits.clone()
-            } else {
-                Vec::new()
-            };
-            let winner = hits
+            let location = hits
                 .first()
                 .cloned()
                 .ok_or_else(|| offline_not_found(query))?;
             freshness_note(geo, cli, &answer.table, answer.dump_date);
-            return Ok((winner, resolution, candidates));
+            return Ok(Resolved {
+                location,
+                candidates: hits,
+                resolution,
+            });
         }
     }
 
@@ -2151,9 +2127,7 @@ fn name_location(
             Err(error) => return Err(error),
         };
         if !hits.is_empty() {
-            let candidates = ranked_candidates(&hits, spec, geo.limit, geo.keep_candidates, cli);
-            let (location, resolution) = resolve(hits, spec, geo.limit)?;
-            return Ok((location, resolution, candidates));
+            return resolve_candidates(hits, spec, geo.limit);
         }
     }
 
@@ -2311,8 +2285,6 @@ struct GeoRequest<'a> {
     offline: OfflineMode,
     /// How many candidates to rank.
     limit: u8,
-    /// Whether the ranked list is needed even without `--verbose` (`location search --all`).
-    keep_candidates: bool,
 }
 
 /// Opens the two cache views of a weather query: the geo scope and the weather scope, each under

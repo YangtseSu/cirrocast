@@ -281,20 +281,40 @@ pub trait Geocoder {
     fn search(&self, query: &str, limit: u8) -> Result<Vec<Location>>;
 }
 
-/// Picks one location out of the geocoder hits for `spec`.
+/// A resolved location together with the ranked candidates it was chosen from.
+///
+/// `location` is `candidates[0]` whenever the list is non-empty, so the place a non-interactive
+/// run takes and the `[1]` an interactive one offers can never disagree; the list is what the
+/// candidate picker (step 20) prints and what `location search --all` tabulates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Resolved {
+    /// The ranked winner.
+    pub location: Location,
+    /// Every ranked candidate, winner first; empty when no ranking happened (`@lat,lon`).
+    pub candidates: Vec<Location>,
+    /// How the winner was chosen.
+    pub resolution: Resolution,
+}
+
+/// Picks one location out of the geocoder hits for `spec`, keeping the whole ranked list.
 ///
 /// `LatLon` bypasses ranking and builds the coordinate location itself, because the geocoding
 /// endpoint has no reverse lookup; its zone stays UTC and is provisional until a provider reports
-/// the real one. Every other spec ranks `results` with the shared [`rank`](crate::geo::rank::rank)
-/// order and fails with [`Error::LocationNotFound`] (exit code 5) when nothing is left — for
-/// `Exact` that includes "hits came back, but none of them is named exactly like the query".
-pub fn resolve(
+/// the real one, and its candidate list is empty. Every other spec ranks `results` with the shared
+/// [`rank`](crate::geo::rank::rank) order and fails with [`Error::LocationNotFound`] (exit code 5)
+/// when nothing is left — for `Exact` that includes "hits came back, but none of them is named
+/// exactly like the query".
+pub fn resolve_candidates(
     results: Vec<Location>,
     spec: &LocationSpec,
     limit: u8,
-) -> Result<(Location, Resolution)> {
+) -> Result<Resolved> {
     if let LocationSpec::LatLon(lat, lon) = spec {
-        return Ok((from_coordinates(*lat, *lon), Resolution::Coordinates));
+        return Ok(Resolved {
+            location: from_coordinates(*lat, *lon),
+            candidates: Vec::new(),
+            resolution: Resolution::Coordinates,
+        });
     }
     if matches!(spec, LocationSpec::Default | LocationSpec::Alias(_)) {
         return Err(Error::Config(format!(
@@ -311,22 +331,35 @@ pub fn resolve(
         _ => results,
     };
 
-    let mut ranked = rank(candidates, query, limit);
-    if ranked.is_empty() {
+    let candidates = rank(candidates, query, limit);
+    let Some(location) = candidates.first().cloned() else {
         return Err(Error::LocationNotFound(format!(
             "no location found for {spec}; check the spelling, or pass coordinates (`@lat,lon`) \
              or an OpenStreetMap search (`~name`) instead"
         )));
-    }
-    let chosen = ranked.remove(0);
+    };
     let resolution = match spec {
         LocationSpec::Exact(_) => Resolution::Exact,
-        _ if ranked.is_empty() => Resolution::Only,
+        _ if candidates.len() == 1 => Resolution::Only,
         _ => Resolution::Fuzzy {
-            candidates: ranked.len() + 1,
+            candidates: candidates.len(),
         },
     };
-    Ok((chosen, resolution))
+    Ok(Resolved {
+        location,
+        candidates,
+        resolution,
+    })
+}
+
+/// [`resolve_candidates`]'s decision without the list, for callers that only need the winner.
+pub fn resolve(
+    results: Vec<Location>,
+    spec: &LocationSpec,
+    limit: u8,
+) -> Result<(Location, Resolution)> {
+    resolve_candidates(results, spec, limit)
+        .map(|resolved| (resolved.location, resolved.resolution))
 }
 
 /// The one-line note a fuzzy match prints on stderr, or `None` when there was nothing ambiguous.

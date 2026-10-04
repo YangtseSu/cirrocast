@@ -560,8 +560,8 @@ fn quiet_suppresses_the_notes_but_not_the_output() {
 
 #[test]
 fn verbose_still_lists_every_ranked_candidate() {
-    // The list is built lazily now, only when `-v` will print it; this pins that the lazy path
-    // still produces the full ranking the verbose listing promises.
+    // The listing shares `Resolved`'s candidate list with the picker and `location search --all`;
+    // this pins that `-v` prints the whole ranking the resolution built.
     let sandbox = seed_geocode_ambiguous();
     let assert = sandbox
         .cirrocast()
