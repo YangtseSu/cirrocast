@@ -18,6 +18,10 @@ default = ""
 
 [geo]
 strategy = "auto"
+data = "auto"
+update = "off"
+update_interval_days = 90
+update_url = ""
 
 [units]
 

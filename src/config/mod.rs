@@ -92,6 +92,16 @@ pub const AQI_INDEXES: &[&str] = &["us", "european"];
 /// the bundled table only, or the network geocoder only.
 pub const GEO_STRATEGIES: &[&str] = &["auto", "bundled", "network"];
 
+/// Allowed values of `[geo] data` (step 18b): the user-installed table when present, the bundled
+/// one only, or the user-installed one only.
+pub const GEO_DATA_SOURCES: &[&str] = &["auto", "bundled", "user"];
+
+/// Allowed values of `[geo] update` (step 18b): no freshness note, or the throttled note.
+pub const GEO_UPDATES: &[&str] = &["off", "check"];
+
+/// Range of `geo.update_interval_days`: a day to ten years.
+const UPDATE_INTERVAL_RANGE: (u32, u32) = (1, 3650);
+
 /// The configuration document, matching the contract's TOML schema exactly.
 ///
 /// Every table and field is optional on input: anything absent falls back to [`Config::default`],
@@ -191,13 +201,23 @@ pub struct Network {
     pub offline: String,
 }
 
-/// `[geo]` — how a place name is resolved (step 18).
+/// `[geo]` — how a place name is resolved (step 18) and where the city table comes from
+/// (step 18b).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeoConfig {
     /// `auto` (bundled table first, network geocoder on a miss), `bundled` (the table only) or
     /// `network` (the geocoder only).
     pub strategy: String,
+    /// Which city table answers: `auto` (a user-installed table when present and valid, else the
+    /// bundled one), `bundled` (the bundled one only) or `user` (the user-installed one only).
+    pub data: String,
+    /// `off`, or `check` for the once-a-day freshness note; the tool never fetches by itself.
+    pub update: String,
+    /// The `check` note's threshold, in days.
+    pub update_interval_days: u32,
+    /// Where `location update-data` fetches from; empty = the official `GeoNames` dump.
+    pub update_url: String,
 }
 
 /// `[cache]`.
@@ -321,6 +341,10 @@ impl Default for GeoConfig {
     fn default() -> Self {
         Self {
             strategy: "auto".to_owned(),
+            data: "auto".to_owned(),
+            update: "off".to_owned(),
+            update_interval_days: 90,
+            update_url: String::new(),
         }
     }
 }
@@ -652,9 +676,29 @@ impl Config {
             .map_err(|error| Error::Config(format!("location.default: {error}")))
     }
 
-    /// `[geo] strategy`: one of `auto`, `bundled`, `network` (step 18).
+    /// `[geo]`: the strategy (step 18), the table source, the freshness policy and the update
+    /// source (step 18b).
     fn validate_geo(&self) -> Result<()> {
-        check_enum("geo.strategy", &self.geo.strategy, GEO_STRATEGIES)
+        check_enum("geo.strategy", &self.geo.strategy, GEO_STRATEGIES)?;
+        check_enum("geo.data", &self.geo.data, GEO_DATA_SOURCES)?;
+        check_enum("geo.update", &self.geo.update, GEO_UPDATES)?;
+        check_range(
+            "geo.update_interval_days",
+            self.geo.update_interval_days,
+            UPDATE_INTERVAL_RANGE,
+        )?;
+        self.validate_update_url()
+    }
+
+    /// `geo.update_url` must be empty (the official dump) or an `http(s)` URL.
+    fn validate_update_url(&self) -> Result<()> {
+        if !is_service_url(&self.geo.update_url) {
+            return Err(Error::Config(format!(
+                "geo.update_url: `{}` is not an `http(s)` URL",
+                self.geo.update_url
+            )));
+        }
+        Ok(())
     }
 
     fn validate_units(&self) -> Result<()> {
@@ -980,7 +1024,13 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
         ],
         "defaults" => &["provider", "format", "units", "days", "language"],
         "location" => &["default"],
-        "geo" => &["strategy"],
+        "geo" => &[
+            "strategy",
+            "data",
+            "update",
+            "update_interval_days",
+            "update_url",
+        ],
         "units" => &["temp", "wind", "pressure", "distance", "precip"],
         "network" => &[
             "timeout_secs",
@@ -1196,6 +1246,10 @@ default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"; em
 
 [geo]
 strategy = "auto"        # auto (bundled GeoNames table first, network on a miss) | bundled | network
+data = "auto"            # which city table answers: auto (user table when present) | bundled | user
+update = "off"           # off | check: a once-a-day note when the table is older than the interval
+update_interval_days = 90
+update_url = ""          # source for `cirrocast location update-data`; empty = the official GeoNames dump
 
 [units]
 # Per-quantity overrides on top of `defaults.units`. Remove the `#` to pin one
@@ -1352,6 +1406,30 @@ pub const KEY_TABLE: &[KeySpec] = &[
         name: "geo.strategy",
         kind: KeyKind::Enum(GEO_STRATEGIES),
         doc: "bundled table, network geocoder or auto",
+        env: None,
+    },
+    KeySpec {
+        name: "geo.data",
+        kind: KeyKind::Enum(GEO_DATA_SOURCES),
+        doc: "which city table answers: auto, bundled or user",
+        env: None,
+    },
+    KeySpec {
+        name: "geo.update",
+        kind: KeyKind::Enum(GEO_UPDATES),
+        doc: "freshness note: off or check",
+        env: None,
+    },
+    KeySpec {
+        name: "geo.update_interval_days",
+        kind: KeyKind::U32,
+        doc: "the check note's threshold, 1..=3650 days",
+        env: None,
+    },
+    KeySpec {
+        name: "geo.update_url",
+        kind: KeyKind::Str,
+        doc: "dump source for location update-data; empty = the official one",
         env: None,
     },
     KeySpec {
@@ -1540,6 +1618,10 @@ impl Config {
             "defaults.language" => self.defaults.language.clone(),
             "location.default" => self.location.default.clone(),
             "geo.strategy" => self.geo.strategy.clone(),
+            "geo.data" => self.geo.data.clone(),
+            "geo.update" => self.geo.update.clone(),
+            "geo.update_interval_days" => self.geo.update_interval_days.to_string(),
+            "geo.update_url" => self.geo.update_url.clone(),
             "units.temp" => self.units.temp.clone().unwrap_or_default(),
             "units.wind" => self.units.wind.clone().unwrap_or_default(),
             "units.pressure" => self.units.pressure.clone().unwrap_or_default(),
@@ -1598,6 +1680,18 @@ impl Config {
                 check_enum(spec.name, &value, GEO_STRATEGIES)?;
                 self.geo.strategy = value;
             }
+            "geo.data" => {
+                check_enum(spec.name, &value, GEO_DATA_SOURCES)?;
+                self.geo.data = value;
+            }
+            "geo.update" => {
+                check_enum(spec.name, &value, GEO_UPDATES)?;
+                self.geo.update = value;
+            }
+            "geo.update_interval_days" => {
+                self.geo.update_interval_days = u32_value(spec.name, &value)?;
+            }
+            "geo.update_url" => self.geo.update_url = value,
             "units.temp" => self.units.temp = optional_enum(spec.name, &value, TEMP_UNITS)?,
             "units.wind" => self.units.wind = optional_enum(spec.name, &value, WIND_UNITS)?,
             "units.pressure" => {
@@ -1670,6 +1764,12 @@ impl Config {
             "defaults.language" => check_language(key, &self.defaults.language),
             "location.default" => self.validate_location(),
             "geo.strategy" => check_enum(key, &self.geo.strategy, GEO_STRATEGIES),
+            "geo.data" => check_enum(key, &self.geo.data, GEO_DATA_SOURCES),
+            "geo.update" => check_enum(key, &self.geo.update, GEO_UPDATES),
+            "geo.update_interval_days" => {
+                check_range(key, self.geo.update_interval_days, UPDATE_INTERVAL_RANGE)
+            }
+            "geo.update_url" => self.validate_update_url(),
             "units.temp" => check_optional_enum(key, self.units.temp.as_deref(), TEMP_UNITS),
             "units.wind" => check_optional_enum(key, self.units.wind.as_deref(), WIND_UNITS),
             "units.pressure" => {
@@ -1920,6 +2020,10 @@ mod tests {
         assert_eq!(config.defaults.language, "auto");
         assert_eq!(config.location.default, "");
         assert_eq!(config.geo.strategy, "auto");
+        assert_eq!(config.geo.data, "auto");
+        assert_eq!(config.geo.update, "off");
+        assert_eq!(config.geo.update_interval_days, 90);
+        assert_eq!(config.geo.update_url, "");
         assert_eq!(config.units, super::UnitOverrides::default());
         assert_eq!(config.network.timeout_secs, 15);
         assert_eq!(config.network.retries, 3);
@@ -2374,6 +2478,48 @@ mod tests {
             } else {
                 paths.push(path);
             }
+        }
+    }
+
+    #[test]
+    fn the_geo_update_keys_validate_their_values() {
+        Config::default().validate().expect("the defaults validate");
+
+        for (key, value, fragment) in [
+            ("geo.data", "sometimes", "geo.data"),
+            ("geo.update", "auto", "geo.update"),
+            ("geo.update_interval_days", "0", "geo.update_interval_days"),
+            (
+                "geo.update_url",
+                "ftp://example.org/x.zip",
+                "geo.update_url",
+            ),
+        ] {
+            let mut broken = Config::default();
+            let error = broken
+                .set_key(key, value)
+                .expect_err(&format!("{key} = {value} is rejected"));
+            assert_eq!(error.exit_code(), 4, "{key}");
+            assert!(error.to_string().contains(fragment), "{key}: {error}");
+        }
+
+        // The accepted spellings round-trip through `config set`/`get`.
+        let mut config = Config::default();
+        for (key, value) in [
+            ("geo.data", "user"),
+            ("geo.update", "check"),
+            ("geo.update_interval_days", "30"),
+            (
+                "geo.update_url",
+                "https://mirror.example.org/cities15000.zip",
+            ),
+        ] {
+            config.set_key(key, value).expect("an accepted value");
+            assert_eq!(
+                config.get_key(key).expect("the key reads back"),
+                value,
+                "{key}"
+            );
         }
     }
 

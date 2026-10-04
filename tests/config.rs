@@ -13,7 +13,7 @@ use predicates::prelude::*;
 
 /// Every key of `KEY_TABLE` with a value that passes validation — the table is the source of truth
 /// for the *set* of keys, so this list is checked against it below.
-const PROBES: [(&str, &str); 32] = [
+const PROBES: [(&str, &str); 36] = [
     ("schema_version", "1"),
     ("defaults.provider", "smhi"),
     ("defaults.format", "json"),
@@ -22,6 +22,13 @@ const PROBES: [(&str, &str); 32] = [
     ("defaults.language", "zh-CN"),
     ("location.default", "@39.9,116.4"),
     ("geo.strategy", "bundled"),
+    ("geo.data", "user"),
+    ("geo.update", "check"),
+    ("geo.update_interval_days", "30"),
+    (
+        "geo.update_url",
+        "https://mirror.example.org/cities15000.zip",
+    ),
     ("units.temp", "f"),
     ("units.wind", "mph"),
     ("units.pressure", "inhg"),
