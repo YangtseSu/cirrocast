@@ -13,7 +13,9 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 ## How these plans are used
 
 * One file per step: `NN-kebab-case-title.md` (A-series, ordered by execution) or
-  `B01-kebab-case-title.md` (backlog, `⏸`; see below).
+  `B01-kebab-case-title.md` (backlog, `⏸`; see below). A **lettered sub-step** (`18b-…`) is a
+  follow-up planned after its parent closed: it runs immediately after the parent, before the next
+  number, and follows the same `Status:` and marker conventions as any other step.
 * A step is worked on alone, top to bottom. Every `- ⬜` item in a step is one committable unit.
 * Terminology: `docs/plans/` is the *plan set*; each file in it is a **step file** describing one
   execution unit. The identifier is `step NN` (backlog: `B01`, `B02`, …) — the same word the code
@@ -44,7 +46,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | A — Foundation | 01–06 | real end-to-end run: `cirrocast Beijing -f plain` prints live data from a keyless backend |
 | B — Output parity | 07–11 | wttr.in-style `art-table` plus `one-line`/`plain`/`json`, en-US + zh-CN, all v1 backends |
 | C — Quality and release | 12–14 | **v1.0.0 = "basically formed"**, packaged and reproducible |
-| D — Reach and location | 15–20 | v1.1 shipped alerts, air quality and moon/astro (15–17); the offline city database, multi-location output and the candidate picker remain |
+| D — Reach and location | 15–20 + 18b | v1.1 shipped alerts, air quality, moon/astro (15–17) and the offline city database (18); the user-updatable table (18b), multi-location output and the candidate picker remain |
 | E — Quality and integration | 21–22 | performance and resource budgets; the `status` probe, ecosystem recipes and frozen output contracts |
 | F — Sources and auth | 23–27 | extra backends, keyless national providers with coverage-aware `auto`, second-generation location sources, climate normals, QWeather JWT |
 | G — Documentation | 28 | the documentation set, the generated reference and the frozen JSON schemas |
@@ -80,6 +82,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ✅ done | 03, 08 |
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ✅ done | 03, 08 |
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ✅ done | 04, 05 |
+| 18b | D | [user-city-data-update](18b-user-city-data-update.md) | ⬜ not-started | 18 |
 | 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ⬜ not-started | 08, 14 |
 | 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
 | 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ⬜ not-started | 12, 18, 19 |
@@ -108,7 +111,7 @@ the backlog is *planned work with a step file*, not a roadmap wish and not a stu
 | 2. Multiple backends, keyless first | 06 (open-meteo), 10 (owm, weatherapi, wwo, pirateweather, qweather, smhi), 11 (metar), 23 (met.no, visualcrossing, open-meteo archive/marine), 24 (nws, brightsky) |
 | 3. BYOK for key-requiring backends | 02 (key store + `key` subcommands), 10 (consumption, `MissingKey`), 12 (secret-handling audit), 27 (JWT credentials) |
 | 4. All wttr.in outputs | 07 (`art-table`, `dumb`), 08 (`one-line` templates, `plain`, `json`, completions, man), 17 (astro/moon tokens), B01 (`serve`, the wttr.in-compatible service incl. the `?` option table, backlog), 19 (multi-location output) |
-| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation), 25 (GeoNames search, multi-source merge) |
+| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation), 18b (user-installed table updates), 25 (GeoNames search, multi-source merge) |
 | 6. IP → city | 05 (ipwho.is + ipapi.co, opt-in, cached, privacy documented), 25 (IP.SB, coordinate naming, coverage) |
 | 7. Own CLI design, no wego copying | 01 + `AGENTS.md` (no-copy rule), 08 (documented flag matrix and precedence) |
 | 8. Selectable units and output language | 03 (unit system + formatting), 09 (Fluent i18n, en-US + zh-CN) |
@@ -344,6 +347,10 @@ schema_version = 1
 [location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"
             pick = "auto"           # auto | never (never = always take the ranked winner; step 20)
 [geo]       strategy = "auto"       # bundled table first, network fallback (step 18)
+            data = "auto"           # auto | bundled | user — which city table answers (step 18b)
+            update = "off"          # off | check — a freshness note only, never a fetch (step 18b)
+            update_interval_days = 90   # the `check` note's threshold (step 18b)
+            update_url = ""         # empty = the official GeoNames dump; a mirror otherwise (step 18b)
             search = "auto"         # auto | open-meteo | geonames | nominatim (step 25)
             reverse = "auto"        # auto | offline | off — coordinate naming (step 25)
 [units]     # per-quantity overrides; an absent (or empty) key follows defaults.units
@@ -382,6 +389,10 @@ schema_version = 1
   same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
   mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
   reports every namespace it finds.
+* Data layout: `$XDG_DATA_HOME/cirrocast/geo/{cities.bin.gz,keys.bin.gz,SNAPSHOT}` is the
+  user-installed city table (step 18b), written only by `location update-data`; the bundled table
+  inside the binary stays the default and the fallback, and nothing in the query path ever fetches
+  city data.
 * `--no-cache`, `--refresh`, `--offline[=<weather|geo|all>]`, `cache stat`, `cache clean`. An
   offline policy silences one *scope*: `weather` pins the forecast (and the alert/air panels) to the
   cache, `geo` stops name resolution at the bundled table (a cached geocoder answer is still served
@@ -434,7 +445,8 @@ cirrocast config   <path|init|show|get|set|edit|validate>
 cirrocast key      <set|rm|list>            # `key set qweather --jwt --key-file <PATH|->` (step 27)
 cirrocast provider <list|info>
 cirrocast cache    <stat|clean>
-cirrocast location <search>                 # `location search [--offline] [--all] [--limit N] [--exact]` (steps 18, 20)
+cirrocast location <search|update-data>     # `location search [--offline] [--all] [--limit N] [--exact]` (steps 18, 20)
+                                            # `location update-data [--from <path|url>] [--check]` (step 18b)
 cirrocast completion <shell>    cirrocast man
 ```
 

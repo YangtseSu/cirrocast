@@ -157,8 +157,11 @@ Reverse geocoding (`@lat,lon` → place name) is **step 25's** deliverable; it r
 decoded table for a nearest-city scan inside 25 km and adds the Natural Earth country layer, so this
 step only has to expose the decoded rows (an iterator plus the population/coordinate fields the scan
 needs). Also out of scope: admin-1/admin-2 hierarchies, postal codes, time-zone lookup for
-coordinates (stays with the provider response / step 03), a user-supplied custom city file, and
-incremental dataset updates over the network. `location search` does not gain paging or fuzzy
+coordinates (stays with the provider response / step 03), and incremental dataset updates over the
+network. A **user-installed table** was out of scope here and became **step 18b**
+(`docs/plans/18b-user-city-data-update.md`): it keeps the bundled table as the default and the
+fallback, installs a dump-derived table under `$XDG_DATA_HOME/cirrocast/geo/` with an explicit
+command, and rejects fetching during a query. `location search` does not gain paging or fuzzy
 (edit-distance) matching; prefix + exact on folded keys is the contract.
 
 ## Verification
@@ -282,3 +285,9 @@ not materialised eagerly.
   The canaries did not move — no pinned expectation changed — and the blob sizes and step-21
   numbers were re-recorded; `--check` against the downloaded zip now reports all three files
   unchanged.
+- 2026-10-04 — plan amendment after the follow-up discussion: the "user-supplied custom city file"
+  half of this step's Out of scope is now **step 18b**, planned in
+  `docs/plans/18b-user-city-data-update.md` (bundled table stays the default; explicit
+  `location update-data` installs a dump-derived table under `$XDG_DATA_HOME`; "automatic" = the
+  user's own timer; an in-run auto-fetch is rejected there for privacy, latency and determinism).
+  This step's deliverable set and status are unchanged.
