@@ -345,17 +345,19 @@ stays pipeable):
 }
 ```
 
-## Config schema (v1)
+## Config schema (v2)
 
 `$XDG_CONFIG_HOME/cirrocast/config.toml` (`~/.config/cirrocast/config.toml`), parsed by
-`src/config/mod.rs` (`CURRENT_SCHEMA_VERSION = 1`), documented key by key in the README. Precedence,
+`src/config/mod.rs` (`CURRENT_SCHEMA_VERSION = 2`), documented key by key in the README. Precedence,
 highest first: **command line flag → `CIRROCAST_*` environment variable → this file → built-in
 default**.
 
 Migration hooks:
 
-* a document without `schema_version` is read as version `1` (the key was added with the first
-  schema, and a hand-written file may leave it out);
+* a document without `schema_version` is read as the current version (the key was added with the
+  first schema, and a hand-written file may leave it out);
+* version `1` migrates to `2` by stamping the version: the tables the bump added (`[locations]`,
+  `[templates]`) are optional, and absent means empty;
 * version `0` is refused with the `cirrocast config init --force` hint; a version **above** the
   supported one is refused with an error naming both, rather than guessed at;
 * a key this build does not know is **ignored on load** (so a document written by a newer release
@@ -380,17 +382,39 @@ in canonical form without the comments:
 # rewrites it in canonical form, dropping comments). Values given on the command
 # line, or through the matching `CIRROCAST_*` variable, win over this file.
 
-schema_version = 1
+schema_version = 2
 
 [defaults]
 provider = "open-meteo"  # id, comma separated chain, or "auto" (the keyless chain)
-format = "art-table"     # art-table | one-line | plain | json | dumb
+format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon,
+                         # or a one-line preset: full | minimal | short | default | uv | sun,
+                         # or a [templates] key
 units = "metric"         # metric | us | uk
 days = 3                 # 0..=14; each provider clamps to its own maximum
 language = "auto"        # "auto" or a BCP-47 tag such as "en-US", "zh-CN"
 
 [location]
-default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"; empty = ask for the IP location
+default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", or "@home" for an
+                         # alias below; empty = ask for the IP location
+pick = "auto"            # auto (ask on a terminal when a name has several candidates) | never
+
+[locations]
+# @NAME aliases for the location argument. Values are any location argument, including another
+# alias; chains are expanded with cycle detection.
+# home = "@39.9,116.4"
+# work = ":Shanghai"
+
+[templates]
+# Named one-line templates for `--format <NAME>` and `--template @NAME`. A value is a literal
+# %-token template; an unknown token is an error, not printed literally.
+# compact = "%c%t"
+
+[geo]
+strategy = "auto"        # auto (bundled GeoNames table first, network on a miss) | bundled | network
+data = "auto"            # which city table answers: auto (user table when present) | bundled | user
+update = "off"           # off | check: a once-a-day note when the table is older than the interval
+update_interval_days = 90
+update_url = ""          # source for `cirrocast location update-data`; empty = the official GeoNames dump
 
 [units]
 # Per-quantity overrides on top of `defaults.units`. Remove the `#` to pin one
@@ -406,6 +430,7 @@ timeout_secs = 15        # 1..=300
 retries = 3              # 0..=10
 proxy = ""               # e.g. "http://127.0.0.1:8080"; empty = connect directly
 nominatim_url = ""       # Nominatim base URL for `~name` searches; empty = the public OpenStreetMap service
+offline = "off"          # off | weather (cache-only forecast) | geo (bundled names, live weather) | all
 
 [cache]
 enabled = true
@@ -416,6 +441,17 @@ geocode_ttl_secs = 2592000   # 30 days
 [render]
 color = "auto"           # auto | always | never
 width = 0                # 0 = detect from the terminal, or 40..=500 columns
+
+[alerts]
+enabled = true                # fetch warnings automatically when a source covers the location
+severity_threshold = "minor"  # unknown | minor | moderate | severe | extreme
+sources = ["auto"]            # ["auto"] (coverage-selected) or ids: nws, meteoalarm, qweather,
+                              # hko, wmoswic, fpas, visualcrossing
+fpas_url = ""                 # FOSS Public Alert Server base URL; empty = https://alerts.kde.org
+cache_ttl_secs = 300          # 5 minutes
+
+[air]
+index = "us"             # us | european: the AQI scale that drives the panel colour and %q
 
 [providers.metar]
 station = ""             # default ICAO identifier, e.g. "ZBAA"

@@ -806,7 +806,7 @@ Four version numbers move independently; only the first three are visible to a c
 |---|---|---|---|
 | crate version | `Cargo.toml`, `--version`, release tags | `1.1.0` | any release, following SemVer |
 | JSON schema version | `"schema_version"` in every `-f json` document | `2` | a key is removed, renamed, retyped, changes unit, or changes between always-present and nullable |
-| config schema version | `schema_version` in `config.toml` | `1` | an existing key's meaning, type or validity changes (a new key with a default is additive and does not) |
+| config schema version | `schema_version` in `config.toml` | `2` | an existing key's meaning, type or validity changes (a new key with a default is additive and does not) |
 | cache envelope version | `cache_schema_version` in cache files | `1` | internal only: a mismatch is a cache miss, never an error |
 
 The release schedule, matching [`docs/plans/README.md`](docs/plans/README.md):
