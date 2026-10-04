@@ -43,7 +43,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   `selected: Beijing, Beijing Municipality, China — use @39.9042,116.4074 to skip the prompt` — the
   spec is always `@lat,lon` (two decimals is not enough to round-trip; use the full precision the
   location carries), because names re-query a geocoder whose ranking can drift.
-- ⬜ `location search <query>`: never prompts (it is the automation-friendly discovery command) and
+- ✅ `location search <query>`: never prompts (it is the automation-friendly discovery command) and
   gains `--all`, printing the ranked candidate table (number, name, admin1, country, coordinates,
   zone, population when known) on stdout; the default output remains the winner line, so existing
   scripts keep working. `--limit` (default 10, max 100) bounds both forms; `-v` keeps printing the
@@ -54,7 +54,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   "ambiguity is resolved by ranking and reported" to the picker policy above; `README.md` gains the
   flag rows and an example session; `CHANGELOG.md` records the behaviour change (a terminal run can
   now ask; non-terminals are unchanged).
-- ⬜ Tests: `tests/location_pick.rs` drives `Picker` with injected reader/writer — Enter, `2`, `q`,
+- ✅ Tests: `tests/location_pick.rs` drives `Picker` with injected reader/writer — Enter, `2`, `q`,
   junk×3, EOF, out-of-range index, and the rendered list against a fixture — no TTY involved;
   `tests/cli_pick.rs` (assert_cmd) covers the wiring: `--pick` with stdin `2\n` selects the second
   candidate end to end (`--pick` is the deterministic hook that bypasses the TTY test), `--yes` never
@@ -161,3 +161,8 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
 - 2026-10-04 — deliverable 4: a selection echoes `selected: <place> — use @<lat>,<lon> to skip the
   prompt` on stderr (full float precision, so the spec round-trips), suppressed by `-q` like every
   other note; the ambiguity note is not printed for a choice the prompt already made.
+- 2026-10-04 — deliverables 5 and 8: `location search`'s one-line default, `--all` table and
+  `--limit` were already shipped by step 18 under this step's agreed shape; `tests/cli_pick.rs` now
+  pins that the search form never prompts and that its `--all` order is byte-identical to the
+  picker's list for the same query, and adds the `--pick`/`--yes`/policy/reply taxonomy end to end
+  through the real binary (recorded geocode fixture + cached forecast, network guard on).
