@@ -306,6 +306,17 @@ pub struct QueryArgs {
 
     #[command(flatten)]
     pub cache: CacheFlags,
+
+    /// Ask which candidate to use when a location name matches several places, instead of taking
+    /// the ranked winner. The ranked list goes to stderr and one line is read from stdin.
+    #[arg(long, conflicts_with = "yes")]
+    pub pick: bool,
+
+    /// Take the ranked winner when a location name matches several places, without asking. This
+    /// is the default on a non-terminal run; the flag makes that explicit and keeps a prompt from
+    /// ever appearing.
+    #[arg(long, conflicts_with = "pick")]
+    pub yes: bool,
 }
 
 /// `--units`, parsed by the unit module: the flag, `CIRROCAST_UNITS` and `defaults.units` accept
@@ -1558,7 +1569,15 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
         candidates,
         resolution,
     } = resolve_location(&target.spec, geo, cli)?;
-    if let Some(text) = target.spec.query()
+    let query = target.spec.query().unwrap_or_default();
+    let picked = should_pick(&cli.query, geo.config, candidates.len())?;
+    let location = if picked {
+        prompt_location(query, &candidates)?
+    } else {
+        location
+    };
+    if !picked
+        && let Some(text) = target.spec.query()
         && !cli.quiet
     {
         let note = if matches!(target.spec, LocationSpec::Osm(_)) {
@@ -1581,6 +1600,66 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
         }
     }
     Ok(location)
+}
+
+/// Whether this run asks which candidate to use, resolved in one place.
+///
+/// A prompt happens only when there is a choice (`candidates >= 2`) and one of: `--pick` was
+/// given, or stdin *and* stderr are terminals and `[location] pick = "auto"`. `--yes` and
+/// `pick = "never"` take the ranked winner silently; `-q` silences the surrounding notes but never
+/// a prompt this policy asked for.
+fn should_pick(query: &QueryArgs, config: &Config, candidates: usize) -> Result<bool> {
+    if candidates < 2 || query.yes {
+        return Ok(false);
+    }
+    if query.pick {
+        return Ok(true);
+    }
+    Ok(matches!(pick_policy(config)?, PickPolicy::Auto)
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal())
+}
+
+/// `[location] pick` with the `CIRROCAST_LOCATION_PICK` override resolved like every other key.
+///
+/// [`Config::validate`] rejects an invalid value in the document; this parse exists for the
+/// environment tier and for a hand-built document, and shares the message with the configuration.
+fn pick_policy(config: &Config) -> Result<PickPolicy> {
+    let value = std::env::var("CIRROCAST_LOCATION_PICK")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| config.location.pick.clone());
+    match value.trim() {
+        "auto" => Ok(PickPolicy::Auto),
+        "never" => Ok(PickPolicy::Never),
+        other => Err(Error::Config(format!(
+            "location.pick: `{other}` is not one of {}",
+            crate::config::PICK_POLICIES.join(", ")
+        ))),
+    }
+}
+
+/// What `[location] pick` says about ambiguous names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PickPolicy {
+    /// Ask on a terminal; take the ranked winner anywhere else.
+    Auto,
+    /// Always take the ranked winner.
+    Never,
+}
+
+/// Asks which candidate to use: the list and the prompt go to stderr, the answer comes from stdin.
+///
+/// Prompts are serialized process-wide ([`crate::geo::pick::prompt_lock`]): a multi-location run
+/// resolves its slots on worker threads, and two questions must never share the one input stream
+/// at the same time.
+fn prompt_location(query: &str, candidates: &[Location]) -> Result<Location> {
+    let _prompt = crate::geo::pick::prompt_lock();
+    let stdin = std::io::stdin();
+    let stderr = std::io::stderr();
+    let mut input = stdin.lock();
+    let mut output = stderr.lock();
+    crate::geo::pick::Picker::new(&mut input, &mut output).choose(query, candidates)
 }
 
 /// The location argument this run resolves, for the settings merge.

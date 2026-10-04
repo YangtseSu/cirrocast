@@ -366,7 +366,8 @@ pub fn resolve(
 /// The one-line note a fuzzy match prints on stderr, or `None` when there was nothing ambiguous.
 ///
 /// Reporting happens once, at the point where the location is chosen: the user sees which of the
-/// candidates won and how to require an exact name instead.
+/// candidates won, how to require an exact name instead, and how to choose interactively
+/// (`--pick`) or accept the winner (`--yes`, step 20).
 #[must_use]
 pub fn ambiguity_note(query: &str, chosen: &Location, resolution: Resolution) -> Option<String> {
     note(query, chosen, resolution, true)
@@ -387,6 +388,9 @@ pub fn osm_ambiguity_note(
 }
 
 /// The shared shape of both notes; `hint` appends the `:query` advice.
+///
+/// Both notes end with the picker advice, because both describe a choice the picker can take over
+/// (step 20): `--pick` asks, `--yes` keeps the winner.
 fn note(query: &str, chosen: &Location, resolution: Resolution, hint: bool) -> Option<String> {
     let Resolution::Fuzzy { candidates } = resolution else {
         return None;
@@ -398,10 +402,11 @@ fn note(query: &str, chosen: &Location, resolution: Resolution, hint: bool) -> O
         .population
         .map(|population| format!(" (population {population})"))
         .unwrap_or_default();
+    let pick = "`--pick` to choose one, or `--yes` to keep the winner";
     let hint = if hint {
-        format!(" — pass `:{query}` to require an exact name match")
+        format!(" — pass `:{query}` to require an exact name match, {pick}")
     } else {
-        String::new()
+        format!(" — {pick}")
     };
     Some(format!(
         "note: {candidates} candidates for `{query}`; using {}{population}{hint}",
@@ -657,7 +662,7 @@ mod tests {
             .expect("a fuzzy match is noted");
         assert_eq!(
             note,
-            "note: 3 candidates for `Beijing`; using Beijing, Beijing Municipality, China (population 18960744) — pass `:Beijing` to require an exact name match"
+            "note: 3 candidates for `Beijing`; using Beijing, Beijing Municipality, China (population 18960744) — pass `:Beijing` to require an exact name match, `--pick` to choose one, or `--yes` to keep the winner"
         );
         assert!(ambiguity_note("Beijing", &chosen, Resolution::Only).is_none());
         assert!(ambiguity_note("Beijing", &chosen, Resolution::Exact).is_none());
@@ -675,7 +680,7 @@ mod tests {
                 .expect("an OpenStreetMap match is noted too");
         assert_eq!(
             osm,
-            "note: 2 candidates for `Beijing`; using Beijing, Beijing Municipality, China"
+            "note: 2 candidates for `Beijing`; using Beijing, Beijing Municipality, China — `--pick` to choose one, or `--yes` to keep the winner"
         );
         assert!(super::osm_ambiguity_note("Beijing", &anonymous, Resolution::Only).is_none());
     }

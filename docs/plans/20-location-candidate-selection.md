@@ -33,7 +33,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   range, an empty line (= 1), `q`/`Q`; three consecutive invalid answers are `Error::Usage` (exit 2)
   naming the accepted input, and EOF behaves like `q`. `q` is
   `Error::Location` — message `no location selected for Beijing` (exit 5).
-- ⬜ Prompt policy, resolved in one place in `src/cli.rs`: prompt iff candidates > 1 **and**
+- ✅ Prompt policy, resolved in one place in `src/cli.rs`: prompt iff candidates > 1 **and**
   (`--pick` was given **or** (stdin and stderr are terminals **and** config
   `[location] pick = "auto"`)). `--yes` and `[location] pick = "never"` suppress; `--pick` and
   `--yes` are a clap conflict group; `--yes` beats the config. Non-interactive runs keep today's
@@ -153,3 +153,8 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   prompts so a multi-location run cannot interleave two of them on the shared stdin/stderr.
   `tests/location_pick.rs` drives it with a `Cursor` and a `Vec<u8>`: Enter, `2`, `q`/`Q`, EOF,
   out-of-range and junk answers, the three-strike usage error and the exact rendered list.
+- 2026-10-04 — deliverable 3: `--pick`/`--yes` are a clap conflict group on the query surface, and
+  `should_pick`/`pick_policy` decide the prompt in one place (candidates >= 2, `--pick`, or
+  terminal stdin+stderr with `[location] pick = "auto"` from config or `CIRROCAST_LOCATION_PICK`).
+  The prompt is serialized across worker threads and reads the shared stdin; the ambiguity note
+  gained the `--pick`/`--yes` tail, and a pick suppresses the note the picker just answered.
