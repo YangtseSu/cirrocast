@@ -60,7 +60,7 @@ offline path produces the same ranking as the network path for the same query.
 - ⬜ `cirrocast location search <query> [--offline] [--all] [--limit N] [--exact]`: the winner line
       by default (identical shape to the network path, so the two do not diverge) and the ranked
       candidate table — number, name, admin/country, population, coordinates and IANA zone — under
-      `--all` (step 26 defines the flag; this step must not ship a second search shape);
+      `--all` (step 20 defines the flag; this step must not ship a second search shape);
       `--offline` forces the bundle and never opens a socket; a missing name exits 5 with
       `error: location not found: <query> (no offline match)`.
 - ⬜ Licensing/credits: `REUSE.toml` annotation for `src/geo/data/*.bin.gz` and `src/geo/data/SNAPSHOT`
@@ -69,7 +69,7 @@ offline path produces the same ranking as the network path for the same query.
       the README credits section gains "City data: GeoNames (CC BY 4.0), dump <date>"; the builder
       source stays GPL-3.0-or-later; `reuse lint` must stay green with the new annotation.
 - ⬜ Size accounting task: `ls -l src/geo/data/*.bin.gz` and `cargo build --release` before/after
-      this step, with both numbers recorded in `docs/plans/22-perf-and-resource-budget.md` (phase E
+      this step, with both numbers recorded in `docs/plans/21-perf-and-resource-budget.md` (phase E
       owns the budget; the measured 2.55 MiB is its input, not a surprise).
 - ⬜ Tests (`tests/offline_geo.rs`): Springfield (ambiguous, 9 rows — ordering pinned), São Paulo
       with and without the diacritic, 北京/Beijing/Peking, Wien/Vienna, `MÜNCHEN` lowercase input, a
@@ -107,17 +107,17 @@ offline path produces the same ranking as the network path for the same query.
   single-blob alternative (2 825 464 B) is larger *and* forces a 6.7 MB parse before the first hit.
 * **Compression dependency**: **flate2 1.1.10** (MIT OR Apache-2.0, MSRV 1.67, already in the tree for
   HTTP gzip from step 05), pure-Rust `miniz_oxide` backend, no C toolchain in CI, same crate in the
-  builder and the decoder. Rejected: `ruzstd` 0.9.0 (MIT, but **MSRV 1.87** > the project's 1.85) and
+  builder and the decoder. Rejected: `ruzstd` 0.9.0 (MIT, but **MSRV 1.87** > the project's 1.98) and
   `zstd`/`zstd-safe` 0.14.0/8.0.0 (BSD-3-Clause, builds the vendored C library, adding a C compiler
   and a second licence to the release pipeline for ~290 KB).
 * **Default-on justification**: the table costs **2.55 MiB compressed / ≈2.7 MiB in the stripped
   binary** and removes the network from the most common failure mode (a city name on a plane, in a
-  locked-down network, or when the geocoder is rate-limited). Step 22 owns the release budget; this
+  locked-down network, or when the geocoder is rate-limited). Step 21 owns the release budget; this
   step states the cost and keeps the feature switchable (`--no-default-features` without
-  `offline-geo` must still build and pass tests, proving the fallback path is real). If step 22's
+  `offline-geo` must still build and pass tests, proving the fallback path is real). If step 21's
   budget cannot absorb 2.7 MiB, flipping the default is a one-line change recorded there.
 * **Snapshot cadence**: GeoNames regenerates dumps daily; we pin one dated snapshot, record its date
-  and SHA-256 in `src/geo/data/SNAPSHOT`, and refresh at release time only (step 23 documents the
+  and SHA-256 in `src/geo/data/SNAPSHOT`, and refresh at release time only (step 28 documents the
   command). Nothing in the runtime ever downloads the dataset.
 * **Ranking identity**: the offline index stores exactly the fields the step-04 ranking consumes, and
   `geo/rank.rs` is the single implementation, so the offline and online paths cannot drift; the test
@@ -126,7 +126,7 @@ offline path produces the same ranking as the network path for the same query.
 
 ## Out of scope
 
-Reverse geocoding (`@lat,lon` → place name) is **step 27's** deliverable; it reuses this step's
+Reverse geocoding (`@lat,lon` → place name) is **step 25's** deliverable; it reuses this step's
 decoded table for a nearest-city scan inside 25 km and adds the Natural Earth country layer, so this
 step only has to expose the decoded rows (an iterator plus the population/coordinate fields the scan
 needs). Also out of scope: admin-1/admin-2 hierarchies, postal codes, time-zone lookup for
@@ -177,14 +177,18 @@ not materialised eagerly.
   counter-intuitively; the ranking test pins the current order so a later change is deliberate.
 * A committed binary blob is opaque in review and 2.55 MiB is a real binary-size commitment;
   mitigated by a deterministic builder, the `SNAPSHOT` checksum and a byte-comparison test, and, if
-  step 22 rejects the size, by the documented flip to opt-in (README usage + CHANGELOG updated).
+  step 21 rejects the size, by the documented flip to opt-in (README usage + CHANGELOG updated).
 
 ## Progress log
 
 - 2026-09-30 — step opened; crate candidates measured (`world-cities`/`city-timezones` absent from
   crates.io, `geocoding` has no bundled dataset), GeoNames `cities15000` sizes and gzip/zstd
   trade-offs measured, flate2 chosen over ruzstd (MSRV 1.87) and the zstd C bindings.
-- 2026-10-03 — plan amended for the location work in steps 26–27: the `location search` shape is the
+- 2026-10-03 — plan amended for the location work in steps 20 and 25: the `location search` shape is the
   winner line by default plus `--all` for the ranked table (instead of a table by default), the
-  decoded table must expose the rows the step-27 nearest-city scan needs, and reverse geocoding
-  moves from "out of scope" to step 27, which reuses this step's index.
+  decoded table must expose the rows the step-25 nearest-city scan needs, and reverse geocoding
+  moves from "out of scope" to step 25, which reuses this step's index.
+- 2026-10-04 — plan reorganized: the wttr-compat service and the packaging matrix moved to the backlog
+  (B01/B02) and the remaining work was renumbered so the number is the execution order; this step
+  keeps number 18, and the references above now read 20 (picker), 21 (budget), 25 (reverse geocoding)
+  and 28 (docs).

@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 25 — QWeather JWT authentication
+# Step 27 — QWeather JWT authentication
 
 Status: ⬜ not-started
 Depends on: `02-config-and-state.md` (key store), `10-additional-providers.md` (`qweather.rs`), `15-alerts-and-severity.md` (`src/alerts/qweather.rs` adopts the same credential resolver)
@@ -163,5 +163,6 @@ nothing).
 - 2026-10-03 — step opened. Vendor documentation read through the local proxy; the EdDSA header and
   claim shape, the 86 400 s ceiling and the console flow are as recorded above. Dependency facts
   measured on crates.io and against `Cargo.lock` (`ring 0.17.14` and `base64 0.23.1` already in the
-  graph). Raised as step 25 rather than an edit of step 10 because step 10 is shipped and its
+  graph). Raised as step 27 rather than an edit of step 10 because step 10 is shipped and its
   behaviour (API-key auth) stays valid; this step adds a mode beside it.
+- 2026-10-04 — renumbered from 25 to 27 by the plan reorganization; dependencies (02, 10, 15) unchanged.

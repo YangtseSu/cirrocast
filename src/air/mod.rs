@@ -13,7 +13,7 @@
 //! layering rule).
 //!
 //! One source today, Open-Meteo's keyless Air Quality API; the [`AirSource`] enum and the
-//! dispatch in [`fetch`] are where step 19 adds the next one.
+//! dispatch in [`fetch`] are where step 23 adds the next one.
 
 pub mod aqi;
 pub mod open_meteo;

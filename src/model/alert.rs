@@ -212,7 +212,7 @@ pub enum AlertSource {
     WmoSwic,
     /// The FOSS Public Alert Server (global; self-hostable).
     Fpas,
-    /// Visual Crossing's alert payload (wired in step 19 with its provider).
+    /// Visual Crossing's alert payload (wired in step 23 with its provider).
     VisualCrossing,
 }
 

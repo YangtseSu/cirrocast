@@ -648,9 +648,14 @@ The release schedule, matching [`docs/plans/README.md`](docs/plans/README.md):
   scope (phases A–C, steps 01–14);
 * **`1.1.0`** (2026-10-04) starts phase D — severe-weather alerts, air quality and moon/astro
   (steps 15–17), with the JSON document at `schema_version` 2;
-* **`1.2.0`** for the rest of phase D (steps 18–19: the offline city database, more backends);
-* **`2.0.0`** for phase E (steps 20–24: the wttr.in-compatible local service, multi-location output,
-  performance budgets, the documentation set, ecosystem packages).
+* **`1.2.0`** for the rest of phase D (steps 18–20: the offline city database, multi-location output
+  and templates, the interactive location picker);
+* **`1.3.0`** for phase E (steps 21–22: performance and resource budgets, the `status` probe and the
+  ecosystem recipes);
+* **`1.4.0`** for phases F and G (steps 23–28: additional backends, coverage-aware `auto`,
+  second-generation location sources, climate normals, QWeather JWT, the documentation set). The
+  backlog (B01–B02: the wttr-compatible local service, the multi-platform packaging matrix) is not
+  scheduled.
 
 Within a major version, adding a key to the JSON document or adding a config key with a built-in
 default is a **minor** change: a consumer keeps working if it ignores what it does not know.
@@ -669,8 +674,8 @@ Archives are built natively on `ubuntu-26.04` (x86_64), `ubuntu-26.04-arm` (aarc
 (Apple silicon), one job per target, with no cross-compilation; a Linux archive therefore needs that
 image's glibc or newer. On an older distribution the AUR package is the better fit — it builds from
 the tag tarball against the system's own glibc. Windows is not packaged in v1: `cargo install`
-covers it, and ecosystem packages are step 24. Every archive ships next to the `.sha256` the workflow
-computed:
+covers it, and further ecosystem packages are deferred to the backlog (B02). Every archive ships
+next to the `.sha256` the workflow computed:
 
 ```bash
 sha256sum -c cirrocast-v1.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c

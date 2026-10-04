@@ -151,7 +151,7 @@ cargo run -q -- --offline --moon --lat 78.2232 --lon 15.6469
 cargo run -q -- -f json --moon Beijing | jq '.astro.moon.phase, .astro.sun.polar'
 cargo run -q -- --moon -p metar --station EGLL -v
 #   "sun: computed locally (provider sends none)" and the panel rendered from local values
-#   (`met-no` joins the registry in step 19; metar is the observation-only backend today)
+#   (`met-no` joins the registry in step 23; metar is the observation-only backend today)
 ```
 
 ## Exit criteria
@@ -218,10 +218,11 @@ cargo run -q -- --moon -p metar --station EGLL -v
   (`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` with and without
   the network guard, `reuse lint`) and the live smoke commands of this file executed: `--moon`,
   `-f moon`, `-f json --moon | jq`, `-f one-line --template '%M (%m) %t'`, the metar `-v` note
-  (`sun: computed locally (provider sends none)`; `met-no` does not exist yet — step 19 adds it)
+  (`sun: computed locally (provider sends none)`; `met-no` does not exist yet — step 23 adds it)
   and the Longyearbyen offline replay. Step closed.
 - 2026-10-04 — follow-up in the same session: the master contract in `docs/plans/README.md` now
   lists `model/astro.rs`, `src/astro/` and the renderer files in its module map, spells the
   `Report` shape with the attached `alerts`/`air`/`astro` blocks (it had gone stale at step 15),
   adds the `astro` object and the `moon` format to the rendering contract, and names `moon.rs` in
   the renderer list. No interface changed; the map was brought back in line with the tree.
+- 2026-10-04 — step references in the entries above were remapped by the plan reorganization (see `docs/plans/README.md`); no deliverable or outcome in this step changed.

@@ -63,10 +63,10 @@ location no source covers is reported as such instead of being silently asked.
       location=<lon>,<lat>&key=<KEY>` on the configured `[providers.qweather] host`, reusing the
       existing `CIRROCAST_QWEATHER_KEY`; maps `warning[].{id,sender,pubTime,title,startTime,endTime,
       status,severity,urgency,certainty,typeName,text,related,color}` (`color.code` → severity when
-      `severity` is absent, `typeName` → `event`). Auth follows step 25: the alert adapter resolves
+      `severity` is absent, `typeName` → `event`). Auth follows step 27: the alert adapter resolves
       the credential through the same `Credential` resolver and header helper as the forecast
-      provider, so a JWT-configured account works for both. If step 25 has not landed, the adapter
-      uses the existing `X-QW-Api-Key` path and step 25 switches it in its own commit.
+      provider, so a JWT-configured account works for both. If step 27 has not landed, the adapter
+      uses the existing `X-QW-Api-Key` path and step 27 switches it in its own commit.
 - ✅ `src/alerts/wmoswic.rs`: the WMO Severe Weather Information Centre aggregator (keyless,
       worldwide, 130+ issuing agencies; operated by HKO). Two steps: `GET
       https://severeweather.wmo.int/f/wfs?request=GetFeature&version=1.1.0&outputFormat=json&
@@ -205,7 +205,7 @@ location no source covers is reported as such instead of being silently asked.
 METAR (no warnings), and in-band alert payloads of `weatherapi` (`alerts` object in the forecast
 response) and `pirateweather` (`alerts` array): they are declared `alerts: false` here on purpose
 rather than half-mapped, and their `provider info` note says "forecast endpoint carries an
-unconsumed alerts block". Visual Crossing's `alerts` array is wired in step 19 through this same
+unconsumed alerts block". Visual Crossing's `alerts` array is wired in step 23 through this same
 adapter. MQTT push, `CAP` polygon rendering on a map, alert history and acknowledgment state are
 never in scope. Locale negotiation for alert text falls back to English when a CAP `info` block for
 the requested language does not exist.
@@ -283,7 +283,7 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts Vienna -v; echo $?
   19 for a Beijing box, 0 mid-Atlantic, 3 659 worldwide; `/alert/<uuid>` answers `301` to CAP XML)
   and `src/alerts/hko.rs` (HK, keyless JSON `warnsum`), and reworked alert selection from
   "the weather chain declares alerts" to an independent coverage-selected registry with
-  `[alerts] sources` / `--alerts-from`. QWeather alert auth now follows step 25's credential
+  `[alerts] sources` / `--alerts-from`. QWeather alert auth now follows step 27's credential
   resolver. No code exists for this step yet, so nothing else changed.
 - 2026-10-03 — work started: `quick-xml 0.42` added (CAP XML, design note above) and the CAP-shaped
   model landed in `src/model/alert.rs` (`Alert`, the three CAP value sets, `AlertSource`), with
@@ -358,3 +358,4 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts Vienna -v; echo $?
   both flipped to "no active weather alerts" with no code change. `tests/alerts.rs` now seeds a
   copy of the fixture whose `sent`/`onset`/`expires` are relative to the run (`live_gale_fixture`);
   the adapter tests keep the raw fixture because they inject their own clock.
+- 2026-10-04 — step references in the entries above were remapped by the plan reorganization (see `docs/plans/README.md`); no deliverable or outcome in this step changed.

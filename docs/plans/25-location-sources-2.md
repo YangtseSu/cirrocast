@@ -3,10 +3,10 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 27 — location sources, second generation
+# Step 25 — location sources, second generation
 
 Status: ⬜ not-started
-Depends on: `04-geocoding-and-location-syntax.md` (spec parsing, ranking, attribution lines, Nominatim throttle), `05-http-cache-and-ip-location.md` (IP chain and cache), `18-offline-city-database.md` (bundled city index), `26-location-candidate-selection.md` (the picker that consumes the candidate lists this step produces)
+Depends on: `04-geocoding-and-location-syntax.md` (spec parsing, ranking, attribution lines, Nominatim throttle), `05-http-cache-and-ip-location.md` (IP chain and cache), `18-offline-city-database.md` (bundled city index), `20-location-candidate-selection.md` (the picker that consumes the candidate lists this step produces)
 Touches: `src/geo/{mod,ip,reverse,chain,merge}.rs`, `src/geo/data/`, `build/geo-table/`, `src/config/mod.rs`, `src/cli.rs`, `src/main.rs`, `tests/{geo_ip,geo_geonames,geo_reverse,geo_merge}.rs`, `tests/fixtures/geo/`, `REUSE.toml`, `LICENSES/`, `docs/providers.md`, `README.md`, `CHANGELOG.md`
 
 ## Goal
@@ -17,7 +17,7 @@ key), **GeoNames `searchJSON`** as a BYOK city search with the fuzzy matching th
 cannot do, **Nominatim `/reverse`** for naming a coordinate, and **Natural Earth country polygons**
 plus step 18's city index for fully offline naming (`@lat,lon` → "Xianghe, Hebei, China 12 km away").
 Name searches merge candidates across sources, de-duplicate them (same folded name + country + within
-5 km), keep step 04's ranking, and hand several hits to step 26's picker. No source here needs a
+5 km), keep step 04's ranking, and hand several hits to step 20's picker. No source here needs a
 bundled credential: GeoNames is BYOK.
 
 ## Deliverables
@@ -67,7 +67,7 @@ bundled credential: GeoNames is BYOK.
   (same base URL, UA, 1 req/s throttle and `geocode/<sha256>.json` cache as the search path, 30-day
   TTL) mapping through the step-04 helper. `[geo] reverse = "auto" | "offline" | "off"` (+
   `CIRROCAST_GEO_REVERSE`, default `auto`); `--offline=geo` and `--offline` imply `offline`, which
-  never opens a socket. Several offline candidates inside the radius go through step 26's picker
+  never opens a socket. Several offline candidates inside the radius go through step 20's picker
   (nearest first); the chosen name is a **display attribute only** — a coordinate location keeps its
   `source = Coordinates` and its full-precision `lat`/`lon` as the request key, and `-v` prints which
   source named it and how far away the place is.
@@ -82,7 +82,7 @@ bundled credential: GeoNames is BYOK.
   coordinate now gets a name through `reverse.rs` instead of being printed bare; with several
   nearby places the picker asks; the disclosure line and README/`--help` privacy text list all three
   IP services. `location search @lat,lon` prints the coordinate line plus the named candidates under
-  `--all` (step 26's flag); `location search --ip --all` does the same for the IP answer.
+  `--all` (step 20's flag); `location search --ip --all` does the same for the IP answer.
 - ⬜ `docs/providers.md`: a new "Location services" table — service, endpoint, auth, licence/credit,
   privacy-policy URL, cache ceiling, `verified: <date>` — covering the Open-Meteo geocoder,
   Nominatim search and reverse, GeoNames search, IP.SB, ipwho.is, ipapi.co and the bundled Natural
@@ -127,13 +127,13 @@ bundled credential: GeoNames is BYOK.
   reached. This step names the network backends behind that table; it changes nothing about the
   offline layering.
 * **The picker is the single selection surface.** This step only produces candidate lists; it never
-  grows a second chooser, and non-interactive runs keep step 26's rules (ranked winner + note).
+  grows a second chooser, and non-interactive runs keep step 20's rules (ranked winner + note).
 
 ## Out of scope
 
 Postal codes, admin-2/admin-3 hierarchies, place-name search over OSM *objects* (`~` already covers
 that case), geocoding in non-English locales beyond what each API returns, user-supplied city files,
-offline IP databases, and reverse geocoding of multiple coordinates in one run (step 21's
+offline IP databases, and reverse geocoding of multiple coordinates in one run (step 19's
 multi-location form will reuse the same single-point path).
 
 ## Verification
@@ -179,7 +179,7 @@ for the same place and keeps step 04's order.
   display-only, the distance is printed under `-v`, and `--all` shows the other candidates, so the
   user can always fall back to `@lat,lon` (which never changes what is fetched).
 * The Natural Earth extract adds binary size; the fallback to 110m and the size record keep it
-  inside step 22's budget, and the data stays credited.
+  inside step 21's budget, and the data stays credited.
 * GeoNames free usernames are rate-limited per day; a 429/status-code body becomes an exit-3 error
   naming the quota, never a silently empty search, and the geocode cache absorbs repeat queries.
 
@@ -196,3 +196,4 @@ for the same place and keeps step 04's order.
   without a `username` answers HTTP 401 `{"status":{"value":10,"message":"Please add a username …"}}`,
   which is why the no-username case is mapped to `MissingKey` rather than the shared helper's
   invalid-key path; both recorded in the deliverables above.
+- 2026-10-04 — renumbered from 27 to 25 by the plan reorganization; dependencies are now 18 and 20 (`20-location-candidate-selection.md` was 26).

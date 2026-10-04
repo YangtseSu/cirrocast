@@ -129,7 +129,7 @@ observation age instead, and `--verbose` adds the raw METAR/TAF text with an exp
 * SIGMET/AIRMET/PIREP products and radar imagery: not owned by any step file; step 15 covers consumer-facing
   weather alerts only.
 * IATA/FAA/WMO identifier lookup (3-letter IATA codes, 5-digit WMO numbers): only 4-letter ICAO is accepted.
-* Historical METAR archives, station time-series and `--days` support for this backend: step 19 adds
+* Historical METAR archives, station time-series and `--days` support for this backend: step 23 adds
   additional forecast backends; METAR stays current-only.
 * The alerts field of `Report` (stays empty here) and alert rendering: step 15.
 

@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 19 — more providers
+# Step 23 — more providers
 
 Status: ⬜ not-started
 Depends on: 10, 15, 16
@@ -19,7 +19,7 @@ Touches: `src/provider/{mod,met_no,visualcrossing,open_meteo_archive,open_meteo_
 Four new `--provider` keys beyond the ten of phases A–C: `met-no` (keyless, global, 9 days),
 `visualcrossing` (BYOK, 15 days, supplies its own alerts), `open-meteo-archive` (historical only) and
 `open-meteo-marine` (waves/swell/sea-surface behind `--marine`). `auto` becomes the interim fixed
-list `open-meteo,met-no,smhi` (+`metar` with `--station`; step 28 replaces it with the
+list `open-meteo,met-no,smhi` (+`metar` with `--station`; step 24 replaces it with the
 coverage-ranked expansion), the README backend matrix and `keys.rs` list every new source, and
 scraped HTML sites stay explicitly refused.
 
@@ -72,7 +72,7 @@ scraped HTML sites stay explicitly refused.
       need a chain entry with `history_days > 0`, else usage error), `--marine` and `--days` clamped
       per provider against `max_days` with the warn-once behaviour.
 - ⬜ `auto` chain `open-meteo,met-no,smhi` (+`metar` with `--station`) as the **interim** fixed
-      list — step 28 replaces it with the coverage-ranked expansion once national backends carry
+      list — step 24 replaces it with the coverage-ranked expansion once national backends carry
       `covers` metadata — and update the selection paragraph, provider list and CLI block of
       `docs/plans/README.md`, the README backend matrix (key/env var, coverage, days, alerts,
       attribution per row) and `src/config/keys.rs` with `CIRROCAST_METEOALARM_KEY` and
@@ -129,7 +129,7 @@ scraped HTML sites stay explicitly refused.
   audit's Xiaomi/`china` module ships a hard-coded app key and signature and is the canonical
   rejection); and, for a "free" key, need no credit card or phone number. Coverage is judged against
   what the model can express: a backend whose payload cannot fill the four day parts waits for a
-  model change rather than half-filling the table (step 28 records the daily-only national sources
+  model change rather than half-filling the table (step 24 records the daily-only national sources
   this excludes).
 
 ## Out of scope
@@ -194,7 +194,8 @@ cargo run -q -- -p open-meteo-marine --lat 54.54 --lon 10.23; echo $?   # exit 2
   (192 hourly slots, so `max_days: 8`, not the docs default 7); open-meteo-archive covers 1940-01-01
   onward with ERA5's ~5-day latency.
 - 2026-10-03 — plan amended after the breezy-weather audit: `auto` is explicitly the *interim* fixed
-  list (step 28 makes it coverage-aware), the source-admission criteria gained the audit's rules
+  list (step 24 makes it coverage-aware), the source-admission criteria gained the audit's rules
   (documented public endpoint, user-supplied credentials only, no reskins, no reverse-engineered
   APIs, no card/phone for a free key), and the alert note now points at step 15's independent alert
   registry instead of MeteoAlarm alone.
+- 2026-10-04 — renumbered from 19 to 23 by the plan reorganization; the interim `auto` list is still replaced by step 24, whose dependency on this file is unchanged.

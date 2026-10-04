@@ -6,7 +6,7 @@
 //! `{host}/weatheralert/v7/alert/now?location=<lon>,<lat>` answers the same
 //! severity/urgency/certainty triple as CAP, so the mapping is direct. The credential and host are
 //! the `qweather` provider's (`X-QW-Api-Key` and `providers.qweather.host`); the source is only
-//! selected when that provider is on the chain. Step 25 switches the header to the JWT resolver in
+//! selected when that provider is on the chain. Step 27 switches the header to the JWT resolver in
 //! its own commit; this adapter calls the same accessors then.
 //!
 //! Two documented v7 revisions differ in where the severity colour lives (`severity` versus

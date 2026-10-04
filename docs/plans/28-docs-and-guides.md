@@ -3,10 +3,11 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 23 — documentation set and repo hygiene
+# Step 28 — documentation set and repo hygiene
 
 Status: ⬜ not-started
-Depends on: 14 (v1 acceptance), 21 (multi-location and templates)
+Depends on: 14 (v1 acceptance), 19 (multi-location and templates); its generated artifacts snapshot
+the surface of every other scheduled step (18–27), so it lands last in the A-series
 Touches: `docs/{getting-started,configuration,providers,formats,location,i18n,troubleshooting,
 architecture}.md`, `docs/reference/{help-long.txt,flags.txt}`, `docs/schema/{json-v1.json,
 json-v2.json}`, `docs/screenshots/*.txt`, `man/cirrocast.1`, `CONTRIBUTING.md`, `SECURITY.md`,
@@ -25,8 +26,9 @@ issue templates, security policy) and a link checker keeps them honest.
 
 ## Deliverables
 
-- ⬜ `docs/getting-started.md`: install (packages from step 24), first run, `--help` tour, config
-      init, the three keyless backends, setting a key for one keyed backend, offline mode.
+- ⬜ `docs/getting-started.md`: install (the AUR package and the release archives; further package
+      formats are backlog B02), first run, `--help` tour, config init, the keyless backends, setting
+      a key for one keyed backend, offline mode.
 - ⬜ `docs/configuration.md`: every config key with type, default, example and effect; the two new
       tables (`[locations]`, `[templates]`); the precedence table (CLI flag > env var > project
       config? — no: `CIRROCAST_*` env > `$XDG_CONFIG_HOME` user config > `XDG_CONFIG_DIRS` system
@@ -53,8 +55,9 @@ issue templates, security policy) and a link checker keeps them honest.
 - ⬜ `docs/architecture.md`: module map, request data flow as a mermaid diagram (argv → cli → geo →
       provider → cache → model → render → stdout), the `serve` thread model, on-disk state, and the
       invariants (metric-SI storage, single conversion point, cache unit-independence).
-- ⬜ `docs/wttr-compat.md` and `docs/performance.md` reviewed against the binary (they are authored in
-      steps 20 and 22) and linked from `README.md` and the man page.
+- ⬜ `docs/performance.md` reviewed against the binary (authored in step 21) and linked from
+      `README.md` and the man page; `docs/wttr-compat.md` is reviewed and linked only if backlog B01
+      has landed (that file is authored there).
 - ⬜ Man page: `man/cirrocast.1` generated from the clap definitions (step 08), reviewed line by line
       against `--help`; `man --warn --local-file man/cirrocast.1 > /dev/null` is silent; the page gains
       EXIT STATUS (0–6), ENVIRONMENT (`CIRROCAST_*`, `NO_COLOR`, `CLICOLOR_FORCE`, `XDG_*`,
@@ -83,10 +86,11 @@ issue templates, security policy) and a link checker keeps them honest.
       can be judged from the issue alone.
 - ⬜ `SECURITY.md`: the no-telemetry promise, key handling (env/`keys.toml` 0600/keyring, never
       logged), report of a vulnerability by private advisory to the maintainer address, scope
-      (binary, packaging, the `serve` surface), and "no bug bounty".
+      (binary, packaging, and the `serve` surface if backlog B01 has landed), and "no bug bounty".
 - ⬜ `README.md` refresh: what/why, one real ASCII screenshot per format from
       `docs/screenshots/*.txt` (captured from real runs, `script -q -c 'cirrocast Beijing' /dev/null`),
-      the provider matrix, install paths for step 24, links to every doc, licence.
+      the provider matrix, install paths (AUR and release archives; backlog B02 adds more), links to
+      every doc, licence.
 - ⬜ `.github/workflows/ci.yml` + `lychee.toml`: `docs` job running the snapshot test, the flag
       reconciliation test, the schema test, `man --warn`, and `lycheeverse/lychee-action@v2` with
       `--cache --max-cache-age 1d` over `*.md` plus a checked-in ignore list for known-hostile hosts.
@@ -101,13 +105,14 @@ issue templates, security policy) and a link checker keeps them honest.
   `default-features = false` is required: the default set enables `resolve-http`, which pulls
   `reqwest` → `tokio` into the build graph for a test that never fetches a remote `$ref` (our schemas
   use only internal `$defs`). It is a dev-dependency, so it never enters the shipped binary or the
-  step 22 size budget. A hand-rolled `serde_json` walk over the schema is rejected: keywords like
+  step 21 size budget. A hand-rolled `serde_json` walk over the schema is rejected: keywords like
   `multipleOf`, `unevaluatedProperties` and `oneOf` branching are exactly where hand-rolled validators
   diverge from the spec, and the point of this artifact is that third parties can trust it.
 * **Schema v1 and v2 both ship.** v1 records what `v1.0.0` printed and must not be edited afterwards
-  (it is the compatibility promise for existing consumers); v2 is the current family after step 21 and
-  is what the live tests validate. The two files share nothing but a `$defs` copy, deliberately: a
-  consumer pinning v1 must be able to read a self-contained file.
+  (it is the compatibility promise for existing consumers); v2 is the current family once the
+  phase-F surface freezes (steps 19–27) and is what the live tests validate. The two files share
+  nothing but a `$defs` copy, deliberately: a consumer pinning v1 must be able to read a
+  self-contained file.
 * **The flag reference is a plain list, not generated docs.** A Markdown table generated from clap
   would duplicate `--help` and rot in the same way as hand-written prose; `flags.txt` is a flat list
   whose only job is the set-equality test, and `--help` stays the human-facing canonical reference.
@@ -127,7 +132,7 @@ issue templates, security policy) and a link checker keeps them honest.
 Translating the documentation (English only, per `AGENTS.md`), a documentation site generator
 (Markdown in the repository tree is the deliverable; `mdbook` adds a build system for no reader we
 have), shell completion documentation (completions are generated in step 08 and self-documenting),
-and content for phase B–D features beyond the pointers this step links.
+and content beyond the pointers this step links.
 
 ## Verification
 
@@ -180,3 +185,8 @@ link check reports 0 broken links.
 
 - 2026-09-30 — step opened: document set, generated-artifact checks, validator choice (`jsonschema`
   with `default-features = false`) and repo-hygiene files fixed.
+- 2026-10-04 — renumbered from 23 to 28 by the plan reorganization and moved to the end of the
+  A-series: its man/flags/help/schema snapshots must see the frozen CLI and JSON surface, so the
+  generated artifacts wait for steps 18–27, while the prose halves (getting-started, configuration,
+  location, i18n, troubleshooting, architecture) can be written as their subjects land. The
+  `wttr-compat.md` review is now conditional on backlog B01.

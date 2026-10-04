@@ -73,7 +73,7 @@ impl Pollen {
 
 /// Where an air-quality reading came from.
 ///
-/// An enum rather than a string, so a later source (step 19's candidates) is a variant, not a
+/// An enum rather than a string, so a later source (step 23's candidates) is a variant, not a
 /// schema change; the JSON renderer spells the value out itself and cannot drift with a rename.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

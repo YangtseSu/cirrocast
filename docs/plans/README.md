@@ -12,10 +12,12 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 
 ## How these plans are used
 
-* One file per step: `NN-kebab-case-title.md`, ordered by execution.
+* One file per step: `NN-kebab-case-title.md` (A-series, ordered by execution) or
+  `B01-kebab-case-title.md` (backlog, `⏸`; see below).
 * A step is worked on alone, top to bottom. Every `- ⬜` item in a step is one committable unit.
 * Progress is tracked with emoji, **inside each step file**:
-  * a `Status:` header line — one of `⬜ not-started`, `🚧 in-progress`, `⛔ blocked`, `✅ done`
+  * a `Status:` header line — one of `⬜ not-started`, `🚧 in-progress`, `⛔ blocked`, `✅ done`,
+    `⏸ backlog`
   * `- ⬜` (open) / `- ✅` (done) markers on every task in `## Deliverables` and `## Exit criteria`
   * a `## Progress log` section, appended (never rewritten) with `YYYY-MM-DD — note`
 * When a step is finished, its `Status:` becomes `✅ done` and the matching row in the table below is
@@ -27,6 +29,10 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
   may be started ahead of its number — while steps with lower numbers are still open — only when
   every entry of its `Depends on` line is done, and the deviation is recorded in its
   `## Progress log`.
+* Backlog items live in `B*/` files (`B01-…`, `B02-…`) with `Status: ⏸ backlog`. They are not
+  scheduled and the plan-driven workflow skips them; scheduling one means assigning it the next free
+  A-series number, renaming its file, and recording the pull in its `## Progress log` — the number
+  stays the execution order.
 
 ## Phases and milestones
 
@@ -35,15 +41,19 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | A — Foundation | 01–06 | real end-to-end run: `cirrocast Beijing -f plain` prints live data from a keyless backend |
 | B — Output parity | 07–11 | wttr.in-style `art-table` plus `one-line`/`plain`/`json`, en-US + zh-CN, all v1 backends |
 | C — Quality and release | 12–14 | **v1.0.0 = "basically formed"**, packaged and reproducible |
-| D — Parity and reach | 15–19 | v1.1–v1.2: alerts, air quality, moon/astro, offline city database, extra providers |
-| E — Integration and ecosystem | 20–24 | v2.0: wttr.in-compatible local service, multi-location, perf budgets, docs, ecosystem packages |
-| F — Sources, selection and auth | 25–29 | QWeather JWT, pick-a-candidate location resolution, second-generation geo/IP sources, keyless national backends with coverage-aware `auto`, climate normals |
+| D — Reach and location | 15–20 | v1.1 shipped alerts, air quality and moon/astro (15–17); the offline city database, multi-location output and the candidate picker remain |
+| E — Quality and integration | 21–22 | performance and resource budgets; the `status` probe, ecosystem recipes and frozen output contracts |
+| F — Sources and auth | 23–27 | extra backends, keyless national providers with coverage-aware `auto`, second-generation location sources, climate normals, QWeather JWT |
+| G — Documentation | 28 | the documentation set, the generated reference and the frozen JSON schemas |
+| Backlog | B01–B02 | deferred, unscheduled: the wttr-compatible local service and the multi-platform packaging matrix |
 
-Phase F was appended on 2026-10-03 after a review of `breezy-weather`'s source catalogue and two
-upstream requests (QWeather JWT, selectable location candidates); it is independent of phase E. The
-same review added the append-and-pull-forward rule to `AGENTS.md`'s plan-driven workflow (step 1)
-and to "How these plans are used" above, because a phase appended after the tail would otherwise
-wait on ten unrelated steps.
+**Reorganized 2026-10-04.** The pending steps were renumbered so the number is the execution order,
+and two items left the schedule for the backlog: the wttr-compatible service (old step 20) became
+**B01** and the multi-platform packaging matrix (the packaging half of old step 24) became **B02** —
+the release target is Linux, mainly Arch, and the macOS archives need no expansion. Old → new:
+19→23, 20→B01, 21→19, 22→21, 23→28, 24→22 + B02, 25→27, 26→20, 27→25, 28→24, 29→26; step 18 kept
+its number. References in earlier `## Progress log` entries were remapped in the same change, and
+dated documents under `docs/reviews/` keep the numbering of their date.
 
 ## Step files
 
@@ -67,47 +77,48 @@ wait on ten unrelated steps.
 | 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ✅ done | 03, 08 |
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ✅ done | 03, 08 |
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ⬜ not-started | 04, 05 |
-| 19 | D | [more-providers](19-more-providers.md) | ⬜ not-started | 10, 15, 16 |
-| 20 | E | [wttr-compat-service](20-wttr-compat-service.md) | ⬜ not-started | 08, 10, 14 |
-| 21 | E | [multi-location-and-templates](21-multi-location-and-templates.md) | ⬜ not-started | 08, 14 |
-| 22 | E | [perf-and-resource-budget](22-perf-and-resource-budget.md) | ⬜ not-started | 12, 21 |
-| 23 | E | [docs-and-guides](23-docs-and-guides.md) | ⬜ not-started | 14, 21 |
-| 24 | E | [ecosystem-integration](24-ecosystem-integration.md) | ⬜ not-started | 13, 20, 21 |
-| 25 | F | [qweather-jwt-auth](25-qweather-jwt-auth.md) | ⬜ not-started | 02, 10, 15 |
-| 26 | F | [location-candidate-selection](26-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
-| 27 | F | [location-sources-2](27-location-sources-2.md) | ⬜ not-started | 04, 05, 18, 26 |
-| 28 | F | [keyless-national-providers](28-keyless-national-providers.md) | ⬜ not-started | 06, 10, 19 |
-| 29 | F | [climate-normals](29-climate-normals.md) | ⬜ not-started | 03, 06, 08 |
+| 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ⬜ not-started | 08, 14 |
+| 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
+| 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ⬜ not-started | 12, 18, 19 |
+| 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ⬜ not-started | 13, 19 |
+| 23 | F | [more-providers](23-more-providers.md) | ⬜ not-started | 10, 15, 16 |
+| 24 | F | [keyless-national-providers](24-keyless-national-providers.md) | ⬜ not-started | 06, 10, 23 |
+| 25 | F | [location-sources-2](25-location-sources-2.md) | ⬜ not-started | 04, 05, 18, 20 |
+| 26 | F | [climate-normals](26-climate-normals.md) | ⬜ not-started | 03, 06, 08 |
+| 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ⬜ not-started | 02, 10, 15 |
+| 28 | G | [docs-and-guides](28-docs-and-guides.md) | ⬜ not-started | 14, 19, and the surface of 18–27 |
+| B01 | Backlog | [wttr-compat-service](B01-wttr-compat-service.md) | ⏸ backlog | 08, 10, 14, 19 |
+| B02 | Backlog | [packaging-matrix](B02-packaging-matrix.md) | ⏸ backlog | 13, 21, 22 |
 
 **v1.0.0 = "basically formed"** (steps 01–14) means, end to end and demonstrated in step 14: eight
 backends selectable (three keyless), BYOK keys never touching `config.toml`, city-name, coordinate
 and IP location resolution, four text output formats with the wttr.in-style `art-table` as default,
 metric/us/uk units with per-quantity overrides, en-US + zh-CN output, XDG-compliant config, cache and
-data directories, and a packaged, REUSE-compliant, CI-clean release. Everything in phases D and E is
-*planned work with a plan file*, not a roadmap wish and not a stub in `src/`.
+data directories, and a packaged, REUSE-compliant, CI-clean release. Everything in phases D–G and
+the backlog is *planned work with a plan file*, not a roadmap wish and not a stub in `src/`.
 
 ## Requirement traceability
 
 | Original requirement | Steps that deliver it |
 |---|---|
 | 1. Rust with `clap` and friends | 01 (toolchain, dependencies, lint gates) |
-| 2. Multiple backends, keyless first | 06 (open-meteo), 10 (owm, weatherapi, wwo, pirateweather, qweather, smhi), 11 (metar), 19 (met.no, visualcrossing, open-meteo archive/marine), 28 (nws, brightsky) |
-| 3. BYOK for key-requiring backends | 02 (key store + `key` subcommands), 10 (consumption, `MissingKey`), 12 (secret-handling audit), 25 (JWT credentials) |
-| 4. All wttr.in outputs | 07 (`art-table`, `dumb`), 08 (`one-line` templates, `plain`, `json`, completions, man), 17 (astro/moon tokens), 20 (wttr.in-compatible local service incl. the `?` option table), 21 (multi-location output) |
-| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation), 27 (GeoNames search, multi-source merge) |
-| 6. IP → city | 05 (ipwho.is + ipapi.co, opt-in, cached, privacy documented), 27 (IP.SB, coordinate naming, coverage) |
+| 2. Multiple backends, keyless first | 06 (open-meteo), 10 (owm, weatherapi, wwo, pirateweather, qweather, smhi), 11 (metar), 23 (met.no, visualcrossing, open-meteo archive/marine), 24 (nws, brightsky) |
+| 3. BYOK for key-requiring backends | 02 (key store + `key` subcommands), 10 (consumption, `MissingKey`), 12 (secret-handling audit), 27 (JWT credentials) |
+| 4. All wttr.in outputs | 07 (`art-table`, `dumb`), 08 (`one-line` templates, `plain`, `json`, completions, man), 17 (astro/moon tokens), B01 (`serve`, the wttr.in-compatible service incl. the `?` option table, backlog), 19 (multi-location output) |
+| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation), 25 (GeoNames search, multi-source merge) |
+| 6. IP → city | 05 (ipwho.is + ipapi.co, opt-in, cached, privacy documented), 25 (IP.SB, coordinate naming, coverage) |
 | 7. Own CLI design, no wego copying | 01 + `AGENTS.md` (no-copy rule), 08 (documented flag matrix and precedence) |
 | 8. Selectable units and output language | 03 (unit system + formatting), 09 (Fluent i18n, en-US + zh-CN) |
 | 9. Standard XDG directories | 02 (`etcetera`-based config/cache/data), 12 (XDG audit) |
 | 10. Project name | 01 / `AGENTS.md` — `cirrocast`; verified free on crates.io, AUR, Arch, npm, PyPI and GitHub |
-| 11. Candidates selectable when a name/IP lookup is ambiguous | 26 (picker, `--pick`/`--yes`, `location search --all`), 27 (multi-source merge, coordinate naming feeds the picker) |
-| 12. QWeather JSON Web Token authentication | 25 (Ed25519 credentials, `key set qweather --jwt`, bearer header) |
-| 13. Official keyless national backends, chosen by coverage | 28 (NWS, Bright Sky, coverage-aware `auto`), 15 (global alert aggregators WMO SWIC and FPAS, HKO alerts) |
-| 14. Climate normals for the location | 29 (NOAA NCEI Global Summary of the Month, 1991–2020, cached 30 days) |
+| 11. Candidates selectable when a name/IP lookup is ambiguous | 20 (picker, `--pick`/`--yes`, `location search --all`), 25 (multi-source merge, coordinate naming feeds the picker) |
+| 12. QWeather JSON Web Token authentication | 27 (Ed25519 credentials, `key set qweather --jwt`, bearer header) |
+| 13. Official keyless national backends, chosen by coverage | 24 (NWS, Bright Sky, coverage-aware `auto`), 15 (global alert aggregators WMO SWIC and FPAS, HKO alerts) |
+| 14. Climate normals for the location | 26 (NOAA NCEI Global Summary of the Month, 1991–2020, cached 30 days) |
 
 Rows 11–14 were added on 2026-10-03: 11 and 12 are upstream requests, 13 and 14 come from the
 `breezy-weather` source audit (proprietary and reverse-engineered sources, including Xiaomi's
-`china` API, are explicitly not adopted — see step 19's design notes).
+`china` API, are explicitly not adopted — see step 23's design notes).
 
 ## Definition of "basically formed" (v1.0.0 gate, checked in step 14)
 
@@ -241,8 +252,8 @@ pub trait Provider {
 * Selection: `--provider a,b,c` is an explicit ordered chain; bare default comes from config
   (`defaults.provider`), whose built-in value is `open-meteo`. `auto` expands to the keyless chain
   that answers for a resolved place, **ranked by registry coverage** (country match, then bounding
-  box, then the global entries; step 28) — until step 28 lands it is the interim fixed list
-  `open-meteo,met-no,smhi` (step 19). A station is never part of it — `--station`
+  box, then the global entries; step 24) — until step 24 lands it is the interim fixed list
+  `open-meteo,met-no,smhi` (step 23). A station is never part of it — `--station`
   selects `metar` when no provider is given, and prepends it to `auto` when one is. A failure in a chain falls through
   to the next entry only when the error is transport/upstream (`Error::Upstream`/`Network`), never
   when it is a usage, key or location error.
@@ -302,7 +313,7 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   Open-Meteo — https://open-meteo.com/` for a geocoded name (CC-BY-4.0 asks for credit plus a service
   link next to the data), `Location data © OpenStreetMap contributors (ODbL)` for `~` results and
   `Weather data by Open-Meteo.com (https://open-meteo.com/)` for an Open-Meteo forecast; a direct
-  GeoNames search (step 27) carries `Location data by GeoNames (CC BY 4.0) —
+  GeoNames search (step 25) carries `Location data by GeoNames (CC BY 4.0) —
   https://www.geonames.org/` instead of the Open-Meteo-via wording. `geo::attribution_line` is the
   single place that decides the location-side text; every renderer
   that shows upstream data — `plain`, `art-table`, `one-line` and the `json` envelope — carries the
@@ -324,18 +335,19 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
 schema_version = 1
 [defaults]  provider = "open-meteo"  format = "art-table"  units = "metric"  days = 3  language = "auto"
 [location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"
-            pick = "auto"           # auto | never (never = always take the ranked winner; step 26)
+            pick = "auto"           # auto | never (never = always take the ranked winner; step 20)
 [geo]       strategy = "auto"       # bundled table first, network fallback (step 18)
-            search = "auto"         # auto | open-meteo | geonames | nominatim (step 27)
-            reverse = "auto"        # auto | offline | off — coordinate naming (step 27)
+            search = "auto"         # auto | open-meteo | geonames | nominatim (step 25)
+            reverse = "auto"        # auto | offline | off — coordinate naming (step 25)
 [units]     # per-quantity overrides; an absent (or empty) key follows defaults.units
             # temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
 [network]   timeout_secs = 15  retries = 3  proxy = ""  nominatim_url = ""
+            offline = "off"         # weather | geo | all — the `--offline` default (step 18)
 [cache]     enabled = true  weather_ttl_secs = 600  ip_ttl_secs = 86400  geocode_ttl_secs = 2592000
             # ip_ttl_secs is capped at 86400: ipapi.co's terms allow caching an IP answer for at most 24 hours
 [render]    color = "auto"  width = 0
 [alerts]    enabled = true  severity_threshold = "minor"  sources = ["auto"]  fpas_url = ""  cache_ttl_secs = 300  # step 15
-[normals]   period = "1991-2020"  max_distance_km = 60          # step 29
+[normals]   period = "1991-2020"  max_distance_km = 60          # step 26
 [providers.metar]    station = ""
 [providers.qweather] host = ""
 ```
@@ -348,7 +360,7 @@ schema_version = 1
   (`cirrocast key set/rm/list`). There is no third tier: OS keyring storage is explicitly out of
   scope for v1 (step 10, `## Out of scope`), so a key in neither place is simply missing.
 * Providers with a second authentication mode store a `[jwt.<provider>]` table in the same `0600`
-  `keys.toml` (step 25, QWeather): the PEM private key plus its non-secret identifiers
+  `keys.toml` (step 27, QWeather): the PEM private key plus its non-secret identifiers
   (`credential_id`, `developer_id`, `project_id`). Resolution for such a provider checks the JWT
   environment quartet → `[jwt.<provider>]` → the API-key tiers above; a *partial* JWT set is
   `Error::Config`, never a silent fall-through. A PEM is read from a file or stdin at `key set` time
@@ -359,7 +371,7 @@ schema_version = 1
   `weather/metar-<ICAO>-{current,taf}.json` for the station resources, `station/<ICAO>.json` for
   30-day station metadata, and `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json` for alert
   responses (a CAP document fetched per identifier hashes the identifier instead of a place);
-  writes are `tmp` + `rename`. Steps 28 and 29 add two namespaces with the
+  writes are `tmp` + `rename`. Steps 24 and 26 add two namespaces with the
   same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
   mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
   reports every namespace it finds.
@@ -380,7 +392,11 @@ tests; `unsafe` is denied by lint.
 cirrocast [OPTIONS] [LOCATION]
   -p, --provider <ID[,ID...]>   open-meteo | openweathermap | weatherapi | worldweatheronline
                                 | pirateweather | qweather | smhi | metar | auto
-  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts
+                                (+ met-no, visualcrossing, open-meteo-archive, open-meteo-marine in
+                                step 23; nws, brightsky in step 24)
+  -f, --format <NAME>           art-table | dumb | plain | one-line | full | minimal | json | alerts
+                                | aqi | moon | normals  (`full`/`minimal` are one-line presets,
+                                step 19; `normals` is step 26)
   -d, --days <N>                0..=14 (clamped per provider, warned once)
   -u, --units <metric|us|uk>
       --lang <TAG>              BCP-47, or "auto"
@@ -391,19 +407,23 @@ cirrocast [OPTIONS] [LOCATION]
       --no-alerts               do not fetch warnings in this run
       --alerts-from <LIST>      explicit alert sources: nws, meteoalarm, qweather, hko, wmoswic, fpas
       --severity <LEVEL>        lowest alert severity to show (unknown..extreme)
-      --no-cache / --refresh / --offline
+      --no-cache / --refresh / --offline[=<weather|geo|all>]   (step 18; bare `--offline` = all)
       --timeout <SECS>
+      --template <STRING>       literal `%` template (step 19); `--template-file <PATH>` reads a file
+      --date <YYYY-MM-DD> --history <N>d   archive request; needs a backend with history (step 23)
+      --marine                  append the Open-Meteo marine panel (step 23)
+      --normals                 compare with the 1991–2020 climate normals (step 26)
       --color <auto|always|never>
       --width <COLS>
-      --pick / --yes            force the candidate picker / take the ranked winner (step 26)
+      --pick / --yes            force the candidate picker / take the ranked winner (step 20)
   -q, --quiet   -v, --verbose (repeatable)
   -h, --help    -V, --version
 
 cirrocast config   <path|init|show|get|set|edit|validate>
-cirrocast key      <set|rm|list>            # `key set qweather --jwt …` (step 25)
+cirrocast key      <set|rm|list>            # `key set qweather --jwt --key-file <PATH|->` (step 27)
 cirrocast provider <list|info>
 cirrocast cache    <stat|clean>
-cirrocast location <search>                 # `location search --all` lists the ranked candidates (step 26)
+cirrocast location <search>                 # `location search [--offline] [--all] [--limit N] [--exact]` (steps 18, 20)
 cirrocast completion <shell>    cirrocast man
 ```
 
@@ -413,7 +433,7 @@ IP. Fuzzy matches are ranked deterministically (exact-name, then population, the
 the chosen location is echoed in the header. When a lookup yields **more than one candidate** — a
 name search, the offline table, a coordinate or IP answer named by several nearby places — the tool
 asks: on a terminal (stdin and stderr) the ranked list is printed on stderr and one line is read
-(step 26); `--pick` forces the prompt, `--yes`/`[location] pick = "never"` and any non-terminal run
+(step 20); `--pick` forces the prompt, `--yes`/`[location] pick = "never"` and any non-terminal run
 take the ranked winner and print the extended note, so a script is never prompted and never hangs.
 Aborting the choice is `Error::Location` (exit 5). Coordinates (`@lat,lon`) remain the only
 geocoder-independent spec and are what the selection echo prints back.

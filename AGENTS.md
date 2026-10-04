@@ -110,8 +110,10 @@ source, and no advisory ignore without a reason and an expiry date.
 
 1. Pick the lowest-numbered step in `docs/plans/README.md` with `Status: ⬜ not-started` (or continue a
    `🚧 in-progress` one). Steps are executed in order; do not start a step whose dependencies are open.
-   A step appended after an earlier phase may be started ahead of its number once every entry of its
-   `Depends on` line is done — record that deviation in the step's `## Progress log`.
+   `⏸ backlog` items (`B01`, `B02`, …) are outside the schedule and are skipped unless the pull is
+   recorded as described in `docs/plans/README.md`. A step appended after an earlier phase may be
+   started ahead of its number once every entry of its `Depends on` line is done — record that
+   deviation in the step's `## Progress log`.
 2. Work item by item through that step's `## Deliverables`. One deliverable = one commit.
 3. In the same commit as the code, update the step file: flip the item to `- ✅` and append a dated
    line to `## Progress log`. Never rewrite history in the log.
@@ -120,8 +122,8 @@ source, and no advisory ignore without a reason and an expiry date.
 5. If reality diverges from the plan, fix the plan in the same commit and say why in the log line.
    Interfaces change → `docs/plans/README.md` first.
 
-Progress markers are emoji (`⬜ not-started` / `🚧 in-progress` / `⛔ blocked` / `✅ done`, tasks
-`- ⬜` / `- ✅`) so that scanning a step file shows its state at a glance.
+Progress markers are emoji (`⬜ not-started` / `🚧 in-progress` / `⛔ blocked` / `✅ done` /
+`⏸ backlog`, tasks `- ⬜` / `- ✅`) so that scanning a step file shows its state at a glance.
 
 ## Recipes
 

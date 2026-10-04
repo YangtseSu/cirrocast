@@ -3,10 +3,13 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 20 — wttr-compatible local service
+# B01 — wttr-compatible local service (backlog)
 
-Status: ⬜ not-started
-Depends on: 08 (CLI surface and formats), 10 (provider chain), 14 (v1 acceptance)
+Status: ⏸ backlog — deferred on 2026-10-04: the release target is the Linux/Arch CLI, this service
+is not required by any scheduled phase, and it may be dropped; scheduling it means renumbering it
+into the A-series tail first (`docs/plans/README.md`).
+Depends on: 08 (CLI surface and formats), 10 (provider chain), 14 (v1 acceptance), 19 (the `template`
+module whose token table the compat surface serves)
 Touches: `src/serve/{mod,request,response,query,token,help}.rs`, `src/cli.rs`, `src/lib.rs`,
 `src/error.rs`, `Cargo.toml`, `AGENTS.md`, `docs/wttr-compat.md`, `tests/serve_compat.rs`,
 `tests/fixtures/serve/`, `REUSE.toml`
@@ -16,8 +19,9 @@ Touches: `src/serve/{mod,request,response,query,token,help}.rs`, `src/cli.rs`, `
 `cirrocast serve --bind 127.0.0.1:8642` runs a foreground HTTP/1.1 service whose request surface
 mirrors wttr.in, so an existing script that does `curl wttr.in/Beijing` keeps working after the host
 string is changed to `http://127.0.0.1:8642/Beijing`. The service owns no weather logic: every
-request is parsed into the same invocation the CLI builds and rendered by the same renderer, so a
-fixed query returns bytes identical to the equivalent `cirrocast` command line. Loopback by default,
+request is parsed into the same invocation the CLI builds, rendered by the same renderer, and any
+`%` template goes through step 19's `template` module, so a fixed query returns bytes identical to
+the equivalent `cirrocast` command line. Loopback by default,
 `--allow-remote` plus a bearer token for anything else, no directory serving, one access-log line per
 request on stderr.
 
@@ -39,7 +43,9 @@ request on stderr.
       an empty body.
 - ⬜ `src/serve/query.rs`: query string → internal invocation: `%`-decoding, `+` → space,
       location path decoding, the letter-option cluster (`m u M 0 1 2 3 A d F n q Q T`), the long
-      options `format= lang= period=`, unknown option → 400 listing the supported set.
+      options `format= lang= period=`, unknown option → 400 listing the supported set. A `format=`
+      value that is a `%` template is rendered by the step-19 `template` module, and an unknown
+      token there is passed through literally (the compat rule the CLI does not follow).
 - ⬜ `src/serve/token.rs`: bearer check (`Authorization: Bearer <t>` or `?token=<t>`), constant-time
       byte comparison, `--token-env` read once at startup, empty/missing variable refused.
 - ⬜ `src/serve/help.rs`: the `/?` and `/:help` page, generated from the same option table the
@@ -74,6 +80,10 @@ request on stderr.
   register a handler ourselves, so `ctrlc` (MIT OR Apache-2.0, MSRV 1.69, `nix`/`windows-sys`, no
   async) with the `termination` feature is the minimal way to get SIGINT+SIGTERM. `signal-hook` was
   the other candidate; it is a larger surface for a use we do not have (no signal mask juggling).
+* **One template engine, owned by step 19.** `?format=` templates and the `%` token table come from
+  `src/template.rs`; `serve` never grows a second template implementation, and the literal-passthrough
+  rule for unknown tokens is applied at this boundary only (the CLI exits 2 for a typo; a compat
+  request keeps printing).
 * **Byte-identity is a rendering property, not a promise about the network.** Both paths share
   `Env` (client, cache, config), the provider chain, the renderer and `RenderContext`. The header
   timestamp is the report's observation time (cache fetch time when upstream omits one), never the
@@ -84,7 +94,7 @@ request on stderr.
   workers are safe. This is a compile-time assertion (`fn assert_sync<T: Send + Sync>()`), not a
   redesign. Do not add a per-worker `Env` clone beyond the `Arc`.
 * **`format=j1` is a documented shape change, not an alias.** wttr.in's `j1` is a WorldWeatherOnline
-  shaped document; we serve our own versioned JSON (schema shared with step 23). Scripts that parse
+  shaped document; we serve our own versioned JSON (schema shared with step 28). Scripts that parse
   individual WWO fields must be changed; the option table says so explicitly. `j2` is not served at
   all.
 * **`?A` and `?T` map onto the colour decision**, because a plain-text service cannot sniff a
@@ -97,7 +107,7 @@ request on stderr.
 * **Non-port list (each with its reason), mirrored in `docs/wttr-compat.md`:**
   * `*.png`, `?p`, `?t`, `transparency=`, `background=`, `format=p1` (PNG) — needs font rasterisation
     and text shaping: a bundled font (≥ 1 MB) plus a rasteriser crate (≥ 300 KB of code), which alone
-    eats the step 22 binary budget of 5 MB; also uncomparable to CLI output.
+    eats the step 21 binary budget of 5 MB; also uncomparable to CLI output.
   * `format=p1` (Prometheus) — a new renderer plus a metric-name stability contract; scripts can read
     `format=j1` instead.
   * `v2`/`v3` host aliases, `format=v2|v2d|v2n|v3`, `.sxl` map suffixes — a second and third layout
@@ -166,7 +176,7 @@ non-loopback invocations exit 4 without opening a socket.
 * wttr.in's own option surface drifts (`:help` is edited); the table is re-enumerated at
   implementation time and the drift is a doc-only change, since the parser is driven by our table.
 * Scripts parsing `format=j1` field names break by design (shape change); mitigated by documenting it
-  as a shape change in the option table and by shipping the step 23 JSON Schema.
+  as a shape change in the option table and by shipping the step 28 JSON Schema.
 * Port 8642 may be taken; mitigated by failing fast with `Error::Network` on bind and by documenting
   `--bind 127.0.0.1:0` (ephemeral, printed on startup) for tests and sandboxes.
 
@@ -175,3 +185,7 @@ non-loopback invocations exit 4 without opening a socket.
 - 2026-09-30 — step opened: surface, security model and non-port list fixed; hand-written HTTP layer
   chosen over `tiny_http` after reviewing its `ServerConfig` (no header limit, no read timeout, own
   internal task pool).
+- 2026-10-04 — moved to the backlog as B01 by the plan reorganization: the release target is the
+  Linux/Arch CLI and this service is not required by any scheduled phase. The template surface it
+  serves is owned by step 19's `src/template.rs` (reflected in the depends line and the design notes
+  above); scheduling this file means renumbering it into the A-series tail first.

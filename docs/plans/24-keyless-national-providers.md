@@ -3,11 +3,11 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 28 — keyless national backends and coverage-aware `auto`
+# Step 24 — keyless national backends and coverage-aware `auto`
 
 Status: ⬜ not-started
-Depends on: `06-open-meteo-provider.md`, `10-additional-providers.md` (registry, chain, shared helper), `19-more-providers.md` (`met-no` proves the keyless national pattern and the `Expires` cache)
-Touches: `src/provider/{mod,nws,brightsky}.rs`, `src/cache.rs`, `src/cli.rs`, `src/config/mod.rs`, `tests/{provider_nws,provider_brightsky,provider_auto}.rs`, `tests/fixtures/{nws,brightsky}/`, `docs/providers.md`, `README.md`, `docs/plans/{README,19-more-providers}.md`, `CHANGELOG.md`
+Depends on: `06-open-meteo-provider.md`, `10-additional-providers.md` (registry, chain, shared helper), `23-more-providers.md` (`met-no` proves the keyless national pattern and the `Expires` cache)
+Touches: `src/provider/{mod,nws,brightsky}.rs`, `src/cache.rs`, `src/cli.rs`, `src/config/mod.rs`, `tests/{provider_nws,provider_brightsky,provider_auto}.rs`, `tests/fixtures/{nws,brightsky}/`, `docs/providers.md`, `README.md`, `docs/plans/{README,23-more-providers}.md`, `CHANGELOG.md`
 
 ## Goal
 
@@ -93,7 +93,7 @@ so a distribution can document what a default install talks to.
 ## Design notes
 
 * **Why these two and not the rest of the breezy audit (2026-10-03).** Everything below was
-  screened against the same bar step 19 set (documented API, stated licence, honest attribution,
+  screened against the same bar step 23 set (documented API, stated licence, honest attribution,
   machine-readable payload that fits the canonical model) plus one new one: a provider must be able
   to fill all four day parts from real data. Screened out: **HKO** and **JMA** (official and
   keyless, but their public forecast payloads are *daily*; the canonical model requires four
@@ -109,8 +109,8 @@ so a distribution can document what a default install talks to.
 * **`auto` ranks by coverage, not by a hardcoded list.** A fixed list either excludes a national
   backend or wastes requests on it everywhere; registry metadata (country, bbox, global) makes the
   expansion deterministic, testable and visible under `-v`, and keeps `open-meteo` as the universal
-  last resort. Step 19 ships the interim fixed list (`open-meteo,met-no,smhi`) and this step
-  replaces it; step 19's file is amended in the same commit that lands the ranking.
+  last resort. Step 23 ships the interim fixed list (`open-meteo,met-no,smhi`) and this step
+  replaces it; step 23's file is amended in the same commit that lands the ranking.
 * **A `grid/` namespace rather than a station namespace.** The NWS point→grid mapping is neither a
   station nor a forecast; giving it its own namespace keeps `cache stat` honest and lets
   `cache clean` treat it like other long-TTL metadata.
@@ -177,3 +177,4 @@ cargo run -q -- --offline --lat 39.7456 --lon -97.0892 -p nws           # cached
   `probabilityOfPrecipitation`/`relativeHumidity` as `{unitCode, value}` objects — exactly the
   parsing traps listed in the deliverables. `api.brightsky.dev` remained unreachable (45 s
   timeout), so its mapping stays behind the record-before-freeze rule.
+- 2026-10-04 — renumbered from 28 to 24 by the plan reorganization; it still replaces step 23's interim `auto` list and amends `23-more-providers.md` in the same commit.

@@ -54,7 +54,7 @@ ships no new features: defects found are fixed in the step that owns the code, n
   → exit 6 (not 3); `--offline` warm cache passes, cold cache exits 3 with the rerun hint; a loopback stub returning
   `429` proves bounded retries plus chain fallthrough (exit 0, attribution naming the second provider); a
   `keys.toml` with the wrong mode → exit 4 with the `chmod` hint.
-- ✅ Performance and size record (informational; enforced budgets are step 22): `hyperfine --warmup 10 --runs 30`
+- ✅ Performance and size record (informational; enforced budgets are step 21): `hyperfine --warmup 10 --runs 30`
   for `--version` (< 50 ms), a warm-cache `--offline` run (< 150 ms) and a cold `cirrocast Beijing` (open-meteo,
   < 1.5 s on a residential connection), plus `ls -lh target/release/cirrocast`; each number with machine and date.
 - ✅ Clean-machine install on Arch: clone the AUR package (`git clone ssh://aur@aur.archlinux.org/cirrocast.git`,
@@ -74,7 +74,7 @@ ships no new features: defects found are fixed in the step that owns the code, n
   completed, AUR packages updated to `1.0.0`, and `v1.0.0` tagged with the changelog as release notes.
 - ✅ Defect handling policy applied: a defect found here is fixed in the step that owns the code (with a
   progress-log entry there), this step re-runs the affected rows and replaces their transcripts; a defect no step
-  owns becomes a deliverable in the owning phase D/E plan file (step 15–24), never a silent fix here.
+  owns becomes a deliverable in the owning phase D/E plan file (steps 15–22), never a silent fix here.
 - ✅ Sign-off table below completed — one row per requirement and per "basically formed" check, each with the
   proving command, evidence pointer, verdict and a human name plus date — and the final commit flips this file to
   `Status: done`, updates the index row (14 → done) and dates the CHANGELOG's `1.0.0` section.
@@ -122,7 +122,7 @@ Sign-off table (a human fills the last three columns; tick the checkbox when the
   (20), multi-location output and user templates (21), enforced performance and resource budgets (22), the
   documentation set and guides (23), ecosystem packaging (24) — phases D and E of `docs/plans/README.md`.
 * True non-goals for v1 and beyond, recorded so no future step is expected to deliver them: no GUI, no
-  daemon/server mode in v1 (step 20's `serve` is a separate, explicitly started command), no telemetry, no TUI, no
+  daemon/server mode in v1 (step B01's `serve` is a separate, explicitly started command), no telemetry, no TUI, no
   plugin or scripting engine, no PNG/SVG image output, no code signing/notarization or build attestations (no step
   file owns those; revisit if a target platform requires them).
 * Fixing defects inside this step: every defect is fixed in the owning step (or its phase plan file) and re-proved.
@@ -334,7 +334,7 @@ key or config was touched; loopback stubs via `python3 stub.py PORT STATUS`.
 
 ### §8 Performance and size record
 
-Informational; enforced budgets are step 22. Machine and date as above; `hyperfine` on the release
+Informational; enforced budgets are step 21. Machine and date as above; `hyperfine` on the release
 binary.
 
 | measurement | command | result | target |

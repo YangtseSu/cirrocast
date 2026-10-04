@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 29 — climate normals
+# Step 26 — climate normals
 
 Status: ⬜ not-started
 Depends on: `03-canonical-model-and-units.md` (model + units), `06-open-meteo-provider.md` (report assembly), `08-cli-surface-and-formats.md` (flags, formats)
@@ -123,7 +123,7 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   the verbose reason is a first-class outcome, never an error.
 * The 1991–2020 window will age (2031 moves to 1991–2030); the period is a config default, not a
   constant in the decoder.
-* Large search responses are cached whole; `cache stat` will show the namespace's size and step 22's
+* Large search responses are cached whole; `cache stat` will show the namespace's size and step 21's
   budget owns any trimming.
 
 ## Progress log
@@ -133,3 +133,4 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   shape, `TAVG/TMAX/TMIN/PRCP` presence, and the station metadata living in the search response)
   are recorded above; the idea and the two-step structure come from the breezy-weather audit
   (`ncei` normals module), minus its Gaussian weighting.
+- 2026-10-04 — renumbered from 29 to 26 by the plan reorganization; dependencies (03, 06, 08) unchanged.

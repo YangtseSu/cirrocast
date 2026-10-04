@@ -3,10 +3,10 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 22 — performance and resource budget
+# Step 21 — performance and resource budget
 
 Status: ⬜ not-started
-Depends on: 12 (quality hardening and CI), 21 (multi-location and templates)
+Depends on: 12 (quality hardening and CI), 18 (offline city database), 19 (multi-location and templates)
 Touches: `scripts/bench/{run.sh,cold.sh,compare.py,ci.sh}`, `perf/baseline.json`,
 `.github/workflows/ci.yml`, `Cargo.toml`, `src/render/{mod,art_table,one_line,plain}.rs`,
 `src/model/mod.rs`, `src/geo/offline.rs`, `src/cli.rs`, `tests/cli.rs`, `docs/performance.md`,
@@ -25,9 +25,10 @@ evidence — keeping the decision, recording why.
 ## Deliverables
 
 - ⬜ `Cargo.toml`: `[profile.release] strip = "symbols"`, `lto = "thin"`, `codegen-units = 1`,
-      `panic = "abort"`; new `offline-city-db` **default** feature gating the step 18 table, so
-      `cargo build --release --no-default-features` yields the reduced build (same CLI, city search
-      via the network geocoder only). Feature inventory documented in `docs/performance.md`.
+      `panic = "abort"`; the step-18 `offline-geo` feature stays **default-on**, with the
+      `--no-default-features` proof landing here, so `cargo build --release --no-default-features`
+      yields the reduced build (same CLI, city search via the network geocoder only). Feature
+      inventory documented in `docs/performance.md`.
 - ⬜ `scripts/bench/run.sh`: `cargo build --release --locked`, then hyperfine
       (`hyperfine --warmup 5 --runs 30 -N`) over `--version`, `--help`,
       `--offline Beijing -f plain` and a warm-cache `Beijing -f plain`, with `XDG_CACHE_HOME`,
@@ -67,7 +68,7 @@ evidence — keeping the decision, recording why.
       day parts are a contract requirement), `rustls`/`ring` or `aws-lc-rs` (accepted: TLS is not
       optional), `clap_builder` (accepted; `wrap_help` reviewed), `serde_json` (accepted),
       `flate2` (accepted, feature-reviewed), `idna`/`url` (accepted via `ureq`), plus the gate list
-      (`keyring`, `offline-city-db`, `ureq` compression features, `clap` `wrap_help`) and the measured
+      (`keyring`, `offline-geo`, `ureq` compression features, `clap` `wrap_help`) and the measured
       delta of turning each off.
 - ⬜ `tests/cli.rs`: `--help` line count < 200 and `--help` exit 0 asserted deterministically.
 
@@ -81,7 +82,7 @@ evidence — keeping the decision, recording why.
 * **Cold networking is measured, not gated.** A 1.5 s cold budget depends on the link, the provider and
   the city; gating it would produce a flaky job that blocks unrelated work. `scripts/bench/cold.sh`
   records it in the baseline with the link description (`tc`-shaped 100 Mbps, documented), and the
-  release checklist in step 24 re-runs it.
+  release checklist in backlog B02 re-runs it.
 * **`panic = "abort"` is compatible with the error policy.** Every user-triggered failure is a typed
   `Error` and no code path unwinds; abort only removes the landing pads, not behaviour. Tests keep
   unwinding because the profile applies to `--release` only.
@@ -93,7 +94,7 @@ evidence — keeping the decision, recording why.
   one `DateTime<FixedOffset>` per (day, day-part) replaces one per rendered field; the README contract
   line for `RenderContext` is amended in the same commit to list `LocalTimes`.
 * **Lazy offline table is conditional on measurement.** If step 18 measured eager decode as
-  negligible, the deliverable degrades to "recorded as measured, no change" — but the `offline-city-db`
+  negligible, the deliverable degrades to "recorded as measured, no change" — but the `offline-geo`
   feature split still lands, because the size argument is independent of timing.
 * **No async runtime, no TUI toolkit: decision kept.** Evidence recorded in `docs/performance.md`:
   process startup (the `--version` number, which is a proxy for runtime-init cost), the size share of
@@ -108,8 +109,8 @@ evidence — keeping the decision, recording why.
 
 ## Out of scope
 
-Cross-platform performance parity (the Windows and macOS numbers are reported in step 24's release
-archives verification, not gated here), musl static size (step 24 sets and measures its own budget),
+Cross-platform performance parity (the Windows and macOS numbers are reported in backlog B02's release
+archives verification, not gated here), musl static size (backlog B02 sets and measures its own budget),
 profile-guided optimisation and `-Zbuild-std` (nightly-only), and any change to caching semantics or
 provider request counts (steps 05 and 10 own those).
 
@@ -145,7 +146,7 @@ into `docs/performance.md`.
       is recorded in the doc and in the progress log.
 - ⬜ `cargo bloat`/`cargo llvm-lines` top contributors named with sizes, every heavy crate accepted or
       gated with a one-line reason.
-- ⬜ The `offline-city-db`-less build compiles, passes `cargo test`, and its size delta is recorded.
+- ⬜ The `offline-geo`-less build compiles, passes `cargo test`, and its size delta is recorded.
 - ⬜ Re-evaluation of no-async/no-TUI recorded with the measured evidence, decision unchanged.
 
 ## Risks
@@ -166,3 +167,7 @@ into `docs/performance.md`.
 
 - 2026-09-30 — step opened: budget table, harness layout, baseline schema and the ratio-based gate
   fixed; measurement tooling chosen (hyperfine + `/usr/bin/time -v`) and `criterion` rejected.
+- 2026-10-04 — renumbered from 22 to 21 by the plan reorganization (backlog split: serve → B01,
+  packaging matrix → B02); depends on 18 added because the lazy-decode deliverable needs the offline
+  table, the feature name unified to step 18's `offline-geo`, and the release-archive/musl references
+  now point at backlog B02.

@@ -29,7 +29,7 @@ computed locally with an authored colour ramp, and a location outside the pollen
       aqi_european: Option<u16>, pm2_5: Option<f64>, pm10: Option<f64>, o3: Option<f64>,
       no2: Option<f64>, so2: Option<f64>, co: Option<f64>, pollen: Option<Pollen>, source: AirSource }`
       and `Pollen { alder, birch, grass, mugwort, olive, ragweed: f64 }` (grains/m³);
-      `AirSource::{OpenMeteo}` (an enum rather than a `&str`, so step 19 can add more sources
+      `AirSource::{OpenMeteo}` (an enum rather than a `&str`, so step 23 can add more sources
       without a schema change). The types live in the model rather than `src/air/mod.rs`: `Report`
       carries the reading, `src/render` reads the model and may not depend on a module that fetches
       (the step-12 layering gate), exactly as the alert types live in `src/model/alert.rs`.

@@ -204,7 +204,7 @@ fn fetch_source(
         AlertSource::WmoSwic => wmoswic::fetch(loc, env, language),
         AlertSource::Fpas => fpas::fetch(loc, env, language),
         AlertSource::VisualCrossing => Err(Error::Usage(
-            "alert source `visualcrossing` is wired up with its provider in step 19".to_owned(),
+            "alert source `visualcrossing` is wired up with its provider in step 23".to_owned(),
         )),
     }
 }

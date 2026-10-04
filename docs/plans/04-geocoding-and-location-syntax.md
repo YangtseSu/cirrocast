@@ -80,8 +80,8 @@ stderr; malformed input fails with `Error::Usage` and a message that lists the a
   only reserves `LocationSource::Ip`.
 - Using the resolved location to fetch weather, the day-part aggregation that consumes the tz, and the
   plain renderer that prints the attribution line for OSM results: step 06.
-- Interactive location picking (the candidate picker with `--pick`/`--yes`) is **step 26**; a
-  favourite-locations store and shell-completion integration remain step 21's `[locations]` aliases
+- Interactive location picking (the candidate picker with `--pick`/`--yes`) is **step 20**; a
+  favourite-locations store and shell-completion integration remain step 19's `[locations]` aliases
   and step 08's static completions; a saved-locations file is not part of v1's contract.
 - Localised place names (`language=<bcp47>` on the geocoding call): step 09.
 
@@ -188,6 +188,7 @@ cargo run -- location search 'Beijing, Mars'             # error: location not f
   paragraph now names `geocode/`, `ip/` and `ratelimit/nominatim.json` next to the four namespaces
   `cache stat` reports. No code change: `cache clean --all` already deletes the stamp.
 - 2026-10-03 — plan pointer corrected by the phase-F review: interactive location picking, written
-  here as "step 08 and beyond", is **step 26**; this step's ambiguity note and ranking remain the
+  here as "step 08 and beyond", is **step 20**; this step's ambiguity note and ranking remain the
   non-interactive half of that policy (the ranked winner plus the note is exactly what a
   non-terminal run keeps). No code change.
+- 2026-10-04 — step references in the entries above were remapped by the plan reorganization (see `docs/plans/README.md`); no deliverable or outcome in this step changed.

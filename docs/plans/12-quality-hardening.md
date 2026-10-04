@@ -52,7 +52,7 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   seven codes with triggers; the man page renders from the same `cli.rs` text.
 - ✅ Startup gate recheck: `hyperfine --warmup 10 --runs 50 'target/release/cirrocast --version'` under 50 ms,
   and `strace -f -e trace=network target/release/cirrocast --version` with no `socket(` (enforced budgets with
-  CI thresholds are step 22). Measured locally: 1.4 ms ± 0.2 ms mean, `socket(` count 0 for `--version`; the
+  CI thresholds are step 21). Measured locally: 1.4 ms ± 0.2 ms mean, `socket(` count 0 for `--version`; the
   guarded fetch path opens no socket either (`CIRROCAST_FORBID_NETWORK=1 … Beijing` also counts 0, which is the
   guard's "before DNS" promise seen from outside).
 - ✅ `deny.toml` + `cargo deny check` green: `[licenses]` allow-list (MIT, Apache-2.0, ISC, BSD-2-Clause,
@@ -353,15 +353,15 @@ zmij 1.0.23 | MIT
   is clean; the yanked-crate check needs the crates.io API, which a mirror can refuse (`403`), so the CI job is
   the place that runs it against the real API.
 * No Windows CI job in v1: no Windows packaging exists (step 13 ships Linux/macOS archives, ecosystem packaging
-  is step 24), no Windows-specific code path exists, and the symlink trap would make lint platform-dependent.
+  is backlog B02), no Windows-specific code path exists, and the symlink trap would make lint platform-dependent.
 
 ## Out of scope
 
 * Feature work, including the error wording of features that do not exist yet: alerts (step 15), air quality and
-  pollen (step 16), moon/astro (step 17), offline city database (step 18), more providers (step 19), the
-  wttr.in-compatible service (step 20), multi-location output (step 21).
-* Enforced performance/resource budgets with CI thresholds: step 22 (here only the startup gate is rechecked).
-* Packaging and release mechanics: step 13; ecosystem artefacts and Windows/macOS installers: step 24.
+  pollen (step 16), moon/astro (step 17), offline city database (step 18), more providers (step 23), the
+  wttr.in-compatible service (step B01), multi-location output (step 19).
+* Enforced performance/resource budgets with CI thresholds: step 21 (here only the startup gate is rechecked).
+* Packaging and release mechanics: step 13; ecosystem artefacts and Windows/macOS installers: backlog B02.
 
 ## Verification
 

@@ -21,7 +21,7 @@ declared limits and attribution, behind one shared HTTP helper and a contract-fa
       fields consumed, free-tier quotas with their wording, coverage, granularity, attribution/licence
       duties, caching ceilings, traps and unverified items, per backend and per location/IP service),
       plus the at-a-glance tables, the status-code behaviour table and the re-verification log. Authored
-      here because the registry re-verification below needs a written record; `docs/plans/23-docs-and-guides.md`
+      here because the registry re-verification below needs a written record; `docs/plans/28-docs-and-guides.md`
       keeps the user-facing review of the same file.
 - ✅ `provider/mod.rs`: the shared JSON helper landed as `provider::fetch_json(env, &JsonFetch { provider,
       request, key, ttl, what })` (naming amended: the low-level `http::HttpRequest` already exists, so the
@@ -259,7 +259,7 @@ cirrocast provider list && cirrocast provider info smhi
   documented attribution duty, and its intensity bands are its own 0.02/0.4/2.5/10 mm/h; OWM's data licence is
   ODbL with mandatory visible attribution. `ProviderMeta` gained `verified` (printed by `provider info`), the
   wrong registry rows were corrected in the same commit, and `docs/plans/01-project-scaffold.md` notes the
-  correction. `docs/plans/23-docs-and-guides.md` keeps its review of the same file for the user-facing pass.
+  correction. `docs/plans/28-docs-and-guides.md` keeps its review of the same file for the user-facing pass.
 - 2026-10-01 — shared HTTP helper landed (`provider::JsonFetch` / `fetch_json`), with the redaction and
   taxonomy pieces it needs: `HttpRequest::secret`/`redacted_url`/`redacted_normalized` (and a `Debug` impl
   that cannot print a credential), `Error::InvalidKey` (exit 6), `CacheKey::weather_part` for multi-resource
@@ -309,3 +309,4 @@ cirrocast provider list && cirrocast provider info smhi
   mm/h bands. Deviations from the plan's sketch: `precipAccumulation` (centimetres) is **not** consumed — the
   parts sum the hourly liquid-equivalent intensities, so the scaling trap never applies — and `is_day` prefers
   an explicit `-day`/`-night` icon, falling back to the local civil day. Live smoke printed real data.
+- 2026-10-04 — step references in the entries above were remapped by the plan reorganization (see `docs/plans/README.md`); no deliverable or outcome in this step changed.

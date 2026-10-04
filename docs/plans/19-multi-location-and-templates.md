@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 21 — multi-location runs, templates and aliases
+# Step 19 — multi-location runs, templates and aliases
 
 Status: ⬜ not-started
 Depends on: 08 (CLI surface and formats), 14 (v1 acceptance)
@@ -19,8 +19,8 @@ in parallel, prints them in argument order whatever order the network answers in
 location's failure from the others, and exits with the worst error it saw. Above one location `json`
 becomes an array, `art-table` grows a 2–4 location summary layout. Separately, the `%`-token template
 engine (`--template`, `--template-file`, `--format full|minimal`, `[templates]` config presets) is the
-single implementation behind every one-line output, including the wttr.in compatibility surface of
-step 20, and `[locations]` aliases make `cirrocast @home` work.
+single implementation behind every one-line output, including the wttr.in compatibility surface
+that B01 will serve, and `[locations]` aliases make `cirrocast @home` work.
 
 ## Deliverables
 
@@ -41,14 +41,14 @@ step 20, and `[locations]` aliases make `cirrocast @home` work.
       `"schema_version": 2`; the single-location document stays a plain object with
       `"schema_version": 2`; a failed slot becomes
       `{"schema_version": 2, "query": "<as typed>", "error": {"code": <exit code>, "message": "…"}}`.
-      `docs/schema/json-v2.json` (step 23) admits both shapes.
+      `docs/schema/json-v2.json` (step 28) admits both shapes.
 - ⬜ `src/render/art_table.rs`: combined summary layout for 2–4 locations — one header line per
       location, then that location's current condition plus today's high/low in a compact grid, one
       blank line between blocks, never wider than the resolved width; 5+ locations fall back to the
       per-location full tables and log `note: art-table summary layout is limited to 4 locations` to
       stderr once (silenced by `-q`).
 - ⬜ `src/template.rs`: token table shared by `one-line`, the `full`/`minimal` presets, the
-      wttr.in compat surface and `status` (step 24): `%c %C %x %t %f %H %L %w %h %p %P %e %u %U %m %M
+      wttr.in compat surface and `status` (step 22): `%c %C %x %t %f %H %L %w %h %p %P %e %u %U %m %M
       %v %l %d %D %T %Z %z %S %s %A %q`, with `TOKENS: &[TokenSpec]` exported so tests and the compat
       help page enumerate the same list.
 - ⬜ Breaking token change: `%L` is reassigned from the shipped long/qualified location form (`%l %L`
@@ -60,9 +60,10 @@ step 20, and `[locations]` aliases make `cirrocast @home` work.
       zero-pad for numeric tokens, precision truncates text from the right and rounds numbers),
       escapes `%%` → literal `%`, `%{…}` → the braced content as a token when it is exactly one known
       letter and verbatim otherwise, trailing lone `%` literal.
-- ⬜ `src/template.rs` + `src/serve/query.rs` (step 20): unknown-token policy — `Error::Usage`
-      (exit 2) for `--template`, `--template-file` and `[templates]` presets; literal passthrough for
-      a wttr.in compat request. The asymmetry is deliberate and stated in `docs/wttr-compat.md`.
+- ⬜ `src/template.rs`: unknown-token policy on the CLI side — `Error::Usage` (exit 2) for
+      `--template`, `--template-file` and `[templates]` presets. The wttr.in compatibility surface
+      (B01) serves the same `TOKENS` table with literal passthrough for unknown tokens; that
+      asymmetry is implemented at the B01 boundary, never as a second parser.
 - ⬜ `src/config/mod.rs`: `[locations]` (`home = "@39.9,116.4"`) and `[templates]`
       (`compact = "%c%t"`) tables; `schema_version` 1 → 2 with a migration arm that stamps the new
       version (absent tables mean defaults) and a migration test from a v1 file.
@@ -86,7 +87,7 @@ step 20, and `[locations]` aliases make `cirrocast @home` work.
   `Vec<Option<Result<..>>>` guarded by a `Mutex`, so a slow Tokyo request cannot reorder the output
   and no completion-order channel exists to get it wrong. Rejected: `JoinHandle` join in spawn order
   with `thread::scope` returning a tuple vector (fine, but the index slots also carry the per-slot
-  error, and the same helper is reused by step 24's status path).
+  error, and the same helper is reused by step 22's status path).
 * **Exit-code rule is "largest mapped code wins".** This means a missing key (6) outranks a location
   miss (5), which is intended: the more actionable problem wins. The alternative (first failure in
   argument order) makes the code depend on argument order and is rejected as untestably arbitrary.
@@ -94,7 +95,7 @@ step 20, and `[locations]` aliases make `cirrocast @home` work.
   `jq '.[0]'` users expect; each element already carries `schema_version`, so an envelope object
   (rejected alternative, `{"schema_version": 2, "reports": […]}`) would add a nesting level without
   adding information. The cost — the top-level JSON type depends on the number of locations — is
-  documented in `docs/formats.md` and in the schema (`oneOf`, step 23); a consumer that needs type
+  documented in `docs/formats.md` and in the schema (`oneOf`, step 28); a consumer that needs type
   stability passes exactly one location or reads `.[]` after `jq -s`.
 * **`%L` is the day's low, not the location.** wttr.in's documented one-line table defines `H` as
   high and `L` as low; compatibility wins over the adjacency of `%l`/`%L` in the design brief, and
@@ -114,7 +115,7 @@ step 20, and `[locations]` aliases make `cirrocast @home` work.
   with a depth cap (8), not a fixed expansion count: a legal chain of three aliases must work while
   `a → b → a` fails with the chain printed.
 * **Deliberately not a new template language.** Everything is wttr.in's `%`-notation plus width and
-  precision, because step 20 has to serve that surface verbatim; format strings (Rust `fmt::Arguments`,
+  precision, because the B01 compat surface has to serve that surface verbatim; format strings (Rust `fmt::Arguments`,
   named fields) were rejected as a second syntax to document and test.
 
 ## Out of scope
@@ -167,7 +168,7 @@ wall clock clearly below the sum of three sequential fetches.
   requests); mitigated by the hard worker cap of 4, by sequential behaviour inside a single
   location's provider chain, and by cache reuse.
 * Template `%` in shell contexts (tmux, prompt) needs quoting and `%%`; documented in
-  `docs/formats.md` and in the contrib snippets of step 24.
+  `docs/formats.md` and in the contrib snippets of step 22.
 * Alias suggestion via edit distance can suggest a surprising name; capped at 3 suggestions and never
   auto-selected (the user must type the corrected name).
 
@@ -175,3 +176,4 @@ wall clock clearly below the sum of three sequential fetches.
 
 - 2026-09-30 — step opened: ordering, exit-code, JSON-shape, token-table and alias rules fixed;
   `%L` resolved in favour of wttr.in's documented low-temperature meaning.
+- 2026-10-04 — renumbered from 21 to 19 by the plan reorganization; the wttr-compat surface moved to backlog B01, so the template engine now documents the B01 boundary instead of editing `src/serve/query.rs`.

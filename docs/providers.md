@@ -11,7 +11,7 @@ provider registry: `src/provider/mod.rs` carries the machine-readable subset (`p
 `provider info` print it), and this document carries the detail a registry row cannot hold — request
 parameter names, response fields we consume, the exact quota wording, the traps, and the sources.
 
-The file is the one `docs/plans/23-docs-and-guides.md` promises; it was authored in step 10 because the
+The file is the one `docs/plans/28-docs-and-guides.md` promises; it was authored in step 10 because the
 registry re-verification of that step needs a written record of what was checked.
 
 ## How to read this document
@@ -675,9 +675,9 @@ hours", which is why `cache.ip_ttl_secs` is capped at 86 400. No credit line is 
 the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
 (<https://ipapi.co/terms>, <https://ipapi.co/api/>).
 
-## Planned backends (step 19)
+## Planned backends (step 23)
 
-Not implemented; the facts below are the measurements recorded in `docs/plans/19-more-providers.md`
+Not implemented; the facts below are the measurements recorded in `docs/plans/23-more-providers.md`
 (2026-09-30) and are repeated here so this file stays the single provider index.
 
 | id | Key | Free tier | Coverage | Horizon | Notes |

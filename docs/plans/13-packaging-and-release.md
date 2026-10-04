@@ -9,7 +9,7 @@ Status: ✅ done
 Depends on: 08 (cli-surface-and-formats), 12 (quality-hardening)
 Touches: `Cargo.toml` (metadata only), `CHANGELOG.md` (new), `docs/schema.md` (new), `README.md`,
 `.github/workflows/release.yml` (new), `.github/workflows/ci.yml` (publish dry-run job), `src/render/json.rs`,
-`tests/render_json.rs`, `docs/plans/{14-v1-acceptance,24-ecosystem-integration}.md` (reference updates), and the
+`tests/render_json.rs`, `docs/plans/{14-v1-acceptance,22-status-and-ecosystem}.md` (reference updates), and the
 AUR package `cirrocast` — which lives in its own git repository
 (`ssh://aur@aur.archlinux.org/cirrocast.git`), not in this tree.
 
@@ -25,8 +25,9 @@ and the licence; and documented install paths for source, `cargo install` and AU
 ## Deliverables
 
 - ✅ Versioning policy in `README.md#versioning`: `Cargo.toml` stays `0.x` while phases A–C land, `1.0.0` is
-  cut in step 14, phase D releases are `1.1.0`–`1.2.0` (steps 15–19) and phase E is `2.0.0` (steps 20–24),
-  matching `docs/plans/README.md`; the crate version, the JSON schema version and the config schema version move
+  cut in step 14, phase D releases are `1.1.0`–`1.2.0` (steps 15–20), phase E is `1.3.0` (steps 21–22) and
+  phases F and G are `1.4.0` (steps 23–28), with the backlog (B01–B02) unscheduled, matching
+  `docs/plans/README.md`; the crate version, the JSON schema version and the config schema version move
   independently.
 - ✅ `docs/schema.md` (new): the JSON output schema v1 (every field, its type, its canonical unit, optionality,
   `schema_version`) and the config schema v1 (every key, default, accepted values, migration hooks); the rule that
@@ -125,7 +126,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   (`cirrocast man`, `cirrocast completion …`), which a static `include` list cannot express; we would have to
   commit generated files and add a fidelity check. The hand-written workflow is roughly sixty lines, needs no
   extra tool pinned in CI, keeps the third-party action surface at zero beyond the pinned checkout action, and
-  already has to exist for the `publish` job. Revisit if we ever want shell/PowerShell installers (step 24).
+  already has to exist for the `publish` job. Revisit if we ever want shell/PowerShell installers (step B02).
 * Release archives ship `LICENSE`, `README.md` and `CHANGELOG.md` inside every tarball because GPL-3.0-or-later
   distribution requires the licence text alongside the binary, and the man page plus completions because a tarball
   user has no package manager to install them.
@@ -143,7 +144,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   three completions from the installed package. `REUSE.toml` therefore needs no `.SRCINFO` annotation.
 * **No `cirrocast-git` package** (same decision): a VCS package repeats the same `build()`/`check()`/`package()`
   bodies and needs them kept in sync by hand, while the tagged package already follows every release by the
-  ordinary PKGBUILD bump. Revisit in step 24 if users ask for a tracking package.
+  ordinary PKGBUILD bump. Revisit in step B02 if users ask for a tracking package.
 * Arch packaging is hand-written rather than generated: the project has no Rust-to-PKGBUILD generator in its
   dependency set, the package is small, and a hand-written PKGBUILD keeps the `CARCH` mapping, the licence path
   and the completions paths explicit and reviewable.
@@ -155,14 +156,14 @@ and the licence; and documented install paths for source, `cargo install` and AU
 
 ## Out of scope
 
-* Windows, deb/rpm, Homebrew, AppImage/Flatpak, container images and other ecosystem packages: step 24.
+* Windows, deb/rpm, Homebrew, AppImage/Flatpak, container images and other ecosystem packages: step B02.
 * A `cirrocast-git` AUR package and a copy of the packaging files in this tree: declined 2026-10-01 (see the
-  design notes); revisit in step 24.
-* Documentation set beyond README/schema/plan files (guides, website, translations of docs): step 23.
-* Performance and size budgets printed in release notes: step 22 (the binary size note in step 14 is informational).
+  design notes); revisit in step B02.
+* Documentation set beyond README/schema/plan files (guides, website, translations of docs): step 28.
+* Performance and size budgets printed in release notes: step 21 (the binary size note in step 14 is informational).
 * Code signing, notarization and reproducible-build attestations: no step file owns them; they are recorded in
   step 14's non-goals until a platform requires them.
-* Feature work of any kind, including the `serve` mode of step 20 and multi-location output of step 21.
+* Feature work of any kind, including the `serve` mode of step B01 and multi-location output of step 19.
 
 ## Verification
 
@@ -246,7 +247,7 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   `check()` version assertion catches a forgotten bump, and the checklist names the step.
 * The AUR package is the only copy of the packaging files, so an edit made there is not reviewed in this tree:
   accepted 2026-10-01 (the files change at most once per release and the verification commands live in
-  `README.md#packaging`); step 24 may add an automated AUR bump if the manual one becomes a nuisance.
+  `README.md#packaging`); step B02 may add an automated AUR bump if the manual one becomes a nuisance.
 
 ## Progress log
 

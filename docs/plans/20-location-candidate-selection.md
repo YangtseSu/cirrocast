@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Step 26 — location candidate selection
+# Step 20 — location candidate selection
 
 Status: ⬜ not-started
 Depends on: `04-geocoding-and-location-syntax.md` (ranking, `location search`), `05-http-cache-and-ip-location.md` (cache, IP chain), `08-cli-surface-and-formats.md` (flag surface), `18-offline-city-database.md` (the offline candidate source and the `--all` listing share its index)
@@ -12,7 +12,7 @@ Touches: `src/geo/{mod,pick}.rs`, `src/cli.rs`, `src/main.rs`, `src/config/mod.r
 ## Goal
 
 When resolving a place yields more than one plausible candidate — the ten Beijing hits the geocoder
-returns, nine Springfields from the offline table, several towns inside the radius step 27's reverse
+returns, nine Springfields from the offline table, several towns inside the radius step 25's reverse
 lookup names — the user picks one instead of the tool silently ranking it. On a terminal the run
 prints the ranked list and asks; in a script, with `--yes`, or with `[location] pick = "never"` the
 ranked winner is used as today and the existing note still says how to make the choice explicit. The
@@ -89,7 +89,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
 ## Out of scope
 
 Fuzzy filtering inside the picker (the list is bounded by `--limit` and already ranked), a
-persistent favourites store (step 21's `[locations]` aliases are the named-location mechanism),
+persistent favourites store (step 19's `[locations]` aliases are the named-location mechanism),
 shell-completion integration for candidate values (step 08's completions remain static), and any
 prompting from non-interactive contexts.
 
@@ -125,7 +125,7 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   `--yes`/`[location] pick = "never"`, and by the fact that a piped or file-backed stdin is not a
   terminal.
 * **Prompt text stays English** — one string lives in the CLI, not the Fluent catalogs (which render
-  weather), matching `key set`'s prompt; step 23's docs review can revisit it if a CLI string domain
+  weather), matching `key set`'s prompt; step 28's docs review can revisit it if a CLI string domain
   ever appears.
 * `location_line` is a display format; reusing it for the candidate list couples the prompt to a
   renderer helper. Accepted: it is the same data (name, admin, country, coordinates, zone) the
@@ -138,3 +138,4 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   Step 04's determinism contract (the ambiguity note, `:query`, `~query`) is preserved as the
   non-interactive path; the picker is additive on top of it. Written as a new step because steps 04
   and 08 are shipped and their tests pin the current behaviour.
+- 2026-10-04 — renumbered from 26 to 20 by the plan reorganization (serve → B01, packaging matrix → B02); dependencies unchanged, `18-offline-city-database.md` is still the offline candidate source.
