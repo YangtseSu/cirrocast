@@ -34,6 +34,7 @@ pub mod moon;
 pub mod one_line;
 pub mod plain;
 
+use std::collections::BTreeMap;
 use std::io::IsTerminal as _;
 
 use chrono::{DateTime, FixedOffset};
@@ -417,6 +418,71 @@ pub trait Renderer {
     /// Renders `report`. The returned text has no trailing newline; the caller decides how to
     /// terminate the last line.
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String>;
+
+    /// Renders a multi-location run: one [`Slot`] per location, in argument order.
+    ///
+    /// The default is the honest composition: each successful slot renders through [`render`] and
+    /// its own context (which carries the location's time zone), a failed slot becomes the
+    /// placeholder line, and the blocks are joined with [`slot_separator`]. Formats whose document
+    /// spans locations — `json`'s array, `art-table`'s summary layout — override this.
+    ///
+    /// [`render`]: Renderer::render
+    /// [`slot_separator`]: Renderer::slot_separator
+    fn render_slots(&self, slots: &[Slot<'_>]) -> Result<String> {
+        let mut blocks: Vec<String> = Vec::with_capacity(slots.len());
+        for slot in slots {
+            match (slot.report, slot.ctx.as_ref()) {
+                (Some(report), Some(ctx)) => blocks.push(self.render(report, ctx)?),
+                _ => blocks.push(slot.placeholder()),
+            }
+        }
+        Ok(blocks.join(self.slot_separator()))
+    }
+
+    /// What goes between two location blocks in [`render_slots`](Renderer::render_slots).
+    fn slot_separator(&self) -> &'static str {
+        "\n\n"
+    }
+
+    /// A one-time note this renderer wants on stderr for a multi-location run, if any.
+    ///
+    /// The CLI prints it once, before the output, and silences it with `-q`. It exists so that a
+    /// format's own limitation (the art-table summary's four-location cap) is stated by the
+    /// renderer that has it rather than by the CLI that would have to learn it.
+    fn slot_note(&self, _slots: usize) -> Option<&'static str> {
+        None
+    }
+}
+
+/// One location of a multi-location run, as a renderer sees it.
+///
+/// Exactly one of `report` and `error` is set; `ctx` is set with `report` and carries that
+/// location's time zone, so a renderer never has to build a context itself.
+#[derive(Debug, Clone, Copy)]
+pub struct Slot<'a> {
+    /// The location argument as the user typed it (an alias keeps its `@name` spelling).
+    pub query: &'a str,
+    /// The report, when the slot succeeded.
+    pub report: Option<&'a Report>,
+    /// The error, when it failed.
+    pub error: Option<&'a Error>,
+    /// The render context for `report`.
+    pub ctx: Option<RenderContext<'a>>,
+}
+
+impl Slot<'_> {
+    /// The one-line placeholder a failed slot occupies: `error: <query>: <message>`.
+    ///
+    /// Plain text, no colour and no label of its own: a script that parses stdout counts the same
+    /// number of lines with or without a failure, and the full error also travels on stderr.
+    #[must_use]
+    pub fn placeholder(&self) -> String {
+        match (self.error, self.report) {
+            (Some(error), _) => format!("error: {}: {error}", self.query),
+            (None, None) => format!("error: {}: no report", self.query),
+            (None, Some(_)) => String::new(),
+        }
+    }
 }
 
 /// The output formats.
@@ -475,10 +541,10 @@ impl Format {
     /// Parses a format name that did **not** come from the command line — `defaults.format` and
     /// `CIRROCAST_FORMAT`.
     ///
-    /// Clap already validates `--format`; this is the path a configuration file takes, and it
-    /// deliberately accepts every documented spelling, including the formats whose renderers are
-    /// not written yet: whether a format can be rendered is [`renderer_for`]'s judgement, not a
-    /// spelling question.
+    /// Clap already validates `--format` through [`resolve_format`]; this is the path a
+    /// configuration file takes, and it deliberately accepts every documented spelling, including
+    /// the formats whose renderers are not written yet: whether a format can be rendered is
+    /// [`renderer_for`]'s judgement, not a spelling question.
     pub fn from_name(name: &str) -> Result<Self> {
         let name = name.trim().to_ascii_lowercase();
         Self::ALL
@@ -493,13 +559,65 @@ impl Format {
     }
 }
 
+/// What `--format <NAME>` resolved to: a renderer, plus the template a preset name selected.
+///
+/// `template` is `Some` exactly when the name was not a built-in format but a one-line preset (the
+/// built-in `default`/`short`/`minimal`/`full`/`uv`/`sun`, and step 19 adds `[templates]` keys) —
+/// those render through `one-line` with that template. The CLI uses the distinction to refuse
+/// `--format full --template …`: both name a template, and silently letting one win would hide a
+/// typo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputFormat {
+    /// The renderer to use.
+    pub format: Format,
+    /// The template the name selected, when it was a preset or a `[templates]` key.
+    pub template: Option<String>,
+}
+
+/// Resolves `--format <NAME>`, `CIRROCAST_FORMAT` and `defaults.format`.
+///
+/// The resolution order, from step 19's contract: a built-in format name first, then a built-in
+/// one-line preset, then a `[templates]` key; nothing else is a format. A preset renders as
+/// `one-line` with its template, so `--format full` and `--format one-line --template @full` are
+/// the same run.
+pub fn resolve_format(name: &str, templates: &BTreeMap<String, String>) -> Result<OutputFormat> {
+    let name = name.trim();
+    if let Ok(format) = Format::from_name(name) {
+        return Ok(OutputFormat {
+            format,
+            template: None,
+        });
+    }
+    let lower = name.to_ascii_lowercase();
+    if let Some(template) = crate::template::builtin_or_configured(&lower, templates) {
+        return Ok(OutputFormat {
+            format: Format::OneLine,
+            template: Some(template.to_owned()),
+        });
+    }
+    let presets = crate::template::PRESETS
+        .iter()
+        .map(|(preset, _)| *preset)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let configured = if templates.is_empty() {
+        "none".to_owned()
+    } else {
+        templates.keys().cloned().collect::<Vec<_>>().join(", ")
+    };
+    Err(Error::Usage(format!(
+        "unknown format `{name}`; formats: {}, presets: {presets}, [templates]: {configured}",
+        Format::ALL.map(Format::as_str).join(", ")
+    )))
+}
+
 /// The renderer for a format.
 ///
 /// A terminal that cannot draw UTF-8 or box drawing gets the ASCII table automatically, so the
 /// user sees a table rather than mojibake; the caller reports that switch under `--verbose`.
 ///
-/// `template` is the resolved `--template` value ([`one_line::resolve_template`]) and belongs to
-/// `one-line` alone: passing one for another format is a usage error rather than a silently
+/// `template` is the resolved `--template` value ([`crate::template::resolve_template`]) and belongs
+/// to `one-line` alone: passing one for another format is a usage error rather than a silently
 /// ignored argument.
 pub fn renderer_for(
     format: Format,
@@ -521,7 +639,7 @@ pub fn renderer_for(
         Format::Aqi => Ok(Box::new(air::Air)),
         Format::Moon => Ok(Box::new(moon::MoonView)),
         Format::OneLine => Ok(Box::new(one_line::OneLine::new(
-            one_line::resolve_template(template)?,
+            crate::template::resolve_template(template, &std::collections::BTreeMap::new())?,
         ))),
     }
 }

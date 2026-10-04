@@ -35,12 +35,15 @@ use crate::error::{Error, Result};
 use crate::geo::rank::{rank, same_name};
 use crate::model::{Location, LocationSource};
 
-/// The four accepted spellings, shared by the usage errors and the CLI help so that the two can
-/// never disagree.
-pub const USAGE_FORMS: &str = "accepted forms: Beijing | :Beijing | ~Tsinghua | @39.9042,116.4074";
+/// The accepted spellings, shared by the usage errors and the CLI help so that the two can never
+/// disagree.
+pub const USAGE_FORMS: &str = "accepted forms: Beijing | :Beijing | ~Tsinghua | @39.9042,116.4074 | @name (an alias from [locations])";
 
 /// The shortest name the geocoding API accepts; shorter queries are rejected before a request.
 const MIN_QUERY_CHARS: usize = 2;
+
+/// How many aliases one `@name` may expand through before the chain is refused as runaway.
+const ALIAS_DEPTH_CAP: usize = 8;
 
 /// What the user's location argument means.
 ///
@@ -58,6 +61,8 @@ pub enum LocationSpec {
     Osm(String),
     /// `@39.9042,116.4074`: explicit coordinates, no geocoding request at all.
     LatLon(f64, f64),
+    /// `@home`: a name from the `[locations]` alias table, expanded before resolution.
+    Alias(String),
 }
 
 impl LocationSpec {
@@ -65,13 +70,25 @@ impl LocationSpec {
     ///
     /// Every rejection is an [`Error::Usage`] (exit code 2) whose message ends with
     /// [`USAGE_FORMS`], so the shell shows what the program would have accepted.
+    ///
+    /// `@` text is coordinates when it is exactly `lat,lon` with both sides finite and in range;
+    /// anything else is an alias name (`@home`), which the caller expands against `[locations]`.
+    /// The order matters: `@39.9,116.4` must never be looked up as an alias called
+    /// `39.9,116.4`.
     pub fn parse_arg(arg: Option<&str>) -> Result<Self> {
         let Some(text) = arg.map(str::trim).filter(|text| !text.is_empty()) else {
             return Ok(Self::Default);
         };
 
         if let Some(rest) = text.strip_prefix('@') {
-            return coordinates(rest);
+            let rest = rest.trim();
+            if rest.is_empty() {
+                return Err(usage("`@` needs coordinates (`@lat,lon`) or an alias name"));
+            }
+            return Ok(match coordinates(rest) {
+                Some((lat, lon)) => Self::LatLon(lat, lon),
+                None => Self::Alias(rest.to_owned()),
+            });
         }
         if let Some(rest) = text.strip_prefix(':') {
             let query = rest.trim();
@@ -98,7 +115,7 @@ impl LocationSpec {
     pub fn query(&self) -> Option<&str> {
         match self {
             Self::Fuzzy(query) | Self::Exact(query) | Self::Osm(query) => Some(query),
-            Self::Default | Self::LatLon(..) => None,
+            Self::Default | Self::LatLon(..) | Self::Alias(_) => None,
         }
     }
 }
@@ -119,8 +136,123 @@ impl fmt::Display for LocationSpec {
             Self::Exact(query) => write!(formatter, "`:{query}`"),
             Self::Osm(query) => write!(formatter, "`~{query}`"),
             Self::LatLon(lat, lon) => write!(formatter, "`@{lat},{lon}`"),
+            Self::Alias(name) => write!(formatter, "`@{name}`"),
         }
     }
+}
+
+/// Expands every `@name` in `spec` through the `[locations]` table until a non-alias spec is left.
+///
+/// Alias values are location arguments themselves, so `home = "work"` and `work = "@39.9,116.4"`
+/// chain; the visited set catches a cycle (`a → b → a`) and reports the chain, and
+/// [`ALIAS_DEPTH_CAP`] catches a chain long enough to look like a mistake. A cycle or exhaustion
+/// is [`Error::Config`] because it is a property of the document, while an unknown name is
+/// [`Error::Usage`] — the user typed it — with the closest configured names suggested.
+pub fn expand_aliases(
+    spec: LocationSpec,
+    aliases: &std::collections::BTreeMap<String, String>,
+) -> Result<LocationSpec> {
+    let mut current = spec;
+    let mut visited: Vec<String> = Vec::new();
+    loop {
+        let LocationSpec::Alias(name) = current else {
+            return Ok(current);
+        };
+        if let Some(position) = visited.iter().position(|seen| *seen == name) {
+            let chain: Vec<String> = visited[position..]
+                .iter()
+                .chain(std::iter::once(&name))
+                .map(|link| format!("@{link}"))
+                .collect();
+            return Err(Error::Config(format!(
+                "location alias cycle: {}",
+                chain.join(" -> ")
+            )));
+        }
+        if visited.len() >= ALIAS_DEPTH_CAP {
+            let chain: Vec<String> = visited
+                .iter()
+                .chain(std::iter::once(&name))
+                .map(|link| format!("@{link}"))
+                .collect();
+            return Err(Error::Config(format!(
+                "location alias chain is deeper than {ALIAS_DEPTH_CAP}: {}",
+                chain.join(" -> ")
+            )));
+        }
+        let Some(value) = aliases.get(&name) else {
+            return Err(unknown_alias(&name, aliases));
+        };
+        visited.push(name);
+        current = LocationSpec::parse_arg(Some(value))?;
+    }
+}
+
+/// The rejection for an alias the `[locations]` table does not define.
+///
+/// Up to three configured names within edit distance 2 of the typed one are suggested (never
+/// selected: the user still has to type the corrected name), sorted by distance and name so the
+/// message is deterministic. Without a candidate, the known names are listed, bounded so a huge
+/// table cannot flood the terminal.
+fn unknown_alias(name: &str, aliases: &std::collections::BTreeMap<String, String>) -> Error {
+    let mut candidates: Vec<(usize, &str)> = aliases
+        .keys()
+        .map(|key| {
+            (
+                edit_distance(&name.to_lowercase(), &key.to_lowercase()),
+                key.as_str(),
+            )
+        })
+        .filter(|(distance, _)| *distance <= 2)
+        .collect();
+    candidates.sort_unstable();
+    candidates.truncate(3);
+    if !candidates.is_empty() {
+        let suggestions = candidates
+            .iter()
+            .map(|(_, key)| format!("@{key}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return usage(format!(
+            "unknown location alias `@{name}`; did you mean {suggestions}?"
+        ));
+    }
+    if aliases.is_empty() {
+        return usage(format!(
+            "unknown location alias `@{name}`; no `[locations]` aliases are configured"
+        ));
+    }
+    let known: Vec<&str> = aliases.keys().take(8).map(String::as_str).collect();
+    let more = if aliases.len() > known.len() {
+        ", …"
+    } else {
+        ""
+    };
+    usage(format!(
+        "unknown location alias `@{name}`; known aliases: {}{more}",
+        known.join(", ")
+    ))
+}
+
+/// The Levenshtein edit distance between two strings, for the alias suggestion list.
+///
+/// Two rolling rows, not a full matrix: only the distance is needed, and the strings are alias
+/// names.
+fn edit_distance(left: &str, right: &str) -> usize {
+    let right: Vec<char> = right.chars().collect();
+    let mut previous: Vec<usize> = (0..=right.len()).collect();
+    let mut current: Vec<usize> = vec![0; right.len() + 1];
+    for (row, left_char) in left.chars().enumerate() {
+        current[0] = row + 1;
+        for (column, right_char) in right.iter().enumerate() {
+            let substitution = previous[column] + usize::from(*right_char != left_char);
+            current[column + 1] = substitution
+                .min(previous[column + 1] + 1)
+                .min(current[column] + 1);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[right.len()]
 }
 
 /// How a resolved location was chosen; reported by the caller and used for the ambiguity note.
@@ -163,6 +295,11 @@ pub fn resolve(
 ) -> Result<(Location, Resolution)> {
     if let LocationSpec::LatLon(lat, lon) = spec {
         return Ok((from_coordinates(*lat, *lon), Resolution::Coordinates));
+    }
+    if matches!(spec, LocationSpec::Default | LocationSpec::Alias(_)) {
+        return Err(Error::Config(format!(
+            "location spec {spec} must be resolved through the configured/IP path before ranking"
+        )));
     }
 
     let query = spec.query();
@@ -350,35 +487,27 @@ pub fn provisional_zone(location: &Location) -> bool {
     ) && location.tz == Tz::UTC
 }
 
-/// Parses the text after `@`; every failure names the input and the accepted forms.
-fn coordinates(text: &str) -> Result<LocationSpec> {
+/// Recognises the text after `@` as a coordinate pair, when it is one.
+///
+/// The recogniser is deliberately narrow: exactly one comma, both sides parse as finite `f64`,
+/// latitude in `[-90, 90]` and longitude in `[-180, 180]`. Anything else — `@39.9`, `@91,0`,
+/// `@a,116` — is not a coordinate pair, and [`LocationSpec::parse_arg`] treats it as an alias name
+/// instead. That order is what keeps `@39.9,116.4` from ever being looked up in `[locations]`.
+fn coordinates(text: &str) -> Option<(f64, f64)> {
     let mut parts = text.split(',').map(str::trim);
     let (Some(lat), Some(lon), None) = (parts.next(), parts.next(), parts.next()) else {
-        return Err(invalid_coordinates(text));
+        return None;
     };
-    if lat.is_empty() || lon.is_empty() {
-        return Err(invalid_coordinates(text));
-    }
     let (Ok(lat), Ok(lon)) = (lat.parse::<f64>(), lon.parse::<f64>()) else {
-        return Err(invalid_coordinates(text));
+        return None;
     };
     if !lat.is_finite() || !lon.is_finite() {
-        return Err(invalid_coordinates(text));
+        return None;
     }
-    if !(-90.0..=90.0).contains(&lat) {
-        return Err(usage(format!("latitude {lat} is out of range -90..=90")));
+    if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
+        return None;
     }
-    if !(-180.0..=180.0).contains(&lon) {
-        return Err(usage(format!("longitude {lon} is out of range -180..=180")));
-    }
-    Ok(LocationSpec::LatLon(lat, lon))
-}
-
-/// The rejection for `@` arguments that are not two numbers in range.
-fn invalid_coordinates(text: &str) -> Error {
-    usage(format!(
-        "invalid coordinates `@{text}`: expected @<lat>,<lon>, e.g. @39.9042,116.4074"
-    ))
+    Some((lat, lon))
 }
 
 /// Rejects names the geocoding API cannot match on.
@@ -588,5 +717,116 @@ mod tests {
                 "{source:?} needs no attribution"
             );
         }
+    }
+
+    /// The `[locations]` table a CLI run would have parsed.
+    fn aliases(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn aliases_expand_through_chains() {
+        let table = aliases(&[
+            ("home", "@39.9,116.4"),
+            ("work", "@home"),
+            ("city", "Beijing"),
+            ("exact", ":Beijing"),
+            ("cosy", "~Tsinghua"),
+        ]);
+        let expand = |name: &str| {
+            super::expand_aliases(LocationSpec::Alias(name.to_owned()), &table)
+                .unwrap_or_else(|error| panic!("@{name}: {error}"))
+        };
+        assert_eq!(expand("home"), LocationSpec::LatLon(39.9, 116.4));
+        assert_eq!(expand("work"), LocationSpec::LatLon(39.9, 116.4));
+        assert_eq!(expand("city"), LocationSpec::Fuzzy("Beijing".to_owned()));
+        assert_eq!(expand("exact"), LocationSpec::Exact("Beijing".to_owned()));
+        assert_eq!(expand("cosy"), LocationSpec::Osm("Tsinghua".to_owned()));
+        // A spec that is not an alias is returned unchanged.
+        assert_eq!(
+            super::expand_aliases(LocationSpec::Fuzzy("Beijing".to_owned()), &table)
+                .expect("not an alias"),
+            LocationSpec::Fuzzy("Beijing".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_alias_cycle_names_the_chain() {
+        let table = aliases(&[("home", "@work"), ("work", "@home")]);
+        let error = super::expand_aliases(LocationSpec::Alias("home".to_owned()), &table)
+            .expect_err("a cycle never resolves");
+        assert_eq!(error.exit_code(), 4);
+        assert!(
+            error
+                .to_string()
+                .contains("location alias cycle: @home -> @work -> @home"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_overlong_alias_chain_is_refused() {
+        let mut table = std::collections::BTreeMap::new();
+        for index in 0..12 {
+            table.insert(format!("a{index}"), format!("@a{}", index + 1));
+        }
+        table.insert("a12".to_owned(), "Beijing".to_owned());
+        let error = super::expand_aliases(LocationSpec::Alias("a0".to_owned()), &table)
+            .expect_err("the chain is deeper than the cap");
+        assert_eq!(error.exit_code(), 4);
+        assert!(error.to_string().contains("deeper than 8"), "{error}");
+        // A legal chain just under the cap still works.
+        let mut legal = std::collections::BTreeMap::new();
+        for index in 0..7 {
+            legal.insert(format!("b{index}"), format!("@b{}", index + 1));
+        }
+        legal.insert("b7".to_owned(), "Beijing".to_owned());
+        assert_eq!(
+            super::expand_aliases(LocationSpec::Alias("b0".to_owned()), &legal)
+                .expect("eight links resolve"),
+            LocationSpec::Fuzzy("Beijing".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_unknown_alias_suggests_close_names() {
+        let table = aliases(&[("home", "@39.9,116.4"), ("work", ":Shanghai")]);
+        let error = super::expand_aliases(LocationSpec::Alias("hom".to_owned()), &table)
+            .expect_err("never an alias");
+        assert_eq!(error.exit_code(), 2);
+        let message = error.to_string();
+        assert!(message.contains("did you mean @home"), "{message}");
+        assert!(message.contains(super::USAGE_FORMS), "{message}");
+
+        // A name nothing is close to lists the configured names instead.
+        let error = super::expand_aliases(LocationSpec::Alias("zzz".to_owned()), &table)
+            .expect_err("never an alias");
+        assert!(
+            error.to_string().contains("known aliases: home, work"),
+            "{error}"
+        );
+
+        // No table at all is its own message.
+        let error = super::expand_aliases(
+            LocationSpec::Alias("home".to_owned()),
+            &std::collections::BTreeMap::new(),
+        )
+        .expect_err("nothing configured");
+        assert!(
+            error.to_string().contains("no `[locations]` aliases"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn edit_distance_is_symmetric_and_bounded() {
+        assert_eq!(super::edit_distance("home", "home"), 0);
+        assert_eq!(super::edit_distance("home", "hom"), 1);
+        assert_eq!(super::edit_distance("hom", "home"), 1);
+        assert_eq!(super::edit_distance("home", "work"), 3);
+        assert_eq!(super::edit_distance("", "abc"), 3);
     }
 }

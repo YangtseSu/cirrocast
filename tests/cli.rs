@@ -198,6 +198,8 @@ fn location_search_resolves_coordinates_without_touching_the_network() {
 #[test]
 fn location_search_reports_usage_errors_with_exit_code_two() {
     let sandbox = common::Sandbox::new();
+    // `@91,0` is not a coordinate pair (91 is out of latitude range), so it is read as an alias —
+    // and an unknown one, which is a usage error naming the forms that would have been accepted.
     sandbox
         .cirrocast()
         .args(["location", "search", "@91,0"])
@@ -205,11 +207,8 @@ fn location_search_reports_usage_errors_with_exit_code_two() {
         .code(2)
         .stdout(predicate::eq(""))
         .stderr(
-            predicate::str::contains("latitude 91 is out of range -90..=90").and(
-                predicate::str::contains(
-                    "accepted forms: Beijing | :Beijing | ~Tsinghua | @39.9042,116.4074",
-                ),
-            ),
+            predicate::str::contains("unknown location alias `@91,0`")
+                .and(predicate::str::contains("accepted forms: Beijing")),
         );
 
     sandbox
@@ -425,15 +424,21 @@ fn metar_is_selectable_and_reaches_the_fetch() {
 fn an_unknown_format_is_a_usage_error() {
     let sandbox = common::Sandbox::new();
 
-    // Checked before any request is sent, so this stays offline.
+    // Checked before any request is sent, so this stays offline. The message lists the three
+    // namespaces a format name can address: the built-in formats, the built-in presets and the
+    // user's `[templates]` keys.
     sandbox
         .cirrocast()
         .args(["@39.9,116.4", "--format", "yaml"])
         .assert()
         .code(2)
         .stderr(
-            predicate::str::contains("invalid value 'yaml'").and(predicate::str::contains(
-                "possible values: art-table, one-line, plain, json, dumb",
-            )),
+            predicate::str::contains("unknown format `yaml`")
+                .and(predicate::str::contains(
+                    "formats: art-table, one-line, plain, json, dumb",
+                ))
+                .and(predicate::str::contains(
+                    "presets: default, short, minimal, full",
+                )),
         );
 }

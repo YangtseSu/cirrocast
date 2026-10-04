@@ -322,42 +322,28 @@ fn a_template_belongs_to_one_line() {
 }
 
 #[test]
-fn an_unknown_one_line_token_is_warned_about_once_under_verbose() {
+fn an_unknown_template_token_is_a_usage_error() {
     let sandbox = seeded(3);
 
-    let assert = run(&sandbox, &["-f", "one-line", "--template", "%y %c", "-v"])
+    // The CLI refuses a typo (exit 2, before any request); the compat surface that serves the same
+    // token table keeps the literal, so the engine's passthrough stays covered by the library
+    // tests.
+    run(&sandbox, &["-f", "one-line", "--template", "%y %c", "-v"])
         .arg(LOCATION)
         .assert()
-        .success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
-    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
-    assert!(
-        stdout.contains("%y"),
-        "the unknown token stays literal: {stdout}"
-    );
-    assert_eq!(
-        stderr
-            .matches("unknown one-line token `%y` at position 1")
-            .count(),
-        1,
-        "{stderr}"
-    );
+        .code(2)
+        .stderr(
+            predicate::str::contains("unknown template token `%y` at position 1").and(
+                predicate::str::contains("known tokens: cCxtfHLwhpPeuUmMvldDTZzSsAq"),
+            ),
+        );
 
-    // Without `-v` the output is identical and the note is gone.
-    let quiet = run(&sandbox, &["-f", "one-line", "--template", "%y %c"])
+    // A bare `-f one-line` still renders the default preset: the gate only fires for a template
+    // that really carries the unknown token.
+    run(&sandbox, &["-f", "one-line", "--template", "@short"])
         .arg(LOCATION)
         .assert()
         .success();
-    assert_eq!(
-        quiet.get_output().stdout.clone(),
-        assert.get_output().stdout.clone()
-    );
-    assert!(
-        !String::from_utf8(quiet.get_output().stderr.clone())
-            .expect("UTF-8 stderr")
-            .contains("unknown one-line token"),
-        "no note without -v"
-    );
 }
 
 #[test]
@@ -734,7 +720,7 @@ fn the_help_documents_the_flag_matrix_and_both_tables() {
 
     // The preset table in `--help` is a copy of the one `--template` accepts; this is the guard
     // against the two drifting apart.
-    for (name, template) in cirrocast::render::one_line::PRESETS {
+    for (name, template) in cirrocast::template::PRESETS {
         assert!(
             stdout.contains(&format!("@{name}")),
             "preset `@{name}` missing"

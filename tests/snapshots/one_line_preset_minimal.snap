@@ -1,0 +1,5 @@
+---
+source: tests/render_one_line.rs
+expression: "rendered(\"@minimal\", UnitSystem :: Metric)"
+---
+\o_+22°C

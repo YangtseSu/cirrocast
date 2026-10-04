@@ -15,6 +15,7 @@
 
 pub mod keys;
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -30,7 +31,7 @@ use crate::paths::Paths;
 use crate::provider::ProviderId;
 
 /// The schema version this build reads and writes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 /// Mode of a freshly written `config.toml` (Unix only; the shim ignores it elsewhere).
 const CONFIG_FILE_MODE: u32 = 0o644;
@@ -132,6 +133,13 @@ pub struct Config {
     pub air: AirConfig,
     /// Per-provider settings.
     pub providers: Providers,
+    /// `@NAME` location aliases: the name after `@` mapped to any location argument.
+    ///
+    /// A free-form table (`home = "@39.9,116.4"`), so its keys are user-chosen; a value may itself
+    /// name another alias, and the expansion is cycle-checked when it runs.
+    pub locations: BTreeMap<String, String>,
+    /// Named templates for `--format <NAME>` and `--template @NAME` (a free-form table).
+    pub templates: BTreeMap<String, String>,
 }
 
 /// `[defaults]` — what a bare `cirrocast` invocation uses.
@@ -309,6 +317,8 @@ impl Default for Config {
             alerts: AlertsConfig::default(),
             air: AirConfig::default(),
             providers: Providers::default(),
+            locations: BTreeMap::new(),
+            templates: BTreeMap::new(),
         }
     }
 }
@@ -490,8 +500,10 @@ impl Config {
 
 /// The single place a schema bump transforms an older document.
 ///
-/// Schema `1` is the first released schema, so the only work here is gating: version `0` was never
-/// written by any release and a future version cannot be understood by this build.
+/// Schema `1` is the first released schema; it migrates to `2` (step 19) by stamping the version —
+/// the two tables the bump adds (`[locations]`, `[templates]`) are optional and absent means empty.
+/// Version `0` was never written by any release and a future version cannot be understood by this
+/// build.
 fn migrate(schema_version: u32, document: &mut toml::Value) -> Result<u32> {
     match schema_version {
         CURRENT_SCHEMA_VERSION => {
@@ -502,8 +514,18 @@ fn migrate(schema_version: u32, document: &mut toml::Value) -> Result<u32> {
             }
             Ok(CURRENT_SCHEMA_VERSION)
         }
+        1 => {
+            let table = document.as_table_mut().ok_or_else(|| {
+                Error::Config("config root must be a TOML table of keys".to_owned())
+            })?;
+            table.insert(
+                "schema_version".to_owned(),
+                toml::Value::Integer(i64::from(CURRENT_SCHEMA_VERSION)),
+            );
+            Ok(CURRENT_SCHEMA_VERSION)
+        }
         0 => Err(Error::Config(
-            "config schema_version 0 is not supported (this build writes schema_version 1); \
+            "config schema_version 0 is not supported (this build writes schema_version 2); \
              run `cirrocast config init --force` to write a fresh document"
                 .to_owned(),
         )),
@@ -545,6 +567,7 @@ impl Config {
         self.validate_schema_version()?;
         self.validate_defaults()?;
         self.validate_location()?;
+        self.validate_locations()?;
         self.validate_geo()?;
         self.validate_units()?;
         self.validate_network()?;
@@ -657,7 +680,7 @@ impl Config {
 
     fn validate_defaults(&self) -> Result<()> {
         check_provider_chain("defaults.provider", &self.defaults.provider)?;
-        check_enum("defaults.format", &self.defaults.format, FORMATS)?;
+        check_format_name(&self.templates, "defaults.format", &self.defaults.format)?;
         check_enum("defaults.units", &self.defaults.units, UNIT_SYSTEMS)?;
         check_range("defaults.days", u32::from(self.defaults.days), DAYS_RANGE)?;
         check_language("defaults.language", &self.defaults.language)?;
@@ -671,9 +694,22 @@ impl Config {
         if text.is_empty() {
             return Ok(());
         }
-        LocationSpec::parse_arg(Some(text))
-            .map(|_| ())
-            .map_err(|error| Error::Config(format!("location.default: {error}")))
+        let spec = LocationSpec::parse_arg(Some(text))
+            .map_err(|error| contextual("location.default", error))?;
+        crate::geo::expand_aliases(spec, &self.locations)
+            .map_err(|error| contextual("location.default", error))?;
+        Ok(())
+    }
+
+    /// Every `[locations]` alias must expand: a value that is not a location argument, a name the
+    /// table does not define (`a = "@b"` with no `b`), a cycle or an over-deep chain is a document
+    /// bug, and the load-time check names the entry.
+    fn validate_locations(&self) -> Result<()> {
+        for name in self.locations.keys() {
+            crate::geo::expand_aliases(LocationSpec::Alias(name.clone()), &self.locations)
+                .map_err(|error| contextual(&format!("locations.{name}"), error))?;
+        }
+        Ok(())
     }
 
     /// `[geo]`: the strategy (step 18), the table source, the freshness policy and the update
@@ -870,6 +906,42 @@ fn check_optional_enum(key: &str, value: Option<&str>, allowed: &[&str]) -> Resu
     }
 }
 
+/// `defaults.format` and `config set defaults.format`: a built-in format name, a built-in template
+/// preset, or a `[templates]` key (step 19).
+///
+/// A template name resolves to the `one-line` renderer with that template, so the three namespaces
+/// are checked together: a value the CLI would refuse must not validate here either.
+fn check_format_name(templates: &BTreeMap<String, String>, key: &str, value: &str) -> Result<()> {
+    if FORMATS.contains(&value)
+        || crate::template::preset(value).is_some()
+        || templates.contains_key(value)
+    {
+        return Ok(());
+    }
+    let presets = crate::template::PRESETS
+        .iter()
+        .map(|(name, _)| *name)
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(Error::Config(format!(
+        "{key}: `{value}` is not a format ({}), a template preset ({presets}) or a `[templates]` key",
+        FORMATS.join(", ")
+    )))
+}
+
+/// Appends a dotted-key context to an error's own message, without doubling the variant prefix.
+///
+/// `Error::Config("locations.home: …")` rather than `Error::Config("locations.home: config error:
+/// …")`, which is what plain `{error}` interpolation would produce.
+fn contextual(context: &str, error: Error) -> Error {
+    match error {
+        Error::Config(message) | Error::Usage(message) => {
+            Error::Config(format!("{context}: {message}"))
+        }
+        other => other,
+    }
+}
+
 /// `key: value is out of range min..=max`.
 fn check_range(key: &str, value: u32, (min, max): (u32, u32)) -> Result<()> {
     if (min..=max).contains(&value) {
@@ -1021,6 +1093,8 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "alerts",
             "air",
             "providers",
+            "locations",
+            "templates",
         ],
         "defaults" => &["provider", "format", "units", "days", "language"],
         "location" => &["default"],
@@ -1057,8 +1131,18 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
         "providers" => &["metar", "qweather"],
         "providers.metar" => &["station"],
         "providers.qweather" => &["host"],
+        // Free-form tables: their keys are the user's own alias and template names.
+        "locations" | "templates" => &[],
         _ => return None,
     })
+}
+
+/// Whether a table's keys are chosen by the user rather than fixed by the schema.
+///
+/// `check_known_keys` stops at a free-form table: `[locations] home = …` defines `home`, and
+/// telling the user it is not one of the schema's keys would defeat the table.
+fn free_form(table: &str) -> bool {
+    matches!(table, "locations" | "templates")
 }
 
 /// Rejects the first key the schema does not define, naming its dotted path and the sibling keys
@@ -1077,6 +1161,9 @@ fn check_table(path: &str, value: &toml::Value) -> Result<()> {
     let Some(table) = value.as_table() else {
         return Ok(());
     };
+    if free_form(path) {
+        return Ok(());
+    }
     let Some(allowed) = allowed_keys(path) else {
         return Ok(());
     };
@@ -1232,17 +1319,31 @@ pub const DEFAULT_DOCUMENT: &str = r#"# cirrocast configuration.
 # rewrites it in canonical form, dropping comments). Values given on the command
 # line, or through the matching `CIRROCAST_*` variable, win over this file.
 
-schema_version = 1
+schema_version = 2
 
 [defaults]
 provider = "open-meteo"  # id, comma separated chain, or "auto" (the keyless chain)
-format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon
+format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon,
+                         # or a one-line preset: full | minimal | short | default | uv | sun,
+                         # or a [templates] key
 units = "metric"         # metric | us | uk
 days = 3                 # 0..=14; each provider clamps to its own maximum
 language = "auto"        # "auto" or a BCP-47 tag such as "en-US", "zh-CN"
 
 [location]
-default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"; empty = ask for the IP location
+default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", or "@home" for an
+                         # alias below; empty = ask for the IP location
+
+[locations]
+# @NAME aliases for the location argument. Values are any location argument, including another
+# alias; chains are expanded with cycle detection.
+# home = "@39.9,116.4"
+# work = ":Shanghai"
+
+[templates]
+# Named one-line templates for `--format <NAME>` and `--template @NAME`. A value is a literal
+# %-token template; an unknown token is an error, not printed literally.
+# compact = "%c%t"
 
 [geo]
 strategy = "auto"        # auto (bundled GeoNames table first, network on a miss) | bundled | network
@@ -1374,8 +1475,8 @@ pub const KEY_TABLE: &[KeySpec] = &[
     },
     KeySpec {
         name: "defaults.format",
-        kind: KeyKind::Enum(FORMATS),
-        doc: "output format",
+        kind: KeyKind::Str,
+        doc: "output format, template preset, or [templates] key",
         env: Some("CIRROCAST_FORMAT"),
     },
     KeySpec {
@@ -1663,7 +1764,7 @@ impl Config {
                 self.defaults.provider = value;
             }
             "defaults.format" => {
-                check_enum(spec.name, &value, FORMATS)?;
+                check_format_name(&self.templates, spec.name, &value)?;
                 self.defaults.format = value;
             }
             "defaults.units" => {
@@ -1758,7 +1859,7 @@ impl Config {
         match key {
             "schema_version" => self.validate_schema_version(),
             "defaults.provider" => check_provider_chain(key, &self.defaults.provider),
-            "defaults.format" => check_enum(key, &self.defaults.format, FORMATS),
+            "defaults.format" => check_format_name(&self.templates, key, &self.defaults.format),
             "defaults.units" => check_enum(key, &self.defaults.units, UNIT_SYSTEMS),
             "defaults.days" => check_range(key, u32::from(self.defaults.days), DAYS_RANGE),
             "defaults.language" => check_language(key, &self.defaults.language),
@@ -2012,7 +2113,7 @@ mod tests {
     #[test]
     fn built_in_defaults_match_the_contract() {
         let config = Config::default();
-        assert_eq!(config.schema_version, 1);
+        assert_eq!(config.schema_version, 2);
         assert_eq!(config.defaults.provider, "open-meteo");
         assert_eq!(config.defaults.format, "art-table");
         assert_eq!(config.defaults.units, "metric");
@@ -2071,9 +2172,29 @@ mod tests {
 
     #[test]
     fn migrate_gates_unknown_schema_versions() {
+        // Schema 1 is the first released document; step 19 stamps it to 2 without touching the
+        // rest of the file — the two tables the bump adds are optional.
         let mut document: toml::Value =
-            toml::from_str("schema_version = 1").expect("a document parses");
-        assert_eq!(migrate(1, &mut document).expect("schema 1 is current"), 1);
+            toml::from_str("schema_version = 1\n[defaults]\ndays = 7\n")
+                .expect("a document parses");
+        assert_eq!(migrate(1, &mut document).expect("schema 1 migrates"), 2);
+        assert_eq!(
+            document
+                .get("schema_version")
+                .and_then(toml::Value::as_integer),
+            Some(2)
+        );
+        assert_eq!(
+            document
+                .get("defaults")
+                .and_then(|defaults| defaults.get("days"))
+                .and_then(toml::Value::as_integer),
+            Some(7)
+        );
+        let migrated: Config = Config::from_value(document.clone(), Path::new("config.toml"))
+            .expect("the migrated document");
+        assert_eq!(migrated.schema_version, 2);
+        assert_eq!(migrated.defaults.days, 7);
 
         let zero = migrate(0, &mut document).expect_err("schema 0 is not supported");
         assert!(zero.to_string().contains("schema_version 0"), "{zero}");
@@ -2082,7 +2203,7 @@ mod tests {
         assert!(
             newer
                 .to_string()
-                .contains("config written by a newer cirrocast (schema_version 99, supported 1)"),
+                .contains("config written by a newer cirrocast (schema_version 99, supported 2)"),
             "{newer}"
         );
 
@@ -2125,8 +2246,9 @@ mod tests {
             (
                 "defaults.format",
                 |config| config.defaults.format = "yaml".to_owned(),
-                "defaults.format: `yaml` is not one of art-table, one-line, plain, json, dumb, \
-                 alerts, aqi, moon",
+                "defaults.format: `yaml` is not a format (art-table, one-line, plain, json, dumb, \
+                 alerts, aqi, moon), a template preset (default, short, minimal, full, uv, sun) or \
+                 a `[templates]` key",
             ),
             (
                 "defaults.units",
@@ -2548,6 +2670,70 @@ mod tests {
                 "{rejected}: {error}"
             );
         }
+
+        // `@name` is an alias: it validates only when `[locations]` defines it.
+        config
+            .locations
+            .insert("home".to_owned(), "@39.9,116.4".to_owned());
+        config.location.default = "@home".to_owned();
+        config.validate().expect("a defined alias validates");
+    }
+
+    #[test]
+    fn alias_tables_are_validated_at_load_time() {
+        let mut config = Config::default();
+        config
+            .locations
+            .insert("home".to_owned(), "@work".to_owned());
+        config
+            .locations
+            .insert("work".to_owned(), "@home".to_owned());
+        let error = config.validate().expect_err("a cycle never validates");
+        assert_eq!(error.exit_code(), 4);
+        assert!(
+            error
+                .to_string()
+                .contains("locations.home: location alias cycle: @home -> @work -> @home"),
+            "{error}"
+        );
+
+        let mut config = Config::default();
+        config
+            .locations
+            .insert("home".to_owned(), "@nowhere".to_owned());
+        let error = config
+            .validate()
+            .expect_err("an undefined target never validates");
+        assert!(error.to_string().contains("locations.home:"), "{error}");
+
+        // A legal chain, and a value that is not an alias at all.
+        let mut config = Config::default();
+        config
+            .locations
+            .insert("home".to_owned(), "@39.9,116.4".to_owned());
+        config
+            .locations
+            .insert("work".to_owned(), "@home".to_owned());
+        config
+            .locations
+            .insert("city".to_owned(), "Beijing".to_owned());
+        config.validate().expect("legal aliases validate");
+    }
+
+    #[test]
+    fn a_template_key_may_name_a_defaults_format() {
+        let mut config = Config::default();
+        config
+            .templates
+            .insert("compact".to_owned(), "%c%t".to_owned());
+        config.defaults.format = "compact".to_owned();
+        config.validate().expect("a configured template validates");
+
+        config.defaults.format = "minimal".to_owned();
+        config.validate().expect("a built-in preset validates");
+
+        config.defaults.format = "yaml".to_owned();
+        assert!(config.validate().is_err());
     }
 
     #[test]

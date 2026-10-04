@@ -1,24 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The `one-line` format: one case per token, the escapes, and the five presets.
+//! The `one-line` renderer: formatting behaviour that belongs to the format itself.
 //!
-//! The report is the hand-written `beijing-1d.json` fixture and the clock is the fixture's own
-//! observation time, so every expected string below is a literal that a reviewer can check against
-//! the fixture without running anything.
+//! The token table, the escapes, the width/precision rules and the unknown-token policy are the
+//! *engine's* contract and are tested in `tests/templates.rs`; here the report is the hand-written
+//! `beijing-1d.json` fixture and the clock is the fixture's own observation time, so every expected
+//! string below is a literal that a reviewer can check against the fixture without running
+//! anything.
 
 // Every expected value is a literal taken from the fixture, so exact comparison is the assertion.
 #![allow(clippy::float_cmp)]
 
 mod common;
 
+use std::collections::BTreeMap;
+
 use cirrocast::air::aqi::AqiIndex;
 use cirrocast::config::UnitOverrides;
 use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::Report;
 use cirrocast::model::units::UnitSystem;
-use cirrocast::render::one_line::{self, OneLine, PRESETS, expand, warnings};
+use cirrocast::render::one_line::OneLine;
 use cirrocast::render::{ColorMode, RenderContext, Renderer, TermCaps};
+use cirrocast::template::{expand, preset, resolve_template};
 
 /// The English catalog, loaded the way the CLI loads an unconfigured run.
 fn english() -> I18n {
@@ -66,7 +71,7 @@ fn context<'a>(
         lang: i18n.lang(),
         i18n,
         alert_credits: &[],
-        aqi_index: cirrocast::air::aqi::AqiIndex::Us,
+        aqi_index: AqiIndex::Us,
     }
 }
 
@@ -90,41 +95,9 @@ fn rendered(template: &str, units: UnitSystem) -> String {
 /// The same, in a given language.
 fn rendered_in(template: &str, units: UnitSystem, i18n: &I18n) -> String {
     let report = report();
-    OneLine::new(one_line::resolve_template(Some(template)).expect("a template"))
+    OneLine::new(resolve_template(Some(template), &BTreeMap::new()).expect("a template"))
         .render(&report, &context(&report, units, capable(), i18n))
         .expect("the renderer renders")
-}
-
-#[test]
-fn every_token_renders_the_documented_value() {
-    // `beijing-1d.json`: 21.5 °C (feels 22.0), 10 km/h from 30°, 52 %, 1015 hPa, 14 km visibility,
-    // code 1 (mainly clear) in daylight, UV 5, sunrise 06:05, sunset 17:58.
-    for (template, expected) in [
-        ("%c", "\\o_"),
-        ("%C", "Mainly clear"),
-        ("%t", "+22°C"),
-        ("%f", "+22°C"),
-        ("%w", "↗ 10km/h NNE"),
-        ("%h", "52%"),
-        ("%p", "0.0mm"),
-        ("%P", "1015hPa"),
-        ("%v", "14km"),
-        ("%u", "5"),
-        ("%U", "5 (moderate)"),
-        ("%d", "2026-09-30"),
-        ("%D", "Wed 30 Sep"),
-        ("%Z", "Asia/Shanghai"),
-        ("%z", "+0800"),
-        ("%S", "06:05"),
-        ("%s", "17:58"),
-        ("%l", "Beijing"),
-        ("%L", "39.90,116.41"),
-        // The fixture is 2026-09-30, four days after the full moon of the 26th: waning gibbous.
-        ("%m", "◕"),
-        ("%M", "Waning Gibbous"),
-    ] {
-        assert_eq!(line(template), expected, "{template}");
-    }
 }
 
 #[test]
@@ -169,40 +142,6 @@ fn the_unit_systems_convert_the_tokens_not_the_report() {
 }
 
 #[test]
-fn escapes_are_unwrapped_before_the_tokens_are_read() {
-    assert_eq!(line("%%"), "%");
-    assert_eq!(line("%l:%%"), "Beijing:%");
-    assert_eq!(line("50%"), "50%", "a trailing lone % is literal");
-    assert_eq!(line("%y %c"), "%y \\o_", "an unknown token stays literal");
-    assert_eq!(
-        line("%y").len(),
-        2,
-        "an unknown token is two characters, not one"
-    );
-    assert_eq!(
-        line("%{no %c expansion}"),
-        "no %c expansion",
-        "a braced run is verbatim"
-    );
-    assert_eq!(line("%{a\\}b}"), "a}b", "a backslash escapes the brace");
-    assert_eq!(line("a\\nb"), "a\nb");
-    assert_eq!(line("a\\tb"), "a\tb");
-    assert_eq!(line("a\\\\b"), "a\\b");
-}
-
-#[test]
-fn an_unknown_token_is_reported_once_per_occurrence() {
-    assert_eq!(
-        warnings("%y %c %y"),
-        vec![
-            "note: unknown one-line token `%y` at position 1 is printed literally".to_owned(),
-            "note: unknown one-line token `%y` at position 7 is printed literally".to_owned(),
-        ]
-    );
-    assert_eq!(warnings("%c %t %% %{x}"), Vec::<String>::new());
-}
-
-#[test]
 fn the_quality_token_reads_the_selected_scale() {
     // Without an air reading the token is `n/a`, like every other value the report does not
     // carry.
@@ -224,45 +163,6 @@ fn the_quality_token_reads_the_selected_scale() {
     );
 }
 
-#[test]
-fn an_empty_template_is_a_usage_error() {
-    let report = report();
-    let i18n = english();
-    let ctx = context(&report, UnitSystem::Metric, capable(), &i18n);
-    for template in ["", "   ", "\t"] {
-        let error = expand(template, &report, &ctx).expect_err("never empty");
-        assert_eq!(error.exit_code(), 2, "{template:?}");
-        assert!(error.to_string().contains("template is empty"), "{error}");
-    }
-}
-
-#[test]
-fn a_preset_is_a_template_and_an_unknown_one_lists_them() {
-    for (name, template) in PRESETS {
-        let spec = format!("@{name}");
-        assert_eq!(
-            one_line::resolve_template(Some(&spec)).expect("a known preset"),
-            template,
-            "{spec}"
-        );
-    }
-    assert_eq!(
-        one_line::resolve_template(None).expect("the default preset"),
-        one_line::preset("default").expect("the default preset exists")
-    );
-
-    let error = one_line::resolve_template(Some("@nope")).expect_err("never a preset");
-    assert_eq!(error.exit_code(), 2);
-    let message = error.to_string();
-    for (name, template) in PRESETS {
-        assert!(message.contains(name), "`{name}` missing from {message}");
-        assert!(
-            message.contains(template),
-            "`{template}` missing from {message}"
-        );
-    }
-}
-
 /// Snapshots one preset under `name` in the shared `tests/snapshots` directory.
 macro_rules! snapshot {
     ($name:literal, $template:literal) => {
@@ -276,6 +176,7 @@ macro_rules! snapshot {
 fn the_presets_render_the_documented_lines() {
     snapshot!("one_line_preset_default", "@default");
     snapshot!("one_line_preset_short", "@short");
+    snapshot!("one_line_preset_minimal", "@minimal");
     snapshot!("one_line_preset_full", "@full");
     snapshot!("one_line_preset_uv", "@uv");
     snapshot!("one_line_preset_sun", "@sun");
@@ -333,10 +234,10 @@ fn the_width_does_not_change_the_output() {
         lang: i18n.lang(),
         i18n: &i18n,
         alert_credits: &[],
-        aqi_index: cirrocast::air::aqi::AqiIndex::Us,
+        aqi_index: AqiIndex::Us,
     };
 
-    let template = one_line::preset("full").expect("the full preset exists");
+    let template = preset("full").expect("the full preset exists");
     let narrow = expand(template, &report, &context(20)).expect("the template expands");
     assert_eq!(
         narrow,

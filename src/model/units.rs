@@ -548,6 +548,29 @@ fn round_1dp(value: f32) -> f32 {
     normalise_zero(round_half_away_from_zero(value * 10.0) / 10.0)
 }
 
+/// Formats `value` with `decimals` decimal places, ties away from zero, `-0` normalised.
+///
+/// This is the template engine's numeric precision: `%.1t` and friends must round the value the
+/// unit conversion produced, not the string a fixed-precision formatter already rounded, or the
+/// precision could never change the output.
+///
+/// ```
+/// # use cirrocast::model::units::fmt_decimals;
+/// assert_eq!(fmt_decimals(9.95, 1), "10.0");
+/// assert_eq!(fmt_decimals(-0.4, 0), "0");
+/// assert_eq!(fmt_decimals(23.456, 2), "23.46");
+/// ```
+#[must_use]
+pub fn fmt_decimals(value: f32, decimals: usize) -> String {
+    let decimals = decimals.min(MAX_DECIMALS);
+    let scale = 10.0_f32.powi(i32::try_from(decimals).unwrap_or(0));
+    let rounded = normalise_zero(round_half_away_from_zero(value * scale) / scale);
+    format!("{rounded:.decimals$}")
+}
+
+/// The most decimals [`fmt_decimals`] and the `%`-template precision may ask for.
+pub const MAX_DECIMALS: usize = 6;
+
 /// One decimal below ten (in magnitude), an integer at or above it.
 ///
 /// The threshold is applied **after** rounding and on the magnitude, so `9.95` prints as `10`,
@@ -607,6 +630,22 @@ pub fn format_temp(celsius: f32, unit: TempUnit) -> String {
 /// ```
 #[must_use]
 pub fn format_temp_signed(celsius: f32, unit: TempUnit) -> String {
+    format_temp_signed_prec(celsius, unit, 0)
+}
+
+/// Formats a temperature with an explicit sign and `decimals` decimal places, e.g. `+23.5°C`.
+///
+/// [`format_temp_signed`] is the zero-decimal spelling of this; the template engine's `%.1t`
+/// precision reaches the value's own decimals through here rather than through string surgery.
+///
+/// ```
+/// # use cirrocast::model::units::{TempUnit, format_temp_signed_prec};
+/// assert_eq!(format_temp_signed_prec(23.45, TempUnit::Celsius, 1), "+23.5°C");
+/// assert_eq!(format_temp_signed_prec(-0.04, TempUnit::Celsius, 1), "+0.0°C");
+/// assert_eq!(format_temp_signed_prec(-5.25, TempUnit::Fahrenheit, 2), "+22.55°F");
+/// ```
+#[must_use]
+pub fn format_temp_signed_prec(celsius: f32, unit: TempUnit, decimals: usize) -> String {
     let value = match unit {
         TempUnit::Celsius => celsius,
         TempUnit::Fahrenheit => c_to_f(celsius),
@@ -616,7 +655,11 @@ pub fn format_temp_signed(celsius: f32, unit: TempUnit) -> String {
     } else {
         "+"
     };
-    format!("{sign}{}{}", fmt_int(value.abs()), unit.symbol())
+    format!(
+        "{sign}{}{}",
+        fmt_decimals(value.abs(), decimals),
+        unit.symbol()
+    )
 }
 
 /// Formats a wind speed, e.g. `12 km/h`, `8.3 km/h`, `5.8 mph`.
@@ -662,6 +705,39 @@ pub fn format_pressure(hpa: f32, unit: PressureUnit, style: UnitStyle) -> String
     format!("{value}{}{}", style.separator(), unit.symbol())
 }
 
+/// Formats a pressure with `decimals` decimal places in the target unit, e.g. `1013.2hPa`.
+///
+/// ```
+/// # use cirrocast::model::units::{PressureUnit, UnitStyle, format_pressure_prec};
+/// assert_eq!(
+///     format_pressure_prec(1013.25, PressureUnit::Hpa, UnitStyle::Compact, 1),
+///     "1013.3hPa"
+/// );
+/// assert_eq!(
+///     format_pressure_prec(1013.25, PressureUnit::Inhg, UnitStyle::Spaced, 1),
+///     "29.9 inHg"
+/// );
+/// ```
+#[must_use]
+pub fn format_pressure_prec(
+    hpa: f32,
+    unit: PressureUnit,
+    style: UnitStyle,
+    decimals: usize,
+) -> String {
+    let value = match unit {
+        PressureUnit::Hpa => hpa,
+        PressureUnit::Inhg => hpa_to_inhg(hpa),
+        PressureUnit::Mmhg => hpa_to_mmhg(hpa),
+    };
+    format!(
+        "{}{}{}",
+        fmt_decimals(value, decimals),
+        style.separator(),
+        unit.symbol()
+    )
+}
+
 /// Formats a distance, e.g. `4.2 km`, `14 km`, `2.6 mi`.
 ///
 /// ```
@@ -695,6 +771,34 @@ pub fn format_visibility(km: f32, unit: DistanceUnit, style: UnitStyle) -> Strin
     format_distance(km, unit, style)
 }
 
+/// Formats a visibility distance with `decimals` decimal places in the target unit.
+///
+/// ```
+/// # use cirrocast::model::units::{DistanceUnit, UnitStyle, format_visibility_prec};
+/// assert_eq!(
+///     format_visibility_prec(8.04, DistanceUnit::Km, UnitStyle::Compact, 2),
+///     "8.04km"
+/// );
+/// ```
+#[must_use]
+pub fn format_visibility_prec(
+    km: f32,
+    unit: DistanceUnit,
+    style: UnitStyle,
+    decimals: usize,
+) -> String {
+    let value = match unit {
+        DistanceUnit::Km => km,
+        DistanceUnit::Mi => km_to_mi(km),
+    };
+    format!(
+        "{}{}{}",
+        fmt_decimals(value, decimals),
+        style.separator(),
+        unit.symbol()
+    )
+}
+
 /// Formats precipitation: always one decimal in millimetres, two in inches.
 ///
 /// ```
@@ -711,6 +815,29 @@ pub fn format_precip(mm: f32, unit: PrecipUnit, style: UnitStyle) -> String {
         PrecipUnit::In => fmt_2dp(mm_to_in(mm)),
     };
     format!("{value}{}{}", style.separator(), unit.symbol())
+}
+
+/// Formats precipitation with `decimals` decimal places in the target unit, e.g. `0.00mm`.
+///
+/// ```
+/// # use cirrocast::model::units::{PrecipUnit, UnitStyle, format_precip_prec};
+/// assert_eq!(
+///     format_precip_prec(0.2, PrecipUnit::Mm, UnitStyle::Compact, 2),
+///     "0.20mm"
+/// );
+/// ```
+#[must_use]
+pub fn format_precip_prec(mm: f32, unit: PrecipUnit, style: UnitStyle, decimals: usize) -> String {
+    let value = match unit {
+        PrecipUnit::Mm => mm,
+        PrecipUnit::In => mm_to_in(mm),
+    };
+    format!(
+        "{}{}{}",
+        fmt_decimals(value, decimals),
+        style.separator(),
+        unit.symbol()
+    )
 }
 
 // ---------------------------------------------------------------------------------------------

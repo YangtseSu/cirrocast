@@ -147,22 +147,31 @@ EXIT CODES
   5  location not found: an unresolvable name or station
   6  missing or invalid API key: `cirrocast key set <id>` (or CIRROCAST_<ID>_KEY) fixes it
 
-ONE-LINE TOKENS (--format one-line)
-  %c condition art    %C condition text   %t temp        %f feels-like
-  %w wind             %h humidity         %p precip      %P pressure
-  %v visibility       %u UV index         %U UV + band   %m moon glyph
-  %M moon phase       %d ISO date         %D Wed 30 Sep  %Z zone name
-  %z +0800            %S sunrise          %s sunset      %l name
-  %L 39.90,116.40
+ONE-LINE TOKENS (--format one-line, full, minimal, or a [templates] key)
+  %c condition art    %C condition text   %x condition, plain text
+  %t temp             %f feels-like       %H today's high    %L today's low
+  %w wind             %h humidity         %p precip          %P pressure
+  %e dew point        %u UV index         %U UV + band       %m moon glyph
+  %M moon phase       %v visibility       %l name            %d ISO date
+  %D Wed 30 Sep       %T 15:04            %Z zone name       %z +0800
+  %S sunrise          %s sunset           %q air-quality index
   %A strongest alert event, empty when no alerts are in force
-  %q air-quality index on the selected scale (US AQI 43 (Good))
-  %% is a literal %, %{...} is verbatim, \\n \\t \\\\ are escapes; an unknown %X stays literal.
-  Presets (@NAME), listed with their templates:
+  %[-][0][width][.prec]X pads (right with -, zero for numbers), .prec truncates text and rounds
+  numbers; %% is a literal %, %{...} is verbatim unless it is exactly one token letter, \\n \\t
+  \\\\ are escapes; an unknown %X is a usage error (exit 2).
+  Presets (@NAME, and --format NAME), listed with their templates:
     @default  %l: %c %C %t (%f), %w, %h, %p, %P, %v
     @short    %c %t
+    @minimal  %c%t
     @full     %l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z
     @uv       %l: UV %U
-    @sun      %l: sunrise %S sunset %s (%z %Z)";
+    @sun      %l: sunrise %S sunset %s (%z %Z)
+
+MULTI-LOCATION RUNS
+  Several LOCATION arguments are fetched at most four at a time and printed in argument order.
+  A failed location keeps its slot on stdout (`error: <query>: <message>`) and the run exits with
+  the largest mapped code among the failures; `json` becomes an array, and `art-table` draws a
+  combined summary for up to four locations.";
 
 /// The weather query: the whole flag matrix of `cirrocast <LOCATION>`.
 ///
@@ -175,19 +184,22 @@ ONE-LINE TOKENS (--format one-line)
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Args)]
 pub struct QueryArgs {
-    /// Location argument (`Beijing`, `:Beijing`, `~Tsinghua`, `@39.9,116.4`); omitted = the
+    /// Location arguments (`Beijing`, `:Beijing`, `~Tsinghua`, `@39.9,116.4`, `@home`); several
+    /// arguments are fetched at most four at a time and printed in argument order. Omitted = the
     /// configured default location, else the public IP.
     #[arg(value_name = "LOCATION", env = "CIRROCAST_LOCATION")]
-    pub location: Option<String>,
+    pub location: Vec<String>,
 
     /// Provider chain, comma separated; `auto` expands to the implemented keyless backends (plus
     /// `metar` with `--station`).
     #[arg(short = 'p', long, value_name = "LIST", env = "CIRROCAST_PROVIDER")]
     pub provider: Option<String>,
 
-    /// Output format.
-    #[arg(short = 'f', long, value_name = "FORMAT", env = "CIRROCAST_FORMAT")]
-    pub format: Option<Format>,
+    /// Output format: a built-in name (`art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts`,
+    /// `aqi`, `moon`), a one-line preset (`default`, `short`, `minimal`, `full`, `uv`, `sun`) or a
+    /// `[templates]` key.
+    #[arg(short = 'f', long, value_name = "NAME", env = "CIRROCAST_FORMAT")]
+    pub format: Option<String>,
 
     /// Forecast days, `0` = current conditions only (clamped to what the provider serves).
     #[arg(
@@ -264,11 +276,17 @@ pub struct QueryArgs {
     #[arg(long)]
     pub moon: bool,
 
-    /// Template for `--format one-line`: a literal `%`-token string, or `@PRESET`. The presets
-    /// are `@default`, `@short`, `@full`, `@uv` and `@sun`; `--help` lists their templates and
-    /// every token.
-    #[arg(long, value_name = "TEMPLATE")]
+    /// Template for a one-line output: a literal `%`-token string, or `@PRESET`. The presets are
+    /// `@default`, `@short`, `@minimal`, `@full`, `@uv` and `@sun`, plus any `[templates]` key;
+    /// `--help` lists every token and the width/precision syntax. An unknown token is a usage
+    /// error. Needs `--format one-line` (or a format name that selects no template itself).
+    #[arg(long, value_name = "TEMPLATE", conflicts_with = "template_file")]
     pub template: Option<String>,
+
+    /// Read the one-line template from a file; `-` reads standard input. Same restrictions as
+    /// `--template`.
+    #[arg(long, value_name = "PATH", conflicts_with = "template")]
+    pub template_file: Option<String>,
 
     /// When to colour the output.
     #[arg(long, value_name = "WHEN", value_enum)]
@@ -657,18 +675,22 @@ impl Cli {
     /// `sources` is the provenance clap recorded at parse time ([`Sources::read`]); it is what
     /// tells a setting that came from the environment apart from one that came from the command
     /// line, which the value alone cannot say.
-    pub fn run(&self, sources: &Sources) -> Result<()> {
+    ///
+    /// On success the returned `u8` is the process exit code: `0`, or the largest mapped code among
+    /// a multi-location run's per-location failures ([`crate::worst_exit_code`]). Everything that
+    /// failed as a whole run is still an `Err`.
+    pub fn run(&self, sources: &Sources) -> Result<u8> {
         match &self.command {
-            Some(Command::Config(args)) => run_config(&args.command),
-            Some(Command::Key(args)) => run_key(&args.command),
-            Some(Command::Provider(args)) => run_provider(&args.command),
-            Some(Command::Location(args)) => run_location(&args.command, self),
-            Some(Command::Cache(args)) => run_cache(&args.command, self),
+            Some(Command::Config(args)) => run_config(&args.command).map(|()| 0),
+            Some(Command::Key(args)) => run_key(&args.command).map(|()| 0),
+            Some(Command::Provider(args)) => run_provider(&args.command).map(|()| 0),
+            Some(Command::Location(args)) => run_location(&args.command, self).map(|()| 0),
+            Some(Command::Cache(args)) => run_cache(&args.command, self).map(|()| 0),
             Some(Command::Completion(args)) => {
                 run_completion(args);
-                Ok(())
+                Ok(0)
             }
-            Some(Command::Man(args)) => run_man(args),
+            Some(Command::Man(args)) => run_man(args).map(|()| 0),
             None => run_query(&self.query, self, *sources),
         }
     }
@@ -799,7 +821,20 @@ impl Sources {
 /// a flag that overrides it (the flag wins by precedence), and `--station` depends on the provider
 /// chain, which the configuration file may be the source of.
 fn validate_query(query: &QueryArgs, sources: Sources, settings: &Settings) -> Result<()> {
-    if sources.location == Source::CommandLine {
+    if query.location.len() > 1 {
+        for (given, name) in [
+            (query.lat.is_some() || query.lon.is_some(), "--lat/--lon"),
+            (query.ip, "--ip"),
+            (query.station.is_some(), "--station"),
+        ] {
+            if given {
+                return Err(Error::Usage(format!(
+                    "{name} cannot be combined with more than one location argument; pass exactly one or drop the flag"
+                )));
+            }
+        }
+    }
+    if sources.location == Source::CommandLine && query.location.len() == 1 {
         for (given, name) in [
             (query.lat.is_some() || query.lon.is_some(), "--lat/--lon"),
             (query.ip, "--ip"),
@@ -935,14 +970,14 @@ fn run_man(args: &ManArgs) -> Result<()> {
 /// The order matters for what a user sees when something fails: the provider list and the format
 /// are checked before any network request, so a typo in `--provider` costs no traffic, and the
 /// location is resolved before the forecast because every backend needs it.
-fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
+fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
     let paths = Paths::resolve()?;
     let config = Config::load(&paths)?;
     let settings = Settings::resolve(
         &config,
         &crate::config::CliOverrides {
             provider: query.provider.clone(),
-            format: query.format.map(|format| format.as_str().to_owned()),
+            format: query.format.clone(),
             units: query.units.map(|units| units.to_string()),
             days: query.days,
             lang: query.lang.clone(),
@@ -1006,7 +1041,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         limit: QUERY_CANDIDATES,
         keep_candidates: false,
     };
-    let location = location_for_run(station.as_deref(), query, &settings, &geo_request, cli)?;
+    let targets = location_targets(query, &settings, &config)?;
 
     let env = Env {
         http: &http,
@@ -1016,38 +1051,196 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<()> {
         quiet: cli.quiet,
         verbose: cli.verbose,
     };
+    // One clock read for the whole run, so every slot's astro block and every render context agree
+    // on "now" — including a multi-location run, where the locations are in different time zones.
+    let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
+    let context = SlotContext {
+        query,
+        config: &config,
+        ids: &ids,
+        days,
+        format: setup.format,
+        lang: setup.i18n.lang().tag(),
+        env: &env,
+        geo: &geo_request,
+        cli,
+        now,
+    };
+
+    // One location keeps the pre-step-19 shape: a whole-run failure is an `Err` (and the error
+    // path `main` has always had), never a placeholder slot.
+    if let [target] = targets.as_slice() {
+        let location = location_for_run(station.as_deref(), target, &geo_request, cli)?;
+        let report = fetch_for_location(&context, &location)?;
+        let alert_credits = alerts::credits(&report.alerts, &config.alerts, &setup.i18n);
+        output_report(&setup, &report, &alert_credits, now, cli)?;
+        return Ok(0);
+    }
+
+    let results = crate::fetch_reports(&targets, |_, target| slot_report(&context, target));
+    output_slots(&setup, &targets, &results, &config, now, cli)
+}
+
+/// Everything one location's fetch needs beyond the location itself, shared by every slot.
+///
+/// Deliberately `Sync`: a multi-location run hands it to worker threads, so it holds no renderer
+/// and no message catalog (neither is `Sync`) — only the fetch policy, the shared HTTP client and
+/// caches, and the run's flags.
+struct SlotContext<'a> {
+    /// The flags that shape the fetch (`--aqi`, `--moon`, `--severity`, …).
+    query: &'a QueryArgs,
+    /// The validated configuration.
+    config: &'a Config,
+    /// The provider chain.
+    ids: &'a [ProviderId],
+    /// Forecast days, already clamped to the chain's first provider.
+    days: u8,
+    /// The selected format, for the format-driven fetches (`--format aqi`/`moon`).
+    format: Format,
+    /// The language tag the alert sources are fetched for.
+    lang: &'a str,
+    /// The shared HTTP client, caches and key store.
+    env: &'a Env<'a>,
+    /// The location-resolution inputs.
+    geo: &'a GeoRequest<'a>,
+    /// The run's flags.
+    cli: &'a Cli,
+    /// The run's clock instant.
+    now: chrono::DateTime<chrono::Utc>,
+}
+
+/// Resolves and fetches one slot: the location first, then the report end to end.
+fn slot_report(context: &SlotContext<'_>, target: &LocationTarget) -> Result<crate::model::Report> {
+    let location = query_location(target, context.geo, context.cli)?;
+    fetch_for_location(context, &location)
+}
+
+/// Fetches one already-resolved location end to end: provider chain, then the alert, air and astro
+/// panels the run asked for.
+fn fetch_for_location(
+    context: &SlotContext<'_>,
+    location: &Location,
+) -> Result<crate::model::Report> {
     // The alert policy is resolved before the forecast is fetched: a coverage or source-list
     // mistake is a usage error that must not cost a request, and `--alerts-from nws` at a Beijing
     // point fails here, not after the weather round trip.
-    let alert_request = alert_request(query, &config, &location, &ids, setup.format, cli.verbose)?;
-    let request = FetchRequest::new(days, HourlyResolution::Hourly);
-    let mut report = fetch_chain(&ids, &location, &request, &env)?;
+    let alert_request = alert_request(
+        context.query,
+        context.config,
+        location,
+        context.ids,
+        context.format,
+        context.cli.verbose,
+    )?;
+    let request = FetchRequest::new(context.days, HourlyResolution::Hourly);
+    let mut report = fetch_chain(context.ids, location, &request, context.env)?;
 
-    if cli.verbose > 0 {
+    if context.cli.verbose > 0 {
         verbose_report(&report);
     }
 
     // Alerts are a separate source registry, so they are fetched after the weather answer: a
     // forecast failure is then reported without any alert traffic.
     if let Some(alert_request) = alert_request {
-        report.alerts = alerts::fetch(&location, &env, &alert_request, setup.i18n.lang().tag())?;
+        report.alerts = alerts::fetch(location, context.env, &alert_request, context.lang)?;
     }
-    let alert_credits = alerts::credits(&report.alerts, &config.alerts, &setup.i18n);
 
     // Air quality is best-effort by contract: `--aqi` (or `--format aqi`) asks for it, and a
     // failure is a warning — the weather output the user asked for is already in hand and the exit
     // code stays 0. The reading travels on the report, where the renderers find it.
-    if query.aqi || setup.format == Format::Aqi {
-        attach_air(&mut report, &env, cli.quiet);
+    if context.query.aqi || context.format == Format::Aqi {
+        attach_air(&mut report, context.env, context.cli.quiet);
     }
 
     // The astro block is attached only when the run asks for it (see `attach_astro`).
-    let now: chrono::DateTime<chrono::Utc> = cache.clock().now().into();
-    if query.moon || setup.format == Format::Moon {
-        attach_astro(&mut report, now, cli.verbose);
+    if context.query.moon || context.format == Format::Moon {
+        attach_astro(&mut report, context.now, context.cli.verbose);
+    }
+    Ok(report)
+}
+
+/// Renders a multi-location run and returns the process exit code: `0`, or the largest mapped code
+/// among the failed slots.
+///
+/// A failed slot keeps its place: its full error goes to stderr, a one-line `error: …` placeholder
+/// takes its slot on stdout (the renderer decides the exact shape; `json` uses an error document),
+/// and every other location is printed as usual.
+fn output_slots(
+    setup: &RenderSetup,
+    targets: &[LocationTarget],
+    results: &[Result<crate::model::Report>],
+    config: &Config,
+    now: chrono::DateTime<chrono::Utc>,
+    cli: &Cli,
+) -> Result<u8> {
+    // Errors first, in argument order, so a user reading stderr sees them before the document.
+    for result in results {
+        if let Err(error) = result {
+            eprintln!("error: {error}");
+        }
     }
 
-    output_report(&setup, &report, &alert_credits, now, cli)
+    // Every slot's credits are resolved before any context borrows them: `RenderContext` keeps a
+    // slice of credit lines for the whole render.
+    let mut credits: Vec<Vec<String>> = Vec::with_capacity(results.len());
+    for result in results {
+        match result {
+            Ok(report) => {
+                credits.push(alerts::credits(&report.alerts, &config.alerts, &setup.i18n));
+            }
+            Err(_) => credits.push(Vec::new()),
+        }
+    }
+
+    let mut contexts: Vec<Option<crate::render::RenderContext<'_>>> =
+        Vec::with_capacity(results.len());
+    for (index, result) in results.iter().enumerate() {
+        match result {
+            Ok(report) => contexts.push(Some(RenderContext {
+                units: setup.units,
+                color: setup.color,
+                width: setup.width.columns,
+                term: setup.term,
+                now: now.with_timezone(&report.location.tz).fixed_offset(),
+                tz: report.location.tz,
+                lang: setup.i18n.lang(),
+                i18n: &setup.i18n,
+                alert_credits: &credits[index],
+                aqi_index: setup.aqi_index,
+            })),
+            Err(_) => contexts.push(None),
+        }
+    }
+
+    // `one-line` is one line by contract, so the credits the licences require cannot travel in the
+    // output: they go to stderr, per location, exactly as the single-location path does.
+    for (index, result) in results.iter().enumerate() {
+        if let Ok(report) = result {
+            credit_to_stderr(setup, report, &credits[index]);
+        }
+    }
+
+    let slots: Vec<crate::render::Slot<'_>> = targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| crate::render::Slot {
+            query: &target.text,
+            report: results.get(index).and_then(|result| result.as_ref().ok()),
+            error: results.get(index).and_then(|result| result.as_ref().err()),
+            ctx: contexts.get(index).copied().flatten(),
+        })
+        .collect();
+
+    if let Some(note) = setup.renderer.slot_note(slots.len())
+        && !cli.quiet
+    {
+        eprintln!("{note}");
+    }
+    print_line(format_args!("{}", setup.renderer.render_slots(&slots)?))?;
+    if cli.verbose > 0 {
+        report_missing_keys(setup);
+    }
+    Ok(crate::worst_exit_code(results))
 }
 
 /// The flags whose effect depends on the format, checked before any traffic.
@@ -1295,8 +1488,7 @@ fn verbose_report(report: &crate::model::Report) {
 /// resolved location argument.
 fn location_for_run(
     station: Option<&str>,
-    query: &QueryArgs,
-    settings: &Settings,
+    target: &LocationTarget,
     geo: &GeoRequest<'_>,
     cli: &Cli,
 ) -> Result<Location> {
@@ -1309,26 +1501,65 @@ fn location_for_run(
             }
             Ok(crate::provider::metar::placeholder_location(icao))
         }
-        None => query_location(query, settings, geo, cli),
+        None => query_location(target, geo, cli),
     }
+}
+
+/// One location argument as this run treats it: the text as typed (for the ambiguity note and the
+/// JSON `query` field) and the alias-expanded spec to resolve.
+struct LocationTarget {
+    /// The argument as typed; empty when nothing was given and the configured default or the IP
+    /// lookup applies.
+    text: String,
+    /// The spec to resolve, with `@name` aliases already expanded.
+    spec: LocationSpec,
+}
+
+/// The locations this run resolves, in argument order.
+///
+/// `--lat/--lon` folds into the `@lat,lon` spelling the resolver understands and outranks an
+/// environment location; otherwise the positional arguments are taken as typed, and with none the
+/// configured default (`settings.location`) or the default/IP spec applies. Alias expansion happens
+/// here — the one place that has both the typed text and the `[locations]` table.
+fn location_targets(
+    query: &QueryArgs,
+    settings: &Settings,
+    config: &Config,
+) -> Result<Vec<LocationTarget>> {
+    let default = || LocationTarget {
+        text: String::new(),
+        spec: LocationSpec::Default,
+    };
+    if query.ip {
+        return Ok(vec![default()]);
+    }
+    let raw: Vec<String> = match (query.lat, query.lon) {
+        (Some(lat), Some(lon)) => vec![format!("@{lat},{lon}")],
+        _ if !query.location.is_empty() => query.location.clone(),
+        _ => settings.location.iter().cloned().collect(),
+    };
+    if raw.is_empty() {
+        return Ok(vec![default()]);
+    }
+    raw.into_iter()
+        .map(|text| {
+            let parsed = LocationSpec::parse_arg(Some(&text))?;
+            let spec = crate::geo::expand_aliases(parsed, &config.locations)?;
+            Ok(LocationTarget { text, spec })
+        })
+        .collect()
 }
 
 /// The location a weather query forecasts for, with the commentary a user needs to trust it.
 ///
 /// The ambiguity note (silenced by `-q`) and the `-v` candidate list go to stderr; stdout carries
 /// only the report, so a script piping the query never has to filter prose out of the answer.
-fn query_location(
-    query: &QueryArgs,
-    settings: &Settings,
-    geo: &GeoRequest<'_>,
-    cli: &Cli,
-) -> Result<Location> {
-    let (spec, text) = location_target(settings.location.as_deref(), query.ip, geo.config)?;
-    let (location, resolution, candidates) = resolve_location(&spec, geo, cli)?;
-    if let Some(text) = &text
+fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> Result<Location> {
+    let (location, resolution, candidates) = resolve_location(&target.spec, geo, cli)?;
+    if let Some(text) = target.spec.query()
         && !cli.quiet
     {
-        let note = if matches!(spec, LocationSpec::Osm(_)) {
+        let note = if matches!(target.spec, LocationSpec::Osm(_)) {
             osm_ambiguity_note(text, &location, resolution)
         } else {
             ambiguity_note(text, &location, resolution)
@@ -1350,16 +1581,19 @@ fn query_location(
     Ok(location)
 }
 
-/// The location argument this run resolves.
+/// The location argument this run resolves, for the settings merge.
 ///
 /// `--lat/--lon` is folded into the `@lat,lon` spelling the resolver already understands, and it
-/// outranks an environment location by the usual precedence. `--station` is deliberately absent:
-/// it survives [`validate_query`] only for a `metar`-first (or `auto`) chain, and [`provider_chain`]
-/// refuses `metar` until step 11 implements the backend — the station becomes the location then.
+/// outranks an environment location by the usual precedence; a single positional is passed through
+/// so `--verbose` can report its tier. Several positionals are not a `settings.location` value —
+/// each is its own target — and the merge leaves the key unset for them.
 fn location_arg(query: &QueryArgs) -> Option<String> {
     match (query.lat, query.lon) {
         (Some(lat), Some(lon)) => Some(format!("@{lat},{lon}")),
-        _ => query.location.clone(),
+        _ => match query.location.as_slice() {
+            [only] => Some(only.clone()),
+            _ => None,
+        },
     }
 }
 
@@ -1386,6 +1620,8 @@ struct RenderSetup {
     renderer: Box<dyn crate::render::Renderer>,
     /// The format it renders.
     format: Format,
+    /// The template a one-line output expands, already resolved and validated.
+    template: Option<String>,
     /// The units the report is converted into.
     units: ResolvedUnits,
     /// The language the report is rendered in, and the catalog behind every label.
@@ -1403,9 +1639,11 @@ struct RenderSetup {
 impl RenderSetup {
     /// Resolves the settings for one run.
     ///
-    /// `verbose` is what decides whether the template's unknown tokens are reported, and `quiet`
-    /// whether a language fallback is announced: the renderer itself never sees either flag, so
-    /// [`crate::render::one_line::warnings`] and [`I18n::warnings`] are read here.
+    /// `verbose` is what decides whether the resolved template is reported, and `quiet` whether a
+    /// language fallback is announced: the renderer itself never sees either flag. The template
+    /// gate is here — a `--template`/`--template-file` value or a `[templates]` preset with an
+    /// unknown token is an [`Error::Usage`] before any traffic, while the renderer keeps unknown
+    /// tokens literal for the compat surface that serves the same table.
     fn resolve(
         query: &QueryArgs,
         config: &Config,
@@ -1413,20 +1651,40 @@ impl RenderSetup {
         verbose: u8,
         quiet: bool,
     ) -> Result<Self> {
-        let format = match query.format {
-            Some(format) => format,
-            None => Format::from_name(&settings.format)?,
-        };
+        let choice = crate::render::resolve_format(&settings.format, &config.templates)?;
+        let format = choice.format;
         let term = TermCaps::detect();
-        // A template belongs to `one-line` alone; `renderer_for` refuses it everywhere else, and
-        // the warnings for unknown tokens are reported here, where `-v` is known.
-        if verbose > 0 && format == Format::OneLine {
-            let template = crate::render::one_line::resolve_template(query.template.as_deref())?;
-            for warning in crate::render::one_line::warnings(&template) {
-                eprintln!("{warning}");
+
+        // At most one source names a template: the format name itself (`full`, `minimal`, a
+        // `[templates]` key) or the two flags. Two sources is a usage error rather than a silent
+        // precedence rule, because both spellings are explicit.
+        let flag_template = match (&query.template, &query.template_file) {
+            (Some(spec), _) => Some(spec.clone()),
+            (None, Some(path)) => Some(read_template_file(path)?),
+            (None, None) => None,
+        };
+        let template = match (flag_template, choice.template) {
+            (Some(_), Some(_)) => {
+                return Err(Error::Usage(format!(
+                    "`--format {}` already selects a template; drop --template/--template-file or \
+                     pick a format without one",
+                    settings.format.trim()
+                )));
             }
+            (Some(spec), None) => Some(crate::template::resolve_template(
+                Some(&spec),
+                &config.templates,
+            )?),
+            (None, Some(template)) => Some(template),
+            (None, None) if format == Format::OneLine => {
+                Some(crate::template::resolve_template(None, &config.templates)?)
+            }
+            (None, None) => None,
+        };
+        if let Some(template) = &template {
+            crate::template::validate(template)?;
         }
-        let renderer = renderer_for(format, &term, query.template.as_deref())?;
+        let renderer = renderer_for(format, &term, template.as_deref())?;
         if verbose > 0 && format == Format::Json {
             eprintln!(
                 "note: JSON output stays canonical metric; --units, --width and --color do not apply"
@@ -1467,6 +1725,7 @@ impl RenderSetup {
         Ok(Self {
             renderer,
             format,
+            template,
             units,
             i18n,
             width,
@@ -1475,6 +1734,29 @@ impl RenderSetup {
             term,
         })
     }
+}
+
+/// Reads a `--template-file` value: a path, or `-` for standard input.
+///
+/// A read failure is [`Error::Config`] (state on disk, exit 4) and names the path; an empty file is
+/// the same usage error an empty `--template` is, because a template that renders nothing is a
+/// mistake either way.
+fn read_template_file(path: &str) -> Result<String> {
+    let text = if path == "-" {
+        std::io::read_to_string(std::io::stdin()).map_err(|error| {
+            Error::Config(format!("--template-file -: cannot read stdin: {error}"))
+        })?
+    } else {
+        std::fs::read_to_string(path)
+            .map_err(|error| Error::Config(format!("--template-file {path}: {error}")))?
+    };
+    if text.trim().is_empty() {
+        return Err(Error::Usage(format!(
+            "--template-file {}: the template is empty",
+            if path == "-" { "stdin" } else { path }
+        )));
+    }
+    Ok(text)
 }
 
 /// What the run resolved to, under `--verbose`: which width, which palette, and why the table
@@ -1504,6 +1786,11 @@ fn render_notes(setup: &RenderSetup) {
         caps.is_tty
     );
     eprintln!("{}", setup.i18n.report());
+    if format == Format::OneLine
+        && let Some(template) = &setup.template
+    {
+        eprintln!("template: {template}");
+    }
     if format == Format::Dumb {
         eprintln!("note: `--format dumb` draws the ASCII table without colour");
     } else if caps.charset() == Charset::Ascii {
@@ -1548,8 +1835,8 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
         clock,
         cli.verbose,
     );
-    let (spec, text) = location_target(args.query.as_deref(), args.ip, &config)?;
-    let spec = exact_spec(spec, args.exact)?;
+    let target = search_target(args.query.as_deref(), args.ip, &config)?;
+    let spec = exact_spec(target.spec, args.exact)?;
     let geo_request = GeoRequest {
         config: &config,
         paths: &paths,
@@ -1568,7 +1855,7 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
     } else {
         print_line(format_args!("{}", location_line(&location)))?;
     }
-    if let Some(text) = &text
+    if let Some(text) = spec.query()
         && !cli.quiet
         && !args.all
     {
@@ -1694,33 +1981,38 @@ fn candidate_text(location: &Location) -> String {
     format!("{}{population}", location_line(location))
 }
 
-/// The spec to resolve and the text a note quotes: `--ip` wins, then an explicit argument, then
+/// The spec `cirrocast location search` resolves: `--ip` wins, then an explicit argument, then
 /// `location.default` — which is itself a spec, so `:Beijing` or `@39.9,116.4` configured there
 /// behaves exactly as it does on the command line.
 ///
 /// `--ip` is not checked against the argument here: whether that is a conflict or the flag simply
 /// winning depends on *where* the argument came from, and only [`validate_query`] can see that (a
-/// command line argument conflicts, an environment or configured location is overridden).
-fn location_target(
-    requested: Option<&str>,
-    ip: bool,
-    config: &Config,
-) -> Result<(LocationSpec, Option<String>)> {
+/// command line argument conflicts, an environment or configured location is overridden). `@name`
+/// is expanded against `[locations]` like every other CLI path.
+fn search_target(requested: Option<&str>, ip: bool, config: &Config) -> Result<LocationTarget> {
     if ip {
-        return Ok((LocationSpec::Default, None));
+        return Ok(LocationTarget {
+            text: String::new(),
+            spec: LocationSpec::Default,
+        });
     }
-    let requested = LocationSpec::parse_arg(requested)?;
-    if requested != LocationSpec::Default {
-        let text = requested.query().unwrap_or_default().to_owned();
-        return Ok((requested, Some(text)));
-    }
-    match configured_location(config) {
-        Some(text) => {
-            let spec = LocationSpec::parse_arg(Some(&text))?;
-            Ok((spec, Some(text)))
-        }
-        None => Ok((LocationSpec::Default, None)),
-    }
+    let (text, parsed) = match LocationSpec::parse_arg(requested)? {
+        LocationSpec::Default => match configured_location(config) {
+            Some(text) => {
+                let spec = LocationSpec::parse_arg(Some(&text))?;
+                (text, spec)
+            }
+            None => {
+                return Ok(LocationTarget {
+                    text: String::new(),
+                    spec: LocationSpec::Default,
+                });
+            }
+        },
+        spec => (spec.query().unwrap_or_default().to_owned(), spec),
+    };
+    let spec = crate::geo::expand_aliases(parsed, &config.locations)?;
+    Ok(LocationTarget { text, spec })
 }
 
 /// The ranked candidate list for `--all` or the `-v` listing, or an empty one when nobody will
@@ -1787,6 +2079,11 @@ fn resolve_location(
             let (location, resolution) = resolve(Vec::new(), spec, geo.limit)?;
             Ok((location, resolution, Vec::new()))
         }
+        // `@name` is expanded against `[locations]` before this function is reached; a spec that
+        // slips through is a wiring bug, not a user error, and must not be resolved as a name.
+        spec @ LocationSpec::Alias(_) => Err(Error::Config(format!(
+            "location alias {spec} was not expanded before resolution"
+        ))),
     }
 }
 
@@ -2813,7 +3110,7 @@ mod tests {
         assert_eq!(query.width, Some(120));
         assert_eq!(query.days, Some(0));
         assert_eq!(query.lang.as_deref(), Some("auto"));
-        assert_eq!(query.format, Some(crate::render::Format::OneLine));
+        assert_eq!(query.format.as_deref(), Some("one-line"));
         assert_eq!(query.template.as_deref(), Some("@full"));
     }
 

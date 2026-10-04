@@ -15,6 +15,32 @@ records how each of them changes and which changes are breaking.
 
 ### Added
 
+* **Multi-location runs (step 19).** `cirrocast Beijing Shanghai Tokyo` fetches the arguments at
+  most four at a time and prints them in **argument order**, whatever order the network answers in
+  (results are written into per-argument slots, so a slow request cannot reorder the output). A
+  location that fails keeps its place: `error: <query>: <message>` on stdout, the full error on
+  stderr, every other location still rendered, and the process exits with the numerically largest
+  mapped code among the failures (a missing key 6 outranks a location miss 5). Above one location
+  `json` becomes an array, where a failed slot is
+  `{"schema_version": 2, "query": …, "error": {"code": …, "message": …}}`; `art-table` (and `dumb`)
+  draw a combined 2–4 location summary (one header line and one aligned grid row per location) and
+  fall back to the full tables above four with a one-time note. `--lat/--lon`, `--ip` and
+  `--station` describe one place and are refused with several.
+* **The `%`-token template engine** (`src/template.rs`) is now the single implementation behind
+  `one-line`, its presets, the `status` probe (step 22) and the wttr.in compatibility surface
+  (B01). New tokens: `%x` (condition art in plain 7-bit text), `%H`/`%L` (today's high/low), `%e`
+  (dew point, computed from the reported temperature and humidity) and `%T` (local time). Tokens
+  accept `%[-][0][<width>][.<prec>]X` — padding, zero-padding for numeric tokens, text truncation
+  and numeric rounding — and `%{c}` writes a token next to text that would glue onto its letter.
+  `--template-file <PATH|->` reads the template from a file or stdin, `--format full|minimal` (and
+  any `[templates]` key) selects a one-line preset by name, and `--help` enumerates the exported
+  `TOKENS` table.
+* `[locations]` aliases (`home = "@39.9,116.4"` → `cirrocast @home`) and `[templates]` named
+  templates (`compact = "%c%t"` → `-f compact`). Aliases chain, are cycle-checked at load with the
+  chain named, and an unknown name lists up to three suggestions within edit distance 2.
+  `@39.9,116.4` stays a coordinate pair whenever both sides parse and are in range; anything else
+  after `@` is an alias name.
+
 * **Offline city database (step 18).** A `GeoNames` `cities15000` snapshot (CC BY 4.0, dump date and
   input checksum in `src/geo/data/SNAPSHOT`) is embedded in the binary — about 3.3 MiB compressed,
   decoded lazily on the first name lookup and never written — so a plain city name resolves to
@@ -49,6 +75,27 @@ records how each of them changes and which changes are breaking.
   it differs), and the test suite pins rows of the committed data so a refresh cannot pass unnoticed.
 
 ### Changed
+
+* **Breaking: `%L` is today's low temperature**, matching wttr.in's documented `H`/`L` pair. It
+  used to print the location's coordinates; those remain in `art-table`'s header and in `plain`'s
+  `location:` record. `docs/formats.md` documents the token contract.
+* **Breaking: an unknown `%X` in `--template`, `--template-file` or a `[templates]` preset is a
+  usage error** (exit 2, naming the position and the known tokens) instead of printing literally
+  with a `-v` note. The wttr.in compatibility surface keeps the literal passthrough.
+* **Breaking: the positional location is variadic.** Scripts passing a single location plus a stray
+  argument were already wrong and now get a usage error instead of silently ignoring the extra
+  argument.
+* `[templates]` keys and the `full`/`minimal` (and `default`/`short`/`uv`/`sun`) presets are valid
+  `defaults.format` values as well as `--format` names.
+* The configuration document moves to `schema_version = 2` for the `[locations]` and `[templates]`
+  tables; a version 1 file is migrated by stamping the version (both tables are optional). A
+  malformed alias table is a config error at load, naming the entry.
+* The 7-bit condition art table gained `%x` as its charset-independent spelling; `%c` and `%x`
+  render identically today and may diverge when a Unicode condition glyph is added.
+* A missing user-installed city table no longer prints a warning on every run: `[geo] data =
+  "auto"` falls back to the bundled table silently when nothing is installed (the documented
+  "user table when present"), and only an installed-but-unusable table warns — once per process,
+  so a multi-location run cannot repeat it. `data = "user"` still fails loudly with the fix.
 
 * A plain location name (`Beijing`, `:Beijing`) is now resolved by the bundled city table first and
   only falls back to the Open-Meteo geocoding API when the table has no hit. The table carries the

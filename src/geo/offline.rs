@@ -106,17 +106,21 @@ impl OfflineTable {
 
     /// Opens the table `[geo] data` asks for.
     ///
-    /// `quiet` silences the one-line warning an unusable user table produces in `auto` mode; a
-    /// `user` source that cannot be opened is an error either way.
+    /// `auto` falls back to the bundled table: silently when no user table is installed (the
+    /// documented meaning of "user table when present"), and with a one-line warning — once per
+    /// process, since every location of a multi-location run opens the table — when one is
+    /// installed but unusable. `quiet` silences the warning; a `user` source that cannot be opened
+    /// is an error either way.
     pub fn open(paths: &Paths, data: &str, quiet: bool) -> Result<Self> {
         match data {
             "bundled" => Ok(Self::bundled()),
-            "user" => Self::user(paths).map_err(Error::Config),
+            "user" => Self::user(paths).map_err(|issue| Error::Config(issue.message().to_owned())),
             _ => match Self::user(paths) {
                 Ok(table) => Ok(table),
-                Err(message) => {
-                    if !quiet {
-                        eprintln!("warning: {message}; using the bundled city table");
+                Err(UserTableIssue::Missing(_)) => Ok(Self::bundled()),
+                Err(issue @ UserTableIssue::Corrupt(_)) => {
+                    if !quiet && !WARNED_USER_TABLE.swap(true, Ordering::Relaxed) {
+                        eprintln!("warning: {}; using the bundled city table", issue.message());
                     }
                     Ok(Self::bundled())
                 }
@@ -126,16 +130,23 @@ impl OfflineTable {
 
     /// The table installed under `$XDG_DATA_HOME/cirrocast/geo/`, validated.
     ///
-    /// The error is the plain message (not an [`Error`]) so `auto` can use it as a warning and
-    /// `user` can wrap it as [`Error::Config`].
-    fn user(paths: &Paths) -> std::result::Result<Self, String> {
+    /// The error distinguishes "nothing is installed" from "what is installed cannot be used": the
+    /// two get different handling in `auto` mode (silent fallback versus a warning), and `user`
+    /// wraps either message as [`Error::Config`].
+    fn user(paths: &Paths) -> std::result::Result<Self, UserTableIssue> {
         let dir = table_dir(paths);
+        let installed = dir.is_dir();
         let read = |name: &str| {
             fs::read(dir.join(name)).map_err(|error| {
-                format!(
+                let message = format!(
                     "cannot read {}: {error}; run `cirrocast location update-data`",
                     dir.join(name).display()
-                )
+                );
+                if installed {
+                    UserTableIssue::Corrupt(message)
+                } else {
+                    UserTableIssue::Missing(message)
+                }
             })
         };
         let keys = read("keys.bin.gz")?;
@@ -157,13 +168,17 @@ impl OfflineTable {
             INDEX_LOADED.store(true, Ordering::Release);
             Index::decode(table.keys.as_slice())
         }) {
-            return Err(table.corrupt_message("city index", message));
+            return Err(UserTableIssue::Corrupt(
+                table.corrupt_message("city index", message),
+            ));
         }
         if let Err(message) = table
             .rows
             .get_or_init(|| Cities::decode(table.cities.as_slice()))
         {
-            return Err(table.corrupt_message("city table", message));
+            return Err(UserTableIssue::Corrupt(
+                table.corrupt_message("city table", message),
+            ));
         }
         Ok(table)
     }
@@ -313,6 +328,29 @@ pub fn index_loaded() -> bool {
 
 /// Set by the index initializer, since a [`OnceLock`] cannot be asked whether it fired.
 static INDEX_LOADED: AtomicBool = AtomicBool::new(false);
+
+/// Whether the "user table is unusable" warning has already been printed in this process.
+///
+/// One run may resolve several locations (step 19), each opening the table: the diagnosis is the
+/// same for all of them, so it is printed at most once.
+static WARNED_USER_TABLE: AtomicBool = AtomicBool::new(false);
+
+/// Why the user-installed table could not answer.
+enum UserTableIssue {
+    /// No table is installed; a normal state, and `auto` falls back without a word.
+    Missing(String),
+    /// A table is installed but unreadable, incomplete or corrupt; worth a warning.
+    Corrupt(String),
+}
+
+impl UserTableIssue {
+    /// The diagnosis, naming the file and the fix.
+    fn message(&self) -> &str {
+        match self {
+            Self::Missing(message) | Self::Corrupt(message) => message,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

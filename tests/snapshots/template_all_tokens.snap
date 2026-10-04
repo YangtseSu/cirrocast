@@ -1,0 +1,5 @@
+---
+source: tests/templates.rs
+expression: "line(&template)"
+---
+\o_|Mainly clear|\o_|+22°C|+22°C|+24°C|+14°C|↗ 10km/h NNE|52%|0.0mm|1015hPa|+11°C|5|5 (moderate)|◕|Waning Gibbous|14km|Beijing|2026-09-30|Wed 30 Sep|12:15|Asia/Shanghai|+0800|06:05|17:58||n/a

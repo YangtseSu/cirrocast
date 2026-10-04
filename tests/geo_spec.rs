@@ -21,6 +21,7 @@ enum Expectation {
     Exact(String),
     Osm(String),
     LatLon(f64, f64),
+    Alias(String),
     Error(String),
 }
 
@@ -32,6 +33,7 @@ fn expectation(field: &str, line_number: usize, line: &str) -> Expectation {
         "fuzzy" => Expectation::Fuzzy(decode(payload)),
         "exact" => Expectation::Exact(decode(payload)),
         "osm" => Expectation::Osm(decode(payload)),
+        "alias" => Expectation::Alias(decode(payload)),
         "latlon" => {
             let (lat, lon) = payload
                 .split_once(':')
@@ -116,6 +118,11 @@ fn the_parse_table_holds_and_every_rejection_points_at_the_accepted_forms() {
                 LocationSpec::Osm(query),
                 "line {line_number}"
             ),
+            Expectation::Alias(name) => assert_eq!(
+                result.unwrap_or_else(|error| panic!("line {line_number}: {error}")),
+                LocationSpec::Alias(name),
+                "line {line_number}"
+            ),
             Expectation::LatLon(lat, lon) => assert_eq!(
                 result.unwrap_or_else(|error| panic!("line {line_number}: {error}")),
                 LocationSpec::LatLon(lat, lon),
@@ -145,7 +152,7 @@ fn the_parse_table_holds_and_every_rejection_points_at_the_accepted_forms() {
     }
     assert!(cases >= 40, "the parse table shrank to {cases} cases");
     assert!(
-        errors >= 15,
+        errors >= 8,
         "the parse table covers only {errors} rejections"
     );
 }

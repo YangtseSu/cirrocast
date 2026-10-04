@@ -35,7 +35,7 @@ use std::borrow::Cow;
 
 use serde::Serialize;
 
-use super::{RenderContext, Renderer};
+use super::{RenderContext, Renderer, Slot};
 use crate::air::aqi::AqiCategory;
 use crate::error::{Error, Result};
 use crate::geo::attribution_line;
@@ -62,6 +62,71 @@ impl Renderer for Json {
         serde_json::to_string_pretty(&document)
             .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")))
     }
+
+    /// One location stays the plain document object; two or more become an array in argument order.
+    ///
+    /// The array element of a failed location is its own small document — `schema_version`, the
+    /// query as typed, and an `error` object carrying the exit code — so `jq '.[0]'` and a script
+    /// walking `.[]` both see a consistent shape. A single failed location is that error document
+    /// on its own, because the top-level type depends on the number of locations, not on how they
+    /// turned out.
+    fn render_slots(&self, slots: &[Slot<'_>]) -> Result<String> {
+        let mut documents = Vec::with_capacity(slots.len());
+        for slot in slots {
+            documents.push(slot_document(slot)?);
+        }
+        if let [only] = documents.as_slice() {
+            return pretty(only);
+        }
+        let array = serde_json::Value::Array(documents);
+        pretty(&array)
+    }
+}
+
+/// Serialises one JSON document with the renderer's pretty-printing.
+fn pretty(value: &serde_json::Value) -> Result<String> {
+    serde_json::to_string_pretty(value)
+        .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")))
+}
+
+/// The document for one slot: the report, or the error that replaced it.
+fn slot_document(slot: &Slot<'_>) -> Result<serde_json::Value> {
+    if let (Some(report), Some(ctx)) = (slot.report, slot.ctx.as_ref()) {
+        return serde_json::to_value(Document::of(report, ctx))
+            .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")));
+    }
+    let error = slot.error.ok_or_else(|| {
+        Error::Other("a JSON slot carries neither a report nor an error".to_owned())
+    })?;
+    serde_json::to_value(ErrorDocument {
+        schema_version: SCHEMA_VERSION,
+        query: slot.query,
+        error: SlotError {
+            code: error.exit_code(),
+            message: error.to_string(),
+        },
+    })
+    .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")))
+}
+
+/// The document a failed slot renders: stable keys, the query as typed and the mapped exit code.
+#[derive(Debug, Serialize)]
+struct ErrorDocument<'a> {
+    /// Schema version, like every other document.
+    schema_version: u32,
+    /// The location argument as typed.
+    query: &'a str,
+    /// What went wrong.
+    error: SlotError,
+}
+
+/// The `error` object of a failed slot.
+#[derive(Debug, Serialize)]
+struct SlotError {
+    /// The process exit code the failure maps to.
+    code: u8,
+    /// The error message, exactly as it would print on stderr.
+    message: String,
 }
 
 /// The whole document.

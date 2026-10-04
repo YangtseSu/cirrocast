@@ -4,7 +4,7 @@
 # The canonical document `cirrocast config set defaults.days 5` produces from the built-in
 # defaults: `set` serialises the whole typed configuration, so the file always has this shape.
 
-schema_version = 1
+schema_version = 2
 
 [defaults]
 provider = "open-meteo"
@@ -57,3 +57,7 @@ station = ""
 
 [providers.qweather]
 host = ""
+
+[locations]
+
+[templates]

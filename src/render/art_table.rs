@@ -58,7 +58,7 @@ use unicode_width::UnicodeWidthChar as _;
 
 use super::art::{self, ART_LINES, ART_W};
 use super::color::{self, FG_DEFAULT, paint};
-use super::{Charset, ColorDepth, RenderContext, Renderer, TermKind};
+use super::{Charset, ColorDepth, RenderContext, Renderer, Slot, TermKind};
 use crate::error::Result;
 use crate::geo::{attribution_line, place};
 use crate::i18n::keys;
@@ -203,6 +203,183 @@ impl Renderer for ArtTable {
             .collect::<Vec<_>>()
             .join("\n"))
     }
+
+    /// 2–4 locations: one header line and one aligned grid row each, blank line between blocks.
+    ///
+    /// The grid is only drawn when every odds-and-ends line fits the resolved width and every
+    /// successful location has a current condition (or a today part) with a temperature; otherwise
+    /// the run falls back to the full per-location tables, which already handle narrow terminals
+    /// and data-poor reports. Five locations or more always take the fallback, and
+    /// [`slot_note`](Renderer::slot_note) says why once.
+    fn render_slots(&self, slots: &[Slot<'_>]) -> Result<String> {
+        if let Some(summary) = self.summary(slots) {
+            return Ok(summary);
+        }
+        self.full_tables(slots)
+    }
+
+    fn slot_note(&self, slots: usize) -> Option<&'static str> {
+        (slots > SUMMARY_LIMIT)
+            .then_some("note: art-table summary layout is limited to 4 locations")
+    }
+}
+
+/// The most locations the combined summary lays out; a longer run uses the full tables.
+pub const SUMMARY_LIMIT: usize = 4;
+
+/// One location's cells in the summary grid, before the columns are aligned and painted.
+struct SummaryCells {
+    /// The compact condition art.
+    art: String,
+    /// Palette entry of the art (and of the condition text, as in the full table's current block).
+    art_fg: u8,
+    /// The localized condition text.
+    condition: String,
+    /// The current (or today's) temperature, signed and folded.
+    temp: String,
+    /// Palette entry of the temperature.
+    temp_fg: u8,
+    /// `+24°C/+14°C`, or `n/a` when the report has no day.
+    high_low: String,
+    /// Palette entry of the high/low pair.
+    high_low_fg: u8,
+}
+
+impl ArtTable {
+    /// The fallback composition: each slot's full table (or its placeholder), blank line between.
+    fn full_tables(self, slots: &[Slot<'_>]) -> Result<String> {
+        let mut blocks: Vec<String> = Vec::with_capacity(slots.len());
+        for slot in slots {
+            match (slot.report, slot.ctx.as_ref()) {
+                (Some(report), Some(ctx)) => blocks.push(self.render(report, ctx)?),
+                _ => blocks.push(slot.placeholder()),
+            }
+        }
+        Ok(blocks.join("\n\n"))
+    }
+
+    /// The combined 2–4 location summary, or `None` when it cannot honour the width or the data.
+    fn summary(self, slots: &[Slot<'_>]) -> Option<String> {
+        if !(2..=SUMMARY_LIMIT).contains(&slots.len()) {
+            return None;
+        }
+        let charset = self.charset;
+        let width = slots
+            .iter()
+            .find_map(|slot| slot.ctx.as_ref())
+            .map_or(80, |ctx| ctx.width);
+        let depth = if self.mono {
+            ColorDepth::Mono
+        } else {
+            slots
+                .iter()
+                .find_map(|slot| slot.ctx.as_ref())
+                .map_or(ColorDepth::Mono, RenderContext::depth)
+        };
+
+        let mut rows: Vec<Option<SummaryCells>> = Vec::with_capacity(slots.len());
+        for slot in slots {
+            match (slot.report, slot.ctx.as_ref()) {
+                (Some(report), Some(ctx)) => {
+                    rows.push(Some(summary_cells(report, ctx, charset)?));
+                }
+                _ => rows.push(None),
+            }
+        }
+
+        let column = |value: fn(&SummaryCells) -> &str| {
+            rows.iter()
+                .flatten()
+                .map(|cells| display_width(value(cells)))
+                .max()
+                .unwrap_or(0)
+        };
+        let art_w = column(|cells| &cells.art);
+        let condition_w = column(|cells| &cells.condition);
+        let temp_w = column(|cells| &cells.temp);
+        let high_w = column(|cells| &cells.high_low);
+
+        let mut blocks: Vec<String> = Vec::with_capacity(slots.len());
+        for (slot, row) in slots.iter().zip(&rows) {
+            let Some(cells) = row else {
+                let line = slot.placeholder();
+                if display_width(&line) > width {
+                    return None;
+                }
+                blocks.push(line);
+                continue;
+            };
+            let (Some(report), Some(ctx)) = (slot.report, slot.ctx.as_ref()) else {
+                return None;
+            };
+            let header = folded(&header(report, ctx), charset);
+            let art = pad_columns(&cells.art, art_w);
+            let condition = pad_columns(&cells.condition, condition_w);
+            let temp = pad_left(&cells.temp, temp_w);
+            let high_low = pad_left(&cells.high_low, high_w);
+            let plain = format!("{art}  {condition}  {temp}  {high_low}");
+            if display_width(&header) > width || display_width(&plain) > width {
+                return None;
+            }
+            let row_line = format!(
+                "{}  {}  {}  {}",
+                paint(&art, cells.art_fg, depth),
+                paint(&condition, cells.art_fg, depth),
+                paint(&temp, cells.temp_fg, depth),
+                paint(&high_low, cells.high_low_fg, depth)
+            );
+            blocks.push(format!("{header}\n{row_line}"));
+        }
+        Some(blocks.join("\n\n"))
+    }
+}
+
+/// One location's summary cells: the current (or today's) condition, temperature and the day's
+/// high/low. `None` when there is nothing to show, which falls the whole run back to full tables.
+fn summary_cells(
+    report: &Report,
+    ctx: &RenderContext<'_>,
+    charset: Charset,
+) -> Option<SummaryCells> {
+    let day = crate::template::today(report, ctx.now.date_naive());
+    let (condition, is_day, temp_c) = if let Some(current) = &report.current {
+        (current.weather, current.is_day, current.temp_c)
+    } else {
+        let day = day?;
+        let kind = crate::template::hour_part(ctx.now);
+        let part = day.part(kind);
+        (part.weather, kind != DayPartKind::Night, part.temp_c)
+    };
+    let key = weather_key(condition.art_key(), is_day);
+    let art_fg = art::art(key).map_or(FG_DEFAULT, |block| color::art_fg(block.style));
+    let temp_unit = ctx.units.temp;
+    let (high_low, high_low_fg) = match day {
+        Some(day) => (
+            format!(
+                "{}/{}",
+                folded(&format_temp_signed(day.temp_max_c, temp_unit), charset),
+                folded(&format_temp_signed(day.temp_min_c, temp_unit), charset)
+            ),
+            color::temp_fg(day.temp_max_c),
+        ),
+        None => (ctx.i18n.text(&keys::NA).into_owned(), FG_DEFAULT),
+    };
+    Some(SummaryCells {
+        art: folded(art::one_line_art(key), charset),
+        art_fg,
+        condition: folded(&ctx.i18n.condition(condition), charset),
+        temp: folded(&format_temp_signed(temp_c, temp_unit), charset),
+        temp_fg: color::temp_fg(temp_c),
+        high_low,
+        high_low_fg,
+    })
+}
+
+/// Right-aligns `text` in `width` display columns.
+fn pad_left(text: &str, width: usize) -> String {
+    let mut padded = " ".repeat(width.saturating_sub(display_width(text)));
+    padded.push_str(text);
+    padded
 }
 
 /// The context the panels see: an ASCII table (`--format dumb`, or a terminal that cannot draw

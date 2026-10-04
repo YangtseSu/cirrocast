@@ -14,7 +14,7 @@ use predicates::prelude::*;
 /// Every key of `KEY_TABLE` with a value that passes validation — the table is the source of truth
 /// for the *set* of keys, so this list is checked against it below.
 const PROBES: [(&str, &str); 36] = [
-    ("schema_version", "1"),
+    ("schema_version", "2"),
     ("defaults.provider", "smhi"),
     ("defaults.format", "json"),
     ("defaults.units", "us"),
@@ -139,7 +139,7 @@ fn a_future_schema_is_rejected_with_the_supported_version() {
         .assert()
         .code(4)
         .stderr(predicate::str::contains(
-            "config written by a newer cirrocast (schema_version 99, supported 1)",
+            "config written by a newer cirrocast (schema_version 99, supported 2)",
         ));
 }
 
@@ -345,7 +345,7 @@ fn show_prints_the_effective_document() {
         document
             .get("schema_version")
             .and_then(toml::Value::as_integer),
-        Some(1)
+        Some(2)
     );
     assert_eq!(
         document

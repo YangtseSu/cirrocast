@@ -391,6 +391,18 @@ fn a_txt_dump_installs_like_the_zip() {
 }
 
 #[test]
+fn no_user_table_is_installed_is_silent() {
+    // `auto` (the default) with nothing installed is the normal state: the bundled table answers
+    // and no warning is printed — a multi-location run would otherwise repeat it per location.
+    let sandbox = Sandbox::new();
+    let output = search(&sandbox, &["--offline", "Beijing"]);
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(!stderr.contains("cannot read"), "{stderr}");
+    assert!(!stderr.contains("using the bundled"), "{stderr}");
+}
+
+#[test]
 fn data_bundled_ignores_the_user_table() {
     let sandbox = Sandbox::new();
     install_sample(&sandbox);

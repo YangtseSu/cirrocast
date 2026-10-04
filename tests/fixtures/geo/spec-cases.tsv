@@ -5,8 +5,8 @@
 #
 #   column 1  the argument, with `\s` for a space, `\t` for a tab, `\\` for a backslash;
 #             the token `<none>` means "no argument at all" (argv had no location)
-#   column 2  `default`, `fuzzy:<text>`, `exact:<text>`, `osm:<text>`, `latlon:<lat>:<lon>`
-#             or `error:<fragment>` — the fragment must appear in the usage message
+#   column 2  `default`, `fuzzy:<text>`, `exact:<text>`, `osm:<text>`, `latlon:<lat>:<lon>`,
+#             `alias:<name>` or `error:<fragment>` — the fragment must appear in the usage message
 #
 # `tests/geo_spec.rs` drives `LocationSpec::parse_arg` with these rows.
 <none>	default
@@ -34,19 +34,22 @@ B	error:too short
 @90,180	latlon:90:180
 @-90,-180	latlon:-90:-180
 @39.9\s,\s116.4	latlon:39.9:116.4
-@39.9	error:expected @<lat>,<lon>
-@39.9,116.4,5	error:expected @<lat>,<lon>
-@,116.4	error:expected @<lat>,<lon>
-@39.9,	error:expected @<lat>,<lon>
-@a,116.4	error:expected @<lat>,<lon>
-@39.9,116.4junk	error:expected @<lat>,<lon>
-@39.9 116.4	error:expected @<lat>,<lon>
-@NaN,116.4	error:expected @<lat>,<lon>
-@inf,116.4	error:expected @<lat>,<lon>
-@91,0	error:latitude 91 is out of range -90..=90
-@-90.1,0	error:latitude -90.1 is out of range -90..=90
-@0,181	error:longitude 181 is out of range -180..=180
-@0,-180.5	error:longitude -180.5 is out of range -180..=180
+@39.9	alias:39.9
+@39.9,116.4,5	alias:39.9,116.4,5
+@,116.4	alias:,116.4
+@39.9,	alias:39.9,
+@a,116.4	alias:a,116.4
+@39.9,116.4junk	alias:39.9,116.4junk
+@39.9 116.4	alias:39.9 116.4
+@NaN,116.4	alias:NaN,116.4
+@inf,116.4	alias:inf,116.4
+@91,0	alias:91,0
+@-90.1,0	alias:-90.1,0
+@0,181	alias:0,181
+@0,-180.5	alias:0,-180.5
 @\s39.9042\s,\s116.4074\s	latlon:39.9042:116.4074
 Beijing,CN	fuzzy:Beijing,CN
 @0,0	latlon:0:0
+@home	alias:home
+@	error:`@` needs coordinates (`@lat,lon`) or an alias name
+\s@\s	error:`@` needs coordinates (`@lat,lon`) or an alias name

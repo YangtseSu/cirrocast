@@ -79,7 +79,7 @@ fn two_is_usage_and_names_the_rejected_value() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains(
-            "possible values: art-table, one-line, plain, json, dumb",
+            "formats: art-table, one-line, plain, json, dumb",
         ));
 }
 

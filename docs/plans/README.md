@@ -83,7 +83,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ✅ done | 03, 08 |
 | 18 | D | [offline-city-database](18-offline-city-database.md) | ✅ done | 04, 05 |
 | 18b | D | [user-city-data-update](18b-user-city-data-update.md) | ✅ done | 18 |
-| 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ⬜ not-started | 08, 14 |
+| 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ✅ done | 08, 14 |
 | 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
 | 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ⬜ not-started | 12, 18, 19 |
 | 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ⬜ not-started | 13, 19 |
@@ -189,9 +189,11 @@ src/
     openweathermap.rs / weatherapi.rs / worldweatheronline.rs
     pirateweather.rs / qweather.rs / smhi.rs
     metar.rs         aviationweather.gov METAR/TAF (keyless, station based)
+  template.rs        the `%`-token engine: TOKENS table, presets, width/precision, escapes (step 19)
+  parallel.rs        ordered parallel mapping for multi-location runs (step 19)
   render/
-    mod.rs           Renderer trait, RenderContext, terminal capability detection
-    art_table.rs     wttr.in-style day-part column table
+    mod.rs           Renderer trait, Slot/render_slots, RenderContext, terminal capability detection
+    art_table.rs     wttr.in-style day-part column table, 2-4 location summary layout (step 19)
     one_line.rs      template output (`%c`, `%t`, ... wttr.in-compatible tokens)
     plain.rs         box-free, pipe friendly
     json.rs          stable JSON schema
@@ -280,8 +282,18 @@ pub struct RenderContext<'a> {  // built once in main, passed by reference
     pub units: ResolvedUnits, pub lang: LanguageId, pub color: ColorMode, pub width: usize,
     pub term: TermCaps, pub now: DateTime<FixedOffset>, pub tz: chrono_tz::Tz, pub i18n: &'a I18n,
 }
-pub trait Renderer { fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String>; }
+pub trait Renderer {
+    fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String>;
+    fn render_slots(&self, slots: &[Slot<'_>]) -> Result<String>;   // one slot per location
+}
 ```
+
+A multi-location run renders through `render_slots`: each `Slot` carries the location argument as
+typed, exactly one of the report or the error, and the report's own context (its time zone), so a
+renderer never builds one itself. The default implementation composes the single-report renders with
+a blank line between them (one line for `one-line`) and prints `error: <query>: <message>` in a
+failed slot; `json` overrides it with the array (or error) document and `art-table` with its
+summary.
 
 `units` is the *resolved* unit set (step 03's `UnitSystem::resolve`), `color` is already resolved
 (never `Auto`) and `width` already clamped, so a renderer never consults the environment; `term`
@@ -302,7 +314,8 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   (wttr.in-compatible `%` tokens), `plain`, `json`, `alerts` (the full severe-weather warning
   listing; `no active weather alerts` when there are none), `aqi` (the standalone air-quality
   panel, step 16; `air quality unavailable` when the best-effort fetch failed) and `moon` (the
-  standalone moon/sun view, step 17). `dumb` is not a
+  standalone moon/sun view, step 17). `full` and `minimal` are not layouts: they are `one-line`
+  with the `@full`/`@minimal` preset, and any `[templates]` key is addressable the same way (step 19). `dumb` is not a
   fourth layout: it is the art table in the ASCII character set (`+ - |`, ASCII art, no degree
   sign), selected by
   `--format dumb` and automatically for `TERM=dumb` or a non-UTF-8 locale.
@@ -313,6 +326,20 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
   degrades to a stacked layout; the table formats never emit lines wider than the resolved width.
   `plain` and `json` are record formats and **ignore the width**: truncating a record would delete
   the values the format exists to carry, and a pipe wraps or not at its leisure (step 08).
+* **Multi-location runs (step 19, binding).** Several positional `LOCATION` arguments are one run:
+  at most four fetches at a time (`min(len, min(4, available_parallelism))`), results written into
+  slot `i` by item order (never arrival order), rendered in argument order. `--lat/--lon`, `--ip`
+  and `--station` describe one place and are `Error::Usage` with more than one argument. A failed
+  slot keeps its place: `error: <query>: <message>` on stdout, the full `error: …` on stderr,
+  every other location rendered as usual, and the process exit code is the numerically largest
+  `Error::exit_code()` among the failures (a missing key 6 outranks a location miss 5). `json`
+  stays a plain object for one location and becomes an array above one, where a failed slot is
+  `{"schema_version": 2, "query": "<as typed>", "error": {"code": …, "message": …}}`;
+  `art-table` draws a combined summary layout for 2–4 locations (falling back to the full tables
+  and a one-time stderr note above four, silenced by `-q`). The template engine behind `one-line`,
+  the `full`/`minimal` presets, `status` and the compat surface is `src/template.rs`, with
+  `TOKENS: &[TokenSpec]` exported and unknown tokens a usage error on the CLI (the compat surface
+  keeps them literal at its own boundary).
 * Colour: honour `NO_COLOR` (present with any value, an empty one included, disables),
   `CLICOLOR_FORCE` (set and not `0` enables, and wins over `NO_COLOR`), `--color auto|always|never`,
   and non-tty stdout ⇒ no colour in `auto`. An explicit `always` emits escapes even into a pipe; the
@@ -342,10 +369,13 @@ is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_p
 `$XDG_DATA_HOME/cirrocast/`; resolved with `etcetera` so `XDG_CONFIG_DIRS` is respected for reads.
 
 ```toml
-schema_version = 1
+schema_version = 2
 [defaults]  provider = "open-meteo"  format = "art-table"  units = "metric"  days = 3  language = "auto"
-[location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua"
+            # format also accepts a one-line preset (full | minimal | short | default | uv | sun) or a [templates] key
+[location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", "@home"
             pick = "auto"           # auto | never (never = always take the ranked winner; step 20)
+[locations] home = "@39.9042,116.4074"   # @NAME aliases; values are location arguments, chains allowed (step 19)
+[templates] compact = "%c%t"             # named one-line templates for --format/--template @name (step 19)
 [geo]       strategy = "auto"       # bundled table first, network fallback (step 18)
             data = "auto"           # auto | bundled | user — which city table answers (step 18b)
             update = "off"          # off | check — a freshness note only, never a fetch (step 18b)
@@ -411,7 +441,7 @@ tests; `unsafe` is denied by lint.
 ### CLI surface (binding, own design — not wego's)
 
 ```
-cirrocast [OPTIONS] [LOCATION]
+cirrocast [OPTIONS] [LOCATION]...
   -p, --provider <ID[,ID...]>   open-meteo | openweathermap | weatherapi | worldweatheronline
                                 | pirateweather | qweather | smhi | metar | auto
                                 (+ met-no, visualcrossing, open-meteo-archive, open-meteo-marine in
@@ -431,7 +461,7 @@ cirrocast [OPTIONS] [LOCATION]
       --severity <LEVEL>        lowest alert severity to show (unknown..extreme)
       --no-cache / --refresh / --offline[=<weather|geo|all>]   (step 18; bare `--offline` = all)
       --timeout <SECS>
-      --template <STRING>       literal `%` template (step 19); `--template-file <PATH>` reads a file
+      --template <STRING>       literal `%` template (step 19); `--template-file <PATH|->` reads a file (or stdin)
       --date <YYYY-MM-DD> --history <N>d   archive request; needs a backend with history (step 23)
       --marine                  append the Open-Meteo marine panel (step 23)
       --normals                 compare with the 1991–2020 climate normals (step 26)
@@ -453,7 +483,10 @@ cirrocast completion <shell>    cirrocast man
 Location argument syntax: bare `Beijing` = fuzzy search (the bundled city table first under
 `[geo] strategy = "auto"`, the network geocoder on a miss); `:Beijing` = exact name match (folded,
 so `:Sao Paulo` matches `São Paulo`); `~Tsinghua` = OpenStreetMap/Nominatim; `@39.9,116.4` =
-coordinates; empty = config `location.default`, else public IP. Fuzzy matches are ranked
+coordinates when the text after `@` is exactly `lat,lon` with both sides in range, otherwise
+`@name` = a `[locations]` alias (chains expand with a visited set and depth cap 8; a cycle or an
+over-deep chain is `Error::Config`, an unknown name is `Error::Usage` with up to three
+edit-distance-2 suggestions); empty = config `location.default`, else public IP. Fuzzy matches are ranked
 deterministically (exact name, then a name prefix, then population, then source order — one
 implementation in `src/geo/rank.rs` for both sources) and the chosen location is echoed in the
 header. When a lookup yields **more than one candidate** — a

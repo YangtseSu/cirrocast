@@ -21,7 +21,7 @@ fn main() -> ExitCode {
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
 
     match cli.run(&sources) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => ExitCode::from(code),
         Err(error) => {
             eprintln!("error: {error}");
             if cli.verbose > 0 {
