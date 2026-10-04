@@ -39,7 +39,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   `--yes` are a clap conflict group; `--yes` beats the config. Non-interactive runs keep today's
   behaviour: ranked winner on stdout, the step-04 note on stderr extended with `--pick`/`--yes`
   hints. `-q` still silences notes but never suppresses a prompt the policy asked for.
-- ⬜ After a selection, one stderr note (suppressed by `-q`):
+- ✅ After a selection, one stderr note (suppressed by `-q`):
   `selected: Beijing, Beijing Municipality, China — use @39.9042,116.4074 to skip the prompt` — the
   spec is always `@lat,lon` (two decimals is not enough to round-trip; use the full precision the
   location carries), because names re-query a geocoder whose ranking can drift.
@@ -158,3 +158,6 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   terminal stdin+stderr with `[location] pick = "auto"` from config or `CIRROCAST_LOCATION_PICK`).
   The prompt is serialized across worker threads and reads the shared stdin; the ambiguity note
   gained the `--pick`/`--yes` tail, and a pick suppresses the note the picker just answered.
+- 2026-10-04 — deliverable 4: a selection echoes `selected: <place> — use @<lat>,<lon> to skip the
+  prompt` on stderr (full float precision, so the spec round-trips), suppressed by `-q` like every
+  other note; the ambiguity note is not printed for a choice the prompt already made.

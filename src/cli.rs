@@ -26,7 +26,7 @@ use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
 use crate::geo::open_meteo::OpenMeteoGeocoder;
 use crate::geo::{
     Geocoder, LocationSpec, Resolution, Resolved, ambiguity_note, attribution_line, location_line,
-    offline_not_found, osm_ambiguity_note, resolve_candidates,
+    offline_not_found, osm_ambiguity_note, place, resolve_candidates,
 };
 use crate::http::{HttpClient, UreqTransport};
 use crate::i18n::{I18n, LanguageRequest};
@@ -1572,7 +1572,18 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
     let query = target.spec.query().unwrap_or_default();
     let picked = should_pick(&cli.query, geo.config, candidates.len())?;
     let location = if picked {
-        prompt_location(query, &candidates)?
+        let chosen = prompt_location(query, &candidates)?;
+        if !cli.quiet {
+            // The echo is a coordinate spec, not the name: a name would re-run the ranking that
+            // just produced the ambiguity (step 04's risk note), while `@lat,lon` pins the choice.
+            eprintln!(
+                "selected: {} — use @{},{} to skip the prompt",
+                place(&chosen),
+                chosen.lat,
+                chosen.lon
+            );
+        }
+        chosen
     } else {
         location
     };
