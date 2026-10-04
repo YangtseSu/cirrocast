@@ -48,7 +48,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   zone, population when known) on stdout; the default output remains the winner line, so existing
   scripts keep working. `--limit` (default 10, max 100) bounds both forms; `-v` keeps printing the
   cache key path.
-- ⬜ `src/config/mod.rs`: `[location] pick = "auto"` (`auto` | `never`) with a `KEY_TABLE` row and
+- ✅ `src/config/mod.rs`: `[location] pick = "auto"` (`auto` | `never`) with a `KEY_TABLE` row and
   `CIRROCAST_LOCATION_PICK`; an invalid value is `Error::Config` (exit 4) listing the two.
 - ⬜ `docs/plans/README.md`: the location-syntax paragraph of the architecture contract changes from
   "ambiguity is resolved by ranking and reported" to the picker policy above; `README.md` gains the
@@ -144,3 +144,7 @@ CIRROCAST_LOCATION_PICK=never cargo run -q -- Beijing -f plain   # no prompt, wi
   second `rank` pass in `ranked_candidates` are gone); `resolve` stays as the same decision without
   the list. `location search --all`, the `-v` listing and the upcoming picker therefore print the
   one ranking; the `--exact` filter now applies to the network path's `--all` rows too.
+- 2026-10-04 — deliverable 6: `[location] pick = "auto" | "never"` is part of the document, the
+  `KEY_TABLE`/`config get|set` vocabulary and the `CIRROCAST_LOCATION_PICK` family; the built-in
+  default is `auto`, an invalid value is refused with the two spellings listed. The CLI policy that
+  reads it lands with the picker wiring.

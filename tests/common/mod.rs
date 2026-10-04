@@ -27,13 +27,14 @@ use cirrocast::provider::{Env, FetchRequest, HourlyResolution, Provider};
 
 /// Every `CIRROCAST_*` override variable, cleared for the child process so that the developer's
 /// shell cannot influence a test.
-const OVERRIDE_VARS: [&str; 9] = [
+const OVERRIDE_VARS: [&str; 10] = [
     "CIRROCAST_PROVIDER",
     "CIRROCAST_FORMAT",
     "CIRROCAST_UNITS",
     "CIRROCAST_DAYS",
     "CIRROCAST_LANG",
     "CIRROCAST_LOCATION",
+    "CIRROCAST_LOCATION_PICK",
     "CIRROCAST_TIMEOUT",
     "CIRROCAST_NOMINATIM_URL",
     "CIRROCAST_IP_SERVICE",

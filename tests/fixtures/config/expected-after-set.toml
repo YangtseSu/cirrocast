@@ -15,6 +15,7 @@ language = "auto"
 
 [location]
 default = ""
+pick = "auto"
 
 [geo]
 strategy = "auto"

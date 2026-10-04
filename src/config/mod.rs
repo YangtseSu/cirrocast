@@ -100,6 +100,10 @@ pub const GEO_DATA_SOURCES: &[&str] = &["auto", "bundled", "user"];
 /// Allowed values of `[geo] update` (step 18b): no freshness note, or the throttled note.
 pub const GEO_UPDATES: &[&str] = &["off", "check"];
 
+/// Allowed values of `[location] pick` (step 20): ask which candidate to use when a name resolves
+/// to several places, or always take the ranked winner.
+pub const PICK_POLICIES: &[&str] = &["auto", "never"];
+
 /// Range of `geo.update_interval_days`: a day to ten years.
 const UPDATE_INTERVAL_RANGE: (u32, u32) = (1, 3650);
 
@@ -159,11 +163,23 @@ pub struct Defaults {
 }
 
 /// `[location]`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LocationDefaults {
     /// Location argument used when none is given on the command line.
     pub default: String,
+    /// `auto` (ask on a terminal when a name resolves to several candidates) or `never` (always
+    /// take the ranked winner).
+    pub pick: String,
+}
+
+impl Default for LocationDefaults {
+    fn default() -> Self {
+        Self {
+            default: String::new(),
+            pick: "auto".to_owned(),
+        }
+    }
 }
 
 /// `[units]` — per-quantity overrides on top of `defaults.units`.
@@ -688,8 +704,10 @@ impl Config {
     }
 
     /// `location.default` must be a location argument the resolver would accept, checked with the
-    /// same parser the command line uses so the two cannot drift.
+    /// same parser the command line uses so the two cannot drift, and `location.pick` must be one
+    /// of the two policies.
     fn validate_location(&self) -> Result<()> {
+        check_enum("location.pick", &self.location.pick, PICK_POLICIES)?;
         let text = self.location.default.trim();
         if text.is_empty() {
             return Ok(());
@@ -1097,7 +1115,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "templates",
         ],
         "defaults" => &["provider", "format", "units", "days", "language"],
-        "location" => &["default"],
+        "location" => &["default", "pick"],
         "geo" => &[
             "strategy",
             "data",
@@ -1333,6 +1351,7 @@ language = "auto"        # "auto" or a BCP-47 tag such as "en-US", "zh-CN"
 [location]
 default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", or "@home" for an
                          # alias below; empty = ask for the IP location
+pick = "auto"            # auto (ask on a terminal when a name has several candidates) | never
 
 [locations]
 # @NAME aliases for the location argument. Values are any location argument, including another
@@ -1502,6 +1521,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         kind: KeyKind::Str,
         doc: "location used when none is given",
         env: Some("CIRROCAST_LOCATION"),
+    },
+    KeySpec {
+        name: "location.pick",
+        kind: KeyKind::Enum(PICK_POLICIES),
+        doc: "ask which candidate to use: auto or never",
+        env: Some("CIRROCAST_LOCATION_PICK"),
     },
     KeySpec {
         name: "geo.strategy",
@@ -1718,6 +1743,7 @@ impl Config {
             "defaults.days" => self.defaults.days.to_string(),
             "defaults.language" => self.defaults.language.clone(),
             "location.default" => self.location.default.clone(),
+            "location.pick" => self.location.pick.clone(),
             "geo.strategy" => self.geo.strategy.clone(),
             "geo.data" => self.geo.data.clone(),
             "geo.update" => self.geo.update.clone(),
@@ -1777,6 +1803,10 @@ impl Config {
                 self.defaults.language = value;
             }
             "location.default" => self.location.default = value,
+            "location.pick" => {
+                check_enum(spec.name, &value, PICK_POLICIES)?;
+                self.location.pick = value;
+            }
             "geo.strategy" => {
                 check_enum(spec.name, &value, GEO_STRATEGIES)?;
                 self.geo.strategy = value;
@@ -1864,6 +1894,7 @@ impl Config {
             "defaults.days" => check_range(key, u32::from(self.defaults.days), DAYS_RANGE),
             "defaults.language" => check_language(key, &self.defaults.language),
             "location.default" => self.validate_location(),
+            "location.pick" => check_enum(key, &self.location.pick, PICK_POLICIES),
             "geo.strategy" => check_enum(key, &self.geo.strategy, GEO_STRATEGIES),
             "geo.data" => check_enum(key, &self.geo.data, GEO_DATA_SOURCES),
             "geo.update" => check_enum(key, &self.geo.update, GEO_UPDATES),
@@ -2677,6 +2708,35 @@ mod tests {
             .insert("home".to_owned(), "@39.9,116.4".to_owned());
         config.location.default = "@home".to_owned();
         config.validate().expect("a defined alias validates");
+    }
+
+    #[test]
+    fn location_pick_accepts_the_two_policies_and_rejects_anything_else() {
+        let mut config = Config::default();
+        assert_eq!(config.location.pick, "auto", "the built-in policy");
+
+        for accepted in ["auto", "never"] {
+            config
+                .set_key("location.pick", accepted)
+                .unwrap_or_else(|error| panic!("`{accepted}` should be a policy: {error}"));
+            assert_eq!(config.location.pick, accepted);
+        }
+        let error = config
+            .set_key("location.pick", "sometimes")
+            .expect_err("`sometimes` is not a policy");
+        assert_eq!(error.exit_code(), 4);
+        assert!(
+            error
+                .to_string()
+                .contains("location.pick: `sometimes` is not one of auto, never"),
+            "{error}"
+        );
+
+        // A hand-built document is caught by the whole-document check too.
+        let mut config = Config::default();
+        config.location.pick = "sometimes".to_owned();
+        let error = config.validate().expect_err("the value never validates");
+        assert!(error.to_string().contains("location.pick"), "{error}");
     }
 
     #[test]
