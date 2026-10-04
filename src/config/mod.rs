@@ -43,6 +43,7 @@ pub const FORMATS: &[&str] = &[
     "dumb",
     "alerts",
     "aqi",
+    "moon",
 ];
 
 /// Values accepted by `defaults.units`.
@@ -1124,7 +1125,7 @@ schema_version = 1
 
 [defaults]
 provider = "open-meteo"  # id, comma separated chain, or "auto" (the keyless chain)
-format = "art-table"     # art-table | one-line | plain | json | dumb
+format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon
 units = "metric"         # metric | us | uk
 days = 3                 # 0..=14; each provider clamps to its own maximum
 language = "auto"        # "auto" or a BCP-47 tag such as "en-US", "zh-CN"
@@ -1928,7 +1929,8 @@ mod tests {
             (
                 "defaults.format",
                 |config| config.defaults.format = "yaml".to_owned(),
-                "defaults.format: `yaml` is not one of art-table, one-line, plain, json, dumb",
+                "defaults.format: `yaml` is not one of art-table, one-line, plain, json, dumb, \
+                 alerts, aqi, moon",
             ),
             (
                 "defaults.units",
@@ -2014,6 +2016,27 @@ mod tests {
                 .validate()
                 .expect_err(&format!("{key} should not validate"));
             assert!(error.to_string().contains(expected), "{key}: {error}");
+        }
+    }
+
+    #[test]
+    fn every_render_format_is_configurable() {
+        // `FORMATS`, the template comment and `render::Format` are three lists of the same thing;
+        // this is where they are compared, so a new format cannot land in only one of them — and
+        // `defaults.format` accepts everything `-f` and `CIRROCAST_FORMAT` accept.
+        use crate::render::Format;
+
+        let spellings: Vec<&str> = Format::ALL.iter().map(|format| format.as_str()).collect();
+        assert_eq!(
+            super::FORMATS,
+            spellings,
+            "config::FORMATS drifted from render::Format::ALL"
+        );
+        for format in Format::ALL {
+            let mut config = Config::default();
+            config.defaults.format = format.as_str().to_owned();
+            config.validate().expect("every render format validates");
+            assert!(DEFAULT_DOCUMENT.contains(format.as_str()));
         }
     }
 

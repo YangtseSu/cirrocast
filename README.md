@@ -547,7 +547,7 @@ write and the first one read — and `config validate` reports the file that was
 | Key | Default | Values |
 |---|---|---|
 | `defaults.provider` | `open-meteo` | provider id, comma separated chain, or `auto` |
-| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts` |
+| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts`, `aqi`, `moon` |
 | `defaults.units` | `metric` | `metric`, `us`, `uk` |
 | `defaults.days` | `3` | `0..=14`, clamped per provider |
 | `defaults.language` | `auto` | `auto` or a BCP-47 tag such as `zh-CN` |
