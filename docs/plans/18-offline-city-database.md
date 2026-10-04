@@ -142,7 +142,9 @@ offline path produces the same ranking as the network path for the same query.
   budget cannot absorb 2.7 MiB, flipping the default is a one-line change recorded there.
 * **Snapshot cadence**: GeoNames regenerates dumps daily; we pin one dated snapshot, record its date
   and SHA-256 in `src/geo/data/SNAPSHOT`, and refresh at release time only (step 28 documents the
-  command). Nothing in the runtime ever downloads the dataset.
+  command; `scripts/refresh-city-data.sh` is the command — download → build → canary tests, with the
+  pinned expectations left for the operator to move deliberately). Nothing in the runtime ever
+  downloads the dataset.
 * **Ranking identity**: the offline index stores exactly the fields the step-04 ranking consumes, and
   `geo/rank.rs` is the single implementation, so the offline and online paths cannot drift; the test
   compares the ordering of the recorded step-04 fixtures with the offline ordering for the same
@@ -258,3 +260,9 @@ not materialised eagerly.
   checks only), which brought `location search --offline Beijing` from 61 ms to **50 ms** and the
   release binary to 15 875 368 B; step 21's table carries the final numbers. The builder was re-run
   once more and the members were again byte-identical.
+- 2026-10-04 — `scripts/refresh-city-data.sh` added (follow-up, outside the step's original
+  deliverables, so recorded here): it fetches the official `cities15000.zip` (or takes `--from
+  <path-or-url>`), extracts it, runs the builder, prints the new `SNAPSHOT` and the `git diff`, then
+  runs the two canary suites and exits non-zero when a pinned row moved — the refresh stays a
+  reviewable diff instead of a silent rewrite. Verified with both a local `.txt` and the Wayback
+  zip URL; a rebuild of the same input leaves the tree unchanged.

@@ -445,8 +445,10 @@ folding is NFKD-based, which is why `São Paulo`/`Sao Paulo`, `MÜNCHEN`/`munche
 `network` (the geocoder only) — and the offline path ranks with the same function as the network
 path. The table carries the ISO country code rather than the country name the geocoder reports, and
 no admin-1 division; `-v` says which source answered. Refresh the snapshot with
-`cargo run -p geo-table -- <cities15000.txt> src/geo/data` (the `SNAPSHOT` file records the dump date
-and the input's SHA-256).
+`scripts/refresh-city-data.sh` — it fetches the dump, runs the builder and then the tests that pin
+rows of the committed data, so a refresh is a reviewable diff, never a silent one (`--from
+<path-or-url>` takes a local dump; the `SNAPSHOT` file records the dump date and the input's
+SHA-256).
 
 Non-Latin names are searched in their own script — `新乡`, `Москва`, `Αθήνα`, `القاهرة`, `תל אביב`,
 `กรุงเทพ` — because the geocoding service indexes place names per language and an English request

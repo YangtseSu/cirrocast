@@ -31,7 +31,9 @@ records how each of them changes and which changes are breaking.
   the network geocoder.
 * `cirrocast`'s workspace gained the dev-only `build/geo-table` builder that produces
   `src/geo/data/*.bin.gz` from a `cities15000.txt` (`cargo run -p geo-table -- <file> src/geo/data`);
-  its output is byte-for-byte deterministic.
+  its output is byte-for-byte deterministic. `scripts/refresh-city-data.sh` wraps the refresh —
+  download, extract, build, then run the canary tests that pin rows of the committed snapshot — and
+  refuses to hide a data change behind a passing build.
 
 ### Changed
 
