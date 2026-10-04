@@ -49,7 +49,9 @@ jobs:
           toolchain: stable
           components: clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo clippy --all-targets --locked -- -D warnings
+      # `--workspace` covers the dev-only `build/geo-table` builder beside the crate; the root
+      # manifest is a package, so a bare `cargo clippy` in the root would skip it.
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   test:
     name: cargo test (${{ matrix.os }}, ${{ matrix.rust }})
@@ -71,7 +73,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo test --locked
+      - run: cargo test --workspace --locked
 
   package:
     name: cargo package (dry-run publish)

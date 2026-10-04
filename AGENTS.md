@@ -84,18 +84,21 @@ No GUI/TUI, no daemon or server mode, no telemetry or analytics, no account syst
 ```bash
 cargo run -q -- Beijing                 # run the CLI
 cargo fmt                               # required before every commit
-cargo clippy --all-targets --locked -- -D warnings
-cargo test --locked                     # unit + integration, no network
-CIRROCAST_FORBID_NETWORK=1 cargo test   # what CI runs: any socket attempt fails loudly
+cargo clippy --workspace --all-targets --locked -- -D warnings   # includes build/geo-table
+cargo test --workspace --locked         # unit + integration, no network
+CIRROCAST_FORBID_NETWORK=1 cargo test --workspace   # what CI runs: any socket attempt fails loudly
 cargo test -- --ignored                 # live smoke tests, manual only (CIRROCAST_LIVE_TESTS=1)
 reuse lint                              # licence/SPDX gate
 cargo deny check                        # licence, advisory, ban and source gate
 cargo audit                             # independent advisory check beside cargo deny
 ```
 
-A change is not done until: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
-`cargo test` and `reuse lint` are clean **and** the changed surface was actually run and observed
-(for a CLI change, that means executing `cirrocast` and looking at the output, not only tests).
+A change is not done until: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo test --workspace` and `reuse lint` are clean **and** the changed surface was actually run and
+observed (for a CLI change, that means executing `cirrocast` and looking at the output, not only
+tests). The workspace flag matters because the root manifest is a package: without it a bare
+`cargo clippy`/`cargo test` in the repository root covers only `cirrocast` itself, not the dev-only
+`build/geo-table` builder.
 
 CI (`.github/workflows/ci.yml`) runs exactly those commands on `ubuntu-26.04` and `macos-26` — the
 images are named explicitly, never `<os>-latest` — with the test matrix spanning `stable` and the
