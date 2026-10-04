@@ -350,3 +350,11 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts Vienna -v; echo $?
   non-covering `nws` error (exit 2 with the documented message) and the bad MeteoAlarm token
   (exit 0, one `-v` line). `cargo fmt --check`, `cargo clippy --all-targets -D warnings`,
   `cargo test` and `reuse lint` are clean; the step is done.
+
+- 2026-10-04 — follow-up, found while preparing the step-17 merge: the two CLI tests that seed the
+  gale CAP document (`a_cached_alert_set_renders_in_every_format`,
+  `an_expired_cache_entry_is_replayed_offline_with_a_stale_read`) read the real clock through the
+  binary, and the fixture's fixed window (`expires` 2026-10-04T08:32+08:00) had just passed, so
+  both flipped to "no active weather alerts" with no code change. `tests/alerts.rs` now seeds a
+  copy of the fixture whose `sent`/`onset`/`expires` are relative to the run (`live_gale_fixture`);
+  the adapter tests keep the raw fixture because they inject their own clock.

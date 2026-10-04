@@ -444,6 +444,24 @@ fn alert_fixture(name: &str) -> String {
     fs::read_to_string(fixture_path(&format!("alerts/{name}"))).expect("the fixture is readable")
 }
 
+/// The gale CAP document with its validity window moved around the real clock.
+///
+/// The CLI runs in these tests read the system clock and drop expired alerts, so the fixture's
+/// fixed 2026-10-03/04 window would silently expire and the cached-set assertions would flip to
+/// "no active weather alerts" with no code change. The adapter tests keep the raw fixture: they
+/// inject their own clock, which is what makes them deterministic.
+fn live_gale_fixture() -> String {
+    let now = Utc::now().with_timezone(&Tz::Asia__Shanghai);
+    let stamp = |offset_hours: i64| {
+        (now + chrono::Duration::hours(offset_hours))
+            .format("%Y-%m-%dT%H:%M:00+08:00")
+            .to_string()
+    };
+    alert_fixture("fpas-gale.xml")
+        .replace("2026-10-03T08:32:00+08:00", &stamp(-1))
+        .replace("2026-10-04T08:32:00+08:00", &stamp(6))
+}
+
 /// Seeds the geocode answer for `Beijing`, the weather answer for the resolved point and, with
 /// `alerts`, a fresh FPAS alert set for it.
 fn seed(sandbox: &Sandbox, alerts: bool, stale: bool) {
@@ -485,7 +503,7 @@ fn seed(sandbox: &Sandbox, alerts: bool, stale: bool) {
     seed_entry(
         sandbox,
         &CacheKey::hash("alerts", "fpas|cap|fpas-gale-1"),
-        &alert_fixture("fpas-gale.xml"),
+        &live_gale_fixture(),
         fetched_at,
         300,
     );
