@@ -13,6 +13,16 @@ records how each of them changes and which changes are breaking.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.2.0] - 2026-10-05
+
+Phase D completed — the offline city database and the user-installed table updates (steps 18 and
+18b), multi-location output with the shared `%`-token template engine (step 19) and the interactive
+location picker (step 20), on the official `GeoNames` 2026-10-04 `cities15000` snapshot. The v1 CLI
+contract is unchanged; the configuration document moves to `schema_version` 2 for the `[locations]`
+and `[templates]` tables, and the JSON document stays at `schema_version` 2.
+
 ### Added
 
 * **Interactive location candidates (step 20).** When a name resolves to several places — the ten
@@ -295,7 +305,8 @@ landed. `1.0.0` freezes it.
 * Exit codes `0`–`6` documented in `--help` and the README, with `error: …` on stderr and the
   cause chain under `-v`.
 
-[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.2.0
 [1.1.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.1.0
 [1.0.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.0.0
 [0.1.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v0.1.0
