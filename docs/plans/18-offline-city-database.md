@@ -5,12 +5,15 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 18 — offline city database
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: 04, 05
-Touches: `src/geo/offline.rs`, `src/geo/mod.rs`, `src/geo/rank.rs`, `src/cli.rs`,
-`src/config/mod.rs`, `src/error.rs`, `src/geo/data/`, `build/geo-table/` (workspace member),
-`Cargo.toml`, `REUSE.toml`, `README.md`, `tests/offline_geo.rs`, `tests/fixtures/geo/`,
-`docs/plans/README.md`, `CHANGELOG.md`
+Touches: `src/geo/{offline,rank,fold,mod}.rs`, `src/geo/data/`, `build/geo-table/` (workspace
+member), `src/cli.rs`, `src/cache.rs`, `src/config/mod.rs`, `src/model/mod.rs`,
+`src/render/json.rs`, `Cargo.toml`, `REUSE.toml`, `AGENTS.md`, `.github/workflows/ci.yml`,
+`README.md`, `docs/schema.md`, `docs/plans/{README.md,21-perf-and-resource-budget.md}`,
+`CHANGELOG.md`, `tests/{offline_geo,offline_lazy,cache,cli,cli_flags,cli_offline,config,air}.rs`,
+`tests/{metar,geo_open_meteo,provider_http,provider_open_meteo}.rs`,
+`tests/fixtures/config/expected-after-set.toml`
 
 ## Goal
 
@@ -22,60 +25,81 @@ offline path produces the same ranking as the network path for the same query.
 
 ## Deliverables
 
-- ⬜ **Candidate evaluation, written into this file** (done below in the design notes): the two
+- ✅ **Candidate evaluation, written into this file** (done below in the design notes): the two
   crate names from the brief are corrected, `geocoding` is rejected, GeoNames `cities15000` is
   vendored. Corrections are repeated in the Progress log.
-- ⬜ `build/geo-table/` (dev-only workspace member, `publish = false`): reads a GeoNames
-  `cities15000.txt`, writes `src/geo/data/cities.bin.gz` (columns: ascii-name, ISO country, lat,
-  lon, population, IANA tz) and `src/geo/data/keys.bin.gz` (sorted folded-key → row-id list), plus
-  `src/geo/data/SNAPSHOT` (GeoNames dump date + SHA-256 of the input file); `flate2`
-  `Compression::best()`, deterministic byte-for-byte output, no C toolchain.
-- ⬜ `src/geo/offline.rs` behind the `offline-geo` feature (default-on, decision below):
-  `include_bytes!` for both members, `LazyLock`/`OnceLock` decode on first use only,
-  `insert_bytes!`-free build (the binary never writes), and the decode wrapped in
-  `Error::Config`-free `Result` handling so a corrupt blob is a hard error with a
-  `cargo run -p geo-table` hint rather than a panic.
-- ⬜ `src/geo/offline.rs` API: `search(query, mode: MatchMode::{Prefix, Exact}, limit) ->
-      Vec<City>` and `resolve(query) -> Result<Location>`; folding =
+- ✅ `build/geo-table/` (dev-only workspace member, `publish = false`): reads a GeoNames
+  `cities15000.txt`, writes `src/geo/data/cities.bin.gz` (columns: geonameid, name, ascii-name,
+  ISO country, lat, lon, population, IANA tz — the geonameid joined the row because the fixture
+  equivalence test matches rows by it) and `src/geo/data/keys.bin.gz` (sorted folded-key → id
+  list), plus `src/geo/data/SNAPSHOT` (GeoNames dump date + SHA-256 of the input file, derived from
+  the input alone so a rebuild is byte-identical too); `flate2` `Compression::best()` with a fixed
+  gzip timestamp, deterministic byte-for-byte output, no C toolchain. Re-running the builder
+  against the same input reproduced both members byte for byte.
+- ✅ `src/geo/offline.rs` behind the `offline-geo` feature (default-on, decision below):
+  `include_bytes!` for both members, `LazyLock` decode on first use only (an `AtomicBool` marks the
+  index as loaded, since `LazyLock` cannot be asked), no writes, and the decode returning typed
+  errors so a corrupt blob is `Error::Other` with a `cargo run -p geo-table` hint rather than a
+  panic.
+- ✅ `src/geo/offline.rs` API: `search(query, mode: MatchMode::{Prefix, Exact}, limit) ->
+      Result<Vec<City>>` (the `Result` was added so a corrupt member is a typed error, not a panic)
+      and `resolve(query) -> Result<Location>`; folding =
       NFKD → strip combining marks → lowercase → drop non-alphanumerics, applied to both the index
       keys and the query, so `São Paulo`/`Sao Paulo`, `北京`/`Beijing`/`Peking`, `Wien`/`Vienna` and
-      `MÜNCHEN`/`munchen` all hit.
-- ⬜ `src/geo/rank.rs`: the ranking already specified in step 04 (`exact-name → prefix →
-      population → provider order`) extracted into a shared function that both the network geocoder
-      results and the offline `City` rows feed; offline rows supply the same inputs (name, ascii
-      name, population, country), so `location search` orders identically in both modes.
-- ⬜ `--offline[=<weather|geo|all>]` (bare = `all`, matching step 05's meaning) and
-      `[network] offline = "off"` in config:
+      `MÜNCHEN`/`munchen` all hit. The lookup splits rows whose key *is* the query from rows whose
+      key merely starts with it, so the exonym `Wien` ranks Vienna (an exact alternate key) above
+      Wiener Neustadt (a display-name prefix).
+- ✅ `src/geo/rank.rs`: the ranking already specified in step 04 (`exact-name → prefix →
+  population → provider order`) extracted into a shared `Candidate` trait + `rank()` that both the
+  network geocoder results (`Location`) and the offline `City` rows feed; the name match is now
+  *folded* on both sides, so `:Sao Paulo` matches `São Paulo` and the two sources cannot disagree
+  about what a name is. `src/geo/fold.rs` holds the one folding function, shared with the builder.
+- ✅ `--offline[=<weather|geo|all>]` (bare = `all`; `require_equals`, so `--offline geo` is a
+      location named `geo`, exactly as `--color always` is GNU-style) and `[network] offline =
+      "off"` in config; the policy silences one *scope* each and the scope's cache is pinned to
+      `CacheMode::Offline`, so no call site had to learn about it:
       * `--offline=weather` — weather answers come from the cache only; location resolution may use
         the bundled table and the network geocoder (this is the "cache-only weather" mode);
-      * `--offline=geo` — location resolution uses the bundled table only (no Nominatim, no
-        Open-Meteo geocoding, no IP lookup); weather is fetched live (the "local geocoding with live
-        weather" mode);
+      * `--offline=geo` — location resolution stops at the bundled table; a *cached* geocoder answer
+        is still served (step 04 promised that, and it opens no socket) and a cold miss is the same
+        not-found as a table miss; weather is fetched live (the "local geocoding with live weather"
+        mode);
       * `--offline` / `--offline=all` — no socket at all: bundled geocoding, cache-only weather, no
-        IP lookup, `Error::Upstream`-free failure with
-        `error: offline and no cached forecast for <place>` (exit 3) when the cache is empty.
-- ⬜ `auto` geo strategy (`[geo] strategy = "auto"`, the default): bundled table first for
-      non-`~` queries; the network geocoder is consulted only when the table yields no hit or the
-      query is `~`-prefixed, and the chosen source is echoed under `--verbose`.
-- ⬜ `cirrocast location search <query> [--offline] [--all] [--limit N] [--exact]`: the winner line
-      by default (identical shape to the network path, so the two do not diverge) and the ranked
-      candidate table — number, name, admin/country, population, coordinates and IANA zone — under
-      `--all` (step 20 defines the flag; this step must not ship a second search shape);
-      `--offline` forces the bundle and never opens a socket; a missing name exits 5 with
-      `error: location not found: <query> (no offline match)`.
-- ⬜ Licensing/credits: `REUSE.toml` annotation for `src/geo/data/*.bin.gz` and `src/geo/data/SNAPSHOT`
-      with a GeoNames copyright line (`GeoNames (https://www.geonames.org/)`) and the licence
-      expression CC-BY-4.0 (the data is CC-BY-4.0 and is *not* relicensed to GPL);
-      the README credits section gains "City data: GeoNames (CC BY 4.0), dump <date>"; the builder
-      source stays GPL-3.0-or-later; `reuse lint` must stay green with the new annotation.
-- ⬜ Size accounting task: `ls -l src/geo/data/*.bin.gz` and `cargo build --release` before/after
+        IP lookup. The empty-cache failure is exit 3 and reads `offline: no cached open-meteo
+        forecast for <place> at <key path>`, followed by the rerun hint — the shipped wording keeps
+        the provider, the key path and the fix next to the plan's "no cached forecast for
+        <place>".
+- ✅ `[geo] strategy` (`auto` — the default, bundled table first for non-`~` queries with the
+      network geocoder only on a miss; `bundled` — the table only; `network` — the geocoder only,
+      the pre-step-18 behaviour). The chosen source is echoed under `--verbose`
+      (`location: <query> resolved from the bundled city database` / `… asking the geocoder`).
+- ✅ `cirrocast location search <query> [--offline] [--all] [--limit N] [--exact]`: the winner line
+      by default (the shared `location_line`, so the two sources cannot diverge) and the ranked
+      candidate table under `--all` — ` 1. <name>, <admin1>, <country> (<lat>, <lon>) <tz>
+      (population N)`, i.e. the winner line plus a rank number and the population; `--offline`
+      forces the bundle and never opens a socket; `--exact` is the `:query` narrowing for the flag
+      spelling. A missing name exits 5 and reports `location not found: no location found for
+      <query> (no offline match)` — the first part is the existing `LocationNotFound` wording.
+- ✅ Licensing/credits: `REUSE.toml` annotation for `src/geo/data/*.bin.gz` and
+      `src/geo/data/SNAPSHOT` with `GeoNames (https://www.geonames.org/)` and the licence expression
+      CC-BY-4.0 (the data is CC-BY-4.0 and is *not* relicensed to GPL); the runtime prints
+      `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` for an offline-resolved
+      place; the README's data-sources table names the bundled snapshot (dump date in `SNAPSHOT`);
+      the builder source stays GPL-3.0-or-later; `reuse lint` reports 350/350 files.
+- ✅ Size accounting task: `ls -l src/geo/data/*.bin.gz` and `cargo build --release` before/after
       this step, with both numbers recorded in `docs/plans/21-perf-and-resource-budget.md` (phase E
-      owns the budget; the measured 2.55 MiB is its input, not a surprise).
-- ⬜ Tests (`tests/offline_geo.rs`): Springfield (ambiguous, 9 rows — ordering pinned), São Paulo
-      with and without the diacritic, 北京/Beijing/Peking, Wien/Vienna, `MÜNCHEN` lowercase input, a
-      CJK query against the ASCII-only index, a missing city (exit 5), `--exact` vs prefix, the
-      ranking-equivalence test against the recorded step-04 geocoder fixtures, and the startup
-      assertion below.
+      owns the budget; the measured total is its input, not a surprise). The committed snapshot is
+      877 510 B (`cities.bin.gz`) + 2 503 121 B (`keys.bin.gz`) = 3 380 631 B ≈ 3.22 MiB, larger than
+      the 2.55 MiB projection because the rows carry the display *and* ascii name plus the
+      geonameid, and the dump is the 2026-09-03 one (34 133 rows, 304 557 keys).
+- ✅ Tests (`tests/offline_geo.rs`, plus `tests/offline_lazy.rs` for the startup assertion):
+      Springfield (`--all` prints 10 rows — the 8 exact-name rows in population order, then the
+      exact-key/prefix rows — ordering pinned), São Paulo with and without the diacritic,
+      北京/Beijing/Peking, Wien/Vienna (the exonym wins), `MÜNCHEN` uppercase input, CJK queries,
+      a missing city (exit 5, `(no offline match)`), `--exact` vs prefix, `[geo] strategy` network /
+      bundled, the three offline modes' observable differences, the ranking-equivalence test
+      against the recorded step-04 geocoder fixtures, and the startup assertion. No test opens a
+      socket (`CIRROCAST_FORBID_NETWORK=1` in every sandbox).
 
 ## Design notes
 
@@ -137,20 +161,26 @@ incremental dataset updates over the network. `location search` does not gain pa
 ## Verification
 
 ```bash
-cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && reuse lint
+cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test && reuse lint
 
 cargo run -q -- location search --offline --all Springfield
-#   9 rows, ranked by population descending, identical order to `location search --all Springfield`
-cargo run -q -- location search --offline --all sao paulo     # São Paulo, SP, BR — folding works
-cargo run -q -- location search --offline --all 北京          # Beijing — id 1816670
-cargo run -q -- location search --offline --all Wien          # Wien/Vienna both listed
+#   10 rows: the 8 exact-name rows by population, then Springfield Gardens (an exact alternate key
+#   but no exact display name) and Springfield Lakes (a prefix); identical to `location search --all
+#   Springfield` under the default `geo.strategy = "auto"`
+cargo run -q -- location search --offline --all sao paulo     # São Paulo, BR — folding works
+cargo run -q -- location search --offline --all 北京          # Beijing (geonameid 1816670)
+cargo run -q -- location search --offline --all Wien          # Vienna first (exonym), then Wiener
+                                                              # Neustadt and Vientiane
 cargo run -q -- location search --offline Springfield         # one winner line, exit 0
 cargo run -q -- location search --offline Nowhereville; echo $?    # error, exit 5
-cargo run -q -- --offline=geo -f one-line Sao Paulo     # local geocoding + live weather, exit 0
+cargo run -q -- --offline=geo -f one-line Sao Paulo     # local geocoding + live weather
 cargo run -q -- --offline -f plain Beijing              # cached only; without cache: exit 3
 strace -f -e trace=network cargo run -q -- --offline=all -f plain 北京 2>&1 | grep -c connect
 #   0 — no socket is opened in the total no-network mode
 ```
+
+All of the above were run in a throwaway `XDG_*` sandbox; the socket count came out `0` (and the
+suite itself never opens one: every sandbox sets `CIRROCAST_FORBID_NETWORK=1`).
 
 Startup assertion (in `tests/offline_geo.rs`, `assert_cmd`): the median of five
 `cirrocast --version` runs is **< 50 ms** and no decode occurs — the test additionally asserts
@@ -159,14 +189,18 @@ not materialised eagerly.
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ `location search --offline` and the network path return the same ranked order for the four
-  fixture queries (Springfield, São Paulo, Beijing, Vienna).
-- ⬜ `--offline=weather|geo|all` behave exactly as the three documented modes; `--offline=all` opens
-  no socket (verified with `strace`).
-- ⬜ `cargo build --no-default-features` builds and `cargo test --no-default-features` passes (the
-  non-offline path is not a stub); `--version`/`--help` never decode the table, median startup < 50 ms.
-- ⬜ `REUSE.toml` credits GeoNames with CC-BY-4.0, README credits the dump date, `reuse lint` green.
+- ✅ `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test`,
+      `reuse lint` clean; `cargo build --no-default-features` and `cargo test --no-default-features`
+      pass (the offline tests are `#[cfg(feature = "offline-geo")]`, the rest of the suite runs).
+- ✅ `location search --offline` and the network path return the same ranked order for the four
+  fixture queries (Springfield, São Paulo, Beijing, Vienna): one shared ranking function, and the
+  recorded step-04 fixtures pick the same winner offline (asserted in `tests/offline_geo.rs`).
+- ✅ `--offline=weather|geo|all` behave exactly as the three documented modes; `--offline=all` opens
+  no socket (every test runs with `CIRROCAST_FORBID_NETWORK=1`, and `-v` names the mode).
+- ✅ `--version`/`--help` never decode the table (asserted through `offline::index_loaded()` and a
+  median of five real `--version` runs under 50 ms in `tests/offline_lazy.rs`).
+- ✅ `REUSE.toml` credits GeoNames with CC-BY-4.0, the README documents the snapshot and the
+  builder, and `reuse lint` is green.
 
 ## Risks
 
@@ -192,3 +226,35 @@ not materialised eagerly.
   (B01/B02) and the remaining work was renumbered so the number is the execution order; this step
   keeps number 18, and the references above now read 20 (picker), 21 (budget), 25 (reverse geocoding)
   and 28 (docs).
+- 2026-10-04 — step implemented. The candidate-evaluation corrections are repeated here as the
+  deliverable promised: `world-cities` and `city-timezones` are absent from crates.io (HTTP 404),
+  `geocoding` 0.4.0 has no bundled dataset (network providers only), so `GeoNames` `cities15000` is
+  vendored and indexed by ~300 lines of our own code. Deviations from the plan text, all amended in
+  the deliverables above: the city member stores the geonameid, the display name and the ascii name
+  (not only the ascii name) because the ranking and the fixture test need them; `search` returns
+  `Result` so a corrupt blob is a typed error; `[geo] strategy` also accepts `bundled`/`network`; the
+  offline geo mode still serves a *cached* geocoder answer (step 04's documented behaviour) and maps
+  a cold miss to the same exit-5 not-found; the empty-cache message keeps the provider and key path
+  next to the plan's wording; Springfield is 10 rows with `--limit 10` (8 exact + 2 tier-two), not 9.
+- 2026-10-04 — data provenance: `download.geonames.org` timed out from the build machine (60 s, both
+  direct and through the harness), so the snapshot came from the Wayback Machine's capture of the
+  *official* `cities15000.zip` (`web.archive.org/web/20260903030259id_/…`): 3 314 844 B zip,
+  `cities15000.txt` 8 424 283 B, 34 133 rows, newest row modification date 2026-09-02, input SHA-256
+  `714c6d09…` recorded in `src/geo/data/SNAPSHOT`. A 2023 GitHub mirror was found first and
+  explicitly rejected as outdated. The builder was re-run against the same input and reproduced both
+  members byte for byte.
+- 2026-10-04 — verification: `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
+  -- -D warnings`, `cargo test --workspace --locked`, `reuse lint` (350/350) and `cargo build/test
+  --no-default-features` all clean; the smoke runs in `## Verification` were executed in a throwaway
+  `XDG_*` sandbox, and `strace -f -e trace=network` counted **0** `connect()` calls for
+  `--offline=all`. The `--version` median is 1.6 ms and `location search --offline Beijing` 61 ms on
+  the maintainer's machine; both are recorded in step 21's measured-inputs section together with the
+  3.22 MiB embedded total and the 12.27 → 15.87 MB release-binary delta.
+- 2026-10-04 — process change recorded: the root manifest is now a workspace (`build/geo-table`), so
+  `AGENTS.md` and the CI clippy/test jobs run with `--workspace` — without it a bare `cargo
+  clippy`/`cargo test` at the root would silently skip the builder.
+- 2026-10-04 — follow-up measurement after the review pass: `Cities::select` now skips unwanted
+  rows without materialising them (the id is read with a peek and the row is walked with bounds
+  checks only), which brought `location search --offline Beijing` from 61 ms to **50 ms** and the
+  release binary to 15 875 368 B; step 21's table carries the final numbers. The builder was re-run
+  once more and the members were again byte-identical.

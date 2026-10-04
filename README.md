@@ -29,12 +29,12 @@ Weather report: Beijing, Beijing Municipality, China (39.91, 116.40)
 
 ```
 $ cirrocast Beijing --format plain
-location: Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
+location: Beijing, CN (39.91, 116.40) Asia/Shanghai
 updated: 2026-09-30T19:45:00+08:00
 current: Clear sky 18°C (feels 13°C) wind 13km/h NW humidity 11% precip 0.0mm pressure 1021hPa visibility 17km
 day 2026-09-30: Morning Partly cloudy 17°C 0.0mm (0%) wind 19km/h NNW | Noon Overcast 20°C 0.0mm (0%) wind 19km/h NW | Evening … | Night …
 … one `day` line per forecast day …
-Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
+Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/
 Data: Open-Meteo.com (CC BY 4.0)
 attribution: open-meteo https://api.open-meteo.com/v1/forecast
 ```
@@ -137,7 +137,7 @@ cirrocast [OPTIONS] [LOCATION]
       --aqi-index <SCALE>       us | european: the AQI scale behind the panel colour and %q
       --moon                    append the locally computed moon/sun block (no request)
       --template <TEMPLATE>     one-line template or @PRESET
-      --no-cache | --refresh | --offline
+      --no-cache | --refresh | --offline[=<weather|geo|all>]
       --timeout <SECS>
       --color <WHEN>            auto | always | never
       --width <COLS>            layout width for the table formats, 1..=500
@@ -148,7 +148,7 @@ cirrocast config     <path|init|show|get|set|edit|validate [--offline]>
 cirrocast key        <set [--stdin]|rm|list>
 cirrocast provider   <list|info>
 cirrocast cache      <stat|clean [--all] [--offline]>
-cirrocast location   <search [--ip] [--limit <N>] [--timeout <SECS>]>
+cirrocast location   <search [--offline] [--all] [--exact] [--ip] [--limit <N>] [--timeout <SECS>]>
 cirrocast completion <bash|zsh|fish|elvish|powershell> [--bin-name NAME]
 cirrocast man [--bin-name NAME]
 ```
@@ -181,6 +181,8 @@ tier it came from.
 | Colour | `--color` | — | `render.color` |
 | Width | `--width` | — | `render.width` |
 | AQI scale | `--aqi-index` | — | `air.index` |
+| Offline policy | `--offline[=<weather\|geo\|all>]` | — | `network.offline` |
+| Geo strategy | — | — | `geo.strategy` |
 
 ### Exit codes
 
@@ -342,7 +344,9 @@ cirrocast @39.9042,116.4074 -f plain    # coordinates: no geocoding request at a
 cirrocast --lat 39.9042 --lon 116.4074 -f plain   # the same, as flags
 cirrocast Beijing -u us                 # °F, mph, inHg, mi, in
 cirrocast Beijing --days 0              # current conditions only
-cirrocast Beijing --offline             # cached answer only, never the network
+cirrocast Beijing --offline             # bundled names + cached weather, no socket at all
+cirrocast Beijing --offline=geo         # resolve the name from the bundle, fetch live weather
+cirrocast Beijing --offline=weather     # cache-only weather, live geocoding
 cirrocast Beijing --refresh             # ignore the cache and replace it
 cirrocast completion bash > ~/.local/share/bash-completion/completions/cirrocast
 cirrocast man > cirrocast.1
@@ -421,17 +425,28 @@ the same command twice gets the same answer:
 
 | Argument | Meaning |
 |---|---|
-| `Beijing` | fuzzy search through the keyless Open-Meteo geocoding API |
-| `:Beijing` | only a candidate whose name matches exactly (case-insensitively) |
+| `Beijing` | fuzzy search: the bundled city table first, the keyless Open-Meteo geocoding API on a miss |
+| `:Beijing` | only a candidate whose name matches exactly (diacritics and punctuation folded) |
 | `~Tsinghua` | OpenStreetMap/Nominatim, cached for 30 days and throttled to one request per second |
 | `@39.9042,116.4074` | coordinates; no geocoding request at all |
 | *(empty)* | `location.default`, else the public-IP lookup |
 
-Multiple fuzzy candidates are ranked by exact name, then population, then upstream order, and the
-ambiguity is reported once on stderr (suppressed by `-q`) with the winning place; add `:` to demand
-an exact name. Coordinates and `~` results carry a provisional time zone until the forecast response
-supplies the location's real one, and `~` output prints `Location data © OpenStreetMap contributors`
-(ODbL).
+Multiple fuzzy candidates are ranked by exact name, then a name prefix, then population, then the
+source's own order, and the ambiguity is reported once on stderr (suppressed by `-q`) with the
+winning place; add `:` (or `--exact`) to demand an exact name. Coordinates and `~` results carry a
+provisional time zone until the forecast response supplies the location's real one, and `~` output
+prints `Location data © OpenStreetMap contributors` (ODbL).
+
+**Offline names.** A `GeoNames` `cities15000` snapshot is embedded in the binary (about 3.2 MiB
+compressed, decoded lazily and never written), so a plain name resolves with no network at all:
+folding is NFKD-based, which is why `São Paulo`/`Sao Paulo`, `MÜNCHEN`/`munchen`,
+`北京`/`Beijing`/`Peking` and `Wien`/`Vienna` all reach their city. `[geo] strategy` picks the order —
+`auto` (the default: the table first, the geocoder on a miss), `bundled` (the table only) or
+`network` (the geocoder only) — and the offline path ranks with the same function as the network
+path. The table carries the ISO country code rather than the country name the geocoder reports, and
+no admin-1 division; `-v` says which source answered. Refresh the snapshot with
+`cargo run -p geo-table -- <cities15000.txt> src/geo/data` (the `SNAPSHOT` file records the dump date
+and the input's SHA-256).
 
 Non-Latin names are searched in their own script — `新乡`, `Москва`, `Αθήνα`, `القاهرة`, `תל אביב`,
 `กรุงเทพ` — because the geocoding service indexes place names per language and an English request
@@ -440,8 +455,10 @@ is the reliable one (`~新乡市` resolves the city, a bare `新乡` only finds 
 indexes under that name), so both routes are worth trying when a name comes back wrong.
 
 ```bash
-cirrocast location search Beijing          # Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai
+cirrocast location search Beijing          # Beijing, CN (39.91, 116.40) Asia/Shanghai
 cirrocast location search :Beijing         # same line, no ambiguity note
+cirrocast location search --all Beijing    # the ranked candidates, numbered, with populations
+cirrocast location search --offline sao paulo   # bundled table only, no socket
 cirrocast location search '~Tsinghua University' --limit 5
 cirrocast location search @39.9042,116.4074
 ```
@@ -450,8 +467,8 @@ cirrocast location search @39.9042,116.4074
 about a place you asked for, and it is never implicit — it runs only with `--ip` or when no location
 is configured anywhere (`location.default` empty and no positional argument). It sends the public IP
 to `ipwho.is`, falling back to `ipapi.co` (`CIRROCAST_IP_SERVICE=auto|ipwhois|ipapi`), caches the
-answer for 24 hours and names the service it used on stderr. `--offline` serves the cached answer and
-touches no network.
+answer for 24 hours and names the service it used on stderr. An offline policy that silences the
+geo scope (`--offline`, `--offline=geo`) refuses the lookup instead, and never opens a socket.
 
 ## Data sources, limits and licences
 
@@ -472,7 +489,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [World Weather Online](https://www.worldweatheronline.com/) | `-p worldweatheronline` | free tier: 100 requests/day, up to 5 forecast days per its FAQ; `format=json` is sent explicitly | data proprietary; free keys must credit WorldWeatherOnline.com — the rendered report ends with `Data: WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/` |
 | [Pirate Weather](https://pirateweather.net/) | `-p pirateweather` | free tier: 10 000 calls/month, 1–4 requests/second; `extend=hourly` is sent for the 7-day horizon | data proprietary; no attribution is mandated — the rendered report ends with `Data: Pirate Weather — https://pirateweather.net/` |
 | [QWeather](https://www.qweather.com/) | `-p qweather` | free allowance: first 50 000 requests/month at ¥0, QPM 3 000; needs the account API host in `[providers.qweather].host` | data proprietary; the rendered report ends with `Data: QWeather — https://www.qweather.com/` |
-| [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding | — | CC-BY-4.0 |
+| [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding, and the bundled offline city table (`src/geo/data`, snapshot `cities15000`, dump date in `SNAPSHOT`) | — | CC-BY-4.0; the bundled path prints `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` |
 | [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
 | [api.weather.gov](https://api.weather.gov/) (NOAA/NWS) | alerts for the US and territories | a descriptive `User-Agent` (sent); public-domain data | no credit mandated; the source is named in the listing |
 | [MeteoAlarm](https://api.meteoalarm.org/) | alerts for EUMETNET members | a bearer token (`CIRROCAST_METEOALARM_KEY`) that the portal issues to members and re-distributors; the source is optional | cached warnings are for the local user only, not for redistribution |
@@ -490,7 +507,8 @@ ENSEMBLE)`) travels inside the air panel — the `art-table` footer area, the `p
 forecast data. The weather output carries the credit the data licence asks for — `Data: Open-Meteo.com (CC BY 4.0)` or
 `Data: SMHI (CC BY 4.0 SE)` — plus a provenance line (`attribution: open-meteo
 https://api.open-meteo.com/v1/forecast`), both taken from the provider registry rather than
-hard-coded, and a geocoded place adds the GeoNames line next to them. Where the credit travels
+hard-coded, and a resolved place adds the matching GeoNames line next to them (`via Open-Meteo` for
+the geocoder, `by GeoNames` for the bundled table). Where the credit travels
 depends on the format: the `art-table` footer, the `plain` document and the `json` `attribution`
 object carry it themselves, while `one-line` — one line by contract — prints it to stderr.
 

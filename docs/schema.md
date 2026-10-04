@@ -59,7 +59,7 @@ present).
 | `location.lon` | number | degrees | no | longitude, WGS 84 |
 | `location.timezone` | string | — | no | IANA name the times are expressed in |
 | `location.elevation_m` | number | m | yes | elevation above sea level |
-| `location.source` | string | — | no | `geocoder`, `osm`, `coordinates`, `ip`, `config` or `station` |
+| `location.source` | string | — | no | `geocoder`, `offline`, `osm`, `coordinates`, `ip`, `config` or `station` |
 | `location.station` | string | — | yes | ICAO identifier; `null` for every non-station location |
 | `current` | object | — | yes | current conditions; `null` for an observation-less backend |
 | `current.time` | string | — | no | observation time at the location's offset |

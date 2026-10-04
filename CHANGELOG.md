@@ -13,7 +13,37 @@ records how each of them changes and which changes are breaking.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **Offline city database (step 18).** A `GeoNames` `cities15000` snapshot (CC BY 4.0, dump date and
+  input checksum in `src/geo/data/SNAPSHOT`) is embedded in the binary — about 3.2 MiB compressed,
+  decoded lazily on the first name lookup and never written — so a plain city name resolves to
+  coordinates, a time zone and a country code with no network at all. Folding is NFKD-based, so
+  `São Paulo`/`Sao Paulo`, `MÜNCHEN`/`munchen`, `北京`/`Beijing`/`Peking` and `Wien`/`Vienna` all
+  reach their city, and the offline and network paths rank through one shared function. New:
+  `--offline[=<weather|geo|all>]` (`weather` = cache-only forecast with live geocoding, `geo` =
+  bundled names with live weather, bare/`all` = no socket at all) and its default
+  `[network] offline`; `[geo] strategy` = `auto` (bundled table first, network on a miss — the new
+  default), `bundled` or `network`; `location search --all` prints the ranked candidate table and
+  `--exact` is the flag spelling of `:query`. Offline-resolved places print
+  `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/`, and a build with
+  `--no-default-features` drops the table (`offline-geo` is a default feature) and falls back to
+  the network geocoder.
+* `cirrocast`'s workspace gained the dev-only `build/geo-table` builder that produces
+  `src/geo/data/*.bin.gz` from a `cities15000.txt` (`cargo run -p geo-table -- <file> src/geo/data`);
+  its output is byte-for-byte deterministic.
+
+### Changed
+
+* A plain location name (`Beijing`, `:Beijing`) is now resolved by the bundled city table first and
+  only falls back to the Open-Meteo geocoding API when the table has no hit. The table carries the
+  ISO country code rather than the country name the geocoder reports, and no admin-1 division, so a
+  default run's location line reads `Beijing, CN (…)` instead of `Beijing, Beijing Municipality,
+  China (…)`; `[geo] strategy = "network"` restores the previous path.
+* `--offline` is no longer a boolean: bare `--offline` still means "no socket at all" (now spelled
+  `--offline=all`), and the cache-only-weather behaviour of previous releases is `--offline=weather`.
+  `--offline=geo` is new. The empty-cache message now reads `offline: no cached <provider> forecast
+  for <place> at <key path>`, followed by the rerun hint.
 
 ## [1.1.0] - 2026-10-04
 

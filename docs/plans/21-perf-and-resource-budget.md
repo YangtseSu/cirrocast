@@ -107,6 +107,32 @@ evidence — keeping the decision, recording why.
   budgets that are actually promised; hyperfine covers the CLI-level claim), `cargo-benchcmp`
   (unmaintained), wall-clock asserts inside `cargo test` (flaky and load-dependent).
 
+### Measured inputs from step 18 (2026-10-04)
+
+The offline city database is the largest single asset the binary carries, so its numbers are recorded
+here as the budget's input rather than discovered later. Machine: the maintainer's CachyOS box,
+`x86_64`, release profile as shipped in `Cargo.toml` (`lto = "thin"`, `strip = true`), rustc stable.
+
+| Measurement | Value |
+|---|---|
+| `src/geo/data/cities.bin.gz` | 877 510 B |
+| `src/geo/data/keys.bin.gz` | 2 503 121 B |
+| embedded total | 3 380 631 B ≈ **3.22 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-09-03 dump: 34 133 rows, 304 557 keys) |
+| release binary before step 18 | 12 270 752 B |
+| release binary after step 18 | 15 875 368 B (+3 604 616 B ≈ +3.44 MiB: the data plus ≈220 KB of decoder/`unicode-normalization` code) |
+| `--version`, median of 5 | **2.0 ms** (budget: 20 ms) |
+| `--help`, median of 3 | 2.0 ms |
+| `location search --offline Beijing`, median of 5 | **50 ms** (index + row decode, ranking; the step-18 contract is "well under a second") |
+| `location search --offline --all Springfield`, median of 5 | 49 ms |
+| RSS, `--version` / an offline search | ≈14 MB / ≈25 MB (`ru_maxrss` of the child, coarse; the step-18 decode holds the decompressed members transiently) |
+
+Two consequences for this step: the 5 MB default-binary budget is already exceeded by the pre-step-18
+build (12.3 MB) and is not reachable by turning the table off (that saves 3.6 MB of 15.9 MB), so the
+budget itself needs re-deriving from the measured baseline; and if the table must go, step 18's
+default is a one-line flip (`default = []` in `Cargo.toml` plus the README/CHANGELOG notes it
+promised). The lazy-decode deliverable here is already satisfied by step 18's `LazyLock` + the
+`tests/offline_lazy.rs` assertion, so this step re-measures rather than re-implements it.
+
 ## Out of scope
 
 Cross-platform performance parity (the Windows and macOS numbers are reported in backlog B02's release

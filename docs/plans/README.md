@@ -79,7 +79,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 15 | D | [alerts-and-severity](15-alerts-and-severity.md) | ✅ done | 10, 12 |
 | 16 | D | [air-quality-and-pollen](16-air-quality-and-pollen.md) | ✅ done | 03, 08 |
 | 17 | D | [moon-phase-and-astro](17-moon-phase-and-astro.md) | ✅ done | 03, 08 |
-| 18 | D | [offline-city-database](18-offline-city-database.md) | ⬜ not-started | 04, 05 |
+| 18 | D | [offline-city-database](18-offline-city-database.md) | ✅ done | 04, 05 |
 | 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ⬜ not-started | 08, 14 |
 | 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ⬜ not-started | 04, 05, 08, 18 |
 | 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ⬜ not-started | 12, 18, 19 |
@@ -164,7 +164,11 @@ src/
     open_meteo.rs    Open-Meteo geocoding (no key)
     nominatim.rs     OSM Nominatim fallback (`~query`), 1 req/s + mandatory cache
     ip.rs            ipwho.is primary, ipapi.co fallback
+    offline.rs       bundled GeoNames city table: folded-key search, no network (step 18)
+    rank.rs          the one candidate ordering every source feeds
+    fold.rs          the NFKD name folding shared by the builder and the runtime
     tz.rs            offline coordinate → IANA zone lookup (`tzf-rs`), for payloads that carry none
+    data/            cities.bin.gz + keys.bin.gz + SNAPSHOT, produced by `build/geo-table`
   http.rs            shared HTTP client: timeouts, UA, retries/backoff, proxy, error taxonomy
   cache.rs           on-disk cache: keys, TTLs, atomic writes, offline mode
   air/
@@ -378,8 +382,12 @@ schema_version = 1
   same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
   mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
   reports every namespace it finds.
-* `--no-cache`, `--refresh`, `--offline` (cache-only, never touches the network), `cache stat`,
-  `cache clean`.
+* `--no-cache`, `--refresh`, `--offline[=<weather|geo|all>]`, `cache stat`, `cache clean`. An
+  offline policy silences one *scope*: `weather` pins the forecast (and the alert/air panels) to the
+  cache, `geo` stops name resolution at the bundled table (a cached geocoder answer is still served
+  and never opens a socket), and `all` does both — a name lookup with no table hit exits 5 with
+  `(no offline match)`, and a cold weather cache exits 3 naming the missing entry. `[network]
+  offline` supplies the default; the flag wins.
 
 ### Error handling and exit codes (binding)
 
@@ -430,10 +438,13 @@ cirrocast location <search>                 # `location search [--offline] [--al
 cirrocast completion <shell>    cirrocast man
 ```
 
-Location argument syntax: bare `Beijing` = fuzzy search; `:Beijing` = exact name match; `~Tsinghua` =
-OpenStreetMap/Nominatim; `@39.9,116.4` = coordinates; empty = config `location.default`, else public
-IP. Fuzzy matches are ranked deterministically (exact-name, then population, then source order) and
-the chosen location is echoed in the header. When a lookup yields **more than one candidate** — a
+Location argument syntax: bare `Beijing` = fuzzy search (the bundled city table first under
+`[geo] strategy = "auto"`, the network geocoder on a miss); `:Beijing` = exact name match (folded,
+so `:Sao Paulo` matches `São Paulo`); `~Tsinghua` = OpenStreetMap/Nominatim; `@39.9,116.4` =
+coordinates; empty = config `location.default`, else public IP. Fuzzy matches are ranked
+deterministically (exact name, then a name prefix, then population, then source order — one
+implementation in `src/geo/rank.rs` for both sources) and the chosen location is echoed in the
+header. When a lookup yields **more than one candidate** — a
 name search, the offline table, a coordinate or IP answer named by several nearby places — the tool
 asks: on a terminal (stdin and stderr) the ranked list is printed on stderr and one line is read
 (step 20); `--pick` forces the prompt, `--yes`/`[location] pick = "never"` and any non-terminal run
