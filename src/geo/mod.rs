@@ -5,8 +5,11 @@
 //!
 //! A location reaches `cirrocast` in exactly one of the forms enumerated by [`LocationSpec`], so
 //! every accepted spelling has one code path and nothing is guessed twice: the one ambiguous form
-//! (a fuzzy name) is resolved by the total order implemented in [`rank`], and the winner is echoed
-//! by the caller. Coordinates and OpenStreetMap queries never touch the Open-Meteo geocoder.
+//! (a fuzzy name) is resolved by the total order implemented in [`rank`](crate::geo::rank), and
+//! the winner is echoed by the caller. Coordinates and OpenStreetMap queries never touch the
+//! Open-Meteo geocoder, and a name may be answered by the bundled `GeoNames` table instead
+//! ([`offline`](crate::geo::offline), step 18) — the ordering rule is shared, so the two sources
+//! cannot rank the same query differently.
 //!
 //! The module is synchronous and side-effect free except for [`Geocoder`] implementations, whose
 //! constructors receive the shared HTTP client and cache of steps 05/06. It performs no I/O of its
@@ -15,7 +18,10 @@
 pub mod fold;
 pub mod ip;
 pub mod nominatim;
+#[cfg(feature = "offline-geo")]
+pub mod offline;
 pub mod open_meteo;
+pub mod rank;
 pub mod tz;
 
 use std::fmt;
@@ -24,6 +30,7 @@ use std::str::FromStr;
 use chrono_tz::Tz;
 
 use crate::error::{Error, Result};
+use crate::geo::rank::{rank, same_name};
 use crate::model::{Location, LocationSource};
 
 /// The four accepted spellings, shared by the usage errors and the CLI help so that the two can
@@ -140,32 +147,13 @@ pub trait Geocoder {
     fn search(&self, query: &str, limit: u8) -> Result<Vec<Location>>;
 }
 
-/// Orders candidates the way [`resolve`] picks one: exact name match, then larger population, then
-/// the upstream order (the sort is stable), keeping at most `limit` entries.
-///
-/// The order is total and depends on nothing but the input, so re-running a query resolves to the
-/// same location even when the service returns its hits in a different order — the upstream order
-/// is only the last tiebreaker.
-#[must_use]
-pub fn rank(mut results: Vec<Location>, query: Option<&str>, limit: u8) -> Vec<Location> {
-    results.sort_by(|a, b| {
-        let a_exact = query.is_some_and(|query| name_matches(&a.name, query));
-        let b_exact = query.is_some_and(|query| name_matches(&b.name, query));
-        b_exact
-            .cmp(&a_exact)
-            .then_with(|| b.population.unwrap_or(0).cmp(&a.population.unwrap_or(0)))
-    });
-    results.truncate(usize::from(limit));
-    results
-}
-
 /// Picks one location out of the geocoder hits for `spec`.
 ///
 /// `LatLon` bypasses ranking and builds the coordinate location itself, because the geocoding
 /// endpoint has no reverse lookup; its zone stays UTC and is provisional until a provider reports
-/// the real one. Every other spec ranks `results` and fails with [`Error::LocationNotFound`] (exit
-/// code 5) when nothing is left — for `Exact` that includes "hits came back, but none of them is
-/// named exactly like the query".
+/// the real one. Every other spec ranks `results` with the shared [`rank`](crate::geo::rank::rank)
+/// order and fails with [`Error::LocationNotFound`] (exit code 5) when nothing is left — for
+/// `Exact` that includes "hits came back, but none of them is named exactly like the query".
 pub fn resolve(
     results: Vec<Location>,
     spec: &LocationSpec,
@@ -179,7 +167,7 @@ pub fn resolve(
     let candidates: Vec<Location> = match spec {
         LocationSpec::Exact(_) => results
             .into_iter()
-            .filter(|location| query.is_some_and(|query| name_matches(&location.name, query)))
+            .filter(|location| query.is_some_and(|query| same_name(location, query)))
             .collect(),
         _ => results,
     };
@@ -286,6 +274,9 @@ pub fn attribution_line(location: &Location) -> Option<&'static str> {
         LocationSource::Geocoder => Some(
             "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
         ),
+        LocationSource::Offline => {
+            Some("Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/")
+        }
         LocationSource::Osm => Some("Location data © OpenStreetMap contributors (ODbL)"),
         // A station's coordinates are US-government public-domain metadata, which asks for no
         // credit line; the *weather* credit (`aviationweather.gov`) travels in the report's
@@ -313,6 +304,16 @@ pub fn place(location: &Location) -> String {
         parts.push(location.country.clone());
     }
     parts.join(", ")
+}
+
+/// The error a name lookup the bundled table could not answer reports (step 18).
+///
+/// Shared with [`offline`](crate::geo::offline) and the CLI so the `(no offline match)` marker is
+/// written once and scripts can rely on it.
+pub(crate) fn offline_not_found(query: &str) -> Error {
+    Error::LocationNotFound(format!(
+        "no location found for `{query}` (no offline match)"
+    ))
 }
 
 /// The location behind `@lat,lon`: named after the pair, in UTC until a provider says otherwise.
@@ -345,11 +346,6 @@ pub fn provisional_zone(location: &Location) -> bool {
         location.source,
         LocationSource::Coordinates | LocationSource::Osm
     ) && location.tz == Tz::UTC
-}
-
-/// Case-insensitive name comparison for the exact-match ranking key and `:query` filtering.
-fn name_matches(candidate: &str, query: &str) -> bool {
-    candidate.trim().eq_ignore_ascii_case(query.trim())
 }
 
 /// Parses the text after `@`; every failure names the input and the accepted forms.
@@ -402,7 +398,7 @@ fn usage(message: impl fmt::Display) -> Error {
 mod tests {
     use chrono_tz::Tz;
 
-    use super::{LocationSpec, Resolution, ambiguity_note, location_line, rank, resolve};
+    use super::{LocationSpec, Resolution, ambiguity_note, location_line, resolve};
     use crate::model::{Location, LocationSource};
 
     /// A candidate with the fields the ranking cares about.
@@ -420,53 +416,6 @@ mod tests {
             source: LocationSource::Geocoder,
             station: None,
         }
-    }
-
-    #[test]
-    fn exact_name_beats_population_and_upstream_order() {
-        let hits = vec![
-            candidate("Beijing City", None, Some(9_000_000)),
-            candidate("Beijing", None, Some(10)),
-        ];
-        let ranked = rank(hits, Some("Beijing"), 10);
-        assert_eq!(ranked[0].name, "Beijing");
-        assert_eq!(ranked[0].population, Some(10));
-    }
-
-    #[test]
-    fn population_beats_upstream_order_and_order_breaks_ties() {
-        let hits = vec![
-            candidate("First", None, Some(100)),
-            candidate("Second", None, Some(500)),
-            candidate("Third", None, None),
-        ];
-        let ranked = rank(hits.clone(), None, 10);
-        assert_eq!(
-            ranked
-                .iter()
-                .map(|location| location.name.as_str())
-                .collect::<Vec<_>>(),
-            ["Second", "First", "Third"]
-        );
-        let ranked = rank(hits, Some("Nope"), 10);
-        assert_eq!(ranked[0].name, "Second");
-    }
-
-    #[test]
-    fn rank_keeps_the_limit_after_sorting() {
-        let hits = vec![
-            candidate("Small", None, Some(1)),
-            candidate("Big", None, Some(2)),
-            candidate("Huge", None, Some(3)),
-        ];
-        let ranked = rank(hits, None, 2);
-        assert_eq!(
-            ranked
-                .iter()
-                .map(|location| location.name.as_str())
-                .collect::<Vec<_>>(),
-            ["Huge", "Big"]
-        );
     }
 
     #[test]
@@ -615,6 +564,11 @@ mod tests {
             super::attribution_line(&location)
                 .expect("a geocoded place credits GeoNames and Open-Meteo")
                 .contains("GeoNames")
+        );
+        location.source = LocationSource::Offline;
+        assert_eq!(
+            super::attribution_line(&location),
+            Some("Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/")
         );
         location.source = LocationSource::Osm;
         assert_eq!(

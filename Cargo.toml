@@ -30,6 +30,13 @@ include = [
 [package.metadata.docs.rs]
 all-features = true
 
+[features]
+default = ["offline-geo"]
+# The embedded GeoNames city table behind `src/geo/offline.rs` (`src/geo/data/*.bin.gz`): a build
+# with `--no-default-features` drops the table and the offline geocoder with it, and the location
+# path falls back to the network geocoder (step 18 documents the switch and its cost).
+offline-geo = []
+
 [dependencies]
 chrono = { version = "0.4.45", features = ["serde"] }
 chrono-tz = { version = "0.10.4", features = ["serde"] }

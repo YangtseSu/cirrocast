@@ -48,6 +48,8 @@ use crate::error::{Error, Result};
 pub enum LocationSource {
     /// Resolved by a provider's own geocoding service (Open-Meteo).
     Geocoder,
+    /// Resolved locally from the bundled `GeoNames` table, with no network request (step 18).
+    Offline,
     /// Resolved through OpenStreetMap/Nominatim (`~query`).
     Osm,
     /// Given by the user as `@lat,lon`.

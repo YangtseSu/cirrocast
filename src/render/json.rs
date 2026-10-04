@@ -168,6 +168,7 @@ const fn source_name(source: crate::model::LocationSource) -> &'static str {
     use crate::model::LocationSource;
     match source {
         LocationSource::Geocoder => "geocoder",
+        LocationSource::Offline => "offline",
         LocationSource::Osm => "osm",
         LocationSource::Coordinates => "coordinates",
         LocationSource::Ip => "ip",

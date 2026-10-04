@@ -24,9 +24,10 @@ use crate::error::{Error, Result};
 use crate::geo::ip::{IpLocatorChain, IpService};
 use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
 use crate::geo::open_meteo::OpenMeteoGeocoder;
+use crate::geo::rank::rank;
 use crate::geo::{
     Geocoder, LocationSpec, Resolution, ambiguity_note, attribution_line, location_line,
-    osm_ambiguity_note, rank, resolve,
+    osm_ambiguity_note, resolve,
 };
 use crate::http::{HttpClient, UreqTransport};
 use crate::i18n::{I18n, LanguageRequest};
