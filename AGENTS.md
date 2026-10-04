@@ -31,6 +31,7 @@ No GUI/TUI, no daemon or server mode, no telemetry or analytics, no account syst
 | `src/model/` | canonical WMO-condition/unit/metric-SI data model |
 | `src/geo/` | geocoders (Open-Meteo, Nominatim), IP locators |
 | `src/http.rs`, `src/cache.rs` | shared HTTP client and on-disk cache |
+| `src/template.rs`, `src/parallel.rs` | the shared `%`-token template engine and the ordered parallel map behind multi-location runs |
 | `src/provider/` | one file per backend + registry/chain selection |
 | `src/render/` | `art-table` (default), `one-line`, `plain`, `json`, art blocks, colour |
 | `locales/` | Fluent `.ftl` catalogs |
@@ -83,6 +84,8 @@ No GUI/TUI, no daemon or server mode, no telemetry or analytics, no account syst
 
 ```bash
 cargo run -q -- Beijing                 # run the CLI
+cargo run -q -- Beijing Shanghai Tokyo -f one-line   # several locations: argument order, up to four at a time
+cargo run -q -- @home --template '%l %c%t'           # a [locations] alias and a literal template
 cargo fmt                               # required before every commit
 cargo clippy --workspace --all-targets --locked -- -D warnings   # includes build/geo-table
 cargo test --workspace --locked         # unit + integration, no network
@@ -162,6 +165,13 @@ provider matrix row. No new CLI flag — backends are selected with `--provider`
 **Add a renderer/format**: implement `Renderer` in `src/render/<name>.rs`, register it in the format
 enum + `--help`, add a snapshot test (`insta`) for at least metric/us, 1/3/7 days and a narrow width,
 and document the format in the README with an example block.
+
+**Use a location alias or a named template**: add a key to `[locations]` (`home = "@39.9,116.4"`,
+including another alias — chains are cycle-checked at load) or `[templates]` (`compact = "%c%t"`) in
+`config.toml`; then `cirrocast @home` / `cirrocast -f compact` / `--template @compact`. The engine,
+the exported `TOKENS` table and the width/precision rules live in `src/template.rs`; adding a token
+means a `TokenSpec` row, a `value` arm, a test row in `tests/templates.rs` (the count is asserted
+against the table) and the `--help` epilogue in `src/cli.rs`.
 
 **Add a language**: drop `locales/<tag>/main.ftl` (copy `en-US`), translate every key, add the
 `("<tag>", include_str!("../locales/<tag>/main.ftl"))` line to `CATALOGS` in `src/i18n.rs` (the

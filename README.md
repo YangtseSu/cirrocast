@@ -124,11 +124,13 @@ the archives are built and verified, and the checklist a release follows.
 ## Usage
 
 ```
-cirrocast [OPTIONS] [LOCATION]
+cirrocast [OPTIONS] [LOCATION]...
 
   -p, --provider <ID[,ID...]>   open-meteo | smhi | metar | openweathermap | weatherapi
                                 | worldweatheronline | pirateweather | qweather | auto
-  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts | aqi | moon
+  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts | aqi | moon,
+                                or a one-line preset: full | minimal | short | default | uv | sun,
+                                or a [templates] key
   -d, --days <N>                0..=14, clamped to what the provider serves
   -u, --units <SYSTEM>          metric | us | uk
       --lang <TAG>              BCP-47, or "auto"
@@ -142,13 +144,31 @@ cirrocast [OPTIONS] [LOCATION]
       --aqi-index <SCALE>       us | european: the AQI scale behind the panel colour and %q
       --moon                    append the locally computed moon/sun block (no request)
       --template <TEMPLATE>     one-line template or @PRESET
+      --template-file <PATH>    read the template from a file; `-` reads standard input
       --no-cache | --refresh | --offline[=<weather|geo|all>]
       --timeout <SECS>
       --color <WHEN>            auto | always | never
       --width <COLS>            layout width for the table formats, 1..=500
   -q, --quiet    -v, --verbose (repeat `-vv` for every HTTP attempt, its status and the cache decisions)
   -h, --help     -V, --version
+```
 
+Several `LOCATION` arguments are one run: they are fetched at most four at a time and printed in
+argument order whatever order the network answers in. A location that fails keeps its slot (a
+one-line `error: <query>: <message>` on stdout, the full error on stderr) while the others still
+print, and the process exits with the numerically largest mapped code among the failures — a
+missing key (6) outranks a location miss (5). Above one location `json` becomes an array (a failed
+slot is an `{"schema_version": 2, "query": …, "error": {"code": …, "message": …}}` object) and
+`art-table` draws a combined summary for 2–4 locations before falling back to the full tables.
+`--lat/--lon`, `--ip` and `--station` describe one place and are refused with several.
+
+```bash
+cirrocast Beijing Shanghai Tokyo -f one-line     # three lines, argument order
+cirrocast Beijing Shanghai Nope-9x ; echo $?     # 5; the third slot carries the error
+cirrocast Beijing Shanghai -f json | jq length   # 2
+```
+
+```
 cirrocast config     <path|init|show|get|set|edit|validate [--offline]>
 cirrocast key        <set [--stdin]|rm|list>
 cirrocast provider   <list|info>
@@ -159,8 +179,10 @@ cirrocast man [--bin-name NAME]
 ```
 
 Location syntax: `Beijing` (fuzzy), `:Beijing` (exact name), `~Tsinghua` (OpenStreetMap),
-`@39.9,116.4` (coordinates), empty (config default, else public IP). A location argument,
-`--lat/--lon`, `--ip` and `--station` are mutually exclusive; when the argument comes from
+`@39.9,116.4` (coordinates), `@home` (a `[locations]` alias), empty (config default, else public
+IP). A single location argument,
+`--lat/--lon`, `--ip` and `--station` are mutually exclusive; with several arguments those three
+flags are refused (they describe one place), and when the argument comes from
 `CIRROCAST_LOCATION` instead of the command line, a flag on one of the other forms wins by
 precedence rather than conflicting. `--station KJFK` (case-insensitive, four ICAO characters) makes
 the station the location and `[providers.metar] station` is the same thing for a bare `cirrocast`
@@ -209,37 +231,53 @@ notes, never errors.
 
 ### Formats
 
+The reference for every format, the token contract and the multi-location output rules is
+[`docs/formats.md`](docs/formats.md).
+
 | Format | What it is | Width |
 |---|---|---|
 | `art-table` | the wttr.in-style coloured day-part table (default) | honours `--width`, degrades to a stacked layout below 60 columns |
 | `dumb` | the same table in 7-bit ASCII, no colour; automatic for `TERM=dumb` or a non-UTF-8 locale | as above |
 | `one-line` | one line driven by `%` tokens, for a prompt or status bar | fixed |
+| `full` `minimal` | one-line presets (`@full` / `@minimal`), the same renderer | fixed |
 | `plain` | box-free `label: value` lines, one record per line | ignores `--width`: a record is never truncated |
 | `json` | the stable machine-readable document (`schema_version: 2`) | ignores `--width` and `--units` |
 | `alerts` | the full severe-weather warning listing for the location, strongest first; `no active weather alerts` when there are none | ignores `--width` |
 | `aqi` | the standalone air-quality panel (implies `--aqi`); `air quality unavailable` when the reading could not be fetched | wraps to `--width` |
 | `moon` | the standalone moon/sun view: phase, illumination, age, moonrise/moonset, sunrise/sunset and the next four phase instants, all computed locally | wraps to `--width` |
 
-`one-line` takes a template with `--template`, either a literal string or a preset:
+`one-line` takes a template with `--template` (or `--template-file <PATH>`, `-` for stdin), either
+a literal string or a preset. `--format` accepts the preset names directly too, so
+`-f minimal` and `-f one-line --template @minimal` are the same run.
 
 | Token | Output | Token | Output |
 |---|---|---|---|
-| `%c` | condition art, day/night aware | `%d` `%D` | `2026-09-30` / `Thu 01 Oct` |
-| `%C` | condition text | `%Z` `%z` | `Asia/Shanghai` / `+0800` |
-| `%t` `%f` | temperature / feels-like | `%u` `%U` | `5` / `5 (moderate)` |
-| `%w` | wind `↗ 12km/h NE` | `%S` `%s` | sunrise / sunset `06:05` |
-| `%h` | humidity `56%` | `%l` `%L` | name / `39.90,116.40` |
-| `%p` | precipitation `0.0mm` | `%m` `%M` | moon glyph / phase name, e.g. `◕` / `Waning Gibbous` |
-| `%P` | pressure `1013hPa` | `%v` | visibility `10km` |
-| `%A` | strongest alert's event, empty when nothing is in force | `%q` | air-quality index on the selected scale, e.g. `US AQI 43 (Good)` |
+| `%c` | condition art, day/night aware | `%C` | condition text |
+| `%x` | condition art in plain 7-bit text | `%l` | place name |
+| `%t` `%f` | temperature / feels-like | `%H` `%L` | today's high / low |
+| `%e` | dew point, computed from temperature and humidity | `%w` | wind `↗ 12km/h NE` |
+| `%h` | humidity `56%` | `%p` `%P` | precipitation `0.0mm` / pressure `1013hPa` |
+| `%v` | visibility `10km` | `%u` `%U` | UV `5` / `5 (moderate)` |
+| `%d` `%D` | `2026-09-30` / `Thu 01 Oct` | `%T` | local time `15:04` |
+| `%Z` `%z` | `Asia/Shanghai` / `+0800` | `%S` `%s` | sunrise / sunset `06:05` |
+| `%m` `%M` | moon glyph / phase name, e.g. `◕` / `Waning Gibbous` | `%A` | strongest alert's event, empty when nothing is in force |
+| `%q` | air-quality index on the selected scale, e.g. `US AQI 43 (Good)` | | |
 
-`%%` is a literal `%`, a trailing lone `%` is one too, `%{…}` is verbatim (`\}` escapes the brace),
-`\n`/`\t`/`\\` are unescaped, and an unknown `%X` prints literally and is reported once under `-v`.
-A value the provider does not report prints `n/a` — never an invented number. The presets are
-`@default` (`%l: %c %C %t (%f), %w, %h, %p, %P, %v`), `@short` (`%c %t`),
-`@full` (`%l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z`), `@uv` (`%l: UV %U`) and
-`@sun` (`%l: sunrise %S sunset %s (%z %Z)`); `--template` without a value, `-f plain/json/…` next to
-`--template`, and an unknown `@name` are usage errors.
+A token may carry a width and precision specifier, `%[-][0][<width>][.<prec>]X`: the width pads
+(right-aligned unless `-`; zero-padded for numeric tokens), `.prec` truncates text from the right
+and rounds a numeric token to that many decimals (`%.1t` → `+18.4°C`, `%-12C` → the condition text
+left-aligned in 12 columns). `%%` is a literal `%`, a trailing lone `%` is one too, `%{…}` is
+verbatim unless its content is exactly one token letter (`%{c}` is the token, `%{x}` is literal
+text), and `\n`/`\t`/`\\` are unescaped. An unknown `%X` is a usage error (exit 2, naming the
+position and the known tokens) — the wttr.in compatibility service keeps it literal instead. A
+value the provider does not report prints `n/a` — never an invented number.
+
+The presets are `@default` (`%l: %c %C %t (%f), %w, %h, %p, %P, %v`), `@short` (`%c %t`),
+`@minimal` (`%c%t`), `@full` (`%l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z`), `@uv`
+(`%l: UV %U`) and `@sun` (`%l: sunrise %S sunset %s (%z %Z)`); a `[templates]` key can be used
+through `--template @name` or `--format name`. `--template` with a non-one-line format or a
+preset-selecting one, `--template` together with `--template-file`, an empty template, an unknown
+`@name` and an unknown token are usage errors.
 
 `json` is the scripting surface: keys are always present (`null` when the provider has no value), all
 numbers are canonical metric with the unit in the key (`temp_c`, `wind_kmh`, `precip_mm`,
@@ -248,7 +286,10 @@ the credits. Within `schema_version` changes are additive only — new keys may 
 ones keep their name, type and unit — so a consumer must ignore keys it does not know; a breaking
 change bumps the version and is named in [`CHANGELOG.md`](CHANGELOG.md). Version 2 added the
 `alerts` array (id, source, event, severity/urgency/certainty, onset, expires, areas, headline,
-description, instruction, sender) and `alert_credits`; version 1 documents still parse. Every key, its type and its
+description, instruction, sender) and `alert_credits`; version 1 documents still parse. The
+top-level type follows the number of locations: one location is a plain object, several are an
+array of the same objects in argument order, and a location that failed is
+`{"schema_version": 2, "query": …, "error": {"code": …, "message": …}}`. Every key, its type and its
 unit are listed in [`docs/schema.md`](docs/schema.md).
 
 ### Alerts
@@ -634,11 +675,13 @@ write and the first one read — and `config validate` reports the file that was
 | Key | Default | Values |
 |---|---|---|
 | `defaults.provider` | `open-meteo` | provider id, comma separated chain, or `auto` |
-| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts`, `aqi`, `moon` |
+| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts`, `aqi`, `moon`, a one-line preset (`full`, `minimal`, `short`, `default`, `uv`, `sun`) or a `[templates]` key |
 | `defaults.units` | `metric` | `metric`, `us`, `uk` |
 | `defaults.days` | `3` | `0..=14`, clamped per provider |
 | `defaults.language` | `auto` | `auto` or a BCP-47 tag such as `zh-CN` |
-| `location.default` | empty | `Beijing`, `:Beijing`, `@39.9,116.4`, `~Tsinghua` |
+| `location.default` | empty | `Beijing`, `:Beijing`, `@39.9,116.4`, `~Tsinghua`, `@home` (an alias) |
+| `locations.<NAME>` | none | any location argument; define `@NAME` (values may name other aliases) |
+| `templates.<NAME>` | none | a literal `%`-token template for `--template @NAME` / `--format NAME` |
 | `units.temp` | unset | `c`, `f` |
 | `units.wind` | unset | `kmh`, `mph`, `mps`, `knots` |
 | `units.pressure` | unset | `hpa`, `inhg`, `mmhg` |
@@ -665,6 +708,23 @@ write and the first one read — and `config validate` reports the file that was
 
 The `[units]` overrides are per quantity and optional: an absent (or empty) key follows
 `defaults.units`, so switching that one value to `us` moves every quantity that was not pinned.
+
+`[locations]` and `[templates]` are free-form tables whose keys are yours: an alias maps `@name`
+to any location argument (including another alias; chains are cycle-checked, a bad chain is a
+config error at load), and a named template is a literal `%`-token string that `--format` and
+`--template @name` both understand. `config.toml` is the only place to edit them; `config get`/`set`
+address single keys only.
+
+```toml
+schema_version = 2
+
+[locations]
+home = "@39.9042,116.4074"      # cirrocast @home
+office = ":Shanghai"            # aliases may chain: office = "@home" also works
+
+[templates]
+compact = "%c%t"                # cirrocast -f compact  /  --template @compact
+```
 
 Precedence, highest first: **command line flag → `CIRROCAST_*` environment variable → `config.toml`
 → built-in default**. The variables are `CIRROCAST_PROVIDER`, `CIRROCAST_FORMAT`,
