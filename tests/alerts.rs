@@ -462,6 +462,24 @@ fn live_gale_fixture() -> String {
         .replace("2026-10-04T08:32:00+08:00", &stamp(6))
 }
 
+/// The `MeteoAlarm` heat CAP with its validity window moved to be in force now.
+///
+/// The recorded fixture expires on 2026-10-04; the alert pipeline drops anything whose
+/// `coalesce(ends, expires)` has passed, so the two `expires` stamps are shifted at seed time the
+/// way [`live_gale_fixture`] does — a recorded window must not turn the test into a date bomb.
+/// Both `info` blocks carry the same instant, one in the local offset and one in UTC.
+fn live_meteoalarm_heat_fixture() -> String {
+    let expires = Utc::now() + chrono::Duration::hours(6);
+    let local = expires
+        .with_timezone(&Tz::Europe__Vienna)
+        .format("%Y-%m-%dT%H:%M:00%:z")
+        .to_string();
+    let utc = expires.format("%Y-%m-%dT%H:%M:00Z").to_string();
+    alert_fixture("meteoalarm-heat-cap.xml")
+        .replace("2026-10-04T18:00:00+02:00", &local)
+        .replace("2026-10-04T16:00:00Z", &utc)
+}
+
 /// Seeds the geocode answer for `Beijing`, the weather answer for the resolved point and, with
 /// `alerts`, a fresh FPAS alert set for it.
 fn seed(sandbox: &Sandbox, alerts: bool, stale: bool) {
@@ -741,7 +759,7 @@ fn meteoalarm_filters_the_country_index_by_geometry_and_reads_the_cap() {
     seed_entry(
         &sandbox,
         &CacheKey::hash("alerts", "meteoalarm|cap|AT-2026-101"),
-        &alert_fixture("meteoalarm-heat-cap.xml"),
+        &live_meteoalarm_heat_fixture(),
         Utc::now(),
         300,
     );
