@@ -684,6 +684,8 @@ is used for. The handful of recorded responses used as test fixtures keep their 
 | `open-meteo` | none | global | yes | yes | 16 |
 | `met-no` | none | global | yes | yes | 9 |
 | `smhi` | none | Nordics and adjacent seas | yes | yes | 10 |
+| `nws` | none | the US and its territories | yes | yes | 7 |
+| `brightsky` | none | Germany (DWD open data) | yes | yes | 10 |
 | `metar` | none | worldwide stations | yes | no | — (observation) |
 | `open-meteo-archive` | none | global | no | archive | — (1940-01-01 onward, `--date`/`--history`) |
 | `open-meteo-marine` | none | coastal waters | supplement | supplement | 8 (waves and swell, `--marine`) |
@@ -694,9 +696,11 @@ is used for. The handful of recorded responses used as test fixtures keep their 
 | `qweather` | `CIRROCAST_QWEATHER_KEY` | global | yes | yes | 10 |
 | `visualcrossing` | `CIRROCAST_VISUALCROSSING_KEY` | global | yes | yes | 15 |
 
-`auto` is the keyless chain that answers for a resolved place: `open-meteo`, `met-no`, `smhi` (the
-national backends rank first for their own coverage in step 24), with `metar` prepended for a
-`--station` run. `open-meteo-marine` is **supplementary** — it is never a chain entry, and
+`auto` is the keyless chain that answers for a resolved place, **ranked by coverage**: an exact
+country match first (`nws` for a US point, `brightsky` for a German one), then a containing bounding
+box (`smhi` in the Nordics), then the global entries (`open-meteo`, `met-no`), each tier in registry
+order — `-v` prints the chain that was chosen, and a multi-location run ranks each slot for its own
+place. `metar` is prepended for a `--station` run. `open-meteo-marine` is **supplementary** — it is never a chain entry, and
 `--marine` is what requests it; `open-meteo-archive` is archive-only and answers `--date`/
 `--history` instead of a forecast.
 

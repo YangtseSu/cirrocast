@@ -8,16 +8,16 @@ mod common;
 use predicates::prelude::*;
 
 /// Every provider id the registry knows, in `provider list` order.
-const PROVIDER_IDS: [&str; 8] = [
-    "open-meteo",
-    "openweathermap",
-    "weatherapi",
-    "worldweatheronline",
-    "pirateweather",
-    "qweather",
-    "smhi",
-    "metar",
-];
+///
+/// Read from the registry rather than pinned as a list: the test's job is "the table prints every
+/// row the binary knows", and a hand-kept copy would go stale silently (it did, when steps 23 and
+/// 24 added six backends).
+fn provider_ids() -> Vec<&'static str> {
+    cirrocast::provider::ProviderId::all()
+        .iter()
+        .map(cirrocast::provider::ProviderId::as_str)
+        .collect()
+}
 
 /// The table row whose first column is `id`.
 fn row<'a>(table: &'a str, id: &str) -> &'a str {
@@ -83,7 +83,7 @@ fn provider_list_shows_every_provider_and_its_key_requirement() {
     let stdout =
         String::from_utf8(assert.get_output().stdout.clone()).expect("stdout should be UTF-8");
 
-    for id in PROVIDER_IDS {
+    for id in provider_ids() {
         assert!(stdout.contains(id), "`{id}` missing from:\n{stdout}");
     }
 
