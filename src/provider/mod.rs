@@ -30,6 +30,7 @@ pub mod openweathermap;
 pub mod pirateweather;
 pub mod qweather;
 pub mod smhi;
+pub mod visualcrossing;
 pub mod weatherapi;
 pub mod worldweatheronline;
 
@@ -244,9 +245,9 @@ impl ProviderId {
                 granularity: "hourly; 15-day horizon",
                 limits: "free plan 1 000 records/day (`queryCost` ≈ 1 + 24×hours + days; the default 3-day query ≈ 76 records); keyed to the account's terms, no redistribution of cached data",
                 verified: "2026-10-06",
-                implemented: false,
+                implemented: true,
                 alerts: true,
-                licence: None,
+                licence: Some("Visual Crossing Weather — https://www.visualcrossing.com/"),
             },
             Self::OpenWeatherMap => ProviderMeta {
                 id: *self,
@@ -905,7 +906,7 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::OpenMeteoMarine => Ok(Box::new(open_meteo_marine::OpenMeteoMarine)),
         ProviderId::MetNo => Ok(Box::new(met_no::MetNo)),
         ProviderId::OpenMeteoArchive => Ok(Box::new(open_meteo_archive::OpenMeteoArchive)),
-        ProviderId::VisualCrossing => Err(not_implemented(id)),
+        ProviderId::VisualCrossing => Ok(Box::new(visualcrossing::VisualCrossing)),
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),
@@ -914,14 +915,6 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),
         ProviderId::Metar => Ok(Box::new(metar::Metar)),
     }
-}
-
-/// The refusal a registry row without a backend answers with.
-///
-/// [`select`] filters those rows out of every chain, so this error is only reachable through a
-/// hand-built chain or a row whose `implemented` flag was flipped before its module landed.
-fn not_implemented(id: ProviderId) -> Error {
-    Error::Config(format!("provider `{id}` is not implemented yet"))
 }
 
 /// The credit line a provider's data licence requires, for the renderers that print it.

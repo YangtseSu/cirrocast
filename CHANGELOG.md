@@ -27,6 +27,30 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Added
 
+* **Four more backends (step 23).** `met-no` (MET Norway, keyless, global, 9 days; the first backend
+  that speaks `Expires`/`Last-Modified`, so a refresh costs headers instead of a body),
+  `visualcrossing` (BYOK `CIRROCAST_VISUALCROSSING_KEY`, 15 days, and the first backend whose own
+  payload carries severe-weather warnings), `open-meteo-archive` (keyless ERA5/ERA5-Land/IFS
+  reanalysis from 1940-01-01) and `open-meteo-marine` (keyless waves, swell and sea-surface
+  temperature for the nearest sea cell). `--provider auto` expands to `open-meteo, met-no, smhi`.
+* **`--date <YYYY-MM-DD>` and `--history <N>d` (step 23)**: ask a history-capable backend for one
+  calendar date or the last `N` days (ending yesterday) instead of a forecast. Every format labels
+  the answer — the `art-table` header ends `· 2026-09-14 · archive`, `plain` writes an
+  `archive: <date>` record, `one-line` prefixes the line and `json` carries `"mode"`. A backend
+  without an archive span is a usage error (exit 2) naming the flags, and an archive-only backend
+  refuses `--days` rather than silently clamping it.
+* **`--marine` (step 23)**: appends the wave block (waves, period, direction, swell, sea-surface
+  temperature) to `art-table` and `plain`, and as a `marine` object to `json`, with the sampled sea
+  cell named when it lies more than 25 km from the requested point. The marine source is
+  supplementary: `--provider open-meteo-marine` alone is a usage error.
+* **WMO 4677 codes 68 and 69 (sleet)** join the canonical condition table, with their art blocks,
+  one-line glyphs and both catalogs.
+* **The JSON document gains four keys** (additive within `schema_version` 2): `mode`
+  (`forecast`|`archive`), `marine` (the wave block, `null` unless `--marine` asked), and
+  `capabilities.history_days` / `capabilities.marine`. `docs/schema.md` lists them.
+* **`--alerts-from visualcrossing`** is now accepted, and `visualcrossing` joins `[alerts] sources`
+  under `auto` when its provider is on the chain — its warnings are merged from the forecast
+  payload rather than fetched again, so naming it explicitly needs `--provider visualcrossing`.
 * **`cirrocast status`, the status-bar probe (step 22).** One line per run: `--format` (and its
   synonym `--template`) take a `%`-template, `%c %t` by default, and stdout is exactly one line —
   a template newline becomes a space and the line is trimmed. Colour is off unless

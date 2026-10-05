@@ -20,6 +20,11 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 #
 # This list is deliberately explicit per directory: third-party data fixtures are annotated
 # separately below so that no recorded upstream payload is ever relicensed to GPL by a blanket rule.
+#
+# The `visualcrossing/` timeline fixture is hand-authored from the published schema, not recorded:
+# no API key for that service exists in this repository, so its payload is a documented-shape
+# stand-in (the same caveat is repeated in `tests/provider_visualcrossing.rs`).
+
 [[annotations]]
 path = [
     "tests/fixtures/config/**",
@@ -28,6 +33,7 @@ path = [
     "tests/fixtures/http/**",
     "tests/fixtures/report/**",
     "tests/fixtures/smhi/point_sentinel_2026-10-01.json",
+    "tests/fixtures/visualcrossing/**",
     "tests/fixtures/air/truncated.json",
     "tests/fixtures/air/no-current.json",
     "tests/fixtures/air/unit-mismatch.json",

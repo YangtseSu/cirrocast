@@ -81,6 +81,13 @@ impl Provider for OpenMeteo {
     }
 
     fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+        // A `--date`/`--history` run asks for an absolute window rather than a forecast horizon:
+        // the same decode answers it, with `start_date`/`end_date` and without a `current` block
+        // (a window that has already happened has no "now"). The CLI has already checked the
+        // window against this row's own span, so no clamp applies here.
+        if let Some(window) = req.window {
+            return fetch_window(loc, window, env);
+        }
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         let local_today = local_today(env, loc.tz);

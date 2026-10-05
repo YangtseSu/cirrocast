@@ -48,6 +48,7 @@ use crate::http::{HttpClient, UreqTransport};
 use crate::i18n::{I18n, LanguageRequest};
 use crate::model::LocalTimes;
 use crate::model::units::{ResolvedUnits, UnitSystem};
+use crate::model::{Location, Report};
 use crate::paths::Paths;
 use crate::provider::{Env, FetchRequest, HourlyResolution, fetch_chain, licence_line, select};
 use crate::render::{ColorMode, RenderContext, TermCaps, resolve_color, resolve_width};
@@ -328,16 +329,7 @@ fn probe(
     if template::uses(&line.template, 'A')
         && let Some(request) = configured_alert_request(&location, &ids, config)?
     {
-        match crate::alerts::fetch(
-            &location,
-            &env,
-            &request,
-            line.i18n.lang().tag(),
-            std::mem::take(&mut report.alerts),
-        ) {
-            Ok(alerts) => report.alerts = alerts,
-            Err(error) => panel_note("alerts", &error, cli),
-        }
+        attach_alerts(&mut report, &location, &request, &env, line, cli);
     }
     if template::uses(&line.template, 'q') {
         match crate::air::fetch(&location, &env) {
@@ -400,6 +392,31 @@ fn degradable(error: &Error) -> bool {
         | Error::InvalidToken { .. }
         | Error::Chain { .. } => true,
         Error::Usage(_) | Error::Config(_) | Error::Other(_) => false,
+    }
+}
+
+/// Fetches the alert set the `%A` token needs and attaches it to the report.
+///
+/// The alerts the answering backend carried in its own payload (`visualcrossing`) enter the same
+/// layer as the fetched ones, so the probe filters and orders them exactly like a query run; the
+/// panel is best-effort, and a failure is a note rather than a placeholder line.
+fn attach_alerts(
+    report: &mut Report,
+    location: &Location,
+    request: &crate::alerts::AlertsRequest,
+    env: &Env<'_>,
+    line: &Line,
+    cli: &Cli,
+) {
+    match crate::alerts::fetch(
+        location,
+        env,
+        request,
+        line.i18n.lang().tag(),
+        std::mem::take(&mut report.alerts),
+    ) {
+        Ok(alerts) => report.alerts = alerts,
+        Err(error) => panel_note("alerts", &error, cli),
     }
 }
 

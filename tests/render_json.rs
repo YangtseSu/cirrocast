@@ -210,6 +210,14 @@ fn a_document_with_an_alert_is_exactly_this() {
 }
 
 #[test]
+fn a_document_with_a_marine_block_is_exactly_this() {
+    let report = common::fixture_report("beijing-marine.json");
+    insta::with_settings!({ prepend_module_to_snapshot => false }, {
+        insta::assert_snapshot!("json_beijing_marine", render(&report, UnitSystem::Metric));
+    });
+}
+
+#[test]
 fn a_document_with_an_astro_block_is_exactly_this() {
     let report = common::fixture_report("beijing-astro.json");
     insta::with_settings!({ prepend_module_to_snapshot => false }, {
@@ -231,12 +239,14 @@ fn the_schema_version_leads_the_document_and_is_the_documented_one() {
 fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
     let documented = documented_keys();
     // The documented set is the union of the documents this build emits: the alert-carrying one,
-    // the air-carrying one and the astro-carrying one. `air` and `astro` are `null` and `alerts`
-    // is `[]` in the other fixtures, so the union is exactly what a run can render.
+    // the air-carrying one, the astro-carrying one and the marine-carrying one (the last also
+    // carries `mode: "archive"`). `air`, `astro` and `marine` are `null` and `alerts` is `[]` in
+    // the other fixtures, so the union is exactly what a run can render.
     let documents: Vec<Value> = [
         "beijing-alerts.json",
         "beijing-air.json",
         "beijing-astro.json",
+        "beijing-marine.json",
     ]
     .into_iter()
     .map(|file| document(file, UnitSystem::Metric))

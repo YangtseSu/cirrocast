@@ -1,6 +1,6 @@
 ---
 source: tests/render_json.rs
-expression: "render(&report(), UnitSystem::Metric)"
+expression: "render(&report, UnitSystem::Metric)"
 ---
 {
   "schema_version": 2,
@@ -102,8 +102,30 @@ expression: "render(&report(), UnitSystem::Metric)"
       }
     }
   ],
-  "mode": "forecast",
-  "marine": null,
+  "mode": "archive",
+  "marine": {
+    "time": "2026-09-30T12:00:00+08:00",
+    "source": "open-meteo-marine",
+    "wave_height_m": 1.4,
+    "wave_direction_deg": 280,
+    "wave_period_s": 6.8,
+    "swell_wave_height_m": 0.9,
+    "sea_surface_temp_c": 21.6,
+    "sampled": {
+      "lat": 39.2,
+      "lon": 119.8,
+      "distance_km": 146.3,
+      "far": true
+    },
+    "days": [
+      {
+        "date": "2026-09-30",
+        "wave_height_max_m": 1.7,
+        "wave_period_max_s": 7.1,
+        "wave_direction_dominant_deg": 275
+      }
+    ]
+  },
   "air": null,
   "astro": null,
   "alerts": [],
