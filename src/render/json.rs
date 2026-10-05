@@ -163,6 +163,12 @@ struct Document<'a> {
     current: Option<CurrentJson<'a>>,
     /// Forecast days, oldest first.
     days: Vec<DayJson<'a>>,
+    /// `forecast` or `archive`: whether `days`/`current` are a forecast or a historical answer
+    /// (`--date`, `--history`).
+    mode: &'static str,
+    /// Marine conditions, `null` when the run did not ask (`--marine`) or the best-effort fetch
+    /// degraded.
+    marine: Option<MarineJson>,
     /// Air quality, `null` when the run did not ask for it or the best-effort fetch degraded.
     air: Option<AirJson>,
     /// Moon phase, sun times and the next phase instants, `null` unless the run asked (`--moon`).
@@ -194,6 +200,11 @@ impl<'a> Document<'a> {
                 .iter()
                 .map(|day| DayJson::of(day, ctx))
                 .collect(),
+            mode: match report.mode {
+                crate::model::ReportMode::Forecast => "forecast",
+                crate::model::ReportMode::Archive => "archive",
+            },
+            marine: report.marine.as_ref().map(MarineJson::of),
             air: report.air.as_ref().map(AirJson::of),
             astro: report.astro.as_ref().map(|astro| AstroJson::of(astro, ctx)),
             alerts: report.alerts.iter().map(AlertJson::of).collect(),
@@ -381,6 +392,87 @@ impl AirJson {
                 pollutants: POLLUTANT_UNIT,
                 pollen: POLLEN_UNIT,
             },
+        }
+    }
+}
+
+/// The marine block: the current sea state, the sampled cell and the daily wave summary.
+#[derive(Debug, Serialize)]
+struct MarineJson {
+    /// Observation time, ISO 8601 with the location's offset.
+    time: String,
+    /// The source id, e.g. `open-meteo-marine`.
+    source: &'static str,
+    /// Significant wave height, metres.
+    wave_height_m: Option<f64>,
+    /// Direction the waves travel *from*, degrees clockwise from north.
+    wave_direction_deg: Option<u16>,
+    /// Peak wave period, seconds.
+    wave_period_s: Option<f64>,
+    /// Swell wave height, metres.
+    swell_wave_height_m: Option<f64>,
+    /// Sea-surface temperature, °C.
+    sea_surface_temp_c: Option<f64>,
+    /// The sea cell the answer was sampled at, and how far it lies from the requested point.
+    sampled: MarineSampleJson,
+    /// The daily wave summary, oldest first; empty when the source carried no daily block.
+    days: Vec<MarineDayJson>,
+}
+
+/// The sampled sea cell: a marine API answers for the nearest water, not for the point asked.
+#[derive(Debug, Serialize)]
+struct MarineSampleJson {
+    /// Latitude of the sampled cell.
+    lat: f64,
+    /// Longitude of the sampled cell.
+    lon: f64,
+    /// Great-circle distance from the requested point, kilometres.
+    distance_km: f64,
+    /// Whether that distance exceeds the model's far-cell threshold, so a consumer can mark it
+    /// without knowing the constant.
+    far: bool,
+}
+
+/// One day of the marine forecast.
+#[derive(Debug, Serialize)]
+struct MarineDayJson {
+    /// The location-local date.
+    date: chrono::NaiveDate,
+    /// Highest significant wave height, metres.
+    wave_height_max_m: Option<f64>,
+    /// Longest wave period, seconds.
+    wave_period_max_s: Option<f64>,
+    /// Dominant wave direction, degrees clockwise from north.
+    wave_direction_dominant_deg: Option<u16>,
+}
+
+impl MarineJson {
+    /// Projects a reading.
+    fn of(marine: &crate::model::Marine) -> Self {
+        Self {
+            time: iso_local(marine.time),
+            source: marine.source.as_str(),
+            wave_height_m: marine.wave_height_m.map(normalise_zero_f64),
+            wave_direction_deg: marine.wave_direction_deg,
+            wave_period_s: marine.wave_period_s.map(normalise_zero_f64),
+            swell_wave_height_m: marine.swell_wave_height_m.map(normalise_zero_f64),
+            sea_surface_temp_c: marine.sea_surface_temp_c.map(normalise_zero_f64),
+            sampled: MarineSampleJson {
+                lat: marine.sampled_lat,
+                lon: marine.sampled_lon,
+                distance_km: normalise_zero_f64(marine.distance_km),
+                far: marine.sampled_cell_is_far(),
+            },
+            days: marine
+                .days
+                .iter()
+                .map(|day| MarineDayJson {
+                    date: day.date,
+                    wave_height_max_m: day.wave_height_max_m.map(normalise_zero_f64),
+                    wave_period_max_s: day.wave_period_max_s.map(normalise_zero_f64),
+                    wave_direction_dominant_deg: day.wave_direction_dominant_deg,
+                })
+                .collect(),
         }
     }
 }

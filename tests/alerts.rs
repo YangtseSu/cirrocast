@@ -140,6 +140,7 @@ impl Harness {
                 threshold,
             },
             "en-US",
+            Vec::new(),
         )
     }
 

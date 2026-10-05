@@ -653,6 +653,29 @@ pub fn renderer_for(
     }
 }
 
+/// The dates an archive report covers, or `None` for a forecast.
+///
+/// One helper for the three formats that label an archive (`art-table` appends it to the header,
+/// `plain` writes it as a record, `one-line` prefixes the line), so they cannot disagree about
+/// which dates a `--date`/`--history` run covers. The dates come from the report itself; a document
+/// with neither days nor an observation prints no span, and the caller prints the bare label.
+#[must_use]
+pub(crate) fn archive_span(report: &Report) -> Option<String> {
+    if report.mode != crate::model::ReportMode::Archive {
+        return None;
+    }
+    match (report.days.first(), report.days.last()) {
+        (Some(first), Some(last)) if first.date != last.date => {
+            Some(format!("{} … {}", first.date, last.date))
+        }
+        (Some(first), _) => Some(first.date.to_string()),
+        _ => report
+            .current
+            .as_ref()
+            .map(|current| current.observed_at.date_naive().to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

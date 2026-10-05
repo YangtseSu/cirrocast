@@ -560,6 +560,11 @@ fn write_header(out: &mut String, report: &Report, ctx: &RenderContext<'_>) {
     if location.source != LocationSource::Coordinates {
         let _ = write!(out, " ({:.2}, {:.2})", location.lat, location.lon);
     }
+    // A historical answer says so in the header, with the dates it covers: `--date` and
+    // `--history` produce blocks that look exactly like a forecast otherwise.
+    if let Some(span) = super::archive_span(report) {
+        let _ = write!(out, " · {span} · {}", ctx.i18n.text(&keys::MODE_ARCHIVE));
+    }
 }
 
 /// The current conditions: four art lines, and to their right the condition, the temperatures, the

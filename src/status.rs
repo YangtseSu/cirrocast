@@ -314,7 +314,7 @@ fn probe(
         location_for_run(None, &target, &geo, cli)?
     };
 
-    let (days, warning) = request_days(settings.days, &ids, false);
+    let (days, warning) = request_days(settings.days, &ids, false, false)?;
     if let Some(warning) = warning
         && !cli.quiet
     {
@@ -328,7 +328,13 @@ fn probe(
     if template::uses(&line.template, 'A')
         && let Some(request) = configured_alert_request(&location, &ids, config)?
     {
-        match crate::alerts::fetch(&location, &env, &request, line.i18n.lang().tag()) {
+        match crate::alerts::fetch(
+            &location,
+            &env,
+            &request,
+            line.i18n.lang().tag(),
+            std::mem::take(&mut report.alerts),
+        ) {
             Ok(alerts) => report.alerts = alerts,
             Err(error) => panel_note("alerts", &error, cli),
         }

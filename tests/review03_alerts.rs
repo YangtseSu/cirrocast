@@ -142,6 +142,7 @@ impl Harness {
                 threshold: Severity::Unknown,
             },
             language,
+            Vec::new(),
         )
         .expect("the HKO fixtures decode")
     }

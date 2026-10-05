@@ -184,9 +184,17 @@ pub fn fetch(
     env: &Env<'_>,
     request: &AlertsRequest,
     language: &str,
+    attached: Vec<Alert>,
 ) -> Result<Vec<Alert>> {
     let mut alerts = Vec::new();
     for source in &request.sources {
+        // `visualcrossing` is the one source whose warnings arrive inside its *provider's*
+        // payload: the backend decodes them into `attached`, so there is no endpoint to call and
+        // the loop skips it here (a fetch for it would be a second request for data already in
+        // hand). It joins below, before the shared filter/dedup/order pass.
+        if *source == AlertSource::VisualCrossing {
+            continue;
+        }
         match fetch_source(*source, loc, env, language) {
             Ok(mut found) => alerts.append(&mut found),
             Err(error) if request.explicit => return Err(error),
@@ -196,6 +204,9 @@ pub fn fetch(
                 }
             }
         }
+    }
+    if request.sources.contains(&AlertSource::VisualCrossing) {
+        alerts.extend(attached);
     }
     let now = chrono::DateTime::<chrono::Utc>::from(env.cache.clock().now()).fixed_offset();
     Ok(prepare(alerts, now, request.threshold))
@@ -215,8 +226,8 @@ fn fetch_source(
         AlertSource::Hko => hko::fetch(loc, env, language),
         AlertSource::WmoSwic => wmoswic::fetch(loc, env, language),
         AlertSource::Fpas => fpas::fetch(loc, env, language),
-        AlertSource::VisualCrossing => Err(Error::Usage(
-            "alert source `visualcrossing` is wired up with its provider in step 23".to_owned(),
+        AlertSource::VisualCrossing => Err(Error::Other(
+            "internal: the `visualcrossing` warnings travel with the forecast payload".to_owned(),
         )),
     }
 }
