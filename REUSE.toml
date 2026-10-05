@@ -31,6 +31,7 @@ path = [
     "tests/fixtures/air/truncated.json",
     "tests/fixtures/air/no-current.json",
     "tests/fixtures/air/unit-mismatch.json",
+    "tests/fixtures/marine/no-current.json",
     "tests/fixtures/geo/cities-sample.txt",
     "tests/fixtures/geo/cities-sample.zip",
 ]
@@ -124,6 +125,20 @@ SPDX-License-Identifier = "CC-BY-4.0"
 path = "tests/fixtures/open_meteo/**"
 precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Recorded Open-Meteo Marine Weather responses (wave and sea-surface model data, CC BY 4.0; the
+# marine product blends Copernicus Marine Service and DWD ICON Wave data). `sylt.json` is the
+# verbatim recording for Sylt, 54.54/10.23; `berlin-land.json` is the same payload trimmed to the
+# fields the marine decoder reads, for the land-point far-cell case. The synthetic `no-current.json`
+# stays first-party (listed above) because it is hand-authored to exercise the refusal path.
+[[annotations]]
+path = [
+    "tests/fixtures/marine/sylt.json",
+    "tests/fixtures/marine/berlin-land.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com (Copernicus Marine Service, DWD ICON Wave)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 # The cache fixture step 22's `status` probe and `contrib/statusbar/verify.sh` read offline: a real

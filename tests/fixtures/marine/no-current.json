@@ -1,0 +1,21 @@
+{
+  "latitude": 54.541664,
+  "longitude": 10.2083435,
+  "generationtime_ms": 0.3021,
+  "utc_offset_seconds": 7200,
+  "timezone": "Europe/Berlin",
+  "timezone_abbreviation": "GMT+2",
+  "elevation": 0.0,
+  "daily_units": {
+    "time": "iso8601",
+    "wave_height_max": "m",
+    "wave_period_max": "s",
+    "wave_direction_dominant": "°"
+  },
+  "daily": {
+    "time": ["2026-10-05", "2026-10-06"],
+    "wave_height_max": [0.46, 0.44],
+    "wave_period_max": [2.75, 2.7],
+    "wave_direction_dominant": [241, 264]
+  }
+}

@@ -23,6 +23,7 @@
 pub mod dayparts;
 pub mod metar;
 pub mod open_meteo;
+pub mod open_meteo_marine;
 pub mod openweathermap;
 pub mod pirateweather;
 pub mod qweather;
@@ -216,9 +217,9 @@ impl ProviderId {
                 granularity: "hourly; 8 forecast days",
                 limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
                 verified: "2026-10-06",
-                implemented: false,
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some(crate::model::MarineSource::OpenMeteoMarine.licence()),
             },
             Self::VisualCrossing => ProviderMeta {
                 id: *self,
@@ -897,10 +898,10 @@ pub trait Provider {
 pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
     match id {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
-        ProviderId::MetNo
-        | ProviderId::OpenMeteoArchive
-        | ProviderId::OpenMeteoMarine
-        | ProviderId::VisualCrossing => Err(not_implemented(id)),
+        ProviderId::OpenMeteoMarine => Ok(Box::new(open_meteo_marine::OpenMeteoMarine)),
+        ProviderId::MetNo | ProviderId::OpenMeteoArchive | ProviderId::VisualCrossing => {
+            Err(not_implemented(id))
+        }
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),
