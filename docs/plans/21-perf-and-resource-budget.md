@@ -41,7 +41,7 @@ evidence — keeping the decision, recording why.
 - ✅ `scripts/bench/compare.py`: Python 3 (stdlib only) reader of `perf/baseline.json` and
       `target/bench/raw.json`; prints a metric-by-metric table with budget, baseline and delta; exits
       1 when a gated median exceeds `baseline × 1.20` or a hard budget.
-- ⬜ `perf/baseline.json`: `{"schema": 1, "recorded": "YYYY-MM-DD", "commit": …, "machine": {…},
+- ✅ `perf/baseline.json`: `{"schema": 1, "recorded": "YYYY-MM-DD", "commit": …, "machine": {…},
       "metrics": {…}}` with medians for every gated metric plus the cold-run figure and its conditions.
 - ⬜ `.github/workflows/ci.yml`: new `perf` job (release build, `scripts/bench/run.sh`,
       `scripts/bench/compare.py`, `cargo bloat --release --crates -n 20` and
@@ -224,3 +224,8 @@ into `docs/performance.md`.
   re-recording paths cannot drift. `rss.py` was written, tried and deleted: reading
   `getrusage(RUSAGE_CHILDREN)` from a forked parent counts the parent's pages and overstated
   `--version` by ~6 MiB, so the fallback is hyperfine's per-child peak instead.
+- 2026-10-05 — `perf/baseline.json` recorded on the reference machine (commit `c0f1b5b`):
+  `--version` 2.10 ms, `--help` 2.34 ms / 198 lines, cached `--offline` run 51.4 ms, warm-cache run
+  47.5 ms, RSS 6,604 KiB (`--version`) and 26,228 KiB (cached run), binary 15,057,960 B, cold run
+  845 ms. The 5 MiB binary budget and the 15 MiB RSS budget are re-derived in the doc: the offline
+  table makes both unreachable by design (3.41 MiB embedded, ~20 MiB decoded index).

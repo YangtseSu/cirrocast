@@ -88,6 +88,14 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# The performance baseline (step 21): a JSON document the harness writes and the CI `perf` job
+# reads, so it cannot carry a comment header of its own.
+[[annotations]]
+path = "perf/baseline.json"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # Recorded Open-Meteo geocoding responses. The place data behind the service comes from GeoNames,
 # which is published under CC BY 4.0; the fixtures are trimmed to the hits the tests exercise.
 [[annotations]]
