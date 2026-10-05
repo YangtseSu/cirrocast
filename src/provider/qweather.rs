@@ -382,7 +382,7 @@ fn current_of(response: &CurrentResponse, now: DateTime<Utc>, tz: Tz) -> Result<
             .as_ref()
             .map(|measure| metric(measure, "°C", "current.feelsLike"))
             .transpose()?,
-        humidity_pct: fraction(humidity),
+        humidity_pct: Some(fraction(humidity)),
         precip_mm: response
             .precipitation
             .as_ref()
@@ -391,16 +391,18 @@ fn current_of(response: &CurrentResponse, now: DateTime<Utc>, tz: Tz) -> Result<
             .transpose()?
             .unwrap_or(0.0),
         weather: condition_of(&response.condition.code),
-        cloud_cover_pct: fraction(cloud_cover),
+        cloud_cover_pct: Some(fraction(cloud_cover)),
         pressure_hpa: metric(pressure, "hPa", "current.pressure")?,
         wind_kmh: metric(&response.wind.speed, "m/s", "current.wind.speed")? * MS_TO_KMH,
-        wind_dir_deg: response
-            .wind
-            .direction
-            .as_ref()
-            .and_then(|direction| direction.degree)
-            .map(degrees)
-            .ok_or_else(|| missing("current.wind.direction.degree"))?,
+        wind_dir_deg: Some(
+            response
+                .wind
+                .direction
+                .as_ref()
+                .and_then(|direction| direction.degree)
+                .map(degrees)
+                .ok_or_else(|| missing("current.wind.direction.degree"))?,
+        ),
         wind_gust_kmh: response
             .wind_gust
             .as_ref()
@@ -419,6 +421,9 @@ fn current_of(response: &CurrentResponse, now: DateTime<Utc>, tz: Tz) -> Result<
 }
 
 /// The hourly entries as canonical days.
+///
+/// `days[0]` is the first location-local date whose four parts all have a sample (today whenever
+/// the entries cover it, the next date when they do not).
 fn days_of(response: &HourlyResponse, tz: Tz, days: u8) -> Result<Vec<crate::model::DayForecast>> {
     let samples: Vec<HourSample> = response
         .hours
@@ -560,7 +565,7 @@ fn degrees(value: f32) -> u16 {
 /// precipitation and obscuration codes (the same stand-in SMHI, WWO and Pirate Weather use).
 fn daylight(code: &str, at: DateTime<Tz>) -> bool {
     match code.trim().parse::<u16>() {
-        Ok(150..=153) => false,
+        Ok(150..=154) => false,
         Ok(100..=104) => true,
         _ => matches!(at.hour(), 6..=17),
     }
@@ -568,34 +573,42 @@ fn daylight(code: &str, at: DateTime<Tz>) -> bool {
 
 /// `QWeather`'s condition code as a WMO 4677 code.
 ///
-/// The families follow the provider's published code list (100–999, plus the 150–153 night family
+/// The families follow the provider's published code list (100–999, plus the 150–154 night family
 /// its own examples emit); `900`/`901` (hot/cold) and `999` (unknown) have no WMO equivalent and
-/// stay undescribed, and an unlisted code is unknown rather than clamped into a neighbour.
+/// stay undescribed, and an unlisted or unparsable code is unknown rather than clamped into a
+/// neighbour.
 #[allow(clippy::match_same_arms)]
 fn condition_of(code: &str) -> Condition {
-    let code = code.trim().parse::<u16>().unwrap_or(0);
+    let Ok(code) = code.trim().parse::<u16>() else {
+        // An unparsable code is not a QWeather code at all: it stays undescribed, exactly like the
+        // unknown codes the arm below covers.
+        return Condition::from_u8(255);
+    };
     Condition::from_u8(match code {
-        100 | 150 => 0,              // sunny / clear night
-        102 | 152 => 1,              // few clouds
-        101 | 103 | 151 | 153 => 2,  // cloudy, partly cloudy
-        104 => 3,                    // overcast
-        300 => 80,                   // shower rain
-        301 => 82,                   // heavy shower rain
-        302 => 95,                   // thundershower
-        303 | 304 => 96,             // heavy thunderstorm, thunderstorm with hail
-        305 => 61,                   // light rain
-        306 | 314 | 315 => 63,       // moderate rain
-        307..=312 | 316..=318 => 65, // heavy rain and the rainstorm ladder
-        313 => 66,                   // freezing rain
-        399 => 63,                   // rain
-        400 | 408 => 71,             // light snow
-        401 | 409 | 499 => 73,       // moderate snow
-        402 | 403 | 410 => 75,       // heavy snow, snowstorm
-        404..=406 => 66,             // sleet, rain and snow
-        407 => 85,                   // snow flurry
-        500..=514 => 45,             // mist, fog, haze, sand, dust and their stronger forms
-        515 => 56,                   // freezing drizzle
-        _ => 255,                    // hot, cold, unknown and anything unlisted
+        100 | 150 => 0,             // sunny / clear night
+        102 | 152 => 1,             // few clouds
+        101 | 103 | 151 | 153 => 2, // cloudy, partly cloudy
+        104 | 154 => 3,             // overcast (154 is its night variant)
+        // The wind family (200–213) has no WMO 4677 equivalent, so it shares Overcast, the
+        // project's documented stand-in for a wind icon.
+        200..=213 => 3,
+        300 => 80,                               // shower rain
+        301 => 82,                               // heavy shower rain
+        302 => 95,                               // thundershower
+        303 | 304 => 96,                         // heavy thunderstorm, thunderstorm with hail
+        305 => 61,                               // light rain
+        306 | 314 | 315 => 63,                   // moderate rain
+        307 | 308 | 310..=312 | 316..=318 => 65, // heavy rain and the rainstorm ladder
+        309 => 53,                               // drizzle rain
+        313 => 66,                               // freezing rain
+        399 => 63,                               // rain
+        400 | 408 => 71,                         // light snow
+        401 | 409 | 499 => 73,                   // moderate snow
+        402 | 403 | 410 => 75,                   // heavy snow, snowstorm
+        404..=406 => 66,                         // sleet, rain and snow
+        407 => 85,                               // snow flurry
+        500..=515 => 45, // mist, fog, haze, sand, dust and their stronger forms
+        _ => 255,        // hot, cold, unknown and anything unlisted
     })
 }
 
@@ -605,15 +618,16 @@ mod tests {
     use crate::model::Condition;
 
     /// Every code the provider publishes, minus the three with no weather meaning.
-    const PUBLISHED: [u16; 51] = [
-        100, 101, 102, 103, 104, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312,
-        313, 314, 315, 316, 317, 318, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410,
-        499, 500, 501, 502, 503, 504, 507, 508, 509, 510, 511, 512, 513, 514, 515,
+    const PUBLISHED: &[u16] = &[
+        100, 101, 102, 103, 104, 154, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211,
+        212, 213, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315,
+        316, 317, 318, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 499, 500, 501,
+        502, 503, 504, 507, 508, 509, 510, 511, 512, 513, 514, 515,
     ];
 
     #[test]
     fn every_published_code_maps_to_a_described_condition() {
-        for code in PUBLISHED {
+        for &code in PUBLISHED {
             let condition = condition_of(&code.to_string());
             assert!(
                 condition.is_known(),
@@ -621,14 +635,14 @@ mod tests {
             );
         }
         // The night family the published table omits but the API emits.
-        for code in 150..=153 {
+        for code in 150..=154 {
             assert!(condition_of(&code.to_string()).is_known(), "{code}");
         }
     }
 
     #[test]
     fn the_meaningless_codes_stay_unknown() {
-        for code in ["900", "901", "999", "0", ""] {
+        for code in ["900", "901", "999", "0", "", "abc", "10.5"] {
             assert!(
                 !condition_of(code).is_known(),
                 "{code} should be undescribed"
@@ -659,17 +673,28 @@ mod tests {
     fn the_families_follow_the_published_groups() {
         assert_eq!(condition_of("100").description_en(), "Clear sky");
         assert_eq!(condition_of("104").description_en(), "Overcast");
+        assert_eq!(condition_of("154").description_en(), "Overcast");
         assert_eq!(condition_of("302").description_en(), "Thunderstorm");
         assert_eq!(condition_of("307").description_en(), "Heavy rain");
+        assert_eq!(condition_of("309").description_en(), "Moderate drizzle");
         assert_eq!(condition_of("400").description_en(), "Slight snow fall");
         assert_eq!(condition_of("501").description_en(), "Fog");
-        // 515 is freezing drizzle, not another fog variant.
-        assert_eq!(condition_of("515"), Condition::from_u8(56));
-        assert_eq!(
-            condition_of("515").description_en(),
-            "Light freezing drizzle"
-        );
+        // 515 is the strongest member of the 500 fog family, not freezing drizzle.
+        assert_eq!(condition_of("515"), Condition::from_u8(45));
+        assert_eq!(condition_of("515").description_en(), "Fog");
+        assert_eq!(condition_of("200").description_en(), "Overcast");
         assert_eq!(condition_of("150").description_en(), "Clear sky");
         assert_eq!(condition_of("999"), Condition::from_u8(255));
+    }
+
+    #[test]
+    fn the_wind_family_and_drizzle_are_not_swallowed_by_their_neighbours() {
+        // 309 must not fold into the 307/308 heavy-rain arm.
+        assert_eq!(condition_of("309"), Condition::from_u8(53));
+        assert_ne!(condition_of("309"), condition_of("307"));
+        // The whole 200–213 wind family is described, none of it Unknown.
+        for code in 200..=213 {
+            assert!(condition_of(&code.to_string()).is_known(), "{code}");
+        }
     }
 }

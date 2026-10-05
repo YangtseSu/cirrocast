@@ -251,7 +251,10 @@ fn cached_json<T>(
     let response = env.http.send(request)?;
     let body = response.body().to_owned();
     let value = parse(&body)?;
-    env.cache.write(key, response.status(), &body, ttl)?;
+    // The fetch succeeded; a cache write that fails (read-only or full cache directory,
+    // permissions) must not throw the answer away — the cache is an optimisation.
+    env.cache
+        .write_best_effort(key, response.status(), &body, ttl);
     Ok(value)
 }
 
@@ -599,13 +602,13 @@ fn current_of(decoded: &Decoded, observed_at: DateTime<chrono::FixedOffset>, tz:
         observed_at,
         temp_c: decoded.temp_c,
         feels_like_c: None,
-        humidity_pct: relative_humidity(decoded.temp_c, decoded.dewpoint_c),
+        humidity_pct: Some(relative_humidity(decoded.temp_c, decoded.dewpoint_c)),
         precip_mm: decoded.precip_mm.unwrap_or(0.0),
         weather: decoded.condition,
-        cloud_cover_pct: decoded.cloud_cover_pct,
+        cloud_cover_pct: Some(decoded.cloud_cover_pct),
         pressure_hpa: decoded.pressure_hpa,
         wind_kmh: decoded.wind_kmh,
-        wind_dir_deg: decoded.wind_dir_deg.unwrap_or(0),
+        wind_dir_deg: decoded.wind_dir_deg,
         wind_gust_kmh: decoded.wind_gust_kmh,
         visibility_km: decoded.visibility_km,
         uv_index: None,
@@ -682,8 +685,20 @@ fn number(value: Option<&serde_json::Value>) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{placeholder_location, relative_humidity};
+    use super::{current_of, decode_metar, placeholder_location, relative_humidity};
     use crate::model::LocationSource;
+
+    #[test]
+    fn a_variable_wind_keeps_no_direction_in_the_current_block() {
+        let decoded = decode_metar("METAR LFPG 010000Z VRB02KT 9999 BKN016 18/16 Q1018 NOSIG")
+            .expect("a complete report");
+        assert!(decoded.wind_variable, "the decoder must flag the VRB wind");
+        let observed_at =
+            chrono::DateTime::parse_from_rfc3339("2026-05-01T00:00:00+00:00").expect("a timestamp");
+        let current = current_of(&decoded, observed_at, chrono_tz::Tz::Europe__Paris);
+        assert_eq!(current.wind_dir_deg, None);
+        assert!(current.wind_kmh > 0.0, "the speed is still reported");
+    }
 
     #[test]
     fn humidity_follows_the_dew_point() {

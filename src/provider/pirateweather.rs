@@ -283,6 +283,9 @@ fn report(
 }
 
 /// The daily entries as canonical days, using the hourly series for the four parts.
+///
+/// `days[0]` is the first location-local date whose four parts all have a sample (today whenever
+/// the hourly series covers it, the next date when it does not).
 fn days_of(response: &Forecast, tz: Tz, days: u8) -> Result<Vec<DayForecast>> {
     let samples: Vec<HourSample> = response
         .hourly
@@ -355,16 +358,16 @@ fn current_of(block: &Block, tz: Tz) -> Option<Current> {
         observed_at: observed_at.fixed_offset(),
         temp_c: value(block.temperature)?,
         feels_like_c: value(block.apparent_temperature),
-        humidity_pct: value(block.humidity).map(fraction)?,
+        humidity_pct: value(block.humidity).map(fraction),
         precip_mm: value(block.precip_intensity).unwrap_or(0.0),
         weather: condition_of(
             block.icon.as_deref().unwrap_or_default(),
             block.precip_intensity,
         ),
-        cloud_cover_pct: value(block.cloud_cover).map(fraction)?,
+        cloud_cover_pct: value(block.cloud_cover).map(fraction),
         pressure_hpa: value(block.pressure)?,
         wind_kmh: value(block.wind_speed)? * MS_TO_KMH,
-        wind_dir_deg: value(block.wind_bearing).map(degrees)?,
+        wind_dir_deg: value(block.wind_bearing).map(degrees),
         wind_gust_kmh: value(block.wind_gust).map(|gust| gust * MS_TO_KMH),
         visibility_km: value(block.visibility),
         uv_index: value(block.uv_index),
@@ -472,14 +475,30 @@ mod tests {
         assert_eq!(hourly_sample.humidity_pct, None);
         assert_eq!(hourly_sample.precip_prob_pct, None);
 
-        // The current block's humidity and cloud cover are required readings: a sentinel value
-        // yields no current block at all rather than an invented 0 %.
+        // A sentinel in the current block's humidity or cloud cover nulls only that field; the
+        // rest of the block is still fully decodable.
         let current: Block = serde_json::from_str(
             r#"{"time":0,"temperature":1.0,"pressure":1010.0,"windSpeed":1.0,
                 "windBearing":0,"humidity":-999,"cloudCover":0.5,"icon":"clear-day"}"#,
         )
         .expect("a current block");
-        assert_eq!(current_of(&current, chrono_tz::Tz::UTC), None);
+        let current = current_of(&current, chrono_tz::Tz::UTC).expect("the block survives");
+        assert_eq!(current.humidity_pct, None);
+        assert_eq!(current.cloud_cover_pct, Some(50));
+    }
+
+    #[test]
+    fn a_sentinel_wind_bearing_nulls_only_the_direction() {
+        // The rest of the block is fully decodable, so a missing bearing must not discard it.
+        let current: Block = serde_json::from_str(
+            r#"{"time":0,"temperature":1.0,"pressure":1010.0,"windSpeed":1.0,
+                "windBearing":-999,"humidity":0.5,"cloudCover":0.5,"icon":"clear-day"}"#,
+        )
+        .expect("a current block");
+        let current = current_of(&current, chrono_tz::Tz::UTC).expect("the block survives");
+        assert_eq!(current.wind_dir_deg, None);
+        assert!(current.wind_kmh > 0.0);
+        assert_eq!(current.humidity_pct, Some(50));
     }
 
     #[test]

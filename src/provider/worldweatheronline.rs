@@ -270,6 +270,9 @@ fn text_number<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>
 // ---------------------------------------------------------------------------------------------
 
 /// Turns one response into a [`Report`].
+///
+/// `days[0]` is the first location-local date whose four parts all have a sample (today whenever
+/// the slots cover it, the next date when they do not).
 fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> Result<Report> {
     // An error envelope is HTTP 200 with `{"data":{"error":[…]}}`; treating it as a successful
     // empty response would report "no forecast days" for a bad key or an exhausted quota.
@@ -372,13 +375,13 @@ fn current_of(block: &CurrentBlock, tz: Tz, utc_today: NaiveDate) -> Option<Curr
         observed_at: observed_at.fixed_offset(),
         temp_c: block.temp_c?,
         feels_like_c: block.feels_like_c,
-        humidity_pct: percent(block.humidity?),
+        humidity_pct: block.humidity.map(percent),
         precip_mm: block.precip_mm.unwrap_or(0.0),
         weather: condition_of(block.weather_code?),
-        cloud_cover_pct: percent(block.cloudcover?),
+        cloud_cover_pct: block.cloudcover.map(percent),
         pressure_hpa: block.pressure?,
         wind_kmh: block.windspeed_kmph?,
-        wind_dir_deg: degrees(block.winddir_degree?),
+        wind_dir_deg: Some(degrees(block.winddir_degree?)),
         wind_gust_kmh: None,
         visibility_km: block.visibility,
         uv_index: block.uv_index,
@@ -455,61 +458,63 @@ fn condition_of(code: f32) -> Condition {
     #[allow(clippy::cast_possible_truncation)]
     let code = code.round() as i64;
     Condition::from_u8(match code {
-        113 => 0,        // clear / sunny
-        116 => 1,        // partly cloudy
-        119 => 2,        // cloudy
-        122 => 3,        // overcast
-        143 => 45,       // mist
-        149 => 45,       // smoky haze
-        176 => 51,       // patchy rain nearby
-        179 => 71,       // patchy snow nearby
-        182 => 66,       // patchy sleet nearby
-        185 => 56,       // patchy freezing drizzle nearby
-        200 => 95,       // thundery outbreaks in nearby
-        227 => 85,       // blowing snow
-        230 => 75,       // blizzard
-        248 | 260 => 45, // fog, freezing fog
-        263 => 51,       // patchy light drizzle
-        266 => 53,       // light drizzle
-        281 => 56,       // freezing drizzle
-        284 => 57,       // heavy freezing drizzle
-        293 => 61,       // patchy light rain
-        296 => 61,       // light rain
-        299 => 63,       // moderate rain at times
-        302 => 63,       // moderate rain
-        305 => 65,       // heavy rain at times
-        308 => 65,       // heavy rain
-        311 => 66,       // light freezing rain
-        314 => 67,       // moderate or heavy freezing rain
-        317 => 66,       // light sleet
-        320 => 67,       // moderate or heavy sleet
-        323 => 71,       // patchy light snow
-        326 => 71,       // light snow
-        329 => 73,       // patchy moderate snow
-        332 => 73,       // moderate snow
-        335 => 75,       // patchy heavy snow
-        338 => 75,       // heavy snow
-        350 => 77,       // ice pellets
-        353 => 80,       // light rain shower
-        356 => 81,       // moderate or heavy rain shower
-        359 => 82,       // torrential rain shower
-        362 => 66,       // light sleet showers
-        365 => 67,       // moderate or heavy sleet showers
-        368 => 85,       // light snow showers
-        371 => 86,       // moderate or heavy snow showers
-        374 => 77,       // light showers of ice pellets
-        377 => 77,       // moderate or heavy showers of ice pellets
-        386 => 95,       // patchy light rain with thunder
-        389 => 96,       // moderate or heavy rain with thunder
-        392 => 95,       // patchy light snow with thunder
-        395 => 96,       // moderate or heavy snow with thunder
-        _ => 255,        // undescribed: `Condition::from_u8` keeps 255 as unknown
+        113 => 0,  // clear / sunny
+        116 => 1,  // partly cloudy
+        119 => 2,  // cloudy
+        122 => 3,  // overcast
+        143 => 45, // mist
+        149 => 45, // smoky haze
+        176 => 51, // patchy rain nearby
+        179 => 71, // patchy snow nearby
+        182 => 66, // patchy sleet nearby
+        185 => 56, // patchy freezing drizzle nearby
+        200 => 95, // thundery outbreaks in nearby
+        227 => 85, // blowing snow
+        230 => 75, // blizzard
+        248 => 45, // fog
+        260 => 48, // freezing fog
+        263 => 51, // patchy light drizzle
+        266 => 53, // light drizzle
+        281 => 56, // freezing drizzle
+        284 => 57, // heavy freezing drizzle
+        293 => 61, // patchy light rain
+        296 => 61, // light rain
+        299 => 63, // moderate rain at times
+        302 => 63, // moderate rain
+        305 => 65, // heavy rain at times
+        308 => 65, // heavy rain
+        311 => 66, // light freezing rain
+        314 => 67, // moderate or heavy freezing rain
+        317 => 66, // light sleet
+        320 => 67, // moderate or heavy sleet
+        323 => 71, // patchy light snow
+        326 => 71, // light snow
+        329 => 73, // patchy moderate snow
+        332 => 73, // moderate snow
+        335 => 75, // patchy heavy snow
+        338 => 75, // heavy snow
+        350 => 77, // ice pellets
+        353 => 80, // light rain shower
+        356 => 81, // moderate or heavy rain shower
+        359 => 82, // torrential rain shower
+        362 => 66, // light sleet showers
+        365 => 67, // moderate or heavy sleet showers
+        368 => 85, // light snow showers
+        371 => 86, // moderate or heavy snow showers
+        374 => 77, // light showers of ice pellets
+        377 => 77, // moderate or heavy showers of ice pellets
+        386 => 95, // patchy light rain with thunder
+        389 => 96, // moderate or heavy rain with thunder
+        392 => 95, // patchy light snow with thunder
+        395 => 96, // moderate or heavy snow with thunder
+        _ => 255,  // undescribed: `Condition::from_u8` keeps 255 as unknown
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::condition_of;
+    use crate::model::Condition;
 
     /// Every code the provider's published feed lists.
     const PUBLISHED: [i64; 48] = [
@@ -550,6 +555,29 @@ mod tests {
     fn an_unlisted_code_stays_unknown() {
         assert!(!condition_of(100.0).is_known());
         assert!(!condition_of(400.0).is_known());
+    }
+
+    #[test]
+    fn freezing_fog_is_not_plain_fog() {
+        assert_eq!(condition_of(248.0), Condition::from_u8(45));
+        assert_eq!(condition_of(260.0), Condition::from_u8(48));
+        assert_ne!(condition_of(260.0), condition_of(248.0));
+    }
+
+    #[test]
+    fn a_missing_humidity_or_cloud_cover_nulls_only_that_field() {
+        let block: super::CurrentBlock = serde_json::from_str(
+            r#"{"observation_time":"12:00 PM","temp_C":"10","FeelsLikeC":"9",
+                "pressure":"1010","windspeedKmph":"5","winddirDegree":"180",
+                "weatherCode":"113"}"#,
+        )
+        .expect("a current block");
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 5).expect("a date");
+        let current =
+            super::current_of(&block, chrono_tz::Tz::UTC, today).expect("the block survives");
+        assert_eq!(current.humidity_pct, None);
+        assert_eq!(current.cloud_cover_pct, None);
+        assert_eq!(current.wind_dir_deg, Some(180));
     }
 
     #[test]

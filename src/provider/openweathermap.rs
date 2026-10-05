@@ -321,14 +321,15 @@ fn current_of(response: &CurrentResponse, tz: Tz, env: &Env<'_>) -> Option<Curre
         observed_at,
         temp_c: response.main.temp,
         feels_like_c: response.main.feels_like,
-        humidity_pct: percent(response.main.humidity),
+        humidity_pct: Some(percent(response.main.humidity)),
         precip_mm: accumulation(response.rain.as_ref(), response.snow.as_ref(), Window::Hour),
         weather: condition_of(weather.id),
-        cloud_cover_pct: percent(response.clouds.all),
+        cloud_cover_pct: Some(percent(response.clouds.all)),
         pressure_hpa: response.main.pressure,
         wind_kmh: response.wind.speed * MS_TO_KMH,
-        // A calm wind has no direction and OWM omits `deg`; the model has no "no direction" state.
-        wind_dir_deg: degrees(response.wind.deg.unwrap_or(0.0)),
+        // A calm wind has no direction and OWM omits `deg`; the direction is then absent rather
+        // than reported as due north.
+        wind_dir_deg: response.wind.deg.map(degrees),
         wind_gust_kmh: response.wind.gust.map(|gust| gust * MS_TO_KMH),
         visibility_km: response.visibility.map(|metres| metres / 1000.0),
         // The 2.5 endpoints carry no UV index.
@@ -347,6 +348,9 @@ fn current_of(response: &CurrentResponse, tz: Tz, env: &Env<'_>) -> Option<Curre
 }
 
 /// The forecast slots as canonical days.
+///
+/// `days[0]` is the first location-local date whose four parts all have a sample (today whenever
+/// the slots cover it, the next date when they do not).
 fn days_of(
     response: &ForecastResponse,
     tz: Tz,
@@ -442,8 +446,12 @@ fn degrees(value: f32) -> u16 {
 
 /// `OpenWeatherMap`'s condition id as a WMO 4677 code.
 ///
-/// The mapping is lossy on purpose (the plan's note: `2xx` thunder, `7xx` atmosphere → fog), and a
-/// code outside the published families stays unknown rather than being clamped into a neighbour.
+/// The `2xx` thunder family and the `3xx`/`5xx`/`6xx` precipitation families are lossy by design;
+/// the `7xx` atmosphere family maps each documented phenomenon to the model's own code (mist,
+/// smoke, haze, dust, sand) and only the genuinely unmappable members (volcanic ash, tornadoes)
+/// collapse into fog. A code outside the published families stays unknown rather than being
+/// clamped into a neighbour.
+#[allow(clippy::match_same_arms)]
 fn condition_of(id: u16) -> Condition {
     Condition::from_u8(match id {
         200..=232 => 95,       // thunderstorm family, with or without rain/drizzle
@@ -461,18 +469,29 @@ fn condition_of(id: u16) -> Condition {
         601 => 73,             // snow
         602 => 75,             // heavy snow
         620..=622 => 85,       // light, normal and heavy shower snow
-        701..=781 => 45,       // mist, smoke, haze, fog, sand, dust, ash, squalls, tornado
-        800 => 0,              // clear sky
-        801 => 1,              // few clouds (11–25 %)
-        802 => 2,              // scattered clouds (25–50 %)
-        803 | 804 => 3,        // broken and overcast clouds
-        _ => 255,              // undescribed: `Condition::from_u8` keeps 255 as unknown
+        701 => 10,             // mist
+        711 => 4,              // smoke
+        721 => 5,              // haze
+        731 | 761 => 6,        // dust (sand/dust whirls, and widespread dust)
+        741 => 45,             // fog
+        751 => 7,              // sand
+        771 => 3,              // squalls: wind, with no WMO 4677 present-weather code
+        // Volcanic ash (762) and tornadoes (781) have no described WMO 4677 code; fog is the
+        // nearest described obscuration family, and the honest lossy answer rather than inventing
+        // "clear" or "overcast".
+        762 | 781 => 45,
+        800 => 0,       // clear sky
+        801 => 1,       // few clouds (11–25 %)
+        802 => 2,       // scattered clouds (25–50 %)
+        803 | 804 => 3, // broken and overcast clouds
+        _ => 255,       // undescribed: `Condition::from_u8` keeps 255 as unknown
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::condition_of;
+    use crate::model::Condition;
 
     /// Every condition id the provider documents, so a missing family arm cannot hide.
     const PUBLISHED: [u16; 49] = [
@@ -510,5 +529,20 @@ mod tests {
         assert_eq!(condition_of(741).description_en(), "Fog");
         assert_eq!(condition_of(800).description_en(), "Clear sky");
         assert_eq!(condition_of(804).description_en(), "Overcast");
+    }
+
+    #[test]
+    fn the_atmosphere_family_keeps_its_documented_phenomena() {
+        assert_eq!(condition_of(701), Condition::from_u8(10), "mist");
+        assert_eq!(condition_of(711), Condition::from_u8(4), "smoke");
+        assert_eq!(condition_of(721), Condition::from_u8(5), "haze");
+        assert_eq!(condition_of(731), Condition::from_u8(6), "dust");
+        assert_eq!(condition_of(761), Condition::from_u8(6), "dust");
+        assert_eq!(condition_of(751), Condition::from_u8(7), "sand");
+        assert_eq!(condition_of(741), Condition::from_u8(45), "fog");
+        // Only the genuinely unmappable members keep the fog collapse.
+        assert_eq!(condition_of(762), Condition::from_u8(45), "volcanic ash");
+        assert_eq!(condition_of(781), Condition::from_u8(45), "tornado");
+        assert_ne!(condition_of(711), condition_of(741));
     }
 }

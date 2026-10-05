@@ -337,13 +337,13 @@ fn current_of(block: &CurrentBlock, tz: Tz) -> Current {
         observed_at: local_time(block.last_updated_epoch, tz).fixed_offset(),
         temp_c: block.temp_c,
         feels_like_c: Some(block.feelslike_c),
-        humidity_pct: percent(block.humidity),
+        humidity_pct: Some(percent(block.humidity)),
         precip_mm: block.precip_mm,
         weather: condition_of(block.condition.code),
-        cloud_cover_pct: percent(block.cloud.unwrap_or(0.0)),
+        cloud_cover_pct: block.cloud.map(percent),
         pressure_hpa: block.pressure_mb,
         wind_kmh: block.wind_kph,
-        wind_dir_deg: degrees(block.wind_degree),
+        wind_dir_deg: Some(degrees(block.wind_degree)),
         wind_gust_kmh: block.gust_kph,
         visibility_km: block.vis_km,
         uv_index: block.uv,
@@ -480,10 +480,12 @@ fn condition_of(code: u16) -> Condition {
         1216 | 1219 => 73, // patchy moderate snow, moderate snow
         1222 | 1225 => 75, // patchy heavy snow, heavy snow
         1237 => 77, // ice pellets
-        1240 | 1243 => 80, // light rain shower, moderate or heavy rain shower
+        1240 => 80, // light rain shower
+        1243 => 81, // moderate or heavy rain shower
         1246 => 82, // torrential rain shower
         1249 | 1252 => 66, // light sleet showers, moderate or heavy sleet showers
-        1255 | 1258 => 85, // light snow showers, moderate or heavy snow showers
+        1255 => 85, // light snow showers
+        1258 => 86, // moderate or heavy snow showers
         1261 | 1264 => 77, // light / moderate or heavy showers of ice pellets
         1273 | 1276 => 95, // patchy light rain with thunder, heavy rain with thunder
         1279 | 1282 => 95, // light / heavy snow with thunder
@@ -494,6 +496,7 @@ fn condition_of(code: u16) -> Condition {
 #[cfg(test)]
 mod tests {
     use super::condition_of;
+    use crate::model::Condition;
 
     /// Every code the provider publishes, so a missing family arm cannot hide.
     const PUBLISHED: [u16; 53] = [
@@ -534,5 +537,27 @@ mod tests {
         assert_eq!(condition_of(1183).description_en(), "Slight rain");
         assert_eq!(condition_of(1225).description_en(), "Heavy snow fall");
         assert_eq!(condition_of(1276).description_en(), "Thunderstorm");
+    }
+
+    #[test]
+    fn the_moderate_and_heavy_shower_twins_map_one_band_stronger() {
+        // The combined codes must not share the light twin's WMO band.
+        assert_eq!(condition_of(1240), Condition::from_u8(80));
+        assert_eq!(condition_of(1243), Condition::from_u8(81));
+        assert_eq!(condition_of(1255), Condition::from_u8(85));
+        assert_eq!(condition_of(1258), Condition::from_u8(86));
+    }
+
+    #[test]
+    fn a_missing_cloud_cover_nulls_only_that_field() {
+        let block: super::CurrentBlock = serde_json::from_str(
+            r#"{"last_updated_epoch":0,"temp_c":10.0,"feelslike_c":9.0,"humidity":80.0,
+                "pressure_mb":1010.0,"wind_kph":5.0,"wind_degree":180.0,"is_day":1,
+                "condition":{"code":1000}}"#,
+        )
+        .expect("a current block");
+        let current = super::current_of(&block, chrono_tz::Tz::UTC);
+        assert_eq!(current.cloud_cover_pct, None);
+        assert_eq!(current.humidity_pct, Some(80));
     }
 }

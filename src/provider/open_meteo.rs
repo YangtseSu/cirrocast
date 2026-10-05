@@ -36,7 +36,7 @@ use serde::Deserialize;
 use super::dayparts::{HourSample, aggregate_day};
 use super::{
     Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
-    local_today, requested_days,
+    local_today, note_short_series, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
@@ -133,16 +133,8 @@ pub struct ForecastResponse {
     pub latitude: f64,
     /// Longitude of the grid cell upstream answered for.
     pub longitude: f64,
-    /// Elevation of that grid cell in metres.
-    #[serde(default)]
-    pub elevation: Option<f64>,
-    /// Offset of the location's zone at the requested instant, in seconds.
-    pub utc_offset_seconds: i32,
     /// IANA zone name the timestamps are expressed in.
     pub timezone: String,
-    /// Short spelling of that zone, e.g. `GMT+8`.
-    #[serde(default)]
-    pub timezone_abbreviation: String,
     /// Current conditions.
     #[serde(default)]
     pub current: Option<CurrentBlock>,
@@ -302,6 +294,7 @@ fn report(
                 message: "the `daily` block has no days".to_owned(),
             });
         }
+        note_short_series(forecasts.len(), days, PROVIDER, env);
     }
 
     Ok(Report {
@@ -342,22 +335,22 @@ fn current_of(block: &CurrentBlock, tz: Tz) -> Result<Current> {
             block.apparent_temperature,
             "current.apparent_temperature",
         )?),
-        humidity_pct: percent(require(
+        humidity_pct: Some(percent(require(
             block.relative_humidity_2m,
             "current.relative_humidity_2m",
-        )?),
+        )?)),
         precip_mm: require(block.precipitation, "current.precipitation")?,
         weather: condition_of(require(block.weather_code, "current.weather_code")?),
-        cloud_cover_pct: percent(require(block.cloud_cover, "current.cloud_cover")?),
+        cloud_cover_pct: Some(percent(require(block.cloud_cover, "current.cloud_cover")?)),
         pressure_hpa: require(
             block.pressure_msl.or(block.surface_pressure),
             "current.pressure_msl",
         )?,
         wind_kmh: require(block.wind_speed_10m, "current.wind_speed_10m")?,
-        wind_dir_deg: degrees(require(
+        wind_dir_deg: Some(degrees(require(
             block.wind_direction_10m,
             "current.wind_direction_10m",
-        )?),
+        )?)),
         wind_gust_kmh: block.wind_gusts_10m,
         // Upstream reports visibility in metres; the model stores kilometres.
         visibility_km: block.visibility.map(|metres| metres / 1000.0),
@@ -521,9 +514,17 @@ fn at<'a, T>(values: &'a [T], index: usize, field: &str) -> Result<&'a T> {
     })
 }
 
-/// A WMO code as the canonical condition; out-of-range values keep their own number.
+/// A WMO code as the canonical condition; an out-of-range value stays undescribed.
+///
+/// A negative or oversized upstream code is not a number this model can carry, so it maps to the
+/// unknown sentinel rather than being clamped into the `u8` range (`-1` must not become `0`,
+/// "Clear sky").
 fn condition_of(code: f32) -> Condition {
-    Condition::from_u8(clamped_u8(code, 255))
+    if (0.0..=255.0).contains(&code) {
+        Condition::from_u8(clamped_u8(code, 255))
+    } else {
+        Condition::from_u8(255)
+    }
 }
 
 /// A percentage from upstream, clamped into the model's `u8`.
@@ -955,5 +956,26 @@ mod tests {
         assert_eq!(samples[0].wind_dir_deg, Some(5));
         assert_eq!(samples[0].humidity_pct, Some(100));
         assert_eq!(samples[0].precip_prob_pct, Some(0));
+    }
+
+    #[test]
+    fn an_out_of_range_weather_code_stays_undescribed() {
+        // A negative code must not be clamped to 0 ("Clear sky"), nor a huge one to 255-as-a-code.
+        for code in [-1.0, -0.4, 256.0, 1e9, f32::NAN] {
+            let condition = super::condition_of(code);
+            assert!(!condition.is_known(), "{code} must stay undescribed");
+        }
+        assert_ne!(super::condition_of(-1.0), Condition::from_u8(0));
+    }
+
+    #[test]
+    fn a_payload_without_the_unused_metadata_fields_still_decodes() {
+        // `elevation`, `utc_offset_seconds` and `timezone_abbreviation` are not read by any code,
+        // so a response that omits them must still parse.
+        let response: super::ForecastResponse = serde_json::from_str(
+            r#"{"latitude":52.52,"longitude":13.405,"timezone":"Europe/Berlin"}"#,
+        )
+        .expect("a minimal payload decodes");
+        assert_eq!(response.timezone, "Europe/Berlin");
     }
 }

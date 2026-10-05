@@ -61,7 +61,9 @@ pub struct HourSample {
 ///
 /// A series that starts at the current hour leaves the location-local today incomplete (its earlier
 /// parts are in the past); a day no `DayPart` can be built for is skipped rather than filled with
-/// invented values, so a backend emits the first fully covered days.
+/// invented values, so a backend emits the first fully covered days. `days[0]` is therefore the
+/// first location-local date whose four parts all have a sample — that is the location-local today
+/// whenever the series covers it, and the next date when it does not.
 pub fn covered_days(samples: &[HourSample], tz: Tz, days: u8) -> Vec<NaiveDate> {
     let mut dates: Vec<NaiveDate> = samples
         .iter()

@@ -131,7 +131,7 @@ impl ProviderId {
                 verified: "2026-09-30",
                 implemented: true,
                 alerts: false,
-                licence: Some("Open-Meteo.com (CC BY 4.0)"),
+                licence: Some("Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/"),
             },
             Self::OpenWeatherMap => ProviderMeta {
                 id: *self,
@@ -494,10 +494,6 @@ pub struct Capabilities {
 pub enum HourlyResolution {
     /// One sample per hour.
     Hourly,
-    /// One sample per three hours.
-    ThreeHourly,
-    /// Daily aggregates only, no hourly data.
-    Daily,
 }
 
 /// One fetch: for how many days and at what resolution.
@@ -565,7 +561,8 @@ pub struct JsonFetch<'a> {
 ///
 /// * the cache decides whether a request happens at all (`--no-cache`, `--refresh`, `--offline`
 ///   and the TTL come from [`Cache`]); a cached body that no longer parses is refetched;
-/// * [`HttpClient`] owns retries, backoff, `Retry-After` and gzip;
+/// * [`HttpClient`] owns retries, backoff and `Retry-After`, and refuses a non-identity
+///   `Content-Encoding` (the transparent decoder is disabled);
 /// * a `401` becomes [`Error::InvalidKey`] (exit 6) because the credential is the user's to fix and
 ///   neither a retry nor a fallback can change it. A `403` deliberately stays
 ///   [`Error::Upstream`]: it carries quota, plan, permission and host-mismatch refusals whose body
@@ -629,6 +626,18 @@ pub(crate) fn requested_days(requested: u8, max_days: u8, provider: &str, quiet:
         );
     }
     days
+}
+
+/// A `-v` note when a backend's own step size leaves the tail of the request without a complete
+/// local day, so the built report carries fewer days than `requested_days` asked for even though
+/// the registry's `max_days` never bit (SMHI's 6 h/12 h steps are the standing example). `built` is
+/// the number of days the report actually carries and `requested` the count after the cap.
+pub(crate) fn note_short_series(built: usize, requested: u8, provider: &str, env: &Env<'_>) {
+    if env.verbose > 0 && !env.quiet && built < usize::from(requested) {
+        eprintln!(
+            "note: {provider} steps leave the tail of the range incomplete; showing {built} of the {requested} requested days"
+        );
+    }
 }
 
 /// The location's current calendar date, from the injected clock.
@@ -1164,7 +1173,7 @@ mod tests {
         }
         assert_eq!(
             ProviderId::OpenMeteo.metadata().licence,
-            Some("Open-Meteo.com (CC BY 4.0)")
+            Some("Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/")
         );
     }
 

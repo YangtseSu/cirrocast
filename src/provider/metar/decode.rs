@@ -23,7 +23,7 @@
 //! | visibility | `CAVOK` | ≥ 10 km, and no cloud below 5 000 ft |
 //! | visibility | `////` | reported as *missing*: `None`, never a number |
 //! | RVR | `R28/1200`, `R06L/2000FT` | kept verbatim in [`Decoded::rvr`], never rendered |
-//! | weather | `-SHRA`, `BR`, `+TSRA`, `FZRA`, `VCSH`, `RE…` | mapped to a WMO 4677 code |
+//! | weather | `-SHRA`, `BR`, `+TSRA`, `FZRA`, `VCSH` | mapped to a WMO 4677 code |
 //! | cloud | `FEW/SCT/BKN/OVC` `nnn` (`CB`/`TCU`) | hundreds of feet → metres |
 //! | cloud | `VV006` | vertical visibility, the sky is obscured |
 //! | cloud | `NSC`, `NCD`, `CLR`, `SKC` | no cloud |
@@ -31,7 +31,8 @@
 //! | altimeter | `Q1013` | hPa, used as is |
 //! | altimeter | `A3010` | inches of mercury × 33.8639 → hPa |
 //! | remarks | `RMK …` | **never interpreted**, except the `P####` precipitation group |
-//! | trend | `NOSIG`, `BECMG`, `TEMPO …` | **never interpreted** (no trend handling in this step) |
+//! | recent weather | `RERA`, `RESN`, `RETS`, … | ignored: the weather has ended, it is not the observation |
+//! | trend | `NOSIG`, `BECMG`, `TEMPO …` | **never interpreted**: the forecast it carries must not overwrite the observation |
 //!
 //! # Present weather → WMO 4677
 //!
@@ -183,6 +184,28 @@ pub struct Decoded {
     pub rvr: Vec<String>,
 }
 
+/// Applies one group while a trend block (`BECMG`/`TEMPO`) is in force.
+///
+/// A trend forecast describes expected conditions, not the observation, so nothing it carries may
+/// overwrite the report's own groups. The `RMK` marker and its `P####` remark are still read.
+fn apply_trend_group(group: &Group, state: &mut State, decoded: &mut Decoded) {
+    match group {
+        Group::Remarks => state.remarks = true,
+        Group::PrecipRemark(mm) => decoded.precip_mm = Some(*mm),
+        Group::Trend
+        | Group::Wind(_)
+        | Group::WindVariation(_, _)
+        | Group::Cavok
+        | Group::Visibility(_)
+        | Group::Rvr
+        | Group::Weather(_, _)
+        | Group::Cloud(_)
+        | Group::Temperature(_, _)
+        | Group::Altimeter(_)
+        | Group::Ignored => {}
+    }
+}
+
 /// Decodes one METAR or SPECI report.
 ///
 /// The decoder is strict about the report's *skeleton* — a body with no timestamp or no
@@ -209,7 +232,13 @@ pub fn decode_metar(raw: &str) -> Result<Decoded> {
     while index < tokens.len() {
         let token = tokens[index];
         index += 1;
-        match classify(token, state.remarks, tokens.get(index)) {
+        let group = classify(token, state.remarks, tokens.get(index));
+        if state.trend {
+            apply_trend_group(&group, &mut state, &mut decoded);
+            continue;
+        }
+        match group {
+            Group::Trend => state.trend = true,
             Group::Remarks => state.remarks = true,
             Group::PrecipRemark(mm) => decoded.precip_mm = Some(mm),
             Group::Wind(wind) if !state.wind_seen => {
@@ -224,11 +253,13 @@ pub fn decode_metar(raw: &str) -> Result<Decoded> {
                 decoded.variable_from_deg = Some(from);
                 decoded.variable_to_deg = Some(to);
             }
-            Group::Cavok => {
+            Group::Cavok if !state.visibility_seen => {
+                state.visibility_seen = true;
                 decoded.cavok = true;
                 decoded.visibility_km = Some(TEN_KM);
             }
-            Group::Visibility(parsed) => {
+            Group::Visibility(parsed) if !state.visibility_seen => {
+                state.visibility_seen = true;
                 decoded.visibility_km = match parsed.value {
                     Visibility::Metres(km) | Visibility::Miles(km) => Some(km),
                     Visibility::Missing => None,
@@ -247,19 +278,24 @@ pub fn decode_metar(raw: &str) -> Result<Decoded> {
                 }
             }
             Group::Cloud(layer) => decoded.cloud_layers.push(layer),
-            Group::Temperature(temp, dewpoint) => {
+            Group::Temperature(temp, dewpoint) if !state.temperature_seen => {
+                state.temperature_seen = true;
                 decoded.temp_c = temp;
                 decoded.dewpoint_c = dewpoint;
-                state.temperature_seen = true;
             }
-            Group::Altimeter(hpa) => {
-                decoded.pressure_hpa = hpa;
+            Group::Altimeter(hpa) if !state.pressure_seen => {
                 state.pressure_seen = true;
+                decoded.pressure_hpa = hpa;
             }
-            // Anything else — `AUTO`, `COR`, `NOSIG`, `BECMG`, `TEMPO`, `WS`, national extensions —
-            // is not part of the canonical model and is deliberately ignored. A second wind group
-            // is ignored too: the first one is the report's own.
-            Group::Wind(_) | Group::Ignored => {}
+            // Anything else — `AUTO`, `COR`, `NOSIG`, `WS`, national extensions — is not part of
+            // the canonical model and is deliberately ignored, and so is a second group of a kind
+            // already seen: the first one is the report's own.
+            Group::Wind(_)
+            | Group::Cavok
+            | Group::Visibility(_)
+            | Group::Temperature(_, _)
+            | Group::Altimeter(_)
+            | Group::Ignored => {}
         }
     }
 
@@ -327,10 +363,15 @@ struct State {
     weather_rank: u8,
     /// Whether the wind group has been read (the first one is the report's own).
     wind_seen: bool,
+    /// Whether a visibility group (or `CAVOK`) has been read.
+    visibility_seen: bool,
     /// Whether a temperature/dew-point group has been seen.
     temperature_seen: bool,
     /// Whether an altimeter group has been seen.
     pressure_seen: bool,
+    /// Whether a `BECMG`/`TEMPO` trend marker has been passed; the forecast it introduces is not
+    /// the observation and must not overwrite what was already read.
+    trend: bool,
     /// Whether the `RMK` marker has been passed; remarks are not interpreted.
     remarks: bool,
 }
@@ -359,6 +400,8 @@ enum Group {
     Temperature(f32, f32),
     /// The altimeter setting in hPa.
     Altimeter(f32),
+    /// A `BECMG`/`TEMPO` trend marker: the groups after it are a forecast, not the observation.
+    Trend,
     /// Anything the canonical model does not carry.
     Ignored,
 }
@@ -373,6 +416,9 @@ fn classify(token: &str, remarks: bool, next: Option<&&str>) -> Group {
     }
     if remarks {
         return parse_precip_remark(token).map_or(Group::Ignored, Group::PrecipRemark);
+    }
+    if token == "BECMG" || token == "TEMPO" {
+        return Group::Trend;
     }
     if let Some(wind) = parse_wind(token) {
         return Group::Wind(wind);
@@ -581,9 +627,18 @@ fn is_rvr(token: &str) -> bool {
     let Some((runway, value)) = rest.split_once('/') else {
         return false;
     };
-    runway.len() >= 2
-        && runway.len() <= 3
-        && runway.bytes().all(|byte| byte.is_ascii_digit())
+    // The runway is two digits, optionally followed by the parallel-runway letter (`06L`, `24R`,
+    // `06C`); the all-digit form without a letter is common too.
+    let designator = match runway.as_bytes() {
+        [first, second] => first.is_ascii_digit() && second.is_ascii_digit(),
+        [first, second, letter] => {
+            first.is_ascii_digit()
+                && second.is_ascii_digit()
+                && matches!(letter, b'L' | b'C' | b'R')
+        }
+        _ => false,
+    };
+    designator
         && !value.is_empty()
         && value.bytes().all(|byte| {
             byte.is_ascii_digit() || matches!(byte, b'V' | b'P' | b'M' | b'F' | b'T' | b'L' | b'R')
@@ -706,8 +761,13 @@ fn parse_weather(token: &str) -> Option<(Condition, u8)> {
         }
         rest = &rest[matched.len()..];
     }
-    if precip.is_empty() && obscuration.is_empty() && descriptor.is_none() {
-        return None;
+    if precip.is_empty() && obscuration.is_empty() {
+        // `VCSH`: showers in the vicinity with no precipitation type named. The shower family's
+        // light member is the described code the token maps to.
+        if descriptor == Some("SH") {
+            return Some((Condition::from_u8(80), RANK_PRECIPITATION));
+        }
+        descriptor?;
     }
 
     if descriptor == Some("TS") {
@@ -850,7 +910,7 @@ fn sky_condition(decoded: &Decoded) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cover, decode_metar, parse_miles, parse_weather, parse_wind};
+    use super::{Cover, decode_metar, is_rvr, parse_miles, parse_weather, parse_wind};
     use crate::model::Condition;
 
     #[test]
@@ -949,5 +1009,50 @@ mod tests {
         assert_eq!(Cover::Scattered.cover_pct(), 45);
         assert_eq!(Cover::Broken.cover_pct(), 75);
         assert_eq!(Cover::Overcast.cover_pct(), 100);
+    }
+
+    #[test]
+    fn a_trend_block_does_not_overwrite_the_observation() {
+        // The observation is 10 km visibility, light rain, 18/16, Q1018; the `TEMPO` that follows
+        // is a forecast and must not replace any of it.
+        let decoded = decode_metar(
+            "METAR ZBAA 010000Z 00000KT 9999 -RA BKN016 18/16 Q1018 TEMPO 0600 TSRA 15/14",
+        )
+        .expect("a complete report");
+        assert_eq!(decoded.visibility_km, Some(10.0));
+        assert_eq!(decoded.temp_c, 18.0);
+        assert_eq!(decoded.dewpoint_c, 16.0);
+        assert_eq!(decoded.pressure_hpa, 1018.0);
+        assert_eq!(decoded.condition, Condition::from_u8(61));
+    }
+
+    #[test]
+    fn a_becmg_block_is_ignored_but_remarks_after_it_are_read() {
+        let decoded =
+            decode_metar("METAR ZBAA 010000Z 24008KT 9999 18/16 Q1018 BECMG 12/11 RMK P0000")
+                .expect("a complete report");
+        assert_eq!(decoded.temp_c, 18.0);
+        assert_eq!(decoded.dewpoint_c, 16.0);
+        assert_eq!(decoded.precip_mm, Some(0.0));
+    }
+
+    #[test]
+    fn an_rvr_may_carry_a_parallel_runway_designator() {
+        assert!(is_rvr("R06L/2000FT"));
+        assert!(is_rvr("R28/1200"));
+        assert!(is_rvr("R06/2600V3500FT"));
+        assert!(!is_rvr("R2/1200"));
+        assert!(!is_rvr("R28/"));
+        let decoded = decode_metar("METAR ZBAA 010000Z 24008KT 9999 R06L/2000FT 18/16 Q1018")
+            .expect("a complete report");
+        assert_eq!(decoded.rvr, vec!["R06L/2000FT".to_owned()]);
+    }
+
+    #[test]
+    fn vicinity_showers_map_into_the_shower_family() {
+        let (condition, rank) = parse_weather("VCSH").expect("VCSH is a weather group");
+        assert_eq!(condition, Condition::from_u8(80));
+        assert!(condition.is_known());
+        assert_eq!(rank, super::RANK_PRECIPITATION);
     }
 }

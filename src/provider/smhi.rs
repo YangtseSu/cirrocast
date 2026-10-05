@@ -39,7 +39,7 @@ use serde::Deserialize;
 use super::dayparts::{HourSample, aggregate_day, covered_days, extremes};
 use super::{
     Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
-    local_today, requested_days,
+    local_today, note_short_series, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
@@ -202,6 +202,10 @@ pub struct Data {
 // ---------------------------------------------------------------------------------------------
 
 /// Turns one response into a [`Report`].
+///
+/// `days[0]` is the first location-local date whose four parts all have a sample (today whenever
+/// the steps cover it, the next date when they do not); SMHI's 12-hour tail steps leave the last
+/// requested day incomplete, so a `-v` note reports the shortfall.
 fn report(
     response: &PointResponse,
     loc: &Location,
@@ -244,6 +248,7 @@ fn report(
                 message: format!("the response covers no complete local day in {tz}"),
             });
         }
+        note_short_series(forecasts.len(), days, PROVIDER, env);
     }
 
     Ok(Report {
@@ -320,8 +325,10 @@ fn current_of(response: &PointResponse, tz: Tz, env: &Env<'_>) -> Option<Current
 
     let observed_at = instant(&step.time).ok()?.with_timezone(&tz);
     let temp_c = value(step.data.air_temperature)?;
-    let humidity = value(step.data.relative_humidity)?;
-    let cloud = value(step.data.cloud_area_fraction)?;
+    // Humidity and cloud cover are optional in the canonical `Current`: SMHI's in-band `9999`
+    // marks a missing reading, which must null only that field, not the whole block.
+    let humidity = value(step.data.relative_humidity);
+    let cloud = value(step.data.cloud_area_fraction);
     let pressure = value(step.data.air_pressure_at_mean_sea_level)?;
     let wind_mps = value(step.data.wind_speed)?;
     let direction = value(step.data.wind_from_direction)?;
@@ -331,13 +338,13 @@ fn current_of(response: &PointResponse, tz: Tz, env: &Env<'_>) -> Option<Current
         observed_at: observed_at.fixed_offset(),
         temp_c,
         feels_like_c: None,
-        humidity_pct: rounded_percent(humidity),
+        humidity_pct: humidity.map(rounded_percent),
         precip_mm: value(step.data.precipitation_amount_mean_deterministic).unwrap_or(0.0),
         weather: condition_of(symbol),
-        cloud_cover_pct: rounded_percent(cloud * 12.5),
+        cloud_cover_pct: cloud.map(|cloud| rounded_percent(cloud * 12.5)),
         pressure_hpa: pressure,
         wind_kmh: wind_mps * MS_TO_KMH,
-        wind_dir_deg: degrees(direction),
+        wind_dir_deg: Some(degrees(direction)),
         wind_gust_kmh: value(step.data.wind_speed_of_gust).map(|mps| mps * MS_TO_KMH),
         visibility_km: value(step.data.visibility_in_air),
         uv_index: None,
