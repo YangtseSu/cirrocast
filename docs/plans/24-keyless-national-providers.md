@@ -224,3 +224,16 @@ cargo run -q -- --offline --lat 39.7456 --lon -97.0892 -p nws           # cached
   `-p auto Norman` prints `nws, open-meteo, met-no` and takes NWS; `-p auto Berlin` prints
   `brightsky, open-meteo, met-no` and takes Bright Sky (`+14 °C`, `10 km/h SW`); `provider list`
   shows 14 rows with `NET` (`free` for the keyless entries, `nonfree` for the commercial BYOK ones).
+
+- 2026-10-06 — one more correction, found by reading `provider list` after the merge: `nws` carries
+  `current: false` (the payload has no pressure reading), so its README matrix row says `no` in the
+  Observation column as well. The `Capabilities` draft in the deliverable above implied otherwise;
+  the registry row and the matrix agree.
+
+- 2026-10-06 — the reference document (docs/providers.md) was extended in the same pass and names
+  five places where the draft deliverable above disagreed with what shipped, all of them the code's
+  side: Bright Sky's draft `alerts: true` became `alerts: false` (its payload carries no warnings),
+  the draft's "SI default" units are in fact the API's `dwd` group (°C, km/h, hPa, mm — `si` would
+  be Kelvins and m/s), the draft's `*_10` field names are the live payload's unsuffixed ones, the
+  draft's example `-v` line listed `smhi` for a US point (its box excludes one), and the conditional
+  `[providers.brightsky] url` knob does not exist because the public instance answered.

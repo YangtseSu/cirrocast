@@ -684,7 +684,7 @@ is used for. The handful of recorded responses used as test fixtures keep their 
 | `open-meteo` | none | global | yes | yes | 16 |
 | `met-no` | none | global | yes | yes | 9 |
 | `smhi` | none | Nordics and adjacent seas | yes | yes | 10 |
-| `nws` | none | the US and its territories | yes | yes | 7 |
+| `nws` | none | the US and its territories | no | yes | 7 |
 | `brightsky` | none | Germany (DWD open data) | yes | yes | 10 |
 | `metar` | none | worldwide stations | yes | no | — (observation) |
 | `open-meteo-archive` | none | global | no | archive | — (1940-01-01 onward, `--date`/`--history`) |

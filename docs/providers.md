@@ -43,12 +43,14 @@ registry re-verification of that step needs a written record of what was checked
 
 ### Backends
 
-| id | Key | Free tier (verified 2026-09-30; `metar` and `qweather` re-verified 2026-10-01; the four step-23 backends re-verified 2026-10-06) | Coverage | Granularity | Horizon | Status |
+| id | Key | Free tier (verified 2026-09-30; `metar` and `qweather` re-verified 2026-10-01; the four step-23 backends and the two step-24 backends re-verified 2026-10-06) | Coverage | Granularity | Horizon | Status |
 |---|---|---|---|---|---|---|
 | `open-meteo` | none | 10 000 calls/day, 5 000/hour, 600/minute; non-commercial | global | hourly | 16 days | implemented (step 06) |
 | `met-no` | none | 20 requests/second per application; a descriptive User-Agent with contact information is mandatory (`403` otherwise) | global | hourly for the first ~52 h, 6-hourly beyond | 9 days | implemented (step 23) |
 | `open-meteo-archive` | none | shared with Open-Meteo (10 000 calls/day, non-commercial) | global | hourly and daily reanalysis | 1940-01-01 onward (historical only) | implemented (step 23) |
 | `open-meteo-marine` | none | shared with Open-Meteo (10 000 calls/day, non-commercial) | coastal waters of the global wave models | hourly; `current` plus a daily wave summary requested | 8 forecast days | implemented (step 23) |
+| `brightsky` | none | no key and no documented quota on the public instance; a self-hosted instance qualifies | Germany (DWD station network; DWD forecasts elsewhere at low density) | hourly | 10 days (measured) | implemented (step 24) |
+| `nws` | none | no key; rate limits unpublished; requests identified by a descriptive User-Agent with contact information | the US and its territories (US, PR, VI, GU, AS, MP) | hourly (156 periods) plus 7 day/night periods | 6 whole local days hourly; 7 days daily (`max_days: 7`) | implemented (step 24) |
 | `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | implemented |
 | `metar` | none | 100 requests/minute | worldwide stations | per observation (≈hourly) | observations only | implemented (step 11) |
 | `visualcrossing` | `CIRROCAST_VISUALCROSSING_KEY` | 1 000 records/day on the free plan (`queryCost` ≈ 1 + 24×hours + days) | global | hourly | 15 days | implemented (step 23) |
@@ -58,11 +60,15 @@ registry re-verification of that step needs a written record of what was checked
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | implemented |
 | `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (up to 240 h) | 10 days (v1) | implemented |
 
-`--provider auto` (the default) is the **interim fixed list `open-meteo, met-no, smhi`** — the
-implemented keyless forecast backends, in registry order — and `metar` is never in it (a station has
-to be named). `open-meteo-archive` is left out because it answers history only and
-`open-meteo-marine` because it is supplementary (`--marine`, never a chain entry). Step 24 replaces
-this fixed list with the coverage-ranked expansion over the registry's `covers` metadata.
+`--provider auto` (the default) expands by coverage rather than from a fixed list: entries whose
+`covers` names the location's `country_code` come first, then entries whose bounding box contains
+the point, then every global keyless forecast entry — each tier in registry order. A US point starts
+at `nws` (`nws, open-meteo, met-no`), a German point at `brightsky`, a Swedish point at `smhi` (its
+bounding box) and a Norwegian point at `met-no` (national) with `smhi` behind it; a point with no
+country code falls back to the global tier alone (`open-meteo, met-no`). `metar` never enters (a
+station has to be named), and neither does `open-meteo-archive` (history only) or
+`open-meteo-marine` (supplementary, `--marine`, never a chain entry). `tests/provider_auto.rs` pins
+each tier.
 
 ### Obligations that reach the rendered output
 
@@ -72,6 +78,8 @@ this fixed list with the coverage-ranked expansion over the registry's `covers` 
 | `met-no` | CC BY 4.0 | `Data from MET Norway (CC BY 4.0) — https://www.met.no/` | re-request only after the response's `Expires`, with `If-Modified-Since` and `304` | no `Yr` in the product name or UI; a descriptive User-Agent with contact information is mandatory (`403` otherwise) |
 | `open-meteo-archive` | CC BY 4.0 (ERA5/Copernicus reanalysis) | `Open-Meteo.com (CC BY 4.0, ERA5/Copernicus) — https://open-meteo.com/` | none published | name the ERA5/Copernicus reanalysis, not only Open-Meteo (in the credit line) |
 | `open-meteo-marine` | CC BY 4.0 (Copernicus Marine Service, DWD ICON Wave) | `Marine data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/ (Copernicus Marine Service, DWD ICON Wave)` | none published | attribute the Copernicus Marine Service and DWD ICON Wave products (in the credit line) |
+| `brightsky` | CC BY 4.0 (DWD open data) | `Bright Sky (DWD open data, CC BY 4.0) — https://brightsky.dev/` | none published | the DWD's own Terms of Use apply to the data; no published quota |
+| `nws` | US Government work (public domain) | no mandated string; works "consisting predominantly of the material appearing in NWS Web pages" must carry the 17 U.S.C. § 403 notice | none published | NWS name/logo are trademarks; cached warnings are for the local user only, not for redistribution |
 | `smhi` | CC BY 4.0 SE | name SMHI as the source and state modifications; `Källa: SMHI` is the conventional rendering, not SMHI's own wording | none published; caching encouraged | — |
 | `metar` | US Government work (public domain) | no mandated string; NWS asks that derived works not claim NWS endorsement and that predominantly-NWS works carry the 17 U.S.C. § 403 notice | none published | NWS name/logo are trademarks |
 | `visualcrossing` | proprietary (Visual Crossing per-account terms) | `Visual Crossing Weather — https://www.visualcrossing.com/` | per-account terms: local display only, no redistribution of cached data | the key is BYOK and the account's terms bind the user; alerts carry the payload's own `alerts[]` |
@@ -466,6 +474,162 @@ behind it. Registry credit line:
 **Unverified.** Which wave model `best_match` selects for a given cell; whether the default span
 without `forecast_days` really reaches the registry's 8 days (the step-23 probe confirmed
 `forecast_days=8` is accepted and returns 192 hourly slots, but the request sends no such parameter).
+
+### `nws` (api.weather.gov)
+
+Keyless, the US and its territories. Fetching is a **two-step** walk, like a station lookup: the
+coordinate resolves to an office and a grid cell first, and only then do that cell's hourly and daily
+resources answer. `auto` ranks it first for a US point, and a coordinate outside the coverage falls
+through with a reason the user can read.
+
+**Endpoints** (verified 2026-10-06, all GET, no key, `Accept: application/geo+json`)
+
+| Purpose | Method | URL | Parameters we send |
+|---|---|---|---|
+| Point → grid mapping | GET | `https://api.weather.gov/points/{lat:.4},{lon:.4}` | path only; the `Accept` media type |
+| Hourly forecast | GET | `https://api.weather.gov/gridpoints/{gridId}/{x},{y}/forecast/hourly` | path only; the `Accept` media type |
+| Daily (day/night) forecast | GET | `https://api.weather.gov/gridpoints/{gridId}/{x},{y}/forecast` | path only; the `Accept` media type |
+
+The mapping is cached in its own **`grid/`** namespace (`grid/nws-<lat.3dp>-<lon.3dp>.json`, TTL **30
+days**), because grids move far more slowly than a forecast; the two forecast resources live under the
+configured weather TTL. A repeated run therefore pays for the two forecast requests, not the mapping
+again.
+
+**Response fields consumed.** `PointsResponse` reads `properties.{gridId, gridX, gridY, timeZone,
+relativeLocation.properties.{city, state}}` — the zone repairs a provisional `UTC` before the day
+parts are anchored, and the grid and place are what `-v` names. `HourlyResponse` and `DailyResponse`
+each read `properties.periods[]`; one shared `Period` reads `startTime`, `endTime`, `temperature`,
+`temperatureUnit`, `probabilityOfPrecipitation`, `relativeHumidity` (each a `{unitCode, value}` object
+with a nullable `value`), `windSpeed`, `windDirection`, `shortForecast` and `icon`. The daily periods
+repeat every field but `relativeHumidity`, so the fields the hourly series alone carries are optional
+here.
+
+**Auth.** None; a descriptive `User-Agent` carrying contact information is mandatory (step 15 fixed
+the string for the alert adapter, and this backend reuses the same constant). `403`/`429` stay
+`Error::Upstream`/`Network` so a chain continues.
+
+**Limits.** No key and **no published rate limit**; the registry row records the policy the client
+applies: "no key; rate limits unpublished; requests identified by User-Agent; the point → grid mapping
+is cached 30 days".
+
+**Coverage and granularity.** The US and its territories — `covers: countries(["US", "PR", "VI",
+"GU", "AS", "MP"])`. The recorded `forecast/hourly` series carries **156 periods** covering six whole
+local days plus the trailing partial one, and the daily resource carries **14 periods = 7 day/night
+pairs**; `max_days: 7` is that measured daily horizon. The four canonical day parts are aggregated in
+the location's zone, from NWS's own local periods.
+
+**Attribution and licence.** `api.weather.gov` serves US government work in the public domain, under
+the same NWS conditions the `metar` section records: no claim of ownership, no implied endorsement, and
+works "consisting predominantly of the material appearing in NWS Web pages" must carry the 17 U.S.C.
+§ 403 notice; the NWS name and logo are trademarks. No string is mandated, so the registry credit line
+is `api.weather.gov (NOAA/NWS, public domain)`.
+
+**Implemented 2026-10-06 (step 24)** (`src/provider/nws.rs`, `max_days: 7`, `current: false`), with the
+traps the decoder handles:
+
+* **`temperatureUnit` is read per period**, never assumed: a `F` value is converted to °C at decode
+  time, so the model and the cache stay metric; any other spelling (`C`) is already canonical.
+* **`windSpeed` is a string and can be a range** (`"10 mph"`, `"5 to 10 mph"`): the **upper** bound is
+  kept and one `-v` note names the range it collapsed; a string with no number (calm) is `0`.
+* **`windDirection` is a cardinal** (`SSW`), mapped back to the sector centre through the shared
+  `model::units::compass_degrees` table — the same inverse `metar` uses.
+* **The percentage fields are objects**: `probabilityOfPrecipitation` and `relativeHumidity` are
+  `{unitCode, value}` with a nullable `value`; a `null` stays absent, never `0`.
+* **The icon URL is consulted before the text.** The `land`/`marine` and `day`/`night` path segments
+  are stripped, the most severe of the icon's condition codes wins, and `shortForecast` is the
+  fallback. The icon table has 30 codes and the text table 26 substrings, matched longest-first
+  (`"rain and snow"` before `"rain"`, `"snow showers"` before `"snow"`) so composition wins; an
+  unknown pair becomes WMO 3 (overcast) plus one `-v` line.
+* **The daily high/low is anchored on the period's `endTime`**, not its start: NWS's `Tonight` period
+  runs into the next day, and the canonical day's `Night` part is those small hours, so the low
+  belongs to the date the period ends on. A date the daily block does not reach falls back to the
+  hourly samples' own extremes rather than dropping the day.
+* **`properties.timeZone` repairs a provisional zone** (a coordinate or OSM place starts as `UTC`)
+  before the day parts are anchored.
+* **The forecast payload carries no pressure**, so the canonical `Current` block cannot be filled
+  honestly and the row declares **`current: false`**; the renderers omit the block rather than invent
+  one.
+* **An out-of-coverage point answers `404`**, kept as `Error::Upstream` (exit 3) with a message naming
+  the point (`… is outside the NWS coverage`), so an `auto` chain falls through readably.
+* **Alerts are step 15's**, not this provider's: the `alerts: true` registry row describes the NWS
+  warnings reached through the alert registry, and this backend fills `Report.alerts` with an empty
+  vector.
+
+**Unverified.** The published rate limit (none found); the `403`/`429` bodies; whether the 156-period
+series length varies by office.
+
+### `brightsky` (Bright Sky)
+
+Keyless, Germany. One `/weather` request per fetch; the hourly rows become the four canonical day parts
+in the location's zone, and the `sources[]` block names the DWD station behind them.
+
+**Endpoints** (verified 2026-10-06)
+
+| Purpose | Method | URL | Parameters we send |
+|---|---|---|---|
+| Hourly forecast | GET | `https://api.brightsky.dev/weather` | `lat`, `lon` (four decimals), `date` (location-local today), `last_date`, `tz=UTC` |
+
+`units` is **not** sent: the API's default group is `dwd` (°C, km/h, hPa, mm), which is already the
+canonical set, whereas `units=si` would return Kelvins, m/s and Pascals for the provider to convert
+back; the field names are the same in either mode. `date`/`last_date`/`tz=UTC` make the request span
+UTC and the rows are re-anchored in the location's zone at decode time.
+
+**Response fields consumed.** `WeatherResponse` reads `weather[]` and `sources[]`. `Record` reads
+`timestamp`, `temperature`, `wind_speed`, `wind_direction`, `wind_gust_speed`, `relative_humidity`,
+`precipitation`, `condition`, `icon`, `visibility`, `cloud_cover` and `pressure_msl` — every
+meteorological value optional, because upstream reports `null` for a reading it has no model for.
+`Source` reads `id`, `dwd_station_id`, `wmo_station_id`, `station_name`, `observation_type`,
+`distance` and `last_record` for the `-v` block. Unknown fields are ignored on purpose (Bright Sky adds
+parameters to the payload without notice).
+
+**Auth.** None; no key. The public instance is free to use, and the project is open source.
+
+**Limits.** No key and **no documented quota** on the public instance; the registry row records that
+"the DWD's Terms of Use apply to the data". **The horizon is a measured 10 whole days**: every
+2026-10-06 probe that asked past it clamped to the forecast feed's `sources[].last_record`
+(`2026-10-16T04:00Z` at Berlin's `BERLIN-ALEX.`, Munich's `MUENCHEN STADT` and Bergen's `BERGEN`
+alike), i.e. `today + 10`, so `max_days: 10` fits under that boundary.
+
+**Coverage and granularity.** Germany — `covers: countries(["DE"])`. The DWD station network answers
+hourly; the registry `coverage` string notes that DWD forecasts also reach the rest of the world at low
+density.
+
+**Attribution and licence.** DWD open data under **CC BY 4.0**, resold by Bright Sky. The registry
+credit line is `Bright Sky (DWD open data, CC BY 4.0) — https://brightsky.dev/`, and the DWD's own
+Terms of Use apply to the data.
+
+**Implemented 2026-10-06 (step 24)** (`src/provider/brightsky.rs`, `max_days: 10`), every fact measured
+on the day the provider landed:
+
+* **`last_date` is an inclusive *timestamp*, not a date.** `date=2026-10-06&last_date=2026-10-06`
+  returned 1 row, `last_date=2026-10-07` 25 rows and `2026-10-08` 49: the answer always ends at
+  `last_date` 00:00Z. Asking for `today + days - 1` therefore serves one whole day short, so the
+  request uses `last_date = today + days` — the instant at the start of the day *after* the last
+  requested one — which yields exactly `days` whole days; the trailing boundary row is the incomplete
+  next day and `covered_days` drops it.
+* **`units` stays at the API's default `dwd`** (°C, km/h, hPa, mm) rather than `si` (Kelvins, m/s,
+  Pa).
+* **`precipitation: null` drops the row**, it never becomes 0 mm: the canonical day part requires the
+  value, so a hole must not read as a measurement. `relative_humidity`, `visibility`, `cloud_cover`,
+  gust and wind direction are optional in the model and keep their own nullness — the Berlin recording
+  reports `relative_humidity: null` on every row, which is exactly this case.
+* **`condition` and `icon` are two small closed sets** — `CONDITIONS` (7 values) and `ICONS` (12) —
+  written out and exhaustiveness-tested. `condition` is the precipitation/obscuration state and wins
+  whenever it is not `dry`; for `dry` the sky state comes from `icon`; an unknown value becomes WMO 3
+  plus a `-v` line. `wind` is not a sky state and WMO has no wind-only code, so it maps to overcast.
+* **The `sources[]` block is station metadata**, carried into `Attribution.raw` so `-v` names the DWD
+  station (`#<id> <name> (DWD …, WMO …, <observation_type>, <distance>)`).
+* **The current block requires pressure**: `current_of` picks the most recent row whose instant has
+  already passed (else the first) and returns `None` when that row lacks temperature, wind,
+  precipitation, pressure or a resolvable condition — a zero would be a lie.
+
+**Self-hosting.** Bright Sky is open source over DWD open data, so a self-hosted instance keeps the
+`free` network class; the public instance (`https://api.brightsky.dev/weather`) answered `200` for this
+recording.
+
+**Unverified.** The forecast feed's exact stop date beyond the 10-day probe; whether the public
+instance enforces a rate limit (none published); the `sources[]` shape at a German point far from any
+DWD station.
 
 ### `visualcrossing`
 
@@ -950,6 +1114,18 @@ the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
 
 ## Re-verification log
 
+* **2026-10-06** — the two step-24 backends checked against `src/provider/mod.rs` and their modules,
+  and their registry rows carry `verified: 2026-10-06`. NWS: the two-step `points` → `gridpoints`
+  walk, the `grid/` namespace with its 30-day TTL, the mandatory descriptive `User-Agent`, the
+  measured 156 hourly periods and 14 daily periods (`max_days: 7`), `temperatureUnit` read per
+  period, the `windSpeed` range collapsed to its upper bound, the cardinal `windDirection`, the
+  `{unitCode, value}` percentage objects, the 30-entry icon and 26-entry text tables, `current:
+  false` (no pressure in the payload) and the out-of-coverage `404` naming the point. Bright Sky: the
+  inclusive-`last_date` timestamp (1/25/49 rows for `last_date` = today/+1/+2, so the request uses
+  `today + days`), the measured 10-day horizon (`sources[].last_record` clamped every probe to
+  `2026-10-16T04:00Z`), the `dwd` default unit group (°C, km/h, hPa, mm) rather than `si`,
+  `precipitation: null` dropping the row, the `CONDITIONS`/`ICONS` tables and the self-hosting path;
+  the public instance answered `200`.
 * **2026-10-06** — the four step-23 backends (now implemented, so their sections above replace the
   former "planned backends" table) re-verified against `src/provider/mod.rs` and their modules:
   met.no's 9-day horizon with ~52 h of hourly rows then 6-hourly (52 one-hour and 78 six-hour rows in
