@@ -247,8 +247,8 @@ pub struct QueryArgs {
     pub no_alerts: bool,
 
     /// Alert sources to query instead of the coverage-selected set, comma separated: `nws`,
-    /// `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas`. A source that does not cover the
-    /// location is refused.
+    /// `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas`, `visualcrossing`. A source that does
+    /// not cover the location is refused.
     #[arg(long, value_name = "LIST")]
     pub alerts_from: Option<String>,
 
@@ -3061,8 +3061,8 @@ fn run_provider(command: &ProviderCommand) -> Result<()> {
 /// The registry's alert sources are independent of the weather chain — the global aggregators
 /// apply everywhere — so this row names only what follows *this* provider: a backend whose own
 /// payload carries warnings, or an alert source bound to its credential and host (`qweather`,
-/// and `visualcrossing` once step 23 wires it). A provider with neither prints `none`, and the
-/// coverage-selected sources still apply at run time.
+/// `visualcrossing`). A provider with neither prints `none`, and the coverage-selected sources
+/// still apply at run time.
 fn provider_alerts(meta: &ProviderMeta) -> String {
     let mut names: Vec<&str> = Vec::new();
     if meta.alerts {

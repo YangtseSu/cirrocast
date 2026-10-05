@@ -292,11 +292,11 @@ pub trait Provider {
   when it is a usage, key or location error.
 * Alerts are a **separate source registry**, not a provider capability: step 15's sources declare
   their own coverage and are selected by it (`[alerts] sources = ["auto"]` selects the covering
-  set; an explicit list uses the wired ids `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic` and
-  `fpas`, and `--alerts-from` overrides with exactly those ids). `visualcrossing` is reserved for
-  step 23 and is rejected as an unknown/unavailable source until then; a provider's
+  set; an explicit list uses the wired ids `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`,
+  `fpas` and `visualcrossing`, and `--alerts-from` overrides with exactly those ids). A provider's
   `alerts: true` means its *own payload* carries warnings. The global aggregators (WMO SWIC, FPAS)
-  are what make `--alerts` meaningful outside the US, the EU and China.
+  are what make `--alerts` meaningful outside the US, the EU, China and the Visual Crossing
+  horizon.
 
 ### Rendering contract (binding)
 
@@ -514,10 +514,10 @@ cirrocast [OPTIONS] [LOCATION]...
       --station <ICAO>          METAR station; selects `metar` when no provider is given
       --alerts                  fetch severe-weather warnings (auto-on from `[alerts] enabled`)
       --no-alerts               do not fetch warnings in this run
-      --alerts-from <LIST>      explicit alert sources (the six wired ids, comma separated):
-                                nws, meteoalarm, qweather, hko, wmoswic, fpas; `auto` is the
-                                coverage selector for `[alerts] sources`, not a `--alerts-from` id
-                                (`visualcrossing` is reserved for step 23)
+      --alerts-from <LIST>      explicit alert sources (the seven wired ids, comma separated):
+                                nws, meteoalarm, qweather, hko, wmoswic, fpas, visualcrossing;
+                                `auto` is the coverage selector for `[alerts] sources`, not a
+                                `--alerts-from` id
       --severity <LEVEL>        lowest alert severity to show (unknown..extreme)
       --aqi                     append the air-quality panel (step 16; also `--format aqi`)
       --aqi-index <SCALE>       us | european — the scale behind the panel colour and `%q`

@@ -27,6 +27,7 @@ pub mod openweathermap;
 pub mod pirateweather;
 pub mod qweather;
 pub mod smhi;
+pub mod visualcrossing;
 pub mod weatherapi;
 pub mod worldweatheronline;
 
@@ -239,9 +240,9 @@ impl ProviderId {
                 granularity: "hourly; 15-day horizon",
                 limits: "free plan 1 000 records/day (`queryCost` ≈ 1 + 24×hours + days; the default 3-day query ≈ 76 records); keyed to the account's terms, no redistribution of cached data",
                 verified: "2026-10-06",
-                implemented: false,
+                implemented: true,
                 alerts: true,
-                licence: None,
+                licence: Some("Visual Crossing Weather — https://www.visualcrossing.com/"),
             },
             Self::OpenWeatherMap => ProviderMeta {
                 id: *self,
@@ -897,10 +898,10 @@ pub trait Provider {
 pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
     match id {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
-        ProviderId::MetNo
-        | ProviderId::OpenMeteoArchive
-        | ProviderId::OpenMeteoMarine
-        | ProviderId::VisualCrossing => Err(not_implemented(id)),
+        ProviderId::MetNo | ProviderId::OpenMeteoArchive | ProviderId::OpenMeteoMarine => {
+            Err(not_implemented(id))
+        }
+        ProviderId::VisualCrossing => Ok(Box::new(visualcrossing::VisualCrossing)),
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),

@@ -31,6 +31,7 @@ pub mod hko;
 pub mod meteoalarm;
 pub mod nws;
 pub mod qweather;
+pub mod visualcrossing;
 pub mod wmoswic;
 
 use std::collections::HashSet;
@@ -149,8 +150,9 @@ pub fn explicit_sources(loc: &Location, specs: &[String]) -> Result<Vec<AlertSou
 ///
 /// This is an inherent impl rather than a method on the model because it consults the provider
 /// registry, and `src/model` may not depend on `src/provider` (the render-gate rule). A
-/// provider-bound source whose provider is not implemented yet — `VisualCrossing`, wired in step
-/// 19 — is unavailable; every other source is available.
+/// provider-bound source (`QWeather`, `VisualCrossing`) is available exactly when the provider it
+/// borrows its credential from is implemented; a source with no provider binding is always
+/// available.
 impl AlertSource {
     /// Whether this source can be selected and fetched today.
     #[must_use]
@@ -215,9 +217,7 @@ fn fetch_source(
         AlertSource::Hko => hko::fetch(loc, env, language),
         AlertSource::WmoSwic => wmoswic::fetch(loc, env, language),
         AlertSource::Fpas => fpas::fetch(loc, env, language),
-        AlertSource::VisualCrossing => Err(Error::Usage(
-            "alert source `visualcrossing` is wired up with its provider in step 23".to_owned(),
-        )),
+        AlertSource::VisualCrossing => visualcrossing::fetch(loc, env, language),
     }
 }
 
@@ -527,7 +527,8 @@ mod tests {
             [
                 AlertSource::QWeather,
                 AlertSource::WmoSwic,
-                AlertSource::Fpas
+                AlertSource::Fpas,
+                AlertSource::VisualCrossing
             ]
         );
 
@@ -565,7 +566,8 @@ mod tests {
             [
                 AlertSource::QWeather,
                 AlertSource::WmoSwic,
-                AlertSource::Fpas
+                AlertSource::Fpas,
+                AlertSource::VisualCrossing
             ]
         );
     }
@@ -576,13 +578,19 @@ mod tests {
         let error = explicit_sources(&beijing, &["nws".to_owned()]).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "alert source `nws` does not cover 39.90,116.40; covered here: qweather, wmoswic, fpas"
+            "alert source `nws` does not cover 39.90,116.40; covered here: qweather, wmoswic, fpas, \
+             visualcrossing"
         );
         assert_eq!(
             explicit_sources(&beijing, &["fpas".to_owned(), "fpas".to_owned()]).unwrap(),
             vec![AlertSource::Fpas]
         );
-        assert!(explicit_sources(&beijing, &["visualcrossing".to_owned()]).is_err());
+        // Provider-bound but global, and its provider is implemented: named explicitly it is
+        // accepted at this point too.
+        assert_eq!(
+            explicit_sources(&beijing, &["visualcrossing".to_owned()]).unwrap(),
+            vec![AlertSource::VisualCrossing]
+        );
         assert!(explicit_sources(&beijing, &["acme".to_owned()]).is_err());
     }
 

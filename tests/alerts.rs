@@ -711,7 +711,8 @@ fn an_explicit_source_outside_its_coverage_is_a_usage_error() {
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8");
     assert_eq!(
         stderr.trim(),
-        "error: alert source `nws` does not cover 39.90,116.40; covered here: qweather, wmoswic, fpas"
+        "error: alert source `nws` does not cover 39.90,116.40; covered here: qweather, wmoswic, \
+         fpas, visualcrossing"
     );
 }
 

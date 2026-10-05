@@ -1034,8 +1034,8 @@ fn check_provider_chain(key: &str, value: &str) -> Result<()> {
 ///
 /// `auto` is a selector, not a source: it expands by coverage at run time and cannot be mixed with
 /// explicit ids. Every explicit id must also be one this build can fetch — a configured source
-/// list that validates must run, so an unwired source (`visualcrossing`, pending its provider)
-/// is rejected here with the key named, rather than after the location lookup as a usage error.
+/// list that validates must run, so a source whose provider is not implemented is rejected here
+/// with the key named, rather than after the location lookup as a usage error.
 fn check_alert_sources(key: &str, sources: &[String]) -> Result<()> {
     if sources.is_empty() {
         return Err(Error::Config(format!(
@@ -2528,7 +2528,7 @@ mod tests {
     }
 
     #[test]
-    fn alert_sources_reject_auto_mixed_and_unwired_ids() {
+    fn alert_sources_reject_auto_mixed_ids_and_accept_every_wired_one() {
         // Mixing the `auto` selector with an explicit id is refused, naming the key.
         let mut config = Config::default();
         config.alerts.sources = vec!["auto".to_owned(), "fpas".to_owned()];
@@ -2543,22 +2543,22 @@ mod tests {
             config.validate().expect("a lone auto validates");
         }
 
-        // `visualcrossing` is documented but not wired up: a file that validates must run.
-        let mut config = Config::default();
-        config.alerts.sources = vec!["visualcrossing".to_owned()];
-        let error = config.validate().unwrap_err();
-        assert!(error.to_string().contains("alerts.sources"), "{error}");
-        assert!(error.to_string().contains("not wired up yet"), "{error}");
+        // A configured source list that validates must run: every registry source is wired by
+        // step 23 (`visualcrossing` was the last one pending its provider), so each one validates.
+        for source in crate::model::AlertSource::ALL {
+            let mut config = Config::default();
+            config.alerts.sources = vec![source.as_str().to_owned()];
+            config.validate().unwrap_or_else(|error| {
+                panic!("`{source}` is wired up but does not validate: {error}")
+            });
+        }
 
         // The same through `config set`.
         let mut config = Config::default();
         let error = config.set_key("alerts.sources", "auto,fpas").unwrap_err();
         assert!(error.to_string().contains("alerts.sources"), "{error}");
         assert!(config.set_key("alerts.sources", "nws,fpas").is_ok());
-        let error = config
-            .set_key("alerts.sources", "visualcrossing")
-            .unwrap_err();
-        assert!(error.to_string().contains("not wired up yet"), "{error}");
+        assert!(config.set_key("alerts.sources", "visualcrossing").is_ok());
     }
 
     #[test]
