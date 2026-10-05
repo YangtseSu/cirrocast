@@ -16,7 +16,9 @@ and the render/astro/air/template test files, `docs/performance.md`, `REUSE.toml
 
 The informal budgets become enforced numbers with one measurement harness, one committed baseline and
 a CI gate: `--version` under 20 ms, a cached single-location run under 60 ms, a cold run under 1.5 s on
-a 100 Mbps link, RSS under 15 MB, the default release binary under 5 MB, `--help` under 200 lines. The
+a 100 Mbps link, RSS under 15 MB (the `--version` probe; a cached run that decodes the offline name
+index gets the re-derived 32 MB budget), the default release binary under the re-derived 17 MB (the
+original 5 MB predates the 3.41 MB embedded city table), `--help` under 200 lines. The
 step also does the rendering work the numbers demand (`fmt::Write` hot path, one timezone lookup per
 report instead of one per field, lazy offline-geo decode), audits dependency weight with `cargo
 bloat`/`cargo llvm-lines`, and re-evaluates "no async runtime / no TUI toolkit" against the measured

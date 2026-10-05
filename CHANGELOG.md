@@ -23,6 +23,78 @@ records how each of them changes and which changes are breaking.
   in `docs/performance.md`, and `cargo build --release --no-default-features` stays the supported
   reduced build (city search through the network geocoder, 3.41 MiB smaller).
 
+* **The Open-Meteo credit line now carries the licence link**, as CC BY 4.0 asks:
+  `Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/` (the `Data:` label stays localized).
+  The binding attribution clause was amended to the exact rendered line.
+* **Four JSON fields may now be `null` where they previously carried a fabricated value**:
+  `current.wind_dir_deg` (a variable or calm wind has no direction), `current.humidity_pct` and
+  `current.cloud_cover_pct` (a `-999` sentinel, or a field the backend does not report, is
+  "not reported" — never a `0`), and the six `air.pollen.*` members. Widening a value to nullable
+  is additive within `schema_version` 2.
+* **`location.source` no longer emits `config`** — the variant was never constructed, and the
+  value is gone from `docs/schema.md` and the model.
+* **`[render] width` accepts the same range as `--width`** (0 or 1..=500); the undocumented
+  40-column floor is gone, and `--width 12` in the file behaves like the flag.
+* **`--format dumb` is colourless by contract** and says so under `--verbose`; `--color always`
+  under a `TERM` that advertises no colour now folds down to the sixteen ANSI colours instead of
+  being emitted as 256, and is never silently dropped.
+
+### Fixed
+
+* **QWeather conditions reported the wrong weather**: `309` (drizzle) is drizzle rather than heavy
+  rain, and `515` (extra heavy fog) is fog rather than light freezing drizzle; a drizzle no longer
+  outranks the day's real weather in the day-part summary.
+* **Decoding**: a `-999` sentinel in Pirate Weather's humidity, cloud cover or wind bearing nulls
+  only that field instead of discarding the whole observation; SMHI's in-band `9999` does the
+  same; a METAR `TEMPO`/`BECMG` trend block can no longer overwrite the observation; METAR
+  `R06L/2000FT` and `VCSH` groups are decoded; an out-of-range Open-Meteo `weather_code` stays
+  "unknown" instead of becoming "clear sky"; WeatherAPI's moderate/heavy shower codes, WWO's
+  freezing fog and OWM's smoke/haze/dust/sand/squall codes map to their own conditions.
+* **A variable wind is no longer a north wind**: the METAR `VRB` flag and an OpenWeatherMap
+  observation without `wind.deg` render no direction (JSON `null`, speed kept).
+* **An empty or whitespace-only location argument is "absent"**, so `[location] default` applies
+  instead of a silent public-IP lookup (a privacy leak); `cirrocast "" --ip` is no longer a
+  conflict.
+* **Alert configuration**: `[alerts] sources` rejects `auto` mixed with explicit ids and the
+  not-yet-wired `visualcrossing`, so a file that validates can no longer fail every run with
+  exit 2; `--alerts-from` ids are checked before any location resolution, so a typo costs no
+  request; a non-`auto` source list from the file is treated as the promise it is documented to be.
+* **Alerts**: a CAP document whose `status` is `Test`, `Exercise` or `Draft` is dropped like its
+  NWS `is_test` twin; a CAP aggregation link must be `https` on the querying host; the HKO warning
+  summary is cached per language instead of serving Chinese to an English run; an `<expires>` in
+  the ISO-8601 basic or fractional spelling parses instead of becoming "live forever"; and warning
+  polygons that cross the antimeridian keep their points.
+* **Caching**: a cache-write failure never discards a successful fetch (the METAR path included);
+  `cache stat` reports the `ratelimit/` and `geo/` state; `cache clean --all` removes them and a
+  crashed run's temporaries; concurrent writers to one path cannot unlink each other's temp file.
+* **HTTP**: a request that carries a credential never follows a redirect, so the QWeather key and
+  the MeteoAlarm token cannot be delivered to another authority, while a header-free request
+  follows a bounded chain so FPAS's canonical `/alert/<id>` redirect keeps working; `--timeout`
+  bounds the whole request, not only its phases; `Retry-After` is honoured only on `429`/`503`;
+  a non-identity `Content-Encoding` and a body over the cap are typed upstream errors; and a
+  SOCKS proxy from the environment is refused with the variable named instead of being ignored.
+* **Geo and the city table**: a hostile or bit-rotted user table or update download is bounded and
+  typed rather than an unbounded allocation; the IP locator's and Open-Meteo geocoder's coordinate
+  answers are validated like Nominatim's; the Nominatim 1 req/s throttle holds under concurrency;
+  `location update-data --from` rejects a non-http(s) scheme as a usage error; the `geo-table`
+  builder's `--help` exits 0 and its download honours the configured proxy.
+* **CLI**: multi-location `--pick` resolves the prompts in argument order, so the same command line
+  selects the same places; the `selected: …` echo survives `-q`; `--station` prepends `metar` to a
+  configured chain; `--template-file -` keeps a one-line template on one line; `-f <name>` follows
+  a configured `@`-chain; `location search`/`location update-data` honour `CIRROCAST_TIMEOUT`;
+  `--severity` with `--no-alerts` is refused like its siblings; `config set location.default`
+  validates only the key being set.
+* **Rendering**: the multi-location JSON document keeps each report's key order; `-0.0`
+  coordinates normalise like every other float; the standalone air and moon panels fold to ASCII
+  before the width applies; the observed line prints the location's own offset; a 1 MB template is
+  validated in one pass instead of quadratically; the unknown-token report names the spelling the
+  user typed; and an unknown alias that looks like out-of-range coordinates says which range check
+  it failed.
+* **Text and docs**: the message for a dangling `keys.toml` symlink reports itself instead of
+  "No such file or directory"; the `--help` epilogue names the three undocumented `CIRROCAST_*`
+  overrides; and the contract, README, `docs/providers.md`, `docs/schema.md` and the plan records
+  were brought back in line with the shipped code.
+
 ## [1.2.0] - 2026-10-05
 
 Phase D completed — the offline city database and the user-installed table updates (steps 18 and

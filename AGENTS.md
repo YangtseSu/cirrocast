@@ -24,17 +24,22 @@ No GUI/TUI, no daemon or server mode, no telemetry or analytics, no account syst
 | Path | Contents |
 |---|---|
 | `src/main.rs` | argv → `cli` → dispatch → exit code. Nothing else. |
+| `src/lib.rs` | the library root: the module tree and crate lints |
 | `src/cli.rs` | clap definitions, location argument parsing, subcommand dispatch |
 | `src/error.rs` | `Error` + `Result` + exit-code mapping (1 generic, 2 usage, 3 network/upstream, 4 config, 5 location, 6 missing key) |
 | `src/paths.rs` | XDG config/cache/data resolution via `etcetera` |
 | `src/config/` | `config.toml` schema + load/merge/save, `keys.rs` BYOK store |
-| `src/model/` | canonical WMO-condition/unit/metric-SI data model |
-| `src/geo/` | geocoders (Open-Meteo, Nominatim), IP locators |
+| `src/model/` | canonical WMO-condition/unit/metric-SI data model, alerts, air and astro types |
+| `src/geo/` | geocoders (Open-Meteo, Nominatim), IP locators, the offline city table |
 | `src/http.rs`, `src/cache.rs` | shared HTTP client and on-disk cache |
 | `src/template.rs`, `src/parallel.rs` | the shared `%`-token template engine and the ordered parallel map behind multi-location runs |
-| `src/provider/` | one file per backend + registry/chain selection |
-| `src/render/` | `art-table` (default), `one-line`, `plain`, `json`, art blocks, colour |
+| `src/provider/` | one file per backend + registry/chain selection, shared day-part aggregation |
+| `src/alerts/` | the CAP parsing, alert sources, coverage and geometry |
+| `src/air/`, `src/astro/` | air-quality scales/source and the locally computed moon/sun |
+| `src/render/` | `art-table` (default), `one-line`, `plain`, `json`, `alerts`, `aqi`, `moon`, art blocks, colour |
+| `src/i18n.rs` | Fluent bundle loading, locale negotiation, embedded catalogs |
 | `locales/` | Fluent `.ftl` catalogs |
+| `build/geo-table/` | the dev-only workspace member that builds the bundled city table |
 | `tests/` | integration tests; `tests/fixtures/` = recorded upstream responses |
 | `docs/plans/` | step-by-step build plan with in-file progress markers |
 
@@ -103,10 +108,14 @@ tests). The workspace flag matters because the root manifest is a package: witho
 `cargo clippy`/`cargo test` in the repository root covers only `cirrocast` itself, not the dev-only
 `build/geo-table` builder.
 
-CI (`.github/workflows/ci.yml`) runs exactly those commands on `ubuntu-26.04` and `macos-26` — the
+CI (`.github/workflows/ci.yml`) runs the commands above on `ubuntu-26.04` and `macos-26` — the
 images are named explicitly, never `<os>-latest` — with the test matrix spanning `stable` and the
 MSRV `1.98.0`, every third-party action pinned to a commit SHA, and `CIRROCAST_FORBID_NETWORK=1`
-exported for the whole test job. The `gates` job additionally enforces the render-layer import rule
+exported for the whole test job. Beyond those commands it also runs the reduced build
+(`cargo build`/`cargo test --workspace --no-default-features --locked`) and the performance jobs:
+`scripts/bench/run.sh` with `scripts/bench/compare.py` as the budget gate, `cargo bloat` and
+`cargo llvm-lines` uploaded as artifacts, and — only on an explicit `workflow_dispatch` —
+`scripts/bench/record.py` to re-record `perf/baseline.json`. The `gates` job additionally enforces the render-layer import rule
 (`src/render` and `src/model` may not import `http`, `provider` or `cache`) and that
 `LICENSES/GPL-3.0-or-later.txt` is byte-identical to `LICENSE`. Dependency policy lives in
 `deny.toml`: an audited licence allow list, duplicates and wildcards denied, crates.io as the only

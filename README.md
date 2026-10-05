@@ -72,7 +72,7 @@ stays pipeable; `-q` silences it and `:Beijing` demands an exact name.
 
 ## Status
 
-Steps 01–20 of 29 in [`docs/plans/`](docs/plans/README.md) — 18b included — are in place: the CLI
+Steps 01–21 of 29 in [`docs/plans/`](docs/plans/README.md) — 18b included — are in place: the CLI
 skeleton, XDG path resolution, the provider registry, the typed configuration with its
 `config`/`key` subcommands, the canonical model, location resolution, the shared HTTP/cache layer,
 the Open-Meteo forecast, the wttr.in-style `art-table` renderer, the full flag matrix with the
@@ -86,8 +86,10 @@ history in [`CHANGELOG.md`](CHANGELOG.md). Phase D is complete as of `v1.2.0`: `
 severe-weather alerts (step 15), the air-quality panel (step 16) and the locally computed moon/sun
 block (step 17), and `v1.2.0` adds the offline city database (step 18) with user-installed table
 updates (18b), multi-location runs with the shared `%`-token template engine (step 19) and the
-interactive location picker (step 20). Phase E — the performance and resource budgets and the
-`status` probe — is next.
+interactive location picker (step 20). Step 21 turned the performance and resource promises into
+enforced numbers — one harness, one committed baseline, one CI gate — recorded in
+[`docs/performance.md`](docs/performance.md). Phase E's remaining item, the `status` probe and the
+ecosystem recipes (step 22), is next.
 
 ## Install
 
@@ -173,11 +175,12 @@ cirrocast Beijing Shanghai -f json | jq length   # 2
 ```
 
 ```
-cirrocast config     <path|init|show|get|set|edit|validate [--offline]>
+cirrocast config     <path|init [--force]|show|get|set|edit|validate [--offline]>
 cirrocast key        <set [--stdin]|rm|list>
 cirrocast provider   <list|info>
 cirrocast cache      <stat|clean [--all] [--offline]>
 cirrocast location   <search [--offline] [--all] [--exact] [--ip] [--limit <N>] [--timeout <SECS>]>
+cirrocast location   update-data [--from <PATH|URL>] [--check] [--timeout <SECS>]
 cirrocast completion <bash|zsh|fish|elvish|powershell> [--bin-name NAME]
 cirrocast man [--bin-name NAME]
 ```
@@ -494,7 +497,8 @@ and `[location] pick = "never"` makes that the default; a piped or redirected ru
 The pick is echoed as `selected: Beijing, Beijing Municipality, China — use @39.9042,116.4074 to
 skip the prompt`, so the next run can skip the ranking entirely. Without a prompt the ambiguity is
 reported once on stderr (suppressed by `-q`) with the winning place and the same `--pick`/`--yes`
-hints; add `:` (or `--exact`) to demand an exact name. Coordinates and `~` results carry a
+hints; add `:` to demand an exact name (`location search` has `--exact`, the weather query does
+not — only the `:` prefix narrows a query to an exact name). Coordinates and `~` results carry a
 provisional time zone until the forecast response supplies the location's real one, and `~` output
 prints `Location data © OpenStreetMap contributors` (ODbL).
 
@@ -775,8 +779,9 @@ to be pasted into bug reports — unknown keys from a newer release are ignored,
 
 Provider keys are BYOK and never enter `config.toml` (which is world readable, shown by `config show`
 and hand edited). First hit wins: `CIRROCAST_<PROVIDER>_KEY` (provider id upper-cased, `-` → `_`,
-e.g. `CIRROCAST_OPENWEATHERMAP_KEY`) → `keys.toml` in the configuration directory → the OS keyring
-(feature-gated, later release).
+e.g. `CIRROCAST_OPENWEATHERMAP_KEY`) → `keys.toml` in the configuration directory. There is no
+third tier: a key in neither place is simply missing (OS keyring storage is explicitly out of scope
+for v1).
 
 The MeteoAlarm alert token is the one credential outside the provider key store: it is read from
 `CIRROCAST_METEOALARM_KEY` only (the service is not a weather provider, so `key set` does not know
@@ -946,18 +951,21 @@ release; a version that is already on crates.io is skipped by the publish job's 
 
 ## Development and CI
 
-The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the two performance jobs are the exception, because they build the release profile and re-record the baseline only on an explicit dispatch:
 
 | Job | Command | Notes |
 |---|---|---|
 | `fmt` | `cargo fmt --check` | stable toolchain |
-| `clippy` | `cargo clippy --all-targets --locked -- -D warnings` | warnings are errors |
-| `test` | `cargo test --locked` | `ubuntu-26.04` + `macos-26` × `stable` + `1.98.0`, with `CIRROCAST_FORBID_NETWORK=1` |
+| `clippy` | `cargo clippy --workspace --all-targets --locked -- -D warnings` | warnings are errors; the workspace flag also covers the `geo-table` builder |
+| `test` | `cargo test --workspace --locked` | `ubuntu-26.04` + `macos-26` × `stable` + `1.98.0`, with `CIRROCAST_FORBID_NETWORK=1` |
+| `build --no-default-features`, `test --no-default-features` | `cargo build --workspace --no-default-features --locked`, `cargo test --workspace --no-default-features --locked` | the reduced build (city search via the network geocoder) is compiled and exercised |
 | `package` | `cargo package --list --locked`, `cargo publish --dry-run --locked` | the crate's file set and the packaged build, reviewed on every pull request; nothing is uploaded |
 | `gates` | render-layer import gate, `cmp LICENSE LICENSES/GPL-3.0-or-later.txt` | repository invariants that no compiler enforces |
 | `reuse` | `reuse lint` | every file carries SPDX information |
 | `deny` | `cargo deny check` | licences, advisories, bans, sources |
 | `audit` | `cargo audit` | independent advisory check beside `deny` |
+| `perf` | `scripts/bench/run.sh`, `python3 scripts/bench/compare.py perf/baseline.json target/bench/raw.json` | the release-profile budget gate (`ubuntu-26.04`, the baseline's machine class); `cargo bloat`/`cargo llvm-lines` land in the artifact bundle |
+| `record-baseline` | `scripts/bench/run.sh`, `python3 scripts/bench/record.py …` | `workflow_dispatch` only, behind the `record_baseline` input; the fresh `perf/baseline.json` is reviewed and committed by hand |
 
 * **MSRV** is `1.98` (`rust-version` in `Cargo.toml`); the floor tracks the latest stable release
   rather than lagging behind it, and the CI matrix builds the floor explicitly.

@@ -49,6 +49,10 @@ assumption:
 * the size delta is the 3.41 MiB above, recorded here and in `perf/baseline.json`'s sibling metric
   set (the harness always builds the default feature set — that is what ships).
 
+Both exit criteria are enforced rather than only asserted: CI's `build --no-default-features` and
+`test --no-default-features` jobs run exactly those two commands on `ubuntu-26.04` and `macos-26`,
+so an edit to a stub path that no longer compiles fails the build instead of shipping.
+
 Dependency-level switches that were measured rather than assumed (the audit's "gate list"; each was
 built and reverted to obtain the number):
 
@@ -115,7 +119,7 @@ document per FPAS area); that figure is informational and is not a budget.
 
 | Metric | Budget | Baseline (2026-10-05) | Notes |
 |---|---|---|---|
-| `--version` | 20 ms | **2.10 ms** | startup: no runtime, no table |
+| `--version` | 20 ms | **2.03 ms** | startup: no runtime, no table |
 | `--help` | < 200 lines | **198 lines** | clap wraps to the width; the test pins `COLUMNS=100` |
 | cached run, `--offline` | 60 ms | **51.4 ms** | includes the city-table name index decode |
 | warm-cache run | 60 ms | **47.5 ms** | the online path with a fresh cache |
@@ -228,7 +232,7 @@ visitors of each provider payload (~1,200–1,700 each), `Alerts::render` (1,515
 
 Step 21 re-evaluated both exclusions against the measured evidence; both stay.
 
-* **Startup is the runtime-cost proxy.** `--version` runs in 2.10 ms at 6.4 MiB RSS: there is no
+* **Startup is the runtime-cost proxy.** `--version` runs in 2.03 ms at 6.4 MiB RSS: there is no
   runtime to initialise, no reactor, no worker pool.
 * **The sync stack's size share.** `ureq` + `rustls` + `ring` + `webpki` + `ureq_proto` are about
   850 KiB of the 4.0 MiB `.text` (21 %). `tokio` would add a runtime, a reactor and a second thread

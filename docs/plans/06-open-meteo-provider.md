@@ -216,3 +216,10 @@ sunrise on the recording date.
   live `current` block, so only the `current`-dependent assertions changed: 18.5 °C, humidity 12,
   visibility 17.24 km); `REUSE.toml` and the Verification section above now state that provenance, and
   the `r.jina.ai` relay is gone from the story.
+- 2026-10-05 — the binding attribution clause was amended: the Open-Meteo forecast credit is now
+  `Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/` rather than
+  `Weather data by Open-Meteo.com (https://open-meteo.com/)`. CC BY 4.0 requires *both* the licence
+  identification and a link to the material, so the licence id and the service link are printed
+  verbatim from the registry, while the `Data:` label stays a catalog string and is localized
+  (`docs/providers.md` records the same change). The contract used to name the vendor's own link
+  text, which is a website badge rather than the string this CLI prints.

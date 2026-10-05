@@ -32,7 +32,7 @@ chosen candidate is echoed with a deterministic `@lat,lon` spec that skips the p
   `choose a location [1-<N>, Enter=1, q=quit]: ` on the injected writer. Accepted input: an index in
   range, an empty line (= 1), `q`/`Q`; three consecutive invalid answers are `Error::Usage` (exit 2)
   naming the accepted input, and EOF behaves like `q`. `q` is
-  `Error::Location` — message `no location selected for Beijing` (exit 5).
+  `Error::LocationNotFound` — message `no location selected for Beijing` (exit 5).
 - ✅ Prompt policy, resolved in one place in `src/cli.rs`: prompt iff candidates > 1 **and**
   (`--pick` was given **or** (stdin and stderr are terminals **and** config
   `[location] pick = "auto"`)). `--yes` and `[location] pick = "never"` suppress; `--pick` and

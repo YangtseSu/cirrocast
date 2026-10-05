@@ -46,7 +46,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | A — Foundation | 01–06 | real end-to-end run: `cirrocast Beijing -f plain` prints live data from a keyless backend |
 | B — Output parity | 07–11 | wttr.in-style `art-table` plus `one-line`/`plain`/`json`, en-US + zh-CN, all v1 backends |
 | C — Quality and release | 12–14 | **v1.0.0 = "basically formed"**, packaged and reproducible |
-| D — Reach and location | 15–20 + 18b | v1.1 shipped alerts, air quality, moon/astro (15–17), the offline city database (18) and the user-updatable table (18b); multi-location output (19) and the candidate picker (20) remain |
+| D — Reach and location | 15–20 + 18b | v1.1 shipped alerts, air quality, moon/astro (15–17), the offline city database (18) and the user-updatable table (18b); v1.2.0 shipped multi-location output (19) and the candidate picker (20) |
 | E — Quality and integration | 21–22 | performance and resource budgets; the `status` probe, ecosystem recipes and frozen output contracts |
 | F — Sources and auth | 23–27 | extra backends, keyless national providers with coverage-aware `auto`, second-generation location sources, climate normals, QWeather JWT |
 | G — Documentation | 28 | the documentation set, the generated reference and the frozen JSON schemas |
@@ -149,12 +149,13 @@ Everything below is binding for all steps. Changing it means changing this file 
 ```
 src/
   main.rs            thin entry: parse argv, dispatch, map Error -> exit code
+  lib.rs             the library root: module tree, crate lints, shared test support
   cli.rs             clap definitions, location argument parsing, subcommand dispatch
   error.rs           Error enum (thiserror), Result alias, exit-code mapping
   paths.rs           XDG resolution (config/cache/data dirs) via etcetera
   config/
     mod.rs           Config struct, load/merge/save, schema_version migration hooks
-    keys.rs          BYOK key store (env, keys.toml @0600, optional keyring), masking
+    keys.rs          BYOK key store (env, keys.toml @0600), masking
   model/
     mod.rs           Location, Current, DayPart, DayForecast, Report, Attribution
     condition.rs     canonical WMO 4677 code type + classification helpers
@@ -172,6 +173,8 @@ src/
     pick.rs          the step-20 prompt: the ranked list, one line of input, the three-strike rule
     fold.rs          the NFKD name folding shared by the builder and the runtime
     tz.rs            offline coordinate → IANA zone lookup (`tzf-rs`), for payloads that carry none
+    table.rs         the binary city-table codec (decode, search, install) shared with the builder
+    update.rs        `location update-data`: download/verify/install the user table (step 18b)
     data/            cities.bin.gz + keys.bin.gz + SNAPSHOT, produced by `build/geo-table`
   http.rs            shared HTTP client: timeouts, UA, retries/backoff, proxy, error taxonomy
   cache.rs           on-disk cache: keys, TTLs, atomic writes, offline mode
@@ -184,12 +187,25 @@ src/
     julian.rs        Julian dates and the ΔT seam (Espenak–Meeus fits)
     moon.rs          truncated ELP-2000/82 position, phase, illumination, age, rise/set
     sun.rs           solar position and the local day's sunrise/sunset/polar state
+  alerts/
+    mod.rs           source registry, coverage selection, fetch/dedup/order, credit lines (step 15)
+    cap.rs           hand-written CAP 1.2 state machine (quick-xml), no entity expansion
+    geometry.rs      the point-in-polygon gate for CAP polygons and GeoJSON rings
+    nws.rs           api.weather.gov alerts (US and territories)
+    meteoalarm.rs    the MeteoAlarm EDR service (EUMETNET members, bearer token)
+    qweather.rs      QWeather warnings (China; reuses the forecast credential)
+    hko.rs           the Hong Kong Observatory warning summary and details
+    wmoswic.rs       the WMO Severe Weather Information Centre aggregator
+    fpas.rs          the FOSS Public Alert Server aggregator (self-hostable)
   provider/
     mod.rs           Provider trait, ProviderId, registry metadata, selection + fallback chain
+    dayparts.rs      the four-part aggregation every hourly backend feeds (samples → DayParts)
     open_meteo.rs    Open-Meteo (keyless, default)
     openweathermap.rs / weatherapi.rs / worldweatheronline.rs
     pirateweather.rs / qweather.rs / smhi.rs
     metar.rs         aviationweather.gov METAR/TAF (keyless, station based)
+    metar/decode.rs          the raw METAR/TAF decoder (groups, present weather, clouds)
+    metar/station_table.rs   the embedded 55-station table and its lookup
   template.rs        the `%`-token engine: TOKENS table, presets, width/precision, escapes (step 19)
   parallel.rs        ordered parallel mapping for multi-location runs (step 19)
   render/
@@ -221,7 +237,9 @@ tests/               integration tests (CLI level), fixtures/ = recorded API res
 * `Report { location, current: Option<Current>, days: Vec<DayForecast>, alerts, air, astro,
   attribution }`; `alerts` (step 15), `air` (step 16) and `astro` (step 17) are attached after the
   forecast and default to empty/`None`, so a hand-built or older document still parses.
-  `days` is ordered oldest → newest and always starts at the location-local today. A backend that
+  `days` is ordered oldest → newest and starts at the first location-local date whose four parts
+  all have a sample (today whenever the backend's series covers it, otherwise the first complete
+  day). A backend that
   serves observations only (step 11's `metar`) answers with `current: Some(..)`, `days: []`, and the
   renderers shape their output from the provider's declared capabilities, never from its id.
 * `Location` carries `station: Option<String>` (plus `LocationSource::Station`): a station-based
@@ -265,14 +283,17 @@ pub trait Provider {
 * Selection: `--provider a,b,c` is an explicit ordered chain; bare default comes from config
   (`defaults.provider`), whose built-in value is `open-meteo`. `auto` expands to the keyless chain
   that answers for a resolved place, **ranked by registry coverage** (country match, then bounding
-  box, then the global entries; step 24) — until step 24 lands it is the interim fixed list
-  `open-meteo,met-no,smhi` (step 23). A station is never part of it — `--station`
+  box, then the global entries; step 24) — until step 24 lands it is the fixed list
+  `open-meteo, smhi` (the implemented keyless backends that accept a resolved place; `metar` is
+  station-only and never enters it). A station is never part of it — `--station`
   selects `metar` when no provider is given, and prepends it to `auto` when one is. A failure in a chain falls through
   to the next entry only when the error is transport/upstream (`Error::Upstream`/`Network`), never
   when it is a usage, key or location error.
-* Alerts are a **separate source registry**, not a provider capability: step 15's sources (NWS,
-  MeteoAlarm, HKO, WMO SWIC, FPAS, QWeather, VisualCrossing) declare their own coverage and are
-  selected by it (`[alerts] sources = ["auto"]`, `--alerts-from` overrides); a provider's
+* Alerts are a **separate source registry**, not a provider capability: step 15's sources declare
+  their own coverage and are selected by it (`[alerts] sources = ["auto"]` selects the covering
+  set; an explicit list uses the wired ids `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic` and
+  `fpas`, and `--alerts-from` overrides with exactly those ids). `visualcrossing` is reserved for
+  step 23 and is rejected as an unknown/unavailable source until then; a provider's
   `alerts: true` means its *own payload* carries warnings. The global aggregators (WMO SWIC, FPAS)
   are what make `--alerts` meaningful outside the US, the EU and China.
 
@@ -328,8 +349,10 @@ report so that no renderer or template token converts a clock per field.
   `rustix::termios::tcgetwinsize` (introduced by step 07; the crate forbids `unsafe`, so a raw
   `ioctl` is not an option, and non-Unix targets skip this tier). Below 60 columns the table
   degrades to a stacked layout; the table formats never emit lines wider than the resolved width.
-  `plain` and `json` are record formats and **ignore the width**: truncating a record would delete
-  the values the format exists to carry, and a pipe wraps or not at its leisure (step 08).
+  `plain`, `json` and `alerts` are record formats and **ignore the width**: truncating a record
+  would delete the values the format exists to carry, and a pipe wraps or not at its leisure
+  (step 08). `alerts` writes the CAP `headline`/`description`/`instruction` verbatim, so it is
+  width-exempt for the same reason rather than truncating a warning body.
 * **Multi-location runs (step 19, binding).** Several positional `LOCATION` arguments are one run:
   at most four fetches at a time (`min(len, min(4, available_parallelism))`), results written into
   slot `i` by item order (never arrival order), rendered in argument order. `--lat/--lon`, `--ip`
@@ -353,7 +376,9 @@ report so that no renderer or template token converts a clock per field.
   someone's data, so the credit travels with it: `Location data based on GeoNames (CC-BY-4.0) via
   Open-Meteo — https://open-meteo.com/` for a geocoded name (CC-BY-4.0 asks for credit plus a service
   link next to the data), `Location data © OpenStreetMap contributors (ODbL)` for `~` results and
-  `Weather data by Open-Meteo.com (https://open-meteo.com/)` for an Open-Meteo forecast; a direct
+  `Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/` for an Open-Meteo forecast (the
+  `Data:` label is a catalog string and is therefore localized; the licence id and the service link
+  are printed verbatim); a direct
   GeoNames search (step 25) carries `Location data by GeoNames (CC BY 4.0) —
   https://www.geonames.org/` instead of the Open-Meteo-via wording. `geo::attribution_line` is the
   single place that decides the location-side text; every renderer
@@ -385,8 +410,6 @@ schema_version = 2
             update = "off"          # off | check — a freshness note only, never a fetch (step 18b)
             update_interval_days = 90   # the `check` note's threshold (step 18b)
             update_url = ""         # empty = the official GeoNames dump; a mirror otherwise (step 18b)
-            search = "auto"         # auto | open-meteo | geonames | nominatim (step 25)
-            reverse = "auto"        # auto | offline | off — coordinate naming (step 25)
 [units]     # per-quantity overrides; an absent (or empty) key follows defaults.units
             # temp = "c"  wind = "kmh"  pressure = "hpa"  distance = "km"  precip = "mm"
 [network]   timeout_secs = 15  retries = 3  proxy = ""  nominatim_url = ""
@@ -395,14 +418,21 @@ schema_version = 2
             # ip_ttl_secs is capped at 86400: ipapi.co's terms allow caching an IP answer for at most 24 hours
 [render]    color = "auto"  width = 0
 [alerts]    enabled = true  severity_threshold = "minor"  sources = ["auto"]  fpas_url = ""  cache_ttl_secs = 300  # step 15
-[normals]   period = "1991-2020"  max_distance_km = 60          # step 26
+[air]       index = "us"            # us | european — the AQI scale behind the panel colour and %q
 [providers.metar]    station = ""
 [providers.qweather] host = ""
 ```
 
+* The `[geo] search`/`[geo] reverse` keys and the `[normals]` table are **not** in this block yet:
+  they arrive with steps 25 and 26, and this build's `check_known_keys` rejects them (a file copied
+  from an earlier draft of the block would fail `config validate`).
+
 * These keys are addressed as dotted paths (`cirrocast config get defaults.days`). The ones that
   also exist as command line flags carry a `CIRROCAST_*` override — `PROVIDER`, `FORMAT`, `UNITS`,
-  `DAYS`, `LANG`, `LOCATION`, `TIMEOUT` — and `config get` prints the environment value when set.
+  `DAYS`, `LANG`, `LOCATION`, `TIMEOUT`, `LOCATION_PICK` (`location.pick`), `NOMINATIM_URL`
+  (`network.nominatim_url`) and `IP_SERVICE` (the `--ip` service order) — and `config get` prints
+  the environment value when set. (`CIRROCAST_IP_SERVICE` has no config key: it selects the IP
+  services directly.)
 * API keys are **never** written to `config.toml`. Precedence (first hit wins):
   `CIRROCAST_<PROVIDER>_KEY` env var → `keys.toml` in the config dir with mode `0600`
   (`cirrocast key set/rm/list`). There is no third tier: OS keyring storage is explicitly out of
@@ -414,15 +444,25 @@ schema_version = 2
   `Error::Config`, never a silent fall-through. A PEM is read from a file or stdin at `key set` time
   and never from argv; tokens are minted per fetch and never written to disk.
 * A `keys.toml` with any group/other permission bits is refused with `Error::Config`, not silently used.
-* Cache layout: `geocode/<sha256(query)>.json`, `ip/<service>.json`,
-  `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json`,
-  `weather/metar-<ICAO>-{current,taf}.json` for the station resources, `station/<ICAO>.json` for
-  30-day station metadata, and `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json` for alert
-  responses (a CAP document fetched per identifier hashes the identifier instead of a place);
-  writes are `tmp` + `rename`. Steps 24 and 26 add two namespaces with the
+* Cache layout: `geocode/<sha256(query)>.json`, `ip/<service>.json`, the `weather/` key shapes —
+  `weather/<provider>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json` for a forecast,
+  `weather/<provider>-<part>-<lat.2dp>-<lon.2dp>-<days>-<local-date>.json` for a backend that needs
+  more than one request per fetch (OpenWeatherMap's `current`/`forecast`, QWeather's
+  `current`/`hourly`), and `weather/<source>-air-<lat.2dp>-<lon.2dp>-<local-date>.json` for the
+  air-quality reading (it shares the weather TTL and namespace because it is an upstream answer for
+  the same place) — plus `weather/metar-<ICAO>-{current,taf}.json` for the station resources,
+  `station/<ICAO>.json` for 30-day station metadata, and
+  `alerts/<source>-<lat.2dp>-<lon.2dp>-<utc-hour>.json` for alert responses (a CAP document fetched
+  per identifier hashes the identifier instead of a place); writes are `tmp` + `rename`. Two small
+  state files live beside them, deliberately not cached answers: `ratelimit/nominatim.json` (the OSM
+  one-request-per-second stamp) and `geo/update-notice.json` (the 24-hour `[geo] update = "check"`
+  freshness note). Steps 24 and 26 add two namespaces with the
   same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
   mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
-  reports every namespace it finds.
+  reports the five entry namespaces (`weather`, `geocode`, `ip`, `station`, `alerts`) and then the
+  `ratelimit`/`geo` state namespaces, and ignores a crashed run's `.<name>.tmp.<pid>` staging files;
+  `cache clean` removes expired entries, and `cache clean --all` the whole tree including those
+  staging files.
 * Data layout: `$XDG_DATA_HOME/cirrocast/geo/{cities.bin.gz,keys.bin.gz,SNAPSHOT}` is the
   user-installed city table (step 18b), written only by `location update-data`; the bundled table
   inside the binary stays the default and the fallback, and nothing in the query path ever fetches
@@ -450,8 +490,9 @@ cirrocast [OPTIONS] [LOCATION]...
                                 | pirateweather | qweather | smhi | metar | auto
                                 (+ met-no, visualcrossing, open-meteo-archive, open-meteo-marine in
                                 step 23; nws, brightsky in step 24)
-  -f, --format <NAME>           art-table | dumb | plain | one-line | full | minimal | json | alerts
-                                | aqi | moon | normals  (`full`/`minimal` are one-line presets,
+  -f, --format <NAME>           art-table | dumb | plain | one-line | full | minimal | short
+                                | default | uv | sun | json | alerts | aqi | moon | normals
+                                (`full`/`minimal`/`short`/`default`/`uv`/`sun` are one-line presets,
                                 step 19; `normals` is step 26)
   -d, --days <N>                0..=14 (clamped per provider, warned once)
   -u, --units <metric|us|uk>
@@ -461,8 +502,14 @@ cirrocast [OPTIONS] [LOCATION]...
       --station <ICAO>          METAR station; selects `metar` when no provider is given
       --alerts                  fetch severe-weather warnings (auto-on from `[alerts] enabled`)
       --no-alerts               do not fetch warnings in this run
-      --alerts-from <LIST>      explicit alert sources: nws, meteoalarm, qweather, hko, wmoswic, fpas
+      --alerts-from <LIST>      explicit alert sources (the six wired ids, comma separated):
+                                nws, meteoalarm, qweather, hko, wmoswic, fpas; `auto` is the
+                                coverage selector for `[alerts] sources`, not a `--alerts-from` id
+                                (`visualcrossing` is reserved for step 23)
       --severity <LEVEL>        lowest alert severity to show (unknown..extreme)
+      --aqi                     append the air-quality panel (step 16; also `--format aqi`)
+      --aqi-index <SCALE>       us | european — the scale behind the panel colour and `%q`
+      --moon                    append the moon/sun block (step 17; also `--format moon`)
       --no-cache / --refresh / --offline[=<weather|geo|all>]   (step 18; bare `--offline` = all)
       --timeout <SECS>
       --template <STRING>       literal `%` template (step 19); `--template-file <PATH|->` reads a file (or stdin)
@@ -509,7 +556,8 @@ geocoder-independent spec and are what the selection echo prints back.
 ### Licensing and REUSE (binding)
 
 * Project licence: **GPL-3.0-or-later**. The full text lives at `./LICENSE` (so GitHub detects it)
-  and is exposed to REUSE through the sibling link `LICENSES/GPL-3.0-or-later.txt`.
+  and is exposed to REUSE through the deliberate byte-identical copy
+  `LICENSES/GPL-3.0-or-later.txt` (a CI `cmp` gate keeps the two equal; it is not a symlink).
 * The repository is [REUSE](https://reuse.software/) compliant: every file carries SPDX
   file-copyright and licence tags, either in a comment header (native comment syntax of the file) or,
   for files that cannot hold comments (`Cargo.lock`, `tests/fixtures/**/*.json`, binary fixtures), as a

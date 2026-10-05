@@ -15,7 +15,8 @@ deliberately independent of the other two.
 | Change | Effect | Version |
 |---|---|---|
 | a new key appears | non-breaking; a consumer must ignore keys it does not know | unchanged |
-| a key is removed, renamed, retyped, changes its unit, or changes between always-present and nullable | breaking | `schema_version` bumps |
+| a key's value becomes nullable (or a nullable value becomes always-present) | non-breaking: the document already promises `null` for a value the provider did not report, so a consumer must handle `null` for every key | unchanged |
+| a key is removed, renamed, retyped, or changes its unit | breaking | `schema_version` bumps |
 
 The crate version, the JSON schema version and the config schema version move **independently**: a
 release that adds a backend is not a schema change, and a schema change is not a crate release. A
@@ -33,8 +34,9 @@ document scriptable, in the order they matter:
   this format by a single byte;
 * timestamps are ISO 8601 with the location's own offset (`2026-10-01T22:00:00+08:00`), except
   `attribution.retrieved_at`, which is UTC (`…Z`);
-* `days` is ordered oldest first and starts at the location-local today; `day.parts` always carries
-  all four parts;
+* `days` is ordered oldest first and starts at the first location-local date whose four parts all
+  have a sample (today whenever the backend's series covers it, otherwise the first complete day);
+  `day.parts` always carries all four parts;
 * `condition.text` is translated by `--lang`, `condition.code` is the canonical WMO 4677 number and
   is not;
 * the credits the data licences require travel with the document in `attribution`.
@@ -45,6 +47,14 @@ The table is the complete key set, and `tests/render_json.rs` reads it and fails
 document disagrees with it — a rename, a removal or an undocumented addition cannot ship unnoticed.
 `[]` marks the element of an array; `Null` says whether the value may be `null` (every key is always
 present).
+
+The table lists the keys of a *report* document. A failed slot in a multi-location run renders a
+different, three-key object instead — `query` (string: the location argument as typed), `error`
+(object) with `error.code` (integer: the mapped process exit code) and `error.message` (string: the
+message exactly as it would print on stderr) — so a consumer detecting a failure never has to
+inspect the report keys. The top-level type is decided by the argument count, not the content: one
+location is a plain object, several are an array of those objects in argument order (a failed slot
+is an object with an `error` key rather than a report).
 
 <!-- schema-key-index:begin -->
 | Key | Type | Unit | Null | Meaning |
@@ -59,7 +69,7 @@ present).
 | `location.lon` | number | degrees | no | longitude, WGS 84 |
 | `location.timezone` | string | — | no | IANA name the times are expressed in |
 | `location.elevation_m` | number | m | yes | elevation above sea level |
-| `location.source` | string | — | no | `geocoder`, `offline`, `osm`, `coordinates`, `ip`, `config` or `station` |
+| `location.source` | string | — | no | `geocoder`, `offline`, `osm`, `coordinates`, `ip` or `station` |
 | `location.station` | string | — | yes | ICAO identifier; `null` for every non-station location |
 | `current` | object | — | yes | current conditions; `null` for an observation-less backend |
 | `current.time` | string | — | no | observation time at the location's offset |
@@ -68,14 +78,14 @@ present).
 | `current.condition.text` | string | — | no | condition text in the report's language |
 | `current.temp_c` | number | °C | no | air temperature |
 | `current.feels_like_c` | number | °C | yes | apparent temperature |
-| `current.humidity_pct` | integer | % | no | relative humidity, 0..=100 |
+| `current.humidity_pct` | integer | % | yes | relative humidity, 0..=100; `null` when the backend does not report one |
 | `current.precip_mm` | number | mm | no | precipitation in the last hour |
 | `current.pressure_hpa` | number | hPa | no | sea-level pressure |
 | `current.visibility_km` | number | km | yes | horizontal visibility |
 | `current.wind_kmh` | number | km/h | no | wind speed |
-| `current.wind_dir_deg` | integer | degrees | no | direction the wind blows *from*, clockwise from north |
+| `current.wind_dir_deg` | integer | degrees | yes | direction the wind blows *from*, clockwise from north; `null` for a variable or calm wind |
 | `current.wind_gust_kmh` | number | km/h | yes | gust speed |
-| `current.cloud_cover_pct` | integer | % | no | total cloud cover, 0..=100 |
+| `current.cloud_cover_pct` | integer | % | yes | total cloud cover, 0..=100; `null` when the backend does not report one |
 | `current.uv_index` | number | index | yes | UV index |
 | `current.is_day` | boolean | — | no | whether the location is in daylight |
 | `days` | array | — | no | forecast days, oldest first |
@@ -148,12 +158,12 @@ present).
 | `air.so2` | number | μg/m³ | yes | sulphur dioxide |
 | `air.co` | number | μg/m³ | yes | carbon monoxide |
 | `air.pollen` | object | — | yes | pollen forecast; `null` outside the source's pollen domain |
-| `air.pollen.alder` | number | grains/m³ | no | alder pollen |
-| `air.pollen.birch` | number | grains/m³ | no | birch pollen |
-| `air.pollen.grass` | number | grains/m³ | no | grass pollen |
-| `air.pollen.mugwort` | number | grains/m³ | no | mugwort pollen |
-| `air.pollen.olive` | number | grains/m³ | no | olive pollen |
-| `air.pollen.ragweed` | number | grains/m³ | no | ragweed pollen |
+| `air.pollen.alder` | number | grains/m³ | yes | alder pollen; `null` when the source did not report it (a measured `0` stays `0.0`) |
+| `air.pollen.birch` | number | grains/m³ | yes | birch pollen; `null` when the source did not report it |
+| `air.pollen.grass` | number | grains/m³ | yes | grass pollen; `null` when the source did not report it |
+| `air.pollen.mugwort` | number | grains/m³ | yes | mugwort pollen; `null` when the source did not report it |
+| `air.pollen.olive` | number | grains/m³ | yes | olive pollen; `null` when the source did not report it |
+| `air.pollen.ragweed` | number | grains/m³ | yes | ragweed pollen; `null` when the source did not report it |
 | `air.units` | object | — | no | the units the air numbers are in |
 | `air.units.pollutants` | string | — | no | `μg/m³` |
 | `air.units.pollen` | string | — | no | `grains/m³` |
@@ -196,7 +206,7 @@ present).
 | `attribution.retrieved_at` | string | — | no | when the data was fetched or read from the cache, UTC |
 | `alerts` | array | — | no | severe-weather warnings in force, strongest first |
 | `alerts[].id` | string | — | no | the source's own identifier |
-| `alerts[].source` | string | — | no | `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas` or `visualcrossing` |
+| `alerts[].source` | string | — | no | `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic` or `fpas` |
 | `alerts[].event` | string | — | no | event name, e.g. `Tornado Warning` |
 | `alerts[].severity` | string | — | no | `unknown`, `minor`, `moderate`, `severe` or `extreme` |
 | `alerts[].urgency` | string | — | no | `unknown`, `past`, `future`, `expected` or `immediate` |
@@ -319,6 +329,7 @@ stays pipeable):
     }
   ],
   "air": null,
+  "astro": null,
   "alerts": [],
   "capabilities": {
     "current": true,
@@ -445,8 +456,9 @@ width = 0                # 0 = detect from the terminal, or 40..=500 columns
 [alerts]
 enabled = true                # fetch warnings automatically when a source covers the location
 severity_threshold = "minor"  # unknown | minor | moderate | severe | extreme
-sources = ["auto"]            # ["auto"] (coverage-selected) or ids: nws, meteoalarm, qweather,
-                              # hko, wmoswic, fpas, visualcrossing
+sources = ["auto"]            # ["auto"] (coverage-selected) or the wired ids: nws, meteoalarm,
+                              # qweather, hko, wmoswic, fpas ("visualcrossing" is reserved for
+                              # step 23 and rejected until then)
 fpas_url = ""                 # FOSS Public Alert Server base URL; empty = https://alerts.kde.org
 cache_ttl_secs = 300          # 5 minutes
 

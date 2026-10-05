@@ -34,7 +34,7 @@ registry re-verification of that step needs a written record of what was checked
 
 ### Backends
 
-| id | Key | Free tier (verified 2026-09-30) | Coverage | Granularity | Horizon | Status |
+| id | Key | Free tier (verified 2026-09-30; `metar` and `qweather` re-verified 2026-10-01) | Coverage | Granularity | Horizon | Status |
 |---|---|---|---|---|---|---|
 | `open-meteo` | none | 10 000 calls/day, 5 000/hour, 600/minute; non-commercial | global | hourly | 16 days | implemented (step 06) |
 | `smhi` | none | no published quota; fair-use rules | Nordics and adjacent seas (SNOW1gv1 polygon) | 1 h near-term, 6 h / 12 h later | ≈10 days | implemented |
@@ -65,12 +65,13 @@ is the user's answer. Concretely, for the backends above:
 
 | Upstream answer | Mapped to | Effect |
 |---|---|---|
-| `401` / `403` that means "bad or missing credential" | `Error::MissingKey` / `InvalidKey` (exit 6) | chain stops; message names `cirrocast key set <id>` |
+| `401` that means "bad or missing credential" | `Error::InvalidKey` (exit 6) | chain stops; message names `cirrocast key set <id>` |
+| `403` (quota, plan, permission or host mismatch) | `Error::Upstream` (exit 3) | chain continues; the body text is the actionable part, and a backend may refine it in its own decoder (WeatherAPI's `403` stays `Upstream`; only `401` becomes exit 6) |
 | `429` | `Error::Upstream` (exit 3) | chain continues; `Retry-After` honoured when present and clamped (PirateWeather, ipwho.is publish it; WeatherAPI, ipapi.co and Open-Meteo do not) |
 | `5xx`, timeouts, connection failures | `Error::Upstream` / `Error::Network` (exit 3) | chain continues |
-| `400` with an invalid-parameter body | `Error::Usage` (exit 2) where the fault is ours; `Error::Upstream` where the body is a provider refusal | per provider note |
-| `404` "no such location" (QWeather, SMHI out-of-area) | `Error::Upstream` for SMHI (so `auto` falls through) and for QWeather's "no such location" | see each section |
-| `200` with an error envelope (`{"error":true,…}`, `{"success":false,…}`) | `Error::Upstream(reason)` | Open-Meteo, ipwho.is, ipapi.co all do this |
+| `400` (bad parameter or rejected location) | `Error::Upstream` (exit 3) | chain continues; no provider maps it to `Error::Usage` — the answer is a provider refusal, not a command-line mistake |
+| `404` "no such location" / out-of-area | `Error::Upstream` (exit 3) | `auto` falls through to the next backend; SMHI answers `404` (the docs claim `400`), QWeather answers `400` |
+| `200` with an error envelope (`{"error":true,…}`, `{"success":false,…}`, `{"data":{"error":[…]}}`) | `Error::Upstream(reason)` | ipwho.is, ipapi.co and WorldWeatherOnline do this; Open-Meteo sends its envelope with HTTP `400`, and no Open-Meteo struct carries an error field |
 
 ## Backends
 
@@ -90,10 +91,17 @@ Documented parameters not sent today: `past_days` (0–92), `models` (plural —
 returned HTTP 400), `cell_selection`, `minutely_15`, `start_date`/`end_date`, `format` (`json`/`csv`/`xlsx`),
 `apikey` (commercial only, with the `customer-api.open-meteo.com` host).
 
-**Response fields consumed.** Top level: `latitude`, `longitude`, `utc_offset_seconds`, `timezone`,
-`elevation`, `current_units`, `current`, `hourly_units`, `hourly`, `daily_units`, `daily`. `hourly` and
-`daily` are column objects (`{ "time": [...], "<variable>": [...] }`); `current` is a flat object whose
-`interval` is 900 s. Units are echoed back per request in `*_units`.
+**Response fields consumed.** `ForecastResponse` reads `latitude`, `longitude`, `elevation`,
+`utc_offset_seconds`, `timezone`, `timezone_abbreviation`, `current`, `hourly` and `daily`. `current`
+(`CurrentBlock`) reads `time`, `temperature_2m`, `relative_humidity_2m`, `apparent_temperature`,
+`is_day`, `precipitation`, `weather_code`, `cloud_cover`, `pressure_msl`, `surface_pressure` (kept,
+not rendered), `wind_speed_10m`, `wind_direction_10m`, `wind_gusts_10m`, `visibility` (metres) and
+`uv_index`. `hourly` and `daily` are column objects (`{ "time": [...], "<variable>": [...] }`):
+`HourlyBlock` reads `time`, `temperature_2m`, `apparent_temperature`, `precipitation_probability`,
+`precipitation`, `weather_code`, `wind_speed_10m`, `wind_direction_10m`, `relative_humidity_2m` and
+`visibility`; `DailyBlock` reads `time`, `weather_code` (unused), `temperature_2m_max`,
+`temperature_2m_min`, `sunrise` and `sunset`. The `*_units` objects and `current.interval` are not
+deserialised — the request fixes the units.
 
 **Auth.** None. `apikey` is documented as "Only required to commercial use to access reserved API
 resources for customers. The server URL requires the prefix `customer-`."
@@ -116,7 +124,9 @@ are the model grid cell and "might be a few kilometres away from the requested c
 **Attribution and licence.** CC BY 4.0; the licence page asks for a link next to any displayed data:
 `<a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a>`
 (<https://open-meteo.com/en/licence>). The geocoding page adds "Location data based on GeoNames".
-`Data: Open-Meteo.com (CC BY 4.0)` is the line the renderers print today.
+`Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/` is the line the renderers print today:
+CC BY 4.0 asks for credit plus a link to the material, so the licence id and the service link are
+both part of the shipped string (the `Data:` label itself is a localized catalog string).
 
 **Client notes.** Ask for metric units explicitly (the single conversion point is `src/render/`);
 `timezone=auto` because `daily` requires a timezone; treat a missing `visibility`/`precipitation_probability`
@@ -231,11 +241,12 @@ rate limit (none found); the multipoint grid endpoint (every probe returned 406)
 
 ### `metar` (aviationweather.gov)
 
-Keyless, station-based observations: the second keyless backend (step 11). The decoder reads the
+Keyless, station-based observations: the third keyless backend (after `open-meteo` and `smhi`;
+step 11), and `auto` never selects it because a station has to be named. The decoder reads the
 raw report rather than the JSON fields, the embedded station table answers the common identifiers
 without a request, and `stationinfo` extends that to any station at one cached request per 30 days.
 
-**Endpoints** (verified 2026-09-30, all GET, no key)
+**Endpoints** (verified 2026-10-01, all GET, no key)
 
 | Purpose | URL | Parameters |
 |---|---|---|
@@ -243,11 +254,15 @@ without a request, and `stationinfo` extends that to any station at one cached r
 | Forecasts | `https://aviationweather.gov/api/data/taf` | `ids`, `bbox`, `format`, `metar=true`, `time` (`valid`/`issue`), `date` |
 | Station metadata | `https://aviationweather.gov/api/data/stationinfo` | `ids`, `bbox`, `format` |
 
-**Response fields consumed.** METAR JSON is a bare array; per object: `icaoId`, `receiptTime`,
-`obsTime`, `reportTime`, `temp`, `dewp`, `wdir`, `wspd`, `wgst`, `visib`, `altim`, `slp`, `wxString`,
-`clouds[{cover,base}]`, `rawOb`, `lat`, `lon`, `elev`, `name`, `fltCat`. Station info adds `iataId`,
-`faaId`, `wmoId`, `site`, `state`, `country`. TAF objects carry `rawTAF`, `issueTime`, `validTimeFrom`,
-`validTimeTo` and a `fcsts[]` change-group list.
+**Response fields consumed.** Two `Deserialize` structs, no more. `MetarReport` (the
+`metar?format=json` object) reads `icaoId`, `obsTime` and `rawOb` — the values come from the decoded
+raw report, not the JSON fields — plus `temp`, `dewp`, `wdir`, `wspd`, `wgst`, `visib`, `altim` and
+`wxString`, each an `Option<serde_json::Value>` used only for the `-vv` cross-check because upstream
+types drift (`wdir` is a number or the string `"VRB"`, `visib` a number of statute miles or `"10+"`).
+`receiptTime`, `reportTime`, `slp`, `clouds`, `lat`, `lon`, `elev`, `name` and `fltCat` are not
+deserialised. `StationInfo` (`stationinfo?format=json`) reads `icaoId`, `site`, `lat`, `lon`, `elev`,
+`state` and `country`. The TAF is fetched with `format=raw` and consumed as the raw text; it is not
+deserialised, so `issueTime`/`validTimeFrom`/`fcsts[]` are not read.
 
 **Auth.** None; the docs ask for a custom user agent ("Set a custom user agent to prevent automated
 filtering inadvertently blocking valid traffic.").
@@ -264,6 +279,13 @@ is the only look-back window; TAFs are multi-period (typically 24–30 h).
 ownership, no implied endorsement, and third parties producing works "consisting predominantly of the
 material appearing in NWS Web pages" must carry the 17 U.S.C. § 403 notice; the NWS name and logo are
 trademarks (<https://www.weather.gov/disclaimer>).
+
+**Implemented 2026-10-01** (`src/provider/metar.rs`, `max_days: 0` — observation only). Two calls per
+fetch at most (the observation, plus `stationinfo` for a station outside the embedded table, plus the
+TAF under `-v`), each cached under its own `weather/metar-<ICAO>-{current,taf}.json` /
+`station/<ICAO>.json` key. The report prints the registry credit
+`aviationweather.gov (NOAA/NWS, public domain)`; no string is mandated, and the payload's own fields
+are used only for the `-vv` cross-check because the decoder reads the raw report.
 
 **Client notes.** `metar_id` does not exist (the identifier is `icaoId`); `wmoId`/`id`/`cover`/`rawTaf`
 are live but undocumented — parse defensively; `metar?ids=ZZZZ` answers 204 while `taf?ids=ZZZZ`
@@ -288,11 +310,13 @@ BYOK. Two calls per fetch (current + 3-hourly forecast).
 id have been deprecated"); the replacement is the separate Geocoding API. `exclude` exists only on One
 Call, not on 2.5.
 
-**Response fields consumed.** Current: `main.temp/feels_like/humidity/pressure`, `weather[0].id`,
-`wind.speed/deg/gust`, `clouds.all`, `visibility` (metres, "maximum value … is 10 km"), `rain.1h`,
-`snow.1h`, `sys.sunrise/sunset`, `dt`, `timezone` (shift in seconds, **not** an IANA name), `name`.
-Forecast: `list[].dt/pop/main.*/weather[0].id/wind.*/rain.3h/snow.3h/sys.pod` plus the `city` block
-(`name`, `timezone`, `sunrise`, `sunset` — today's times only, not per day).
+**Response fields consumed.** `CurrentResponse` reads `dt`, `timezone` (an offset in seconds,
+**not** an IANA name), `name`, `weather` (a `Vec<Weather>`, of which `id` and `icon` are read),
+`main` (`temp`, `feels_like`, `humidity`, `pressure`), `wind` (`speed`, `deg`, `gust`), `clouds.all`,
+`visibility` (metres, capped at 10 km), `rain` and `snow` (their `1h` key). `sys.sunrise`/`sunset`
+are **not** deserialised. `ForecastResponse` reads `city` (`timezone`, `name` only — not the
+sunrise/sunset pair) and `list`, whose `Slot` reads `dt`, `main`, `weather.id`, `wind`, `clouds`,
+`visibility`, `rain`/`snow` (their `3h` key), `pop` and `sys.pod`.
 
 **Auth.** `appid` query parameter, account-scoped limits ("API call limits are applied at the account
 level, not per API key or per product"), key activation "up to 2 hours after your successful
@@ -352,13 +376,15 @@ BYOK. One call per fetch; the free plan is the constraint.
 `q` accepts `lat,lon`, a city name, US zip, UK postcode, Canadian postal code, `metar:<ICAO>`,
 `iata:<code>`, `auto:ip`, an IP address, or `id:<search-id>`.
 
-**Response fields consumed.** `location.{name,region,country,lat,lon,tz_id,localtime_epoch,localtime}`;
-`current.{temp_c,feelslike_c,humidity,pressure_mb,wind_kph,wind_degree,wind_dir,gust_kph,vis_km,uv,
-precip_mm,is_day,condition.code,last_updated_epoch}`;
-`forecast.forecastday[].{date,date_epoch,day.{maxtemp_c,mintemp_c,avgtemp_c,maxwind_kph,totalprecip_mm,
-avghumidity,uv,condition},astro.{sunrise,sunset,moonrise,moonset,moon_phase,moon_illumination},
-hour[].{time,time_epoch,temp_c,feelslike_c,chance_of_rain,precip_mm,wind_kph,gust_kph,vis_km,uv,is_day,
-condition.code}}`; `alerts.alert[]` with `alerts=yes`.
+**Response fields consumed.** `Forecast` reads `location`, `current` and `forecast`. `LocationBlock`:
+`name`, `region`, `country`, `tz_id`, `lat`, `lon`, `localtime_epoch`. `CurrentBlock`:
+`last_updated_epoch`, `temp_c`, `feelslike_c`, `humidity`, `pressure_mb`, `wind_kph`, `wind_degree`,
+`gust_kph`, `vis_km`, `uv`, `precip_mm`, `is_day`, `cloud` and `condition.code`. `ForecastDays`:
+`forecastday[]`, whose `ForecastDay` reads `date`, `day` (`maxtemp_c`, `mintemp_c`, `condition`, `uv`),
+`astro` (`sunrise`, `sunset` only — not the moon fields) and `hour[]`
+(`time_epoch`, `temp_c`, `feelslike_c`, `humidity`, `chance_of_rain`, `precip_mm`, `wind_kph`,
+`wind_degree`, `gust_kph`, `vis_km`, `condition.code`). The response's `alerts` block is **not**
+deserialised; warnings come from the separate alert registry.
 
 **Auth.** `key` query parameter; sign-up at <https://www.weatherapi.com/signup.aspx>; the key stays the
 same across plan changes; a compromised key is rotated "within 4 business hours of notification".
@@ -424,12 +450,15 @@ conservative reading.
 every probe; every official example uses `premium/v1`, and the pricing page says "All plans share the
 same core API suite". The free key therefore goes on the `premium/v1` path.
 
-**Response fields consumed.** `data.{request,nearest_area,current_condition,weather,alerts}`;
-`current_condition[0].{temp_C,FeelsLikeC,weatherCode,weatherDesc[0].value,humidity,windspeedKmph,
-winddirDegree,pressure,precipMM,visibility,uvIndex,observation_time}`;
-`weather[].{date,maxtempC,mintempC,uvIndex,astronomy.{sunrise,sunset,moonrise,moonset,moon_phase},
-hourly[].{time,tempC,FeelsLikeC,weatherCode,weatherDesc[0].value,windspeedKmph,winddirDegree,precipMM,
-humidity,pressure,cloudcover,chanceofrain,windgustKmph,visibility}}`.
+**Response fields consumed.** `Envelope` reads `data`; `Data` reads `current_condition`,
+`weather` and `error` (`ErrorBlock.msg`). `CurrentBlock` (the single `current_condition[0]`) reads
+`observation_time`, `temp_C`, `FeelsLikeC`, `humidity`, `pressure`, `windspeedKmph`, `winddirDegree`,
+`visibility`, `precipMM`, `cloudcover`, `uvIndex` and `weatherCode` — every scalar through a
+string-or-number `text_number` helper. `DayBlock` reads `date`, `maxtempC`, `mintempC`,
+`astronomy` (`AstroBlock.sunrise`/`sunset` only) and `hourly[]`, whose `HourBlock` reads `time`,
+`tempC`, `FeelsLikeC`, `humidity`, `chanceofrain`, `precipMM`, `windspeedKmph`, `winddirDegree`,
+`visibility` and `weatherCode`. `request`, `nearest_area`, `weatherDesc`, `uvIndex` on the day,
+`moonrise`/`moonset`/`moon_phase` and `windgustKmph` are not deserialised.
 
 **Auth.** `key` query parameter, no header scheme; sign-up with email verification; the terms require
 keeping the key out of public repositories and forbid sharing it.
@@ -491,13 +520,16 @@ There is **no `tz` parameter**; the response's `timezone` name and `offset` (hou
 carry the local calendar. The key may alternatively travel in an `apikey` header with a dummy path
 segment.
 
-**Response fields consumed.** Top level `latitude`, `longitude`, `timezone`, `offset`, `elevation`,
-`currently`, `minutely`, `hourly`, `daily`, `alerts`, `flags`; per block `time` (UNIX UTC seconds),
-`summary`, `icon`, `precipIntensity`, `precipProbability`, `precipType`, `temperature`,
-`apparentTemperature`, `dewPoint`, `humidity`, `pressure`, `windSpeed`, `windGust`, `windBearing`,
-`cloudCover`, `visibility`, `uvIndex`; daily adds `sunriseTime`, `sunsetTime`, `moonPhase`,
-`precipAccumulation`, `temperatureHigh/Low`. Under `units=si`, `precipAccumulation` is **centimetres**
-and `precipIntensity` is mm/h of liquid water; `humidity`/`cloudCover`/`precipProbability` are 0–1;
+**Response fields consumed.** `Forecast` reads `timezone`, `offset`, `currently`, `hourly`, `daily`
+and `flags`; `latitude`, `longitude`, `elevation`, `minutely` and `alerts` are not deserialised.
+`Series` is a `{ "data": [...] }` block; `Block` (one `currently`, `hourly.data[]` or
+`daily.data[]` entry, all fields optional) reads `time` (UNIX UTC seconds), `icon`, `temperature`,
+`apparent_temperature`, `precip_intensity`, `precip_probability`, `humidity`, `cloud_cover`,
+`pressure`, `wind_speed`, `wind_gust`, `wind_bearing`, `visibility`, `uv_index`, and for daily
+entries `temperature_high`, `temperature_low`, `sunrise_time` and `sunset_time`. `Flags` reads `units`
+and `sources` (`summary`, `precipType`, `dewPoint`, `moonPhase` and `precipAccumulation` are not
+deserialised). Under `units=si`, `precip_intensity` is mm/h of liquid water and
+`humidity`/`cloud_cover`/`precip_probability` are 0–1;
 `visibility` is capped at 16 km.
 
 **Auth.** Key in the path (or header); sign-up through the Apiable portal, and "it can take up to 20
@@ -569,12 +601,17 @@ without knowing the API Host"). The legacy shared domains (`api.qweather.com`, `
 
 **Response shape.** Every value is a **measure object** (`{"value": 10.96, "unit": "°C"}`), the
 timestamps are **UTC instants** (`2026-10-01T00:00Z`, minutes form — valid ISO 8601, not strict
-RFC 3339), and the payload carries **no time zone and no observation time**:
+RFC 3339), and the payload carries **no time zone and no observation time**. Our `CurrentResponse`
+and `HourlyResponse` read:
 
-* `current`: `condition{text,code}`, `temperature`, `feelsLike`, `humidity` (0–1), `wind{direction{degree,compass},speed{value,unit:"m/s"},scale}`, `windGust`, `precipitation{amount{mm},intensity{mm/h},type}`, `pressure{hPa}`, `visibility{m}`, `dewPoint`, `cloudCover` (0–1), `uvIndex`, plus `metadata{tag,attributions[]}`.
-* `hours[]`: the same fields plus `forecastTime`, `precipitation.probability` (percent) and per-hour `uvIndex`.
-* `days[]`: `forecastStartTime`/`forecastEndTime` (UTC instants of the **location-local midnight** boundaries — `16:00Z` for Beijing, `04:00Z` for New York), `astro{...}` (sunrise/sunset as UTC instants), `temperatureMax/Min/Avg`, `uvIndexMax`, `daytime`/`nighttime` sub-blocks with their own condition/temperature/wind/precipitation.
-* `metadata.attributions` lists the attribution page upstream asks to be shown.
+* `metadata` (`tag`, `attributions[]`), `condition.code` (a string), and `temperature`, `feelsLike`,
+  `windGust`, `pressure` and `visibility` (each a `Measure` with its unit checked against the
+  canonical one), `humidity` (0–1), `wind` (`Wind.speed` a `Measure`, `Wind.direction.degree`),
+  `precipitation` (`Precipitation.amount` a `Measure`, `.probability` a percent on hourly entries),
+  `cloudCover` (0–1) and `uvIndex`.
+* `hours[]` adds `forecastTime`; the `days[]` block — with its `astro` and
+  `daytime`/`nighttime` sub-blocks — is **not deserialised**, because its split does not map onto the
+  four canonical parts and the daily extremes are derivable from the hourly series.
 
 **Auth.** `X-QW-Api-Key: <key>` header (the `key=` query form also works; never both). The API KEY
 *signature* flow is retired, and API-KEY volume will be limited from 2027 (the docs give both
