@@ -7,6 +7,7 @@
 //! (`--provider`, `--format`, `--days`, ...) and the location argument are added by the steps that
 //! implement them, so that a flag never exists before the behaviour behind it.
 
+use std::collections::BTreeMap;
 use std::io::{IsTerminal as _, Read as _};
 use std::process::Command as StdCommand;
 use std::str::FromStr as _;
@@ -134,6 +135,7 @@ CONFIG PRECEDENCE (highest first)
   --provider  CIRROCAST_PROVIDER   --days    CIRROCAST_DAYS     --timeout CIRROCAST_TIMEOUT
   --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
   --lang      CIRROCAST_LANG
+  env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
   The configuration file is consulted only when neither the flag nor the variable is set, so an
   environment value is never overridden by config.toml. `config get <key>` prints the variable's
   value when one is set, and `config validate` checks the file without touching the network.
@@ -231,7 +233,7 @@ pub struct QueryArgs {
     #[arg(long, conflicts_with = "station")]
     pub ip: bool,
 
-    /// METAR station identifier (ICAO, four characters); without `--provider` it selects `metar`.
+    /// METAR station identifier (ICAO, four characters); `metar` heads the provider chain.
     #[arg(long, value_name = "ICAO", value_parser = parse_station)]
     pub station: Option<String>,
 
@@ -460,7 +462,12 @@ pub struct UpdateDataArgs {
     pub check: bool,
 
     /// Per-request timeout in seconds; overrides `network.timeout_secs`.
-    #[arg(long, value_name = "SECS", value_parser = clap::value_parser!(u32).range(1..=300))]
+    #[arg(
+        long,
+        value_name = "SECS",
+        env = "CIRROCAST_TIMEOUT",
+        value_parser = clap::value_parser!(u32).range(1..=300)
+    )]
     pub timeout: Option<u32>,
 
     /// Refused on purpose: the update command fetches by definition.
@@ -496,7 +503,12 @@ pub struct SearchArgs {
     pub limit: u8,
 
     /// Per-request timeout in seconds; overrides `network.timeout_secs`.
-    #[arg(long, value_name = "SECS", value_parser = clap::value_parser!(u32).range(1..=300))]
+    #[arg(
+        long,
+        value_name = "SECS",
+        env = "CIRROCAST_TIMEOUT",
+        value_parser = clap::value_parser!(u32).range(1..=300)
+    )]
     pub timeout: Option<u32>,
 
     #[command(flatten)]
@@ -773,6 +785,18 @@ impl Sources {
         };
         let given =
             |id: &str| matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine);
+        // An all-whitespace positional is "absent": it does not outrank the configured default, so
+        // `-v` must not report the resolved value as coming from the command line either.
+        let location = match matches.get_many::<String>("location") {
+            Some(mut values) => {
+                if values.all(|value| value.trim().is_empty()) {
+                    Source::Default
+                } else {
+                    source("location")
+                }
+            }
+            None => source("location"),
+        };
         Self {
             provider: source("provider"),
             format: source("format"),
@@ -780,7 +804,7 @@ impl Sources {
             units: source("units"),
             lang: source("lang"),
             aqi_index: source("aqi_index"),
-            location: source("location"),
+            location,
             coordinates: given("lat") || given("lon"),
             timeout: source("timeout"),
         }
@@ -811,7 +835,11 @@ impl Sources {
             settings.timeout_secs,
             self.timeout.as_str()
         );
-        if let Some(location) = &settings.location {
+        if let Some(location) = settings
+            .location
+            .as_deref()
+            .filter(|location| !location.trim().is_empty())
+        {
             let source = if self.coordinates {
                 Source::CommandLine
             } else {
@@ -829,7 +857,7 @@ impl Sources {
 /// a flag that overrides it (the flag wins by precedence), and `--station` depends on the provider
 /// chain, which the configuration file may be the source of.
 fn validate_query(query: &QueryArgs, sources: Sources, settings: &Settings) -> Result<()> {
-    if query.location.len() > 1 {
+    if location_args(query).count() > 1 {
         for (given, name) in [
             (query.lat.is_some() || query.lon.is_some(), "--lat/--lon"),
             (query.ip, "--ip"),
@@ -842,7 +870,7 @@ fn validate_query(query: &QueryArgs, sources: Sources, settings: &Settings) -> R
             }
         }
     }
-    if sources.location == Source::CommandLine && query.location.len() == 1 {
+    if sources.location == Source::CommandLine && location_args(query).count() == 1 {
         for (given, name) in [
             (query.lat.is_some() || query.lon.is_some(), "--lat/--lon"),
             (query.ip, "--ip"),
@@ -883,13 +911,12 @@ fn station_chain(spec: &str) -> bool {
 
 /// The chain this run fetches from.
 ///
-/// A station identifier needs a station-capable backend, so the chain is arranged around one:
+/// A station identifier needs a station-capable backend, so `metar` is put at the head:
 ///
 /// * `--station` with no `--provider`/`CIRROCAST_PROVIDER` value (the provider comes from the
-///   configuration or the built-in default) selects `metar` alone — the user asked for an
-///   observation, and no coordinate backend is silently chained after it;
-/// * `--station` with `auto` prepends `metar` to the keyless chain, because a station-only backend
-///   is never part of `auto` on its own;
+///   configuration or the built-in default) or with `auto` prepends `metar` to the chain, so the
+///   configured fallbacks still apply when the observation does not come back, exactly as `auto`
+///   gains it for a station run;
 /// * an explicit chain is used as written; [`validate_query`] has already refused one without a
 ///   station-capable entry.
 fn provider_chain(
@@ -897,11 +924,10 @@ fn provider_chain(
     station: Option<&str>,
     source: Source,
 ) -> Result<Vec<ProviderId>> {
+    let auto = settings.provider.trim().eq_ignore_ascii_case("auto");
+    let prepend = source == Source::Default || auto;
     match station {
-        Some(_) if source == Source::Default => select("metar"),
-        Some(_) if settings.provider.trim().eq_ignore_ascii_case("auto") => {
-            select(&format!("metar,{}", settings.provider.trim()))
-        }
+        Some(_) if prepend => select(&format!("metar,{}", settings.provider.trim())),
         _ => select(&settings.provider),
     }
 }
@@ -1017,6 +1043,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
     }
     let setup = RenderSetup::resolve(query, &config, &settings, cli.verbose, cli.quiet)?;
     validate_surfaces(query, setup.format)?;
+    validate_alert_sources(query)?;
     if cli.verbose > 0 {
         sources.note(&settings);
         render_notes(&setup);
@@ -1069,7 +1096,6 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
         format: setup.format,
         lang: setup.i18n.lang().tag(),
         env: &env,
-        geo: &geo_request,
         cli,
         now,
     };
@@ -1084,8 +1110,24 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
         return Ok(0);
     }
 
-    let results = crate::fetch_reports(&targets, |_, target| slot_report(&context, target));
+    let results = location_reports(&context, station.as_deref(), &targets, &geo_request, cli);
     output_slots(&setup, &targets, &results, &config, now, cli)
+}
+
+/// Checks `--alerts-from` before any location is resolved.
+///
+/// A source id is a promise: an unknown or unwired id, or an empty list, is a usage error that
+/// must not cost a request. Coverage needs the resolved location and is checked per slot.
+fn validate_alert_sources(query: &QueryArgs) -> Result<()> {
+    if let Some(ids) = alert_source_ids(query) {
+        if ids.is_empty() {
+            return Err(Error::Usage(
+                "--alerts-from needs at least one source id".to_owned(),
+            ));
+        }
+        alerts::parse_specs(&ids)?;
+    }
+    Ok(())
 }
 
 /// Everything one location's fetch needs beyond the location itself, shared by every slot.
@@ -1108,18 +1150,63 @@ struct SlotContext<'a> {
     lang: &'a str,
     /// The shared HTTP client, caches and key store.
     env: &'a Env<'a>,
-    /// The location-resolution inputs.
-    geo: &'a GeoRequest<'a>,
     /// The run's flags.
     cli: &'a Cli,
     /// The run's clock instant.
     now: chrono::DateTime<chrono::Utc>,
 }
 
-/// Resolves and fetches one slot: the location first, then the report end to end.
-fn slot_report(context: &SlotContext<'_>, target: &LocationTarget) -> Result<crate::model::Report> {
-    let location = query_location(target, context.geo, context.cli)?;
-    fetch_for_location(context, &location)
+/// Resolves every location of a multi-location run serially, then fetches them in parallel.
+///
+/// The resolution is a pre-pass in argument order, before any request: `--pick` then reads stdin in
+/// the order the user typed the locations, whatever order the workers would have reached the
+/// prompt in, so an identical command line produces identical stdout. A slot whose resolution
+/// failed carries its error and is never fetched.
+fn location_reports(
+    context: &SlotContext<'_>,
+    station: Option<&str>,
+    targets: &[LocationTarget],
+    geo: &GeoRequest<'_>,
+    cli: &Cli,
+) -> Vec<Result<crate::model::Report>> {
+    let resolved = resolve_all(targets, |target| {
+        location_for_run(station, target, geo, cli)
+    });
+    let slots: Vec<&Location> = resolved
+        .iter()
+        .filter_map(|slot| slot.as_ref().ok())
+        .collect();
+    let fetched = crate::fetch_reports(&slots, |_, location| fetch_for_location(context, location));
+    drop(slots);
+    let mut fetched = fetched.into_iter();
+    resolved
+        .into_iter()
+        .map(|slot| match slot {
+            Ok(_) => match fetched.next() {
+                Some(report) => report,
+                // Exactly one fetched report per resolvable slot, in the same order, so this arm
+                // is unreachable; it keeps the merge panic-free by construction.
+                None => Err(Error::Other(INTERNAL_SLOT.to_owned())),
+            },
+            Err(error) => Err(error),
+        })
+        .collect()
+}
+
+/// The internal error [`location_reports`]'s merge cannot produce, for a slot that was resolved
+/// but somehow has no fetched report.
+const INTERNAL_SLOT: &str = "internal: a location slot was resolved but not fetched";
+
+/// The serial resolution pre-pass of [`location_reports`]: one result per target, in argument
+/// order.
+///
+/// It is separate so the ordering contract is unit-testable without a network — the resolver is the
+/// only part that reaches outside the process.
+fn resolve_all(
+    targets: &[LocationTarget],
+    resolve: impl Fn(&LocationTarget) -> Result<Location>,
+) -> Vec<Result<Location>> {
+    targets.iter().map(resolve).collect()
 }
 
 /// Fetches one already-resolved location end to end: provider chain, then the alert, air and astro
@@ -1366,6 +1453,20 @@ fn attach_air(report: &mut crate::model::Report, env: &Env<'_>, quiet: bool) {
     }
 }
 
+/// The `--alerts-from` ids, split on commas and trimmed; `None` when the flag was not given.
+///
+/// `Some(vec![])` means the flag was given with nothing usable in it, which the callers refuse: an
+/// empty source list is a request with nothing to honour.
+fn alert_source_ids(query: &QueryArgs) -> Option<Vec<String>> {
+    query.alerts_from.as_deref().map(|spec| {
+        spec.split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(str::to_owned)
+            .collect()
+    })
+}
+
 /// The alert policy of this run, or `None` when it fetches no alerts.
 ///
 /// Precedence, from `--help`: `--no-alerts` wins over everything; `--alerts`, `--alerts-from` and
@@ -1387,6 +1488,11 @@ fn alert_request(
                 "--no-alerts cannot be combined with --alerts-from".to_owned(),
             ));
         }
+        if query.severity.is_some() {
+            return Err(Error::Usage(
+                "--no-alerts cannot be combined with --severity".to_owned(),
+            ));
+        }
         if format == Format::Alerts {
             return Err(Error::Usage(
                 "--no-alerts cannot be combined with `--format alerts`".to_owned(),
@@ -1395,18 +1501,15 @@ fn alert_request(
         return Ok(None);
     }
 
-    let named: Option<Vec<String>> = query.alerts_from.as_deref().map(|spec| {
-        spec.split(',')
-            .map(str::trim)
-            .filter(|entry| !entry.is_empty())
-            .map(str::to_owned)
-            .collect()
-    });
+    let named = alert_source_ids(query);
     let forced = query.alerts || format == Format::Alerts || named.is_some();
     if !forced && !config.alerts.enabled {
         return Ok(None);
     }
-    let explicit = named.is_some();
+    // A source list from `--alerts-from` *or* the configuration is an explicit request: its
+    // failure propagates instead of degrading to a `-v` note, so the promise the module documents
+    // holds whichever tier named the sources.
+    let explicit = named.is_some() || !alerts::is_auto(&config.alerts.sources);
     let sources = match &named {
         Some(specs) if !specs.is_empty() => alerts::explicit_sources(location, specs)?,
         Some(_) => {
@@ -1538,10 +1641,15 @@ fn location_targets(
     if query.ip {
         return Ok(vec![default()]);
     }
-    let raw: Vec<String> = match (query.lat, query.lon) {
-        (Some(lat), Some(lon)) => vec![format!("@{lat},{lon}")],
-        _ if !query.location.is_empty() => query.location.clone(),
-        _ => settings.location.iter().cloned().collect(),
+    let raw: Vec<String> = if let (Some(lat), Some(lon)) = (query.lat, query.lon) {
+        vec![format!("@{lat},{lon}")]
+    } else {
+        let given: Vec<String> = location_args(query).map(str::to_owned).collect();
+        if given.is_empty() {
+            settings.location.iter().cloned().collect()
+        } else {
+            given
+        }
     };
     if raw.is_empty() {
         return Ok(vec![default()]);
@@ -1569,16 +1677,16 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
     let picked = should_pick(&cli.query, geo.config, candidates.len())?;
     let location = if picked {
         let chosen = prompt_location(query, &candidates)?;
-        if !cli.quiet {
-            // The echo is a coordinate spec, not the name: a name would re-run the ranking that
-            // just produced the ambiguity (step 04's risk note), while `@lat,lon` pins the choice.
-            eprintln!(
-                "selected: {} — use @{},{} to skip the prompt",
-                place(&chosen),
-                chosen.lat,
-                chosen.lon
-            );
-        }
+        // The echo is a coordinate spec, not the name: a name would re-run the ranking that just
+        // produced the ambiguity (step 04's risk note), while `@lat,lon` pins the choice. The
+        // contract states it unconditionally — it is the reproducibility affordance for a prompted
+        // choice — so `-q` does not suppress it.
+        eprintln!(
+            "selected: {} — use @{},{} to skip the prompt",
+            place(&chosen),
+            chosen.lat,
+            chosen.lon
+        );
         chosen
     } else {
         location
@@ -1657,11 +1765,10 @@ enum PickPolicy {
 
 /// Asks which candidate to use: the list and the prompt go to stderr, the answer comes from stdin.
 ///
-/// Prompts are serialized process-wide ([`crate::geo::pick::prompt_lock`]): a multi-location run
-/// resolves its slots on worker threads, and two questions must never share the one input stream
-/// at the same time.
+/// A multi-location run asks every question in one serial pre-pass, in argument order, before any
+/// fetch ([`location_reports`]), so two questions never share the one input stream and the mapping
+/// from answers to slots is deterministic.
 fn prompt_location(query: &str, candidates: &[Location]) -> Result<Location> {
-    let _prompt = crate::geo::pick::prompt_lock();
     let stdin = std::io::stdin();
     let stderr = std::io::stderr();
     let mut input = stdin.lock();
@@ -1669,19 +1776,35 @@ fn prompt_location(query: &str, candidates: &[Location]) -> Result<Location> {
     crate::geo::pick::Picker::new(&mut input, &mut output).choose(query, candidates)
 }
 
+/// The positional location arguments that count for this run.
+///
+/// An all-whitespace argument is "absent": clap accepts it, but it must not override a configured
+/// `location.default`, conflict with `--ip`/`--station`/`--lat`, or make `--verbose` print an empty
+/// `location:` line. Filtering in one place keeps [`location_arg`], [`location_targets`] and
+/// [`validate_query`] agreeing on what "given" means.
+fn location_args(query: &QueryArgs) -> impl Iterator<Item = &str> {
+    query
+        .location
+        .iter()
+        .map(String::as_str)
+        .filter(|arg| !arg.trim().is_empty())
+}
+
 /// The location argument this run resolves, for the settings merge.
 ///
 /// `--lat/--lon` is folded into the `@lat,lon` spelling the resolver already understands, and it
 /// outranks an environment location by the usual precedence; a single positional is passed through
 /// so `--verbose` can report its tier. Several positionals are not a `settings.location` value —
-/// each is its own target — and the merge leaves the key unset for them.
+/// each is its own target — and the merge leaves the key unset for them. An all-whitespace argument
+/// is treated as absent, so `location.default` from the configuration wins instead.
 fn location_arg(query: &QueryArgs) -> Option<String> {
-    match (query.lat, query.lon) {
-        (Some(lat), Some(lon)) => Some(format!("@{lat},{lon}")),
-        _ => match query.location.as_slice() {
-            [only] => Some(only.clone()),
-            _ => None,
-        },
+    if let (Some(lat), Some(lon)) = (query.lat, query.lon) {
+        return Some(format!("@{lat},{lon}"));
+    }
+    let mut args = location_args(query);
+    match (args.next(), args.next()) {
+        (Some(only), None) => Some(only.to_owned()),
+        _ => None,
     }
 }
 
@@ -1769,6 +1892,13 @@ impl RenderSetup {
             }
             (None, None) => None,
         };
+        // A `[templates]` body may itself be `@other`, and `renderer_for` re-resolves the value
+        // against an *empty* table; resolving the `@` chain here, against the real one, is what
+        // makes `-f <configured-template>` with an `@`-prefixed body work at all.
+        let template = match template {
+            Some(template) => Some(resolve_template_chain(&template, &config.templates)?),
+            None => None,
+        };
         if let Some(template) = &template {
             crate::template::validate(template)?;
         }
@@ -1802,6 +1932,8 @@ impl RenderSetup {
             .parse::<AqiIndex>()
             .map_err(|error| Error::Config(format!("air.index: {error}")))?;
         let color = if format == Format::Dumb {
+            // `dumb` is uncoloured by design; `render_notes` reports that under `--verbose`, so an
+            // explicit `--color always` is explained rather than silently swallowed.
             ColorMode::Never
         } else {
             let requested = match query.color {
@@ -1824,11 +1956,47 @@ impl RenderSetup {
     }
 }
 
+/// How many `@name` hops a template may take before the chain is refused as cyclic.
+const TEMPLATE_CHAIN_CAP: usize = 8;
+
+/// Resolves the `@name` chain a `[templates]` body may form to a fixed point.
+///
+/// `resolve_format` hands `renderer_for` the body of a configured template verbatim, and
+/// `renderer_for` re-resolves an `@`-prefixed value against an *empty* table; a body that is itself
+/// `@other` would fail there with `configured [templates]: none`. Resolving the hops here, against
+/// the real table and bounded like the `[locations]` alias chain, keeps the configured map the only
+/// lookup table and turns a cycle into a usage error instead of a hang.
+fn resolve_template_chain(body: &str, templates: &BTreeMap<String, String>) -> Result<String> {
+    let mut current = body.to_owned();
+    for _ in 0..=TEMPLATE_CHAIN_CAP {
+        // The owned name keeps the borrow of `current` from outliving the lookup below.
+        let name = current
+            .trim_start()
+            .strip_prefix('@')
+            .map(|name| name.trim().to_owned());
+        match name {
+            None => return Ok(current),
+            Some(name) => match crate::template::builtin_or_configured(&name, templates) {
+                Some(next) => next.clone_into(&mut current),
+                // Let the shared resolver produce the "unknown preset" message, namespaces
+                // included.
+                None => return crate::template::resolve_template(Some(&current), templates),
+            },
+        }
+    }
+    Err(Error::Usage(format!(
+        "the `[templates]` entry `{body}` follows an `@` chain that does not end within \
+         {TEMPLATE_CHAIN_CAP} hops; check for a cycle"
+    )))
+}
+
 /// Reads a `--template-file` value: a path, or `-` for standard input.
 ///
 /// A read failure is [`Error::Config`] (state on disk, exit 4) and names the path; an empty file is
 /// the same usage error an empty `--template` is, because a template that renders nothing is a
-/// mistake either way.
+/// mistake either way. Exactly one trailing line terminator is dropped: a text file ends with a
+/// newline that is not part of the template, so `printf '%l\n'` stays a one-line template while a
+/// deliberate blank last line survives.
 fn read_template_file(path: &str) -> Result<String> {
     let text = if path == "-" {
         std::io::read_to_string(std::io::stdin()).map_err(|error| {
@@ -1838,6 +2006,7 @@ fn read_template_file(path: &str) -> Result<String> {
         std::fs::read_to_string(path)
             .map_err(|error| Error::Config(format!("--template-file {path}: {error}")))?
     };
+    let text = trim_one_newline(text);
     if text.trim().is_empty() {
         return Err(Error::Usage(format!(
             "--template-file {}: the template is empty",
@@ -1845,6 +2014,17 @@ fn read_template_file(path: &str) -> Result<String> {
         )));
     }
     Ok(text)
+}
+
+/// Drops one trailing line terminator (`\n` or `\r\n`) from a template read from a file or stdin.
+fn trim_one_newline(mut text: String) -> String {
+    if text.ends_with('\n') {
+        text.pop();
+        if text.ends_with('\r') {
+            text.pop();
+        }
+    }
+    text
 }
 
 /// What the run resolved to, under `--verbose`: which width, which palette, and why the table
@@ -2453,7 +2633,7 @@ fn run_cache(command: &CacheCommand, cli: &Cli) -> Result<()> {
 /// their TTL, then the fetch window.
 ///
 /// Fixed column widths (13/9/10) rather than computed ones, because the layout is documented in the
-/// step file and in `--help` output: the three namespaces always fit and a user comparing two runs
+/// step file and in `--help` output: the seven namespaces always fit and a user comparing two runs
 /// sees the same columns. The expired count is printed only when it is non-zero, so a healthy cache
 /// reads exactly as it always did and `0 expired` never implies "delete me".
 fn cache_stat_lines(stat: &CacheStat) -> Vec<String> {
@@ -2917,11 +3097,15 @@ mod tests {
     use clap::{CommandFactory as _, FromArgMatches as _, Parser as _};
 
     use super::{
-        Cli, Source, Sources, configured_station, location_arg, provider_chain, request_days,
-        station_chain, validate_query,
+        Cli, LocationTarget, Source, Sources, alert_request, configured_station, location_arg,
+        location_args, provider_chain, request_days, resolve_all, station_chain, trim_one_newline,
+        validate_query,
     };
     use crate::config::{CliOverrides, Config, Settings};
+    use crate::error::Error;
+    use crate::geo::LocationSpec;
     use crate::provider::ProviderId;
+    use crate::render::Format;
 
     /// Parses a command line the way `main` does, provenance included.
     fn parse(args: &[&str]) -> (Cli, Sources) {
@@ -3031,12 +3215,24 @@ mod tests {
             vec![ProviderId::OpenMeteo, ProviderId::Smhi]
         );
 
-        // `--station` with the provider from the configuration or the built-in default selects
-        // `metar` alone: no coordinate backend is chained after an observation.
+        // `--station` with the provider from the configuration or the built-in default prepends
+        // `metar`, keeping that chain as the fallback rather than discarding it.
         assert_eq!(
             provider_chain(&settings("open-meteo"), Some("ZBAA"), Source::Default)
-                .expect("a station selects metar"),
-            vec![ProviderId::Metar]
+                .expect("a station prepends metar"),
+            vec![ProviderId::Metar, ProviderId::OpenMeteo]
+        );
+        assert_eq!(
+            provider_chain(&settings("open-meteo,smhi"), Some("ZBAA"), Source::Default)
+                .expect("a station prepends metar"),
+            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::Smhi]
+        );
+        // `auto` from the configuration expands behind the prepended `metar`, exactly as the
+        // command-line `auto` does.
+        assert_eq!(
+            provider_chain(&settings("auto"), Some("ZBAA"), Source::Default)
+                .expect("a configured auto gains metar"),
+            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::Smhi]
         );
 
         // An explicit `auto` gains `metar` in front, because `auto` never contains a
@@ -3090,6 +3286,91 @@ mod tests {
 
         let (cli, _) = parse(&["cirrocast"]);
         assert_eq!(location_arg(&cli.query), None);
+    }
+
+    #[test]
+    fn an_all_whitespace_location_argument_is_absent() {
+        for args in [vec!["cirrocast", ""], vec!["cirrocast", "   "]] {
+            let (cli, sources) = parse(&args);
+            assert_eq!(location_arg(&cli.query), None, "{args:?}");
+            assert_eq!(location_args(&cli.query).count(), 0, "{args:?}");
+            assert_eq!(
+                sources.location,
+                Source::Default,
+                "{args:?} is absent, not a command line value"
+            );
+        }
+
+        // Absent means the configured default wins and the argument does not conflict with `--ip`.
+        let (cli, sources) = parse(&["cirrocast", "", "--ip"]);
+        validate_query(&cli.query, sources, &settings("open-meteo"))
+            .expect("blank text is absent, so it does not conflict with --ip");
+    }
+
+    #[test]
+    fn a_multi_location_pre_pass_resolves_in_argument_order() {
+        let targets: Vec<LocationTarget> = ["Beijing", "Shanghai", "Guangzhou"]
+            .into_iter()
+            .map(|text| LocationTarget {
+                text: text.to_owned(),
+                spec: LocationSpec::Fuzzy(text.to_owned()),
+            })
+            .collect();
+        let seen = std::cell::RefCell::new(Vec::new());
+        let results = resolve_all(&targets, |target| {
+            seen.borrow_mut().push(target.text.clone());
+            if target.text == "Shanghai" {
+                return Err(Error::LocationNotFound(
+                    "no location found for Shanghai".to_owned(),
+                ));
+            }
+            Ok(crate::provider::metar::placeholder_location("ZBAA"))
+        });
+        assert_eq!(*seen.borrow(), ["Beijing", "Shanghai", "Guangzhou"]);
+        assert!(results[0].is_ok());
+        assert!(results[2].is_ok());
+        assert_eq!(
+            results[1].as_ref().err().map(Error::exit_code),
+            Some(5),
+            "the failed slot keeps its error, in argument order"
+        );
+    }
+
+    #[test]
+    fn severity_cannot_be_combined_with_no_alerts() {
+        let (cli, _) = parse(&[
+            "cirrocast",
+            "Beijing",
+            "--no-alerts",
+            "--severity",
+            "severe",
+        ]);
+        let location = crate::provider::metar::placeholder_location("ZBAA");
+        let request = alert_request(
+            &cli.query,
+            &Config::default(),
+            &location,
+            &[],
+            Format::Plain,
+            0,
+        );
+        let error = request.expect_err("severity is meaningless without alerts");
+        assert_eq!(error.exit_code(), 2);
+        assert!(
+            error
+                .to_string()
+                .contains("--no-alerts cannot be combined with --severity"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_template_file_loses_exactly_one_trailing_newline() {
+        assert_eq!(trim_one_newline("%l\n".to_owned()), "%l");
+        assert_eq!(trim_one_newline("%l\r\n".to_owned()), "%l");
+        assert_eq!(trim_one_newline("%l\n\n".to_owned()), "%l\n");
+        assert_eq!(trim_one_newline("%l".to_owned()), "%l");
+        assert_eq!(trim_one_newline("\n".to_owned()), "");
     }
 
     #[test]

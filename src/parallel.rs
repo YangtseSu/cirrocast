@@ -26,6 +26,10 @@ use crate::error::{Error, Result};
 /// `workers` is clamped to `1..=items.len()`; a zero worker count means "run serially", which is
 /// also what a single item does without spawning anything. The closure receives the item's index
 /// and a reference to the item, so per-item context can be looked up without cloning.
+///
+/// Only the *results* follow the input order: the closure's side effects happen in whatever order
+/// the workers reach the counter, and `-vv` output or a shared prompt would interleave. A caller
+/// that needs ordered side effects must perform them before calling this, over the same items.
 pub fn par_map_ordered<T, U>(
     items: &[T],
     workers: usize,

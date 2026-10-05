@@ -10,8 +10,7 @@
 //! injected [`Write`], so it works over ssh, a serial console or a here-doc, and its tests need no
 //! pseudo-terminal.
 
-use std::io::{BufRead, Write};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::io::{BufRead, Read as _, Write};
 
 use crate::error::{Error, Result};
 use crate::geo::location_line;
@@ -20,17 +19,12 @@ use crate::model::Location;
 /// How many invalid answers in a row the prompt tolerates before giving up.
 const MAX_INVALID: usize = 3;
 
-/// Serializes prompts across a multi-location run: the slots are resolved on worker threads, and
-/// two prompts must never interleave on the one stdin/stderr the process owns.
-static PROMPT: Mutex<()> = Mutex::new(());
-
-/// The lock a caller holds while a prompt is on screen.
+/// The most bytes one answer may occupy.
 ///
-/// Poisoning is ignored on purpose: the guarded state is `()`, so a panicked prompt cannot leave
-/// anything inconsistent behind, and the next prompt may proceed.
-pub fn prompt_lock() -> MutexGuard<'static, ()> {
-    PROMPT.lock().unwrap_or_else(PoisonError::into_inner)
-}
+/// The answer is a number or `q`, so anything longer is a typo or a hostile stdin; capping the read
+/// keeps a stream with no newline from making the prompt allocate without limit. A longer line is
+/// truncated and then rejected as invalid input like any other typo.
+const MAX_ANSWER_BYTES: usize = 64;
 
 /// A numbered candidate list plus one line of input from `input`, written to `output`.
 ///
@@ -79,7 +73,10 @@ impl<'a> Picker<'a> {
             )?;
             self.output.flush()?;
             let mut answer = String::new();
-            if self.input.read_line(&mut answer)? == 0 {
+            let read = (&mut *self.input)
+                .take(MAX_ANSWER_BYTES as u64)
+                .read_line(&mut answer)?;
+            if read == 0 {
                 // EOF is a reader that went away: the same give-up as `q`.
                 return Err(no_selection(query));
             }
