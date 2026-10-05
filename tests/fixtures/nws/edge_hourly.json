@@ -1,0 +1,57 @@
+{
+  "_provenance": "Hand-authored edge case, not a recording: exercises the Fahrenheit conversion, the wind range collapse (\"5 to 10 mph\" -> upper bound 10 mph), a cardinal wind direction (SSW), null precipitation-probability and humidity values, and an unknown shortForecast. The surrounding shape mirrors the recorded api.weather.gov /gridpoints/.../forecast/hourly payload.",
+  "properties": {
+    "periods": [
+      {
+        "number": 1,
+        "name": "",
+        "startTime": "2026-10-06T09:00:00-05:00",
+        "endTime": "2026-10-06T10:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 76,
+        "temperatureUnit": "F",
+        "temperatureTrend": null,
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": null
+        },
+        "dewpoint": {
+          "unitCode": "wmoUnit:degC",
+          "value": null
+        },
+        "relativeHumidity": {
+          "unitCode": "wmoUnit:percent",
+          "value": null
+        },
+        "windSpeed": "5 to 10 mph",
+        "windDirection": "SSW",
+        "icon": "",
+        "shortForecast": "Volcanic Ash",
+        "detailedForecast": ""
+      },
+      {
+        "number": 2,
+        "name": "",
+        "startTime": "2026-10-06T10:00:00-05:00",
+        "endTime": "2026-10-06T11:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 20,
+        "temperatureUnit": "C",
+        "temperatureTrend": null,
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 80
+        },
+        "relativeHumidity": {
+          "unitCode": "wmoUnit:percent",
+          "value": 90
+        },
+        "windSpeed": "10 mph",
+        "windDirection": "",
+        "icon": "https://api.weather.gov/icons/land/day/rain_showers?size=small",
+        "shortForecast": "Rain Showers",
+        "detailedForecast": ""
+      }
+    ]
+  }
+}

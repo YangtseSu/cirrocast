@@ -24,6 +24,7 @@ pub mod brightsky;
 pub mod dayparts;
 pub mod met_no;
 pub mod metar;
+pub mod nws;
 pub mod open_meteo;
 pub mod open_meteo_archive;
 pub mod open_meteo_marine;
@@ -79,6 +80,8 @@ pub enum ProviderId {
     BrightSky,
     /// `METAR` observations from aviationweather.gov.
     Metar,
+    /// The US National Weather Service (`api.weather.gov`), keyless (step 24).
+    Nws,
 }
 
 impl ProviderId {
@@ -98,6 +101,7 @@ impl ProviderId {
             Self::Smhi,
             Self::BrightSky,
             Self::Metar,
+            Self::Nws,
         ]
     }
 
@@ -117,6 +121,7 @@ impl ProviderId {
             Self::Smhi => "smhi",
             Self::BrightSky => "brightsky",
             Self::Metar => "metar",
+            Self::Nws => "nws",
         }
     }
 
@@ -468,6 +473,33 @@ impl ProviderId {
                 alerts: false,
                 licence: Some("aviationweather.gov (NOAA/NWS, public domain)"),
             },
+            Self::Nws => ProviderMeta {
+                id: *self,
+                display_name: "NWS",
+                requires_key: false,
+                key_env: None,
+                docs_url: "https://www.weather.gov/documentation/services-web-api",
+                max_days: 7,
+                history_days: 0,
+                marine: false,
+                // The forecast payload carries no pressure, so no honest `Current` block exists.
+                current: false,
+                hourly: true,
+                daily: true,
+                location_kinds: LocationKinds::CITY_AND_LAT_LON,
+                notes: "keyless, the US and its territories; two-step point → grid lookup cached 30 days; the recorded hourly series is 156 periods covering 6 complete local days plus 7 day/night periods; a descriptive User-Agent with contact information is required",
+                auth: "none (keyless); a descriptive User-Agent with contact information is required",
+                coverage: "the US and its territories",
+                covers: Coverage::Countries(&["US", "PR", "VI", "GU", "AS", "MP"]),
+                network: NetworkClass::Free,
+                granularity: "hourly (156 periods; 6 complete local days) plus 7 day/night periods",
+                limits: "no key; rate limits unpublished; requests identified by User-Agent; the point → grid mapping is cached 30 days",
+                verified: "2026-10-06",
+                implemented: true,
+                // NWS alerts reach the report through the alert registry (step 15), not here.
+                alerts: true,
+                licence: Some("api.weather.gov (NOAA/NWS, public domain)"),
+            },
         }
     }
 }
@@ -504,6 +536,7 @@ impl FromStr for ProviderId {
             "smhi" => Ok(Self::Smhi),
             "brightsky" => Ok(Self::BrightSky),
             "metar" => Ok(Self::Metar),
+            "nws" => Ok(Self::Nws),
             _ => Err(Error::Usage(format!(
                 "unknown provider `{input}`; known providers: {}",
                 Self::known_ids()
@@ -1036,6 +1069,7 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::WeatherApi => Ok(Box::new(weatherapi::WeatherApi)),
         ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),
         ProviderId::Metar => Ok(Box::new(metar::Metar)),
+        ProviderId::Nws => Ok(Box::new(nws::Nws)),
     }
 }
 

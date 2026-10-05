@@ -832,3 +832,30 @@ pub fn compass_16(deg: u16) -> &'static str {
     let sector = ((usize::from(deg) % 360) * 4 + 45) / 90 % COMPASS.len();
     COMPASS[sector]
 }
+
+/// The centre angle of a compass point, the inverse of [`compass_16`].
+///
+/// A provider that reports a cardinal direction (`NWS`' `windDirection: "SSW"`) needs the degrees
+/// the canonical model stores; the point's own 22.5° sector centre is the natural reading, so
+/// `N` is `0`, `SSW` is `203` and `NNE` is `23`. The comparison is case-insensitive; an unknown
+/// point (including the empty string NWS uses for a variable wind) is `None`.
+///
+/// ```
+/// # use cirrocast::model::units::compass_degrees;
+/// assert_eq!(compass_degrees("N"), Some(0));
+/// assert_eq!(compass_degrees("ssw"), Some(203));
+/// assert_eq!(compass_degrees(""), None);
+/// ```
+#[must_use]
+pub fn compass_degrees(point: &str) -> Option<u16> {
+    let point = point.trim();
+    COMPASS
+        .iter()
+        .position(|candidate| candidate.eq_ignore_ascii_case(point))
+        .map(|index| {
+            // A sector's centre is `index * 22.5°`, rounded half up to the nearest whole degree;
+            // integer maths keeps it exact. The value stays below 360, so the conversion cannot
+            // fail.
+            u16::try_from((index * 45).div_ceil(2) % 360).unwrap_or_default()
+        })
+}
