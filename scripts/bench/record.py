@@ -24,7 +24,15 @@ import sys
 def first_line(command: list[str], pattern: str | None = None) -> str | None:
     """The first line of `command`'s output, optionally the one matching `pattern`."""
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, check=True)
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=True,
+            # `lscpu` is localised; the baseline's machine spec is English like the rest of the
+            # repository, so the tools that print a locale-dependent name run under `LC_ALL=C`.
+            env={**os.environ, "LC_ALL": "C"},
+        )
     except (OSError, subprocess.CalledProcessError):
         return None
     for line in completed.stdout.splitlines():
