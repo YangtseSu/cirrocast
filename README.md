@@ -970,9 +970,11 @@ The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.gi
   where it ships: the release workflow builds and tests the release profile on `macos-26` before it
   packs an archive.
 * **The performance budget** is `.github/workflows/perf.yml` behind an explicit dispatch: it runs
-  `scripts/bench/run.sh`, holds the fresh medians against the committed baseline with
-  `scripts/bench/compare.py`, and re-records the baseline with `scripts/bench/record.py` when asked.
-  Nothing in it runs on a push or a pull request.
+  `scripts/bench/run.sh` and holds the fresh medians against the committed baseline with
+  `scripts/bench/compare.py` — the timing metrics against their budgets, the size and RSS metrics
+  against the 20 % ratio as well. `record_baseline` re-records the baseline instead of comparing,
+  and `audit` adds the `cargo bloat`/`cargo llvm-lines` dependency-weight report. Nothing in it runs
+  on a push or a pull request.
 * **No test may open a network connection.** `CIRROCAST_FORBID_NETWORK=1` makes `src/http.rs`
   refuse every non-loopback request before DNS or connect, and the test job exports it for the
   whole suite, so a network-dependent test fails loudly. Live smoke tests are `#[ignore]`d and run

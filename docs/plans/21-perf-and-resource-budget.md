@@ -295,3 +295,13 @@ into `docs/performance.md`.
   `AMD EPYC 9V74` / `ubuntu-26.04` / hyperfine 1.19.0 / `gnu-time` RSS. The dev-box figures stay in
   `docs/performance.md` as the recording the budgets were re-derived from, and the doc now documents
   both reference machines.
+- 2026-10-06 — the gate's rule settled on the evidence above: the four timing metrics are judged by
+  their hard budgets alone (`compare.py`'s `BUDGET_ONLY`), because the host spread of one commit on
+  one image class (±18 % `--offline`, ±30 % `--version`) is the size of the ratio allowance itself —
+  a ratio there reports the host, not the change. The size/RSS/count metrics keep the 20 % ratio plus
+  their floors, and a timing ratio over the allowance prints a warning without failing the run.
+  Synthetic cases were run before the commit: `--offline` +20.5 % (under the 60 ms promise) →
+  warn/exit 0, 65 ms → `FAIL over budget`, `--version` 25 ms → `FAIL over budget`, RSS +25 % →
+  `FAIL +25% vs baseline`. The dependency-weight audit moved behind a second dispatch input
+  (`audit`): its `release-audit` build was 82 s of the 185 s run, and it belongs to a
+  dependency-change session, not to a budget check.

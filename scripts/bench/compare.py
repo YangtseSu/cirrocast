@@ -6,13 +6,18 @@
 Prints one row per metric with its budget, the baseline, the fresh median and the delta, and exits
 1 when a gated metric fails. A metric fails when
 
-* its fresh median exceeds the baseline by more than [`TOLERANCE`] **and** the delta reaches the
-  metric's absolute floor (the ratio gate: shared CI runners fluctuate more than absolute numbers
-  can absorb, and inside the timer's own resolution — a 2 ms median moves by ±1 ms, ±50 % — a ratio
-  alone measures noise; the floor keeps the test on costs a user can feel), or
 * its fresh median exceeds the hard budget **and** the baseline was inside that budget — a budget
   the baseline already misses is not a regression, it is a budget to re-derive, and it is reported
-  as such instead of failing every run.
+  as such instead of failing every run; or
+* it is not in [`BUDGET_ONLY`], and it exceeds the baseline by more than [`TOLERANCE`] **and** the
+  delta reaches the metric's absolute floor (the ratio gate: the size and count metrics are stable
+  across machines, so a ratio means something there, and the floor keeps it on costs a user can
+  feel).
+
+The metrics in [`BUDGET_ONLY`] are the timing ones: a shared runner's host-to-host spread is the
+size of the allowance itself (`--offline` 48.6 → 57.3 ms between hosts on the same commit), so a
+ratio there measures the host, not the change. Their ratio is still printed as a warning, and the
+budget — the promise — is what fails them.
 
 `--raw-only` prints the fresh numbers without a baseline; `scripts/bench/run.sh` uses it for the
 human-readable summary at the end of a measurement.
@@ -48,25 +53,25 @@ BUDGETS = {
 # The ratio a fresh median may exceed the baseline by before it counts as a regression.
 TOLERANCE = 1.20
 
-# ... and the absolute delta it must also reach. A ratio alone is meaningless inside the timer's own
-# resolution: a 2 ms median on a shared runner moves by a whole millisecond between runs (±50 %),
-# while a regression a user can feel is milliseconds, mebibytes or megabytes. A metric therefore
-# fails the ratio test only when it clears both `TOLERANCE` and this floor. The size and count
-# metrics carry their floors too, so the rule is readable per metric rather than per unit, and a
-# metric without a row falls back to the unit's floor (`ms` → [`DEFAULT_MS_FLOOR`], everything else
-# ratio-only) instead of silently inheriting a timing floor.
+# The metrics a ratio may not fail: the timing ones. Their host dependence on a shared runner is
+# the size of the allowance itself — the same commit measured 48.6 ms and 57.3 ms `--offline` on two
+# `ubuntu-26.04` hosts minutes apart (±18 %) and 2.03 → 2.7 ms `--version` (±30 %) — so the ratio
+# would report the host, not the change. They are judged by the budget they promise; the ratio is
+# printed as a warning so a drift stays visible to the reviewer.
+BUDGET_ONLY = {"version_ms", "help_ms", "offline_plain_ms", "warm_plain_ms"}
+
+# The absolute delta a ratio-gated metric must also reach before it counts as a regression, in the
+# metric's own unit: the size and count metrics are stable enough for a ratio, and these floors keep
+# the test on costs a user can feel. A ratio-gated metric without its own row falls back to the
+# unit's floor (`ms` → [`DEFAULT_MS_FLOOR`], everything else ratio-only).
 FLOORS = {
-    "version_ms": 5.0,
-    "help_ms": 5.0,
-    "offline_plain_ms": 5.0,
-    "warm_plain_ms": 5.0,
     "version_rss_kib": 1024.0,
     "plain_rss_kib": 1024.0,
     "binary_bytes": 512.0 * 1024.0,
     "help_lines": 5.0,
 }
 
-# The floor a timing metric without its own row falls back to, in milliseconds.
+# The floor a timing metric without a row of its own falls back to, in milliseconds.
 DEFAULT_MS_FLOOR = 5.0
 
 # Metrics whose value is a plain number rather than a distribution; the baseline's own shape is
@@ -133,15 +138,27 @@ def main() -> int:
                 name, DEFAULT_MS_FLOOR if UNITS.get(name) == "ms" else 0.0
             )
             delta = f"{(ratio - 1) * 100:+.1f}%"
-            if ratio > TOLERANCE and delta_value >= floor:
+            over_budget = budget is not None and fresh > budget
+            if over_budget and base <= budget:
+                verdict = "FAIL over budget"
+                failed = True
+            elif name in BUDGET_ONLY:
+                # The host dependence of these metrics is the size of the ratio allowance itself
+                # (see `BUDGET_ONLY`), so only the promised budget fails them; a ratio over the
+                # allowance is still printed, for the reviewer.
+                verdict = (
+                    f"warn +{(ratio - 1) * 100:.0f}% vs baseline (budget-only metric)"
+                    if ratio > TOLERANCE
+                    else "warn: budget re-derivation due"
+                    if over_budget
+                    else "ok"
+                )
+            elif ratio > TOLERANCE and delta_value >= floor:
                 verdict = f"FAIL +{(ratio - 1) * 100:.0f}% vs baseline"
                 failed = True
             elif ratio > TOLERANCE:
                 verdict = f"ok (under the {floor:,.0f} {unit} floor)".strip()
-            elif budget is not None and fresh > budget and base <= budget:
-                verdict = "FAIL over budget"
-                failed = True
-            elif budget is not None and fresh > budget:
+            elif over_budget:
                 verdict = "warn: budget re-derivation due"
             else:
                 verdict = "ok"

@@ -9,6 +9,10 @@
 # or a dependency change, not to every push, and the default gate in `ci.yml` stays lean. Every check
 # it runs is a repository script a contributor can run locally with the same command.
 #
+# Two inputs shape a run: `record_baseline` writes a new `perf/baseline.json` instead of comparing
+# against the committed one, and `audit` adds the dependency-weight tools (`cargo bloat`,
+# `cargo llvm-lines`) whose build and run cost more than the gate itself.
+#
 # The baseline it compares against must come from this image class — `perf/baseline.json` records the
 # machine it was measured on. If the committed one was recorded elsewhere, dispatch this workflow
 # with `record_baseline`, review the uploaded file and commit it.
@@ -20,6 +24,10 @@ on:
     inputs:
       record_baseline:
         description: Re-record perf/baseline.json on this runner and upload it as an artifact
+        type: boolean
+        default: false
+      audit:
+        description: Also install and run cargo-bloat/cargo-llvm-lines (the dependency-weight audit)
         type: boolean
         default: false
 
@@ -52,10 +60,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends hyperfine
-      # The weight tools are installed from source only in the measurement mode: a re-record is
-      # about the baseline, not the dependency audit, so it pays neither their build nor their cache.
+      # The weight tools are installed and run only when `audit` asks for them: the audit is a
+      # dependency-change activity, and its `release-audit` build costs more than the measurement.
       - name: install the weight tools
-        if: ${{ !inputs.record_baseline }}
+        if: ${{ !inputs.record_baseline && inputs.audit }}
         run: cargo install cargo-bloat cargo-llvm-lines --locked
       - name: measure the release binary
         run: scripts/bench/run.sh
@@ -75,7 +83,7 @@ jobs:
       # The audit's raw material, uploaded rather than gated: the numbers move with the toolchain and
       # the decisions they inform are reviewed by hand in docs/performance.md.
       - name: dependency weight
-        if: ${{ !inputs.record_baseline }}
+        if: ${{ !inputs.record_baseline && inputs.audit }}
         run: |
           cargo bloat --profile release-audit --crates -n 20 | tee target/bench/bloat-crates.txt
           cargo llvm-lines --release --lib -p cirrocast | head -n 20 | tee target/bench/llvm-lines.txt

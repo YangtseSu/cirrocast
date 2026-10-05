@@ -168,17 +168,20 @@ rejected: it trades a user-visible feature (offline city search, step 18) for a 
 
 ## The gate, and the proof that it bites
 
-`scripts/bench/compare.py` exits 1 when a fresh median exceeds the committed baseline by more than
-20 % **and** the delta reaches the metric's absolute floor (5 ms for a timing metric, 1 MiB for RSS,
-0.5 MiB for the binary, 5 lines for `--help`), or when it exceeds a hard budget the baseline was
-inside. The floor is there because inside the timer's own resolution a ratio measures noise: the
-2 ms `--version` median moves by a whole millisecond between machines and runs, ±50 %, while a
-regression a user can feel is milliseconds and mebibytes. A budget the baseline already misses is
-printed as "budget re-derivation due" rather than failing every run — that state means the budget
-needs review, not that the run regressed.
+`scripts/bench/compare.py` exits 1 when a fresh median exceeds a hard budget the baseline was inside.
+For the metrics that are stable across machines — the binary size, `--help` length, the two RSS
+figures — it also exits 1 when the fresh median beats the baseline by more than 20 % **and** the
+delta reaches that metric's absolute floor (0.5 MiB, 5 lines, 1 MiB). The four timing metrics are
+judged by their budget alone: a shared runner's host-to-host spread is the size of the allowance
+itself (48.6 → 57.3 ms for the same commit's `--offline` run; 2.03 → 2.7 ms for `--version`), so a
+ratio there would report the host rather than the change — their ratio is printed as a warning for
+the reviewer instead. A budget the baseline already misses is printed as "budget re-derivation due"
+rather than failing every run — that state means the budget needs review, not that the run
+regressed.
 
 The gate was verified against a deliberately injected regression (2026-10-05): a 300 ms sleep on
-every `--offline` run, rebuilt, then the harness and the gate re-run:
+every `--offline` run, rebuilt, then the harness and the gate re-run (under today's rules the
+`offline_plain_ms` row reads `FAIL over budget` — same exit 1):
 
 ```text
 metric                   budget     baseline        fresh    delta  verdict
@@ -210,8 +213,9 @@ holding, which is what the absolute floors and the runner-recorded baseline are 
 
 ## Dependency weight
 
-`cargo bloat --profile release-audit --crates -n 20` (2026-10-05, rustc 1.99.0, `.text` is 4.0 MiB
-of a 14.36 MiB binary):
+This audit is not part of the default gate: `perf.yml` installs and runs the two weight tools only
+when dispatched with `audit`. The numbers below are from 2026-10-05 (rustc 1.99.0, `.text` is 4.0 MiB
+of a 14.36 MiB binary) via `cargo bloat --profile release-audit --crates -n 20`:
 
 ```text
  File  .text     Size Crate
