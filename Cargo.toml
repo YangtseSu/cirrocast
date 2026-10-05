@@ -97,6 +97,22 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 
+# The shipped profile: the smallest, fastest binary the toolchain can produce without a C
+# toolchain or nightly flags. `lto = "thin"` plus `codegen-units = 1` gives the whole-program
+# optimiser one unit to work with; `strip = "symbols"` drops the symbol table the release
+# archives never needed; `panic = "abort"` is sound here because every user-triggered failure is a
+# typed `Error` and no release path unwinds (step 21 records the measurement and the reasoning in
+# docs/performance.md).
 [profile.release]
 lto = "thin"
-strip = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+# The audit profile behind `cargo bloat`/`cargo llvm-lines` (step 21): identical code to
+# `release`, but with the symbol table kept so the tools can attribute bytes to crates and
+# monomorphisations. Never shipped, never used by the bench harness (which measures the real
+# release profile).
+[profile.release-audit]
+inherits = "release"
+strip = "none"

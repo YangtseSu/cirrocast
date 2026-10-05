@@ -24,7 +24,7 @@ evidence — keeping the decision, recording why.
 
 ## Deliverables
 
-- ⬜ `Cargo.toml`: `[profile.release] strip = "symbols"`, `lto = "thin"`, `codegen-units = 1`,
+- ✅ `Cargo.toml`: `[profile.release] strip = "symbols"`, `lto = "thin"`, `codegen-units = 1`,
       `panic = "abort"`; the step-18 `offline-geo` feature stays **default-on**, with the
       `--no-default-features` proof landing here, so `cargo build --release --no-default-features`
       yields the reduced build (same CLI, city search via the network geocoder only). Feature
@@ -209,3 +209,8 @@ into `docs/performance.md`.
   (its two `Copy` users — `panel_context` and the CLI's slot assembly — clone once per render and
   per location). Behaviour verified beyond the suite by diffing the old and new release binaries
   over 21 format/width/colour/alert/multi-location cases: byte-identical output.
+- 2026-10-05 — release profile tuned and the feature switch proven: `--no-default-features` builds
+  (11,483,928 B vs 15,057,960 B default: the `offline-geo` table and decoder are 3,574,032 B) and
+  passes `cargo test --workspace --no-default-features`. `release-audit` added for `cargo bloat`.
+  Feature inventory in `docs/performance.md`; the measured dependency switches there are
+  `clap`'s `wrap_help` (−936 B, kept) and `ureq`'s default features (−12,496 B, kept).
