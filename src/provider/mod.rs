@@ -86,7 +86,7 @@ pub enum ProviderId {
 
 impl ProviderId {
     /// Every provider, in registry order (this is the order `provider list` prints).
-    pub const fn all() -> [Self; 13] {
+    pub const fn all() -> [Self; 14] {
         [
             Self::OpenMeteo,
             Self::MetNo,
@@ -158,7 +158,7 @@ impl ProviderId {
                 notes: "keyless, global coverage; free tier 10 000 calls/day",
                 auth: "none (keyless; a commercial key exists for the `customer-` host)",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::Free,
                 granularity: "hourly; daily aggregates",
                 limits: "free tier 10 000 calls/day, 5 000/hour, 600/minute; non-commercial",
@@ -182,8 +182,8 @@ impl ProviderId {
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "keyless, global; hourly for the first ~52 h then 6-hourly; a descriptive User-Agent with contact information is mandatory (`403` otherwise)",
                 auth: "none (keyless); a descriptive User-Agent carrying contact information is required",
-                coverage: "global",
-                covers: Coverage::Global,
+                coverage: "global (the Norwegian national service)",
+                covers: Coverage::national_and_global(&["NO"]),
                 network: NetworkClass::Free,
                 granularity: "hourly for the first ~52 h, 6-hourly beyond; 9-day horizon",
                 limits: "20 requests/second per application; re-request only after `Expires`; coordinates at most 4 decimals; no `Yr` in the product name",
@@ -208,7 +208,7 @@ impl ProviderId {
                 notes: "keyless reanalysis (ERA5/ERA5-Land/IFS) from 1940-01-01; ~5-day latency, so a recent date is served by the forecast API instead; archive only — `--days` is a usage error",
                 auth: "none (keyless)",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::Free,
                 granularity: "hourly and daily reanalysis",
                 limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
@@ -235,7 +235,7 @@ impl ProviderId {
                 notes: "keyless; waves, swell and sea-surface temperature for the nearest sea cell; supplementary — requested with `--marine`, never a forecast chain entry",
                 auth: "none (keyless)",
                 coverage: "coastal waters of the global wave models",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::Free,
                 granularity: "hourly; 8 forecast days",
                 limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
@@ -260,7 +260,7 @@ impl ProviderId {
                 notes: "hourly timeline up to 15 days; the payload carries its own `alerts[]`, which the alert layer shows as source `visualcrossing`",
                 auth: "API key in the `key` query parameter",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::NonFree,
                 granularity: "hourly; 15-day horizon",
                 limits: "free plan 1 000 records/day (`queryCost` ≈ 1 + 24×hours + days; the default 3-day query ≈ 76 records); keyed to the account's terms, no redistribution of cached data",
@@ -285,7 +285,7 @@ impl ProviderId {
                 notes: "free tier 60 calls/min, 1 000 000 calls/month; 2 calls per fetch, 3-hour steps",
                 auth: "API key in the `appid` query parameter",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::NonFree,
                 granularity: "3-hourly (40 slots ≈ 5 days)",
                 limits: "free tier 60 calls/min, 1 000 000 calls/month; 2 calls per fetch",
@@ -310,7 +310,7 @@ impl ProviderId {
                 notes: "free tier: 100k calls/month, 3-day forecast (paid plans 14 days)",
                 auth: "API key in the `key` query parameter",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::NonFree,
                 granularity: "hourly (24 entries per day)",
                 limits: "free tier 100 000 calls/month, 3-day forecast",
@@ -337,7 +337,7 @@ impl ProviderId {
                 notes: "free tier 100 requests/day, 5 forecast days per FAQ; format=json is mandatory",
                 auth: "API key in the `key` query parameter",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::NonFree,
                 granularity: "3-hourly (`tp=3`)",
                 limits: "free tier 100 requests/day (the docs also print 500/month); 5 forecast days per FAQ",
@@ -364,7 +364,7 @@ impl ProviderId {
                 notes: "Dark Sky shaped responses; free tier 10 000 calls/month",
                 auth: "API key as a path segment (or the `apikey` header)",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::NonFree,
                 granularity: "hourly (168 with `extend=hourly`); 7 daily",
                 limits: "free tier 10 000 calls/month, 1–4 requests/second",
@@ -389,7 +389,7 @@ impl ProviderId {
                 notes: "global coverage; v1 endpoints, metric-only measures; API host from https://console.qweather.com/setting",
                 auth: "API key in the `X-QW-Api-Key` header (or `key=` query)",
                 coverage: "global",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::NonFree,
                 granularity: "hourly (up to 240 h) and daily (up to 10 days)",
                 limits: "first 50 000 requests/month at ¥0; QPM 3 000",
@@ -414,7 +414,7 @@ impl ProviderId {
                 notes: "keyless, Nordics and adjacent seas; SNOW1gv1 steps widen to 6 h/12 h beyond day 3",
                 auth: "none (keyless open data)",
                 coverage: "Nordics and adjacent seas",
-                covers: Coverage::Bbox([4.0, 54.0, 32.0, 72.0]),
+                covers: Coverage::bbox([4.0, 54.0, 32.0, 72.0]),
                 network: NetworkClass::Free,
                 granularity: "1 h, widening to 6 h and 12 h with the horizon",
                 limits: "no published quota; SMHI's fair-use rules apply",
@@ -439,7 +439,7 @@ impl ProviderId {
                 notes: "keyless, Germany (DWD open data resold by Bright Sky; a self-hosted instance qualifies); measured horizon 10 whole days — the forecast feed's `sources[].last_record` ended at `2026-10-16T04:00Z` on the 2026-10-06 probe, so `today + 10` still fits; `units` left at the API's `dwd` default (°C, km/h), since `si` would return Kelvins and m/s",
                 auth: "none (keyless); the public instance is free to use and the project is open source",
                 coverage: "Germany (DWD station network; DWD forecasts also cover the world at low density)",
-                covers: Coverage::Countries(&["DE"]),
+                covers: Coverage::countries(&["DE"]),
                 network: NetworkClass::Free,
                 granularity: "hourly; 10-day horizon",
                 limits: "no key and no documented quota on the public instance; the DWD's Terms of Use apply to the data",
@@ -464,7 +464,7 @@ impl ProviderId {
                 notes: "keyless, station observations only; 100 requests/minute; `--station` selects it",
                 auth: "none (keyless)",
                 coverage: "worldwide stations",
-                covers: Coverage::Global,
+                covers: Coverage::GLOBAL,
                 network: NetworkClass::Free,
                 granularity: "per observation (≈hourly)",
                 limits: "100 requests/minute; 400 entries per response",
@@ -490,7 +490,7 @@ impl ProviderId {
                 notes: "keyless, the US and its territories; two-step point → grid lookup cached 30 days; the recorded hourly series is 156 periods covering 6 complete local days plus 7 day/night periods; a descriptive User-Agent with contact information is required",
                 auth: "none (keyless); a descriptive User-Agent with contact information is required",
                 coverage: "the US and its territories",
-                covers: Coverage::Countries(&["US", "PR", "VI", "GU", "AS", "MP"]),
+                covers: Coverage::countries(&["US", "PR", "VI", "GU", "AS", "MP"]),
                 network: NetworkClass::Free,
                 granularity: "hourly (156 periods; 6 complete local days) plus 7 day/night periods",
                 limits: "no key; rate limits unpublished; requests identified by User-Agent; the point → grid mapping is cached 30 days",
@@ -621,38 +621,77 @@ pub struct ProviderMeta {
 
 /// The area a backend answers for, in the machine-readable form `auto` ranks by.
 ///
-/// The free-text `coverage` string stays what `provider info` prints; this enum is what the
+/// The free-text `coverage` string stays what `provider info` prints; this record is what the
 /// selection logic reads, so a chain is a deterministic function of the location instead of a
-/// hardcoded list. Tiers are ordered: an exact country code wins over a containing bounding box,
-/// which wins over [`Coverage::Global`].
+/// hardcoded list. Tiers are ordered: a country this backend is the *national* service of (or just
+/// the country it covers) wins over a containing bounding box, which wins over a global answer —
+/// and a row can be both a national service and global, which is what MET Norway is.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Coverage {
-    /// The listed ISO 3166-1 alpha-2 country codes.
-    Countries(&'static [&'static str]),
-    /// A bounding box, `[west, south, east, north]` in degrees, corners inclusive.
-    Bbox([f64; 4]),
-    /// Everywhere.
-    Global,
+pub struct Coverage {
+    /// ISO 3166-1 alpha-2 codes this backend answers for as their own service (tier 0).
+    pub countries: &'static [&'static str],
+    /// A bounding box `[west, south, east, north]` in degrees, corners inclusive (tier 1).
+    pub bbox: Option<[f64; 4]>,
+    /// Whether the backend answers anywhere on Earth (tier 2).
+    pub global: bool,
 }
 
 impl Coverage {
+    /// A worldwide backend: the universal fallback tier.
+    pub const GLOBAL: Self = Self {
+        countries: &[],
+        bbox: None,
+        global: true,
+    };
+
+    /// A backend that answers for the listed countries and nowhere else.
+    pub const fn countries(codes: &'static [&'static str]) -> Self {
+        Self {
+            countries: codes,
+            bbox: None,
+            global: false,
+        }
+    }
+
+    /// A backend that answers inside one bounding box.
+    pub const fn bbox(box_: [f64; 4]) -> Self {
+        Self {
+            countries: &[],
+            bbox: Some(box_),
+            global: false,
+        }
+    }
+
+    /// A worldwide backend that is nevertheless the national service of `codes`.
+    pub const fn national_and_global(codes: &'static [&'static str]) -> Self {
+        Self {
+            countries: codes,
+            bbox: None,
+            global: true,
+        }
+    }
+
     /// The tier this coverage sits in for `loc`: `0` country, `1` bounding box, `2` global;
     /// `None` when the point is outside the coverage altogether.
     #[must_use]
     pub fn tier(self, loc: &Location) -> Option<u8> {
-        match self {
-            Self::Countries(codes) => loc
-                .country_code
-                .as_deref()
-                .filter(|code| codes.iter().any(|known| known.eq_ignore_ascii_case(code)))
-                .map(|_| 0),
-            Self::Bbox([west, south, east, north]) => {
-                let inside =
-                    loc.lon >= west && loc.lon <= east && loc.lat >= south && loc.lat <= north;
-                inside.then_some(1)
-            }
-            Self::Global => Some(2),
+        let country = loc.country_code.as_deref().is_some_and(|code| {
+            self.countries
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(code))
+        });
+        if country {
+            return Some(0);
         }
+        if let Some([west, south, east, north]) = self.bbox
+            && loc.lon >= west
+            && loc.lon <= east
+            && loc.lat >= south
+            && loc.lat <= north
+        {
+            return Some(1);
+        }
+        self.global.then_some(2)
     }
 }
 
@@ -1198,7 +1237,9 @@ pub fn auto_chain(loc: Option<&Location>) -> Vec<ProviderId> {
                 }
             }
             None => {
-                if meta.covers == Coverage::Global {
+                // No place to rank for: every row that answers anywhere is a candidate, at the
+                // global tier, in registry order.
+                if meta.covers.global {
                     ranked.push((2, id));
                 }
             }
