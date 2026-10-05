@@ -462,7 +462,8 @@ fn an_unknown_format_is_a_usage_error() {
 
 /// A build without the bundled city table refuses `location update-data` with a message naming the
 /// missing feature, rather than failing to compile or silently doing nothing. It only exists in the
-/// `--no-default-features` build, which the dedicated CI job runs (review §3.14 / nit 13).
+/// `--no-default-features` build, which CI's `cargo test` job runs as its second command (review
+/// §3.14 / nit 13).
 #[cfg(not(feature = "offline-geo"))]
 #[test]
 fn a_build_without_the_city_table_refuses_update_data() {

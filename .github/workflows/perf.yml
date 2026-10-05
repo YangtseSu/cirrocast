@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The performance budget (step 21, docs/performance.md): measure the release binary in the pinned
+# sandbox, hold the fresh medians against the committed baseline (the 20 % ratio gate plus the hard
+# budgets) and re-record the baseline on request.
+#
+# It is `workflow_dispatch`-only on purpose: the numbers it produces belong to a release preparation
+# or a dependency change, not to every push, and the default gate in `ci.yml` stays lean. Every check
+# it runs is a repository script a contributor can run locally with the same command.
+#
+# The baseline it compares against must come from this image class — `perf/baseline.json` records the
+# machine it was measured on. If the committed one was recorded elsewhere, dispatch this workflow
+# with `record_baseline`, review the uploaded file and commit it.
+
+name: Performance budget
+
+on:
+  workflow_dispatch:
+    inputs:
+      record_baseline:
+        description: Re-record perf/baseline.json on this runner and upload it as an artifact
+        type: boolean
+        default: false
+
+# The job only reads the repository: nothing writes a ref, an issue or a release artifact. The
+# artifacts it uploads belong to the workflow's own run, which a read-only token may write.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  budget:
+    name: measure the release binary
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # hyperfine is not on the runner image. Installing it from the distribution keeps the
+      # dependency policy (crates.io or the distribution, versions visible in the log) and adds no
+      # third-party action.
+      - name: install the measurement tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends hyperfine
+      # The weight tools are installed from source only in the measurement mode: a re-record is
+      # about the baseline, not the dependency audit, so it pays neither their build nor their cache.
+      - name: install the weight tools
+        if: ${{ !inputs.record_baseline }}
+        run: cargo install cargo-bloat cargo-llvm-lines --locked
+      - name: measure the release binary
+        run: scripts/bench/run.sh
+      - name: compare against the committed baseline
+        if: ${{ !inputs.record_baseline }}
+        run: python3 scripts/bench/compare.py perf/baseline.json target/bench/raw.json
+      # The cold figure is manual (scripts/bench/cold.sh) and carries over from the committed
+      # baseline; everything else is this runner's measurement, machine spec included.
+      - name: compose the new baseline
+        if: ${{ inputs.record_baseline }}
+        run: python3 scripts/bench/record.py --raw target/bench/raw.json --out perf/baseline.json
+      - name: what changed
+        if: ${{ inputs.record_baseline }}
+        run: |
+          git --no-pager diff --stat perf/baseline.json
+          git --no-pager diff perf/baseline.json | head -n 60
+      # The audit's raw material, uploaded rather than gated: the numbers move with the toolchain and
+      # the decisions they inform are reviewed by hand in docs/performance.md.
+      - name: dependency weight
+        if: ${{ !inputs.record_baseline }}
+        run: |
+          cargo bloat --profile release-audit --crates -n 20 | tee target/bench/bloat-crates.txt
+          cargo llvm-lines --release --lib -p cirrocast | head -n 20 | tee target/bench/llvm-lines.txt
+      # `always()` keeps last run's numbers available when the gate itself failed — that is exactly
+      # the run whose `raw.json` the reviewer needs.
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: ${{ always() && !inputs.record_baseline }}
+        with:
+          name: perf-measurements
+          path: |
+            target/bench/raw.json
+            target/bench/*.json
+            target/bench/*.txt
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: ${{ inputs.record_baseline }}
+        with:
+          name: perf-baseline
+          path: perf/baseline.json

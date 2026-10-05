@@ -461,3 +461,8 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   `docs/plans/README.md` still showed a single required `fetch`, which a step-19 implementor would copy into
   code that cannot compile. The sketch is synced here, together with the guard sentence. No step-12
   deliverable or exit criterion changes.
+- 2026-10-06 — the MSRV leg this step introduced is superseded: `rust-version` now names the current
+  stable (`1.99`) and moves with the toolchain, CI runs one test leg on stable, and the `1.98.0`
+  matrix leg and the `cargo +1.98.0` verification command are gone. Recorded here rather than
+  rewritten above, per the log rule; the binding conventions live in `docs/plans/README.md` and the
+  CI description in `AGENTS.md`, both updated in the same change (step 21's log has the full entry).

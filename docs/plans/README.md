@@ -580,8 +580,9 @@ geocoder-independent spec and are what the selection echo prints back.
 
 ### Conventions
 
-* Rust 2024, MSRV 1.98 (the latest stable toolchain: the project tracks stable rather than holding
-  a floor below it), no async runtime, `ureq` + `rustls`, `serde` for all wire formats.
+* Rust 2024, toolchain = the current stable (`rust-version = "1.99"` in `Cargo.toml` at the time of
+  writing: the project tracks stable rather than holding a floor below it, and supports no older
+  toolchain), no async runtime, `ureq` + `rustls`, `serde` for all wire formats.
   `tzf-rs` (step 11) is the one coordinate → IANA zone lookup and `quick-xml` (step 15, MIT) the
   one XML reader, used for CAP 1.2 alert documents through a hand-written state machine; the
   manifest accepts any 2.x of the former and 0.42 of the latter, and `Cargo.lock` records the

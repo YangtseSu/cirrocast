@@ -45,11 +45,11 @@ evidence — keeping the decision, recording why.
       1 when a gated median exceeds `baseline × 1.20` or a hard budget.
 - ✅ `perf/baseline.json`: `{"schema": 1, "recorded": "YYYY-MM-DD", "commit": …, "machine": {…},
       "metrics": {…}}` with medians for every gated metric plus the cold-run figure and its conditions.
-- ✅ `.github/workflows/ci.yml`: new `perf` job (release build, `scripts/bench/run.sh`,
-      `scripts/bench/compare.py`, `cargo bloat --release --crates -n 20` and
-      `cargo llvm-lines --release | head -n 20` uploaded as artifacts). Runner pinned to the same
-      image class as the baseline was recorded on; the job is allowed to re-record only via an explicit
-      `workflow_dispatch` input.
+- ✅ `.github/workflows/perf.yml`: the `budget` job (release build, `scripts/bench/run.sh`,
+      `scripts/bench/compare.py`, `cargo bloat --profile release-audit --crates -n 20` and
+      `cargo llvm-lines --release --lib -p cirrocast | head -n 20` uploaded as artifacts),
+      dispatch-only, pinned to the same image class as the baseline was recorded on, with the
+      `record_baseline` input as the only way to write a baseline.
 - ✅ `docs/performance.md`: machine specification (`lscpu` summary, kernel, rustc/cargo/hyperfine
       versions, commit), methodology (commands, cache priming, RSS and size measurement, why the cold
       run is not gated), the budget table with the measured numbers, the dependency-weight audit, and
@@ -176,7 +176,7 @@ into `docs/performance.md`.
       link), RSS 6.4 MiB for `--version` (< 15 MiB) and 25.6 MiB for the cached run (< 32 MiB,
       re-derived), binary 14.36 MiB (< 17 MiB, re-derived; the goal's 5 MiB predates the 3.41 MiB
       offline table), `--help` 198 lines (< 200).
-- ✅ `perf/baseline.json` committed and consumed by the CI `perf` job; the artificial-regression proof
+- ✅ `perf/baseline.json` committed and consumed by the dispatch-only `perf.yml` gate; the artificial-regression proof
       is recorded in the doc and in the progress log.
 - ✅ `cargo bloat`/`cargo llvm-lines` top contributors named with sizes, every heavy crate accepted or
       gated with a one-line reason.
@@ -266,3 +266,17 @@ into `docs/performance.md`.
   Full gate re-run on the final tree: `cargo fmt --check`, `cargo clippy --workspace --all-targets
   --locked -- -D warnings`, `cargo test --workspace --locked`, `reuse lint` — all clean, and the
   harness/gate run prints `no regression` with exit 0.
+- 2026-10-06 — CI trimmed on the maintainer's instruction; recorded here because this step owns the
+  budget's enforcement path. `ci.yml` loses the `perf` and `record-baseline` jobs and the
+  `workflow_dispatch` input — a budget run belongs to a release preparation or a dependency change,
+  not to every push — and regains them as the single `budget` job of the new dispatch-only
+  `.github/workflows/perf.yml`, `record_baseline` input included; the dependency-weight tools
+  (`cargo bloat`, `cargo llvm-lines`) stay in that workflow's measurement mode, where they are paid
+  for only when someone asks for the numbers. The render-layer scan moved out of the workflow's
+  heredoc into `scripts/check-render-imports.py` (same token-aware logic, now runnable locally as
+  the one command CI runs); the `gates` job keeps it and the LICENSE `cmp`. The
+  `--no-default-features` proof is now the second command of the single `cargo test` job (the
+  separate build job was redundant: `cargo test` builds first) and the test matrix collapsed to
+  `ubuntu-26.04` on stable — the project tracks stable, `rust-version` moves with the toolchain
+  (now `1.99`) and carries no floor below it, and macOS is covered where it ships, by `release.yml`'s
+  `cargo test --release` on `macos-26`. Per-push runner allocations: 16 → 8.

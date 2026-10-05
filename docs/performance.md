@@ -8,8 +8,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 `cirrocast` promises interactive numbers — a version probe, a help screen and a cached forecast are
 supposed to feel instant — and a binary small enough to package. Step 21 turns those promises into
 enforced numbers: one measurement harness (`scripts/bench/run.sh`), one committed baseline
-(`perf/baseline.json`), one CI gate (`perf` job) and this file, which records what is measured, on
-what machine, with what budget, and which decisions the measurements justify.
+(`perf/baseline.json`), one dispatch-only CI workflow (`.github/workflows/perf.yml`) and this file,
+which records what is measured, on what machine, with what budget, and which decisions the
+measurements justify.
 
 ## Release profile
 
@@ -49,9 +50,11 @@ assumption:
 * the size delta is the 3.41 MiB above, recorded here and in `perf/baseline.json`'s sibling metric
   set (the harness always builds the default feature set — that is what ships).
 
-Both exit criteria are enforced rather than only asserted: CI's `build --no-default-features` and
-`test --no-default-features` jobs run exactly those two commands on `ubuntu-26.04` and `macos-26`,
-so an edit to a stub path that no longer compiles fails the build instead of shipping.
+Both exit criteria are enforced rather than only asserted: CI's `cargo test` job runs `cargo test
+--workspace --no-default-features --locked` right after the default run on `ubuntu-26.04`, so an
+edit to a stub path that no longer compiles or no longer answers fails the suite instead of
+shipping. (`cargo test` builds first, so no separate reduced-build job is needed, and `offline-geo`
+pulls no dependency, so the second command recompiles this crate only.)
 
 Dependency-level switches that were measured rather than assumed (the audit's "gate list"; each was
 built and reverted to obtain the number):
@@ -79,11 +82,12 @@ The committed baseline was recorded on 2026-10-05 on the maintainer's machine:
 | RSS method | `hyperfine-wait4` (GNU time is not installed) |
 
 `perf/baseline.json`'s `machine` object carries the same spec, so a baseline is never detached
-from the machine it describes. The CI gate compares a runner's fresh medians against it with the
-20 % ratio allowance; if the runner class is materially slower, the baseline is re-recorded *from
-the runner* (the `record_baseline` dispatch input) and the resulting file is reviewed and committed
-— a baseline must come from the machine class the gate runs on, and re-recording is a commit, not a
-side effect.
+from the machine it describes. The gate compares a runner's fresh medians against it with the 20 %
+ratio allowance; if the runner class is materially slower, the baseline is re-recorded *from the
+runner* — dispatch `.github/workflows/perf.yml` with `record_baseline` and commit the uploaded file
+— because a baseline must come from the machine class the gate runs on, and re-recording is a
+commit, not a side effect. The workflow is dispatch-only: a budget run belongs to a release
+preparation or a dependency change, not to every push.
 
 ## Methodology
 

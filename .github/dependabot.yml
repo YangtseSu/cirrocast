@@ -4,8 +4,8 @@
 # Dependabot version updates, one daily check per ecosystem (README.md#development-and-ci).
 #
 # * `cargo` covers `Cargo.toml` and the committed `Cargo.lock`; a pull request it raises runs the
-#   same gates as any other (MSRV 1.98, `cargo deny`, `cargo audit`), so an update that breaks the
-#   dependency policy fails visibly instead of landing quietly.
+#   same gates as any other (`cargo test` on stable, `cargo deny`, `cargo audit`), so an update that
+#   breaks the dependency policy fails visibly instead of landing quietly.
 # * `github-actions` covers every action referenced by `.github/workflows/`, including the
 #   commit-SHA pins — Dependabot moves the SHA and the trailing `# vX.Y.Z` comment together.
 # * Minor and patch bumps are grouped into one pull request per ecosystem; a major bump keeps its

@@ -87,7 +87,7 @@ severe-weather alerts (step 15), the air-quality panel (step 16) and the locally
 block (step 17), and `v1.2.0` adds the offline city database (step 18) with user-installed table
 updates (18b), multi-location runs with the shared `%`-token template engine (step 19) and the
 interactive location picker (step 20). Step 21 turned the performance and resource promises into
-enforced numbers — one harness, one committed baseline, one CI gate — recorded in
+enforced numbers — one harness, one committed baseline, one dispatch-only CI workflow — recorded in
 [`docs/performance.md`](docs/performance.md). Phase E's remaining item, the `status` probe and the
 ecosystem recipes (step 22), is next.
 
@@ -951,24 +951,28 @@ release; a version that is already on crates.io is skipped by the publish job's 
 
 ## Development and CI
 
-The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the two performance jobs are the exception, because they build the release profile and re-record the baseline only on an explicit dispatch:
+The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The performance budget is the exception: it lives in [`.github/workflows/perf.yml`](.github/workflows/perf.yml), which is dispatch-only, because it builds the release profile and re-records the baseline on request:
 
 | Job | Command | Notes |
 |---|---|---|
 | `fmt` | `cargo fmt --check` | stable toolchain |
 | `clippy` | `cargo clippy --workspace --all-targets --locked -- -D warnings` | warnings are errors; the workspace flag also covers the `geo-table` builder |
-| `test` | `cargo test --workspace --locked` | `ubuntu-26.04` + `macos-26` × `stable` + `1.98.0`, with `CIRROCAST_FORBID_NETWORK=1` |
-| `build --no-default-features`, `test --no-default-features` | `cargo build --workspace --no-default-features --locked`, `cargo test --workspace --no-default-features --locked` | the reduced build (city search via the network geocoder) is compiled and exercised |
+| `test` | `cargo test --workspace --locked`, then `cargo test --workspace --no-default-features --locked` | one leg, `ubuntu-26.04` on stable, with `CIRROCAST_FORBID_NETWORK=1`; the second command is the reduced build (city search via the network geocoder) |
 | `package` | `cargo package --list --locked`, `cargo publish --dry-run --locked` | the crate's file set and the packaged build, reviewed on every pull request; nothing is uploaded |
-| `gates` | render-layer import gate, `cmp LICENSE LICENSES/GPL-3.0-or-later.txt` | repository invariants that no compiler enforces |
+| `gates` | `python3 scripts/check-render-imports.py`, `cmp LICENSE LICENSES/GPL-3.0-or-later.txt` | repository invariants that no compiler enforces |
 | `reuse` | `reuse lint` | every file carries SPDX information |
 | `deny` | `cargo deny check` | licences, advisories, bans, sources |
 | `audit` | `cargo audit` | independent advisory check beside `deny` |
-| `perf` | `scripts/bench/run.sh`, `python3 scripts/bench/compare.py perf/baseline.json target/bench/raw.json` | the release-profile budget gate (`ubuntu-26.04`, the baseline's machine class); `cargo bloat`/`cargo llvm-lines` land in the artifact bundle |
-| `record-baseline` | `scripts/bench/run.sh`, `python3 scripts/bench/record.py …` | `workflow_dispatch` only, behind the `record_baseline` input; the fresh `perf/baseline.json` is reviewed and committed by hand |
 
-* **MSRV** is `1.98` (`rust-version` in `Cargo.toml`); the floor tracks the latest stable release
-  rather than lagging behind it, and the CI matrix builds the floor explicitly.
+* **Toolchain**: `rust-version` in `Cargo.toml` names the stable toolchain the crate builds with
+  (`1.99` at `v1.2.x`). The project tracks stable, holds no floor below it and supports no older
+  toolchain — CI runs a single test leg — so there is no MSRV job to keep in sync. macOS is covered
+  where it ships: the release workflow builds and tests the release profile on `macos-26` before it
+  packs an archive.
+* **The performance budget** is `.github/workflows/perf.yml` behind an explicit dispatch: it runs
+  `scripts/bench/run.sh`, holds the fresh medians against the committed baseline with
+  `scripts/bench/compare.py`, and re-records the baseline with `scripts/bench/record.py` when asked.
+  Nothing in it runs on a push or a pull request.
 * **No test may open a network connection.** `CIRROCAST_FORBID_NETWORK=1` makes `src/http.rs`
   refuse every non-loopback request before DNS or connect, and the test job exports it for the
   whole suite, so a network-dependent test fails loudly. Live smoke tests are `#[ignore]`d and run
@@ -981,7 +985,7 @@ The check matrix is the same locally and in CI ([`.github/workflows/ci.yml`](.gi
   `cargo` for `Cargo.toml` and the committed `Cargo.lock`, and `github-actions` for the action pins
   in the workflows — it moves each pinned commit SHA together with its `# vX.Y.Z` comment. Minor and
   patch bumps arrive as one grouped pull request per ecosystem; a major bump keeps its own, because
-  the MSRV, `deny` and `audit` gates are what decide whether it can land. Dependabot alerts and
+  the `test`, `deny` and `audit` gates are what decide whether it can land. Dependabot alerts and
   security updates are enabled in the repository settings.
 * **Reproducibility**: every third-party action is pinned to a commit SHA and the runner images are
   named explicitly (`ubuntu-26.04`, `macos-26`, `ubuntu-26.04-arm`) instead of `<os>-latest`; the

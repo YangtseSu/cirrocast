@@ -108,16 +108,18 @@ tests). The workspace flag matters because the root manifest is a package: witho
 `cargo clippy`/`cargo test` in the repository root covers only `cirrocast` itself, not the dev-only
 `build/geo-table` builder.
 
-CI (`.github/workflows/ci.yml`) runs the commands above on `ubuntu-26.04` and `macos-26` — the
-images are named explicitly, never `<os>-latest` — with the test matrix spanning `stable` and the
-MSRV `1.98.0`, every third-party action pinned to a commit SHA, and `CIRROCAST_FORBID_NETWORK=1`
-exported for the whole test job. Beyond those commands it also runs the reduced build
-(`cargo build`/`cargo test --workspace --no-default-features --locked`) and the performance jobs:
-`scripts/bench/run.sh` with `scripts/bench/compare.py` as the budget gate, `cargo bloat` and
-`cargo llvm-lines` uploaded as artifacts, and — only on an explicit `workflow_dispatch` —
-`scripts/bench/record.py` to re-record `perf/baseline.json`. The `gates` job additionally enforces the render-layer import rule
-(`src/render` and `src/model` may not import `http`, `provider` or `cache`) and that
-`LICENSES/GPL-3.0-or-later.txt` is byte-identical to `LICENSE`. Dependency policy lives in
+CI (`.github/workflows/ci.yml`) runs the commands above on `ubuntu-26.04` — the image is named
+explicitly, never `<os>-latest` — on the stable toolchain, with every third-party action pinned to a
+commit SHA and `CIRROCAST_FORBID_NETWORK=1` exported for the whole test job. There is one test leg
+on purpose: the project tracks stable and supports no floor below it (`rust-version` names the
+stable it builds with and is bumped with the toolchain), and macOS is covered where it ships —
+`release.yml` runs the same suite with `--release` on `macos-26` before it packs an archive. The
+test job also runs the reduced build (`cargo test --workspace --no-default-features --locked`); the
+`gates` job runs `scripts/check-render-imports.py` (the render-layer rule: `src/render` and
+`src/model` may not name `http`, `provider` or `cache`) and checks that
+`LICENSES/GPL-3.0-or-later.txt` is byte-identical to `LICENSE`. The performance budget lives in
+`.github/workflows/perf.yml`, which is dispatch-only: nothing in it runs on a push or a pull
+request. Dependency policy lives in
 `deny.toml`: an audited licence allow list, duplicates and wildcards denied, crates.io as the only
 source, and no advisory ignore without a reason and an expiry date.
 
