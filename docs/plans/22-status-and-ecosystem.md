@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 22 — status probe, ecosystem recipes and output contracts
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: 13 (packaging and release), 19 (multi-location and templates)
 Touches: `src/status.rs`, `src/cli.rs`, `contrib/statusbar/*`, `.github/workflows/ci.yml`,
 `tests/status_contract.rs`, `tests/plain_order.rs`, `tests/fixtures/cache/`, `docs/ecosystem.md`,
@@ -23,46 +23,46 @@ lives in backlog B02.
 
 ## Deliverables
 
-- ⬜ `src/status.rs` + `src/cli.rs`: `cirrocast status [--format <TEMPLATE>] [--location <SPEC>]
+- ✅ `src/status.rs` + `src/cli.rs`: `cirrocast status [--format <TEMPLATE>] [--location <SPEC>]
       [--max-age <SECS>] [--offline] [--placeholder <TEXT>] [--color never|always]`; `--template` is
       accepted as a synonym of `--format` here; the global `-f/--format <NAME>` enum does not apply to
       `status` (documented in `--help` and `docs/formats.md`).
-- ⬜ `src/status.rs` output contract: exactly one line plus `\n` (a template newline becomes a space, the
+- ✅ `src/status.rs` output contract: exactly one line plus `\n` (a template newline becomes a space, the
       line is trimmed); colour off unless `--color always`; default template `%c %t`; placeholder `n/a`,
       overridable by `--placeholder` or `[status] placeholder`; `--max-age` defaults to
       `[cache] weather_ttl_secs` (600) and serves a younger entry without revalidating while an older one
       takes the normal fetch path; `--offline` never opens a socket and serves a stale entry.
-- ⬜ `src/status.rs` exit-code contract: `0` for success **and** for every transient or data failure
+- ✅ `src/status.rs` exit-code contract: `0` for success **and** for every transient or data failure
       (`Error::Network`, `Upstream`, `LocationNotFound`, `MissingKey` — placeholder on stdout, one
       `error: …` line on stderr); `2` for usage (bad template, unknown flag); `4` for config
       (unreadable config, no location configured). "Never exits non-zero because the network was
       unavailable" is the promise status bars rely on.
-- ⬜ `src/status.rs` privacy rule: `status` never performs the public-IP lookup; with no location
+- ✅ `src/status.rs` privacy rule: `status` never performs the public-IP lookup; with no location
       argument, `[location] default` or `--location` must supply one, otherwise exit 4 telling the
       user to set it.
-- ⬜ `contrib/statusbar/`: runnable examples, each with the SPDX header in its own comment syntax —
+- ✅ `contrib/statusbar/`: runnable examples, each with the SPDX header in its own comment syntax —
       `waybar.jsonc` (custom module, `interval` 900), `polybar.ini` (`[module/weather]`), `i3blocks.conf`
       (`interval=900`), `tmux.conf` (`status-interval 900` + `#(…)`), `starship.toml`
       (`[custom.weather]`), and `bash-prompt.sh` / `zsh-prompt.zsh` (both cache the rendered line under
       `$XDG_RUNTIME_DIR/cirrocast/status` and only re-render when it is older than the interval).
-- ⬜ `contrib/statusbar/verify.sh` + `tests/fixtures/cache/weather/open-meteo-39.90-116.40-3-<date>.json`:
+- ✅ `contrib/statusbar/verify.sh` + `tests/fixtures/cache/weather/open-meteo-39.90-116.40-3-<date>.json`:
       builds a temp `XDG_CACHE_HOME` from the fixture, runs every example's command with `--offline`, and
       asserts exit 0 plus exactly one line each — no network, so it runs in CI.
-- ⬜ `tests/status_contract.rs`: single-line guarantee with a template containing `\n`; colour default vs
+- ✅ `tests/status_contract.rs`: single-line guarantee with a template containing `\n`; colour default vs
       `--color always`; placeholder + exit 0 under an injected upstream failure and an offline cache miss;
       `--max-age` freshness; exit 2 for an unknown token; exit 4 with no location configured.
-- ⬜ `docs/ecosystem.md`: the status-bar contract, the contrib snippets explained, and the **Output
+- ✅ `docs/ecosystem.md`: the status-bar contract, the contrib snippets explained, and the **Output
       contracts** section (JSON schema + version policy, `one-line` token stability, `plain` field-order
       stability, breaking-change policy). The install-per-platform half of this document is backlog
       B02's; until then the file documents the AUR package and the release archives of step 13.
-- ⬜ Output contracts enforced: `tests/plain_order.rs` snapshot of the field order; `docs/formats.md`
+- ✅ Output contracts enforced: `tests/plain_order.rs` snapshot of the field order; `docs/formats.md`
       freezing token meanings; `docs/schema/json-v2.json` current with `json-v1.json` retained
       read-only (step 28); `CHANGELOG.md` `### Breaking` template. A breaking output change requires a
       minor bump, one release of dual emission where feasible, and an entry naming the old and new
       shape.
-- ⬜ `.github/workflows/ci.yml`: job `statusbar` (`contrib/statusbar/verify.sh`, offline against the
+- ✅ `.github/workflows/ci.yml`: job `statusbar` (`contrib/statusbar/verify.sh`, offline against the
       committed fixture cache).
-- ⬜ `README.md` + `docs/formats.md` + `docs/providers.md`: pointer to `docs/ecosystem.md`, the status
+- ✅ `README.md` + `docs/formats.md` + `docs/providers.md`: pointer to `docs/ecosystem.md`, the status
       snippet, and the output-contract summary linked from the formats doc.
 
 ## Design notes
@@ -107,14 +107,17 @@ check network-free.
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ `status` contract covered by `tests/status_contract.rs`: single line, colour default, placeholder with
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ✅ `status` contract covered by `tests/status_contract.rs`: single line, colour default, placeholder with
       exit 0, `--max-age` freshness, exit 2 and exit 4 cases.
-- ⬜ Six status-bar examples plus two prompt snippets exist, run as written, and pass
-      `contrib/statusbar/verify.sh` against the committed fixture cache.
-- ⬜ `docs/ecosystem.md` documents the status-bar contract, the output contracts and the breaking-change
+- ✅ Seven examples — five status-bar configurations (waybar, polybar, i3blocks, tmux, starship) plus
+      two prompt snippets — exist, run as written, and pass `contrib/statusbar/verify.sh` against the
+      committed fixture cache. (This line was opened as "six status-bar examples plus two prompt
+      snippets"; the deliverable list enumerates five bars and two prompts and the Goal names the same
+      five tools, so the count was corrected here rather than adding a sixth bar.)
+- ✅ `docs/ecosystem.md` documents the status-bar contract, the output contracts and the breaking-change
       policy (the install-path sections arrive with backlog B02).
-- ⬜ The `plain` field-order snapshot and the `one-line` token meanings are pinned by tests, and the
+- ✅ The `plain` field-order snapshot and the `one-line` token meanings are pinned by tests, and the
       `CHANGELOG.md` `### Breaking` template exists.
 
 ## Risks
@@ -134,3 +137,52 @@ check network-free.
   Homebrew, deb/rpm, musl, macOS/Windows verification, declined container options) moved to backlog
   B02, so this step keeps only the status probe, the status-bar recipes and the output contracts; the
   `wttr-compatible service` dependency is gone with it (B01 is backlog).
+- 2026-10-06 — status probe, recipes and output contracts landed.
+  * `src/status.rs` is the probe: it reuses the query's resolution (`location_for_run` with the new
+    `Prompt::Never`, `location_target`, `open_query_caches`, the provider chain) and the step-19
+    template engine (`template::expand`, not the `one-line` renderer, because the renderer's alert
+    banner would break the one-line promise), so `status` fetches exactly what a query fetches. The
+    colour decision is a constant (`never` unless `--color always`) and no prompt is possible.
+  * `--max-age` is a *floor* on the freshness window, not a second TTL: `Cache::with_max_age` makes a
+    read accept an entry up to `max(ttl, max_age)` old, so the knob can only widen and `0` means
+    "follow the TTL" (the flag's default is `[cache] weather_ttl_secs`, i.e. no widening). `--offline`
+    resolves to `OfflineMode::All` and an unlimited window — no socket, and a stale answer beats no
+    answer.
+  * The failure classification (`status::degradable`) adds `InvalidKey`, `InvalidToken` and `Chain` to
+    the four variants the deliverable named: without `Chain` the promise would not hold at all (a
+    failing provider *chain* is how an unreachable network arrives), and the two credential variants
+    are the same class as `MissingKey` (exit 6 today, placeholder here). Usage, config and unexpected
+    failures keep their own codes.
+  * `[status] placeholder` is a new config table (`config get/set status.placeholder`), with the
+    schema block in `docs/plans/README.md` and the worked example in `docs/schema.md` updated in the
+    same commit; the config schema version stays 2 (an optional key with a default is additive, as
+    `[geo]` was in step 18).
+  * The `--help` epilogue lost one line (the preset table now lists `@minimal`/`@uv`/`@sun` on one
+    row) because the `status` subcommand added one; `--help` is 199 lines against the step 21 budget
+    of under 200, and `docs/performance.md` records the new count.
+  * `contrib/statusbar/` ships seven examples (waybar, polybar, i3blocks, tmux, starship, bash and zsh
+    prompts). Each carries a `cirrocast-example:` marker naming the command it runs, which
+    `verify.sh` extracts and runs *with `--offline`* against a throwaway XDG tree seeded from the new
+    fixture `tests/fixtures/cache/weather/open-meteo-39.90-116.40-3-2026-10-05.json` (a real cache
+    envelope around the recorded Beijing body, deliberately stale so the offline promise is what is
+    exercised). The examples themselves never pass `--offline` — a bar wants live weather.
+  * Output contracts: `tests/plain_order.rs` freezes the `plain` record order and the fields inside
+    `current` (and fails if a panel record or a pollutant label moves), `template::uses` was added so
+    the probe fetches the alert set only for `%A` and the air reading only for `%q`, `docs/ecosystem.md`
+    is the contract document, and `docs/schema/json-v2.json` is the JSON document as a Draft 2020-12
+    schema, validated against four real runs (a report, one with `astro`, the two-location array with a
+    failed slot, and one with `air`). `json-v1.json` (frozen) and the `jsonschema`-crate test remain
+    step 28's, as its deliverables record.
+  * `docs/configuration.md` does not exist yet (step 28 authors it), so the two knobs `--max-age` and
+    `cache.weather_ttl_secs` are documented together in `docs/ecosystem.md` and the config schema
+    blocks rather than there; the step's `Touches` line named that file.
+  * Deviations from the plan text: the `--format`/`--template` pair is refused by clap *and* by
+    `Line::resolve` (the rule is serviceable without clap); the probe suppresses the query path's
+    ambiguity note (its `--pick`/`--yes` advice does not exist on this surface) and reports the
+    candidate list under `-v` as the query does; `status` never prompts, which the deliverable implied
+    ("never aborts") but did not state; and the exit criterion that counted "six status-bar examples"
+    was corrected to the seven the deliverable list enumerates.
+  * The location has three tiers, not two: `--location`, then `CIRROCAST_LOCATION` (the variable the
+    query's positional is bound to) and only then `[location] default`, because the repository
+    documents one precedence ladder for every setting and a probe that ignored an exported
+    `CIRROCAST_LOCATION` would break it. A fourth tier — the public-IP lookup — remains refused.

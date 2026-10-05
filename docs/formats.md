@@ -26,6 +26,11 @@ key of the `[templates]` table; those render as `one-line` with that template. T
 is: built-in format, built-in preset, `[templates]` key, otherwise a usage error listing all three
 namespaces.
 
+`cirrocast status` is the one subcommand where `-f/--format` means something else: its whole output
+is one `%`-template, so `--format` (and its synonym `--template`) takes the template itself —
+`--format '%c %t'` — and the format names above are not accepted there. The probe's line, colour
+and exit-code contract is in [`docs/ecosystem.md`](ecosystem.md).
+
 ## Multiple locations
 
 Several positional arguments are one run:
@@ -105,3 +110,7 @@ that gets a minor version bump and a `CHANGELOG.md` entry naming the old and the
 Step 19 is the worked example: `%L` used to print the location's coordinates and now prints today's
 low temperature, matching wttr.in's documented `H`/`L` pair; the coordinates remain available in
 `art-table`'s header and in `plain`'s `location:` record.
+
+[`docs/ecosystem.md`](ecosystem.md) is the whole of that policy — the `json`, `one-line` and
+`plain` contracts, the breaking-change procedure and the tests that enforce them — and the
+`status` probe's own contract (one line, colour, exit codes, freshness, privacy).

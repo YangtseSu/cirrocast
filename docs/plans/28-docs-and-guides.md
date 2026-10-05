@@ -190,3 +190,9 @@ link check reports 0 broken links.
   generated artifacts wait for steps 18–27, while the prose halves (getting-started, configuration,
   location, i18n, troubleshooting, architecture) can be written as their subjects land. The
   `wttr-compat.md` review is now conditional on backlog B01.
+- 2026-10-06 — step 22 wrote `docs/schema/json-v2.json` (Draft 2020-12, validated against four real
+  runs of the shipped output) and `docs/ecosystem.md`, so this step's schema work is now: author the
+  frozen `json-v1.json`, review v2 against the key index of `docs/schema.md`, add
+  `tests/json_schema.rs` (the `jsonschema` dev-dependency) and `tests/fixtures/json/v1-detroit.json`,
+  and decide whether the key index moves out of `docs/schema.md`. `docs/schema.md`'s config example
+  already carries the `[status]` table step 22 added.

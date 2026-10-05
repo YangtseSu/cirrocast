@@ -58,6 +58,11 @@ registry re-verification of that step needs a written record of what was checked
 | `pirateweather` | proprietary (PirateWeatherAPI) | none documented | `Cache-Control: max-age=900` is sent | no multi-account quota circumvention; warranty disclaimer |
 | `qweather` | proprietary (QWeather Developers License) | name QWeather + https://www.qweather.com; recommended "Weather service by QWeather" | real-time 10–30 min, hourly 30–60 min, daily 1–6 h (guidance) | GeoAPI data must not be bulk-cached or indexed; weather warnings must reproduce `refer.sources` |
 
+Where a credit lands is part of the output contract, not a detail of each renderer: `plain` and
+`json` carry it in the document, `art-table` in a footer, and both `one-line` and the `status` probe
+on stderr (one line has no room for it). The rules, and the breaking-change policy for everything a
+consumer parses, are in [`docs/ecosystem.md`](ecosystem.md).
+
 ### Status-code behaviour (the chain contract, applied per upstream)
 
 `fetch_chain` falls through to the next backend only for transport/upstream failures; everything else

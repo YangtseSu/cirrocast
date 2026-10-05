@@ -11,7 +11,52 @@ All notable, user-visible changes to `cirrocast` are documented here. The format
 output schema version and the config schema version move independently; [`docs/schema.md`](docs/schema.md)
 records how each of them changes and which changes are breaking.
 
+<!--
+The template a breaking output change uses (see `docs/ecosystem.md`, "Output contracts"): a minor
+version bump, one release of dual emission where feasible, and an entry that names both shapes so a
+consumer can see exactly what moved. It lands under the version it applies to, after `### Changed`:
+
+### Breaking
+
+* **<the surface>** (step NN). `<old shape>` is now `<new shape>`: <what a consumer must do>, and
+  <whether the old shape is still emitted, for how long, and behind what flag>. The JSON
+  `schema_version` is now <N> (`docs/schema.md`).
+-->
+
 ## [Unreleased]
+
+### Added
+
+* **`cirrocast status`, the status-bar probe (step 22).** One line per run: `--format` (and its
+  synonym `--template`) take a `%`-template, `%c %t` by default, and stdout is exactly one line —
+  a template newline becomes a space and the line is trimmed. Colour is off unless
+  `--color always`, because bars strip ANSI inconsistently. A transient or data failure — no
+  network, no cached answer, a missing or rejected key — prints the placeholder (`n/a`,
+  `--placeholder`, `[status] placeholder`) on stdout with one `error: …` line on stderr and
+  **exit 0**, so a bar never shows a crashed module; only a usage mistake (2) and a configuration
+  problem (4) fail. The probe never performs the public-IP lookup: with no `--location` and no
+  `[location] default` it exits 4 naming the key to set. It never prompts either — an ambiguous
+  name takes the ranked winner. `--max-age <SECS>` widens the window in which a cached answer is
+  served without revalidating (`0` and the default follow `[cache] weather_ttl_secs`, and the knob
+  only widens); `--offline` never opens a socket and serves any cached answer however old. The
+  alert set is fetched only when the template shows `%A` and the air reading only when it shows
+  `%q`, so the default probe costs one request.
+* **Status-bar recipes** in [`contrib/statusbar/`](contrib/statusbar/): waybar, polybar, i3blocks,
+  tmux and starship fragments plus bash/zsh prompt snippets that cache the rendered line under
+  `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/cirrocast/status` and re-render only when it is older than
+  `CIRROCAST_STATUS_INTERVAL` (900 s). Every example carries the command it runs in a
+  machine-readable marker; `contrib/statusbar/verify.sh` extracts it, runs it offline against the
+  committed cache fixture `tests/fixtures/cache/weather/open-meteo-39.90-116.40-3-2026-10-05.json`
+  and asserts one line with exit 0. The CI job `statusbar` runs the same script.
+* **[`docs/ecosystem.md`](docs/ecosystem.md)** records the probe's contract and freezes the three
+  machine-readable surfaces — `json` (`schema_version` 2, additive only), the `one-line` token
+  meanings and the `plain` record and field order (pinned by `tests/plain_order.rs`) — together
+  with the breaking-change policy: a minor bump, one release of dual emission where feasible, and a
+  `### Breaking` entry naming both shapes. [`docs/schema/json-v2.json`](docs/schema/json-v2.json)
+  is the JSON document as a Draft 2020-12 schema (the frozen v1 beside it, and the validator test,
+  arrive with step 28).
+* **Configuration**: `[status] placeholder` (`"n/a"` by default) sets what the probe prints when it
+  has no reading. It is addressable as `config get/set status.placeholder`.
 
 ### Changed
 

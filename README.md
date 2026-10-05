@@ -179,6 +179,8 @@ cirrocast config     <path|init [--force]|show|get|set|edit|validate [--offline]
 cirrocast key        <set [--stdin]|rm|list>
 cirrocast provider   <list|info>
 cirrocast cache      <stat|clean [--all] [--offline]>
+cirrocast status     [--format <TEMPLATE>] [--location <SPEC>] [--max-age <SECS>] [--offline]
+                     [--placeholder <TEXT>] [--color never|always]
 cirrocast location   <search [--offline] [--all] [--exact] [--ip] [--limit <N>] [--timeout <SECS>]>
 cirrocast location   update-data [--from <PATH|URL>] [--check] [--timeout <SECS>]
 cirrocast completion <bash|zsh|fish|elvish|powershell> [--bin-name NAME]
@@ -286,6 +288,26 @@ The presets are `@default` (`%l: %c %C %t (%f), %w, %h, %p, %P, %v`), `@short` (
 through `--template @name` or `--format name`. `--template` with a non-one-line format or a
 preset-selecting one, `--template` together with `--template-file`, an empty template, an unknown
 `@name` and an unknown token are usage errors.
+
+### Status bars
+
+`cirrocast status` is the probe a bar or a prompt runs on a timer: one line, no colour unless asked,
+and **never a non-zero exit because the network was down** (the placeholder `n/a`, or
+`[status] placeholder`, takes the reading's place). It fetches the alert set only when the template
+shows `%A` and the air reading only when it shows `%q`, so the default costs one request.
+
+```bash
+cirrocast status                                  # `%c %t` for the location from the config
+cirrocast status --format '%l %t' --max-age 900   # at most one fetch per 15 minutes
+cirrocast status --format '%c%t' --offline -q     # cache only, no socket, no credits
+```
+
+The exit codes are 0 for a reading *and* for a transient failure, 2 for a usage mistake and 4 for a
+configuration problem (a missing location among them: the probe never performs the public-IP
+lookup). The full contract — freshness, offline behaviour, privacy, and the runnable waybar,
+polybar, i3blocks, tmux, starship and bash/zsh recipes in [`contrib/statusbar/`](contrib/statusbar/)
+— is [`docs/ecosystem.md`](docs/ecosystem.md), which is also where the `json`, `one-line` and
+`plain` **output contracts** and the breaking-change policy live.
 
 `json` is the scripting surface: keys are always present (`null` when the provider has no value), all
 numbers are canonical metric with the unit in the key (`temp_c`, `wind_kmh`, `precip_mm`,

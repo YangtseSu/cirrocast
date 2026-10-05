@@ -1,0 +1,975 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/YangtseSu/cirrocast/main/docs/schema/json-v2.json",
+  "title": "cirrocast JSON output (schema v2)",
+  "description": "The machine-readable contract of the document `cirrocast --format json` writes; the schema version is 2. Within one schema version changes are additive: a new key may appear and a consumer must ignore keys it does not know, but removing, renaming or retyping a key (or changing a unit) is a breaking change that bumps the schema version to 3.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/report"
+    },
+    {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/report"
+          },
+          {
+            "$ref": "#/$defs/error"
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "air": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "source",
+        "aqi_us",
+        "aqi_european",
+        "category",
+        "pm2_5",
+        "pm10",
+        "o3",
+        "no2",
+        "so2",
+        "co",
+        "pollen",
+        "units"
+      ],
+      "properties": {
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "enum": [
+            "open-meteo"
+          ]
+        },
+        "aqi_us": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "aqi_european": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "category": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "us",
+            "european"
+          ],
+          "properties": {
+            "us": {
+              "enum": [
+                "good",
+                "moderate",
+                "unhealthy-sensitive",
+                "unhealthy",
+                "very-unhealthy",
+                "hazardous",
+                null
+              ]
+            },
+            "european": {
+              "enum": [
+                "good",
+                "fair",
+                "moderate",
+                "poor",
+                "very-poor",
+                "extremely-poor",
+                null
+              ]
+            }
+          }
+        },
+        "pm2_5": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pm10": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "o3": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "no2": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "so2": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "co": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pollen": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/pollen"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "units": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pollutants",
+            "pollen"
+          ],
+          "properties": {
+            "pollutants": {
+              "enum": [
+                "μg/m³"
+              ]
+            },
+            "pollen": {
+              "enum": [
+                "grains/m³"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "alert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "event",
+        "severity",
+        "urgency",
+        "certainty",
+        "onset",
+        "expires",
+        "areas",
+        "headline",
+        "description",
+        "instruction",
+        "sender"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "nws",
+            "meteoalarm",
+            "qweather",
+            "hko",
+            "wmoswic",
+            "fpas",
+            "visualcrossing"
+          ]
+        },
+        "event": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "unknown",
+            "minor",
+            "moderate",
+            "severe",
+            "extreme"
+          ]
+        },
+        "urgency": {
+          "enum": [
+            "unknown",
+            "past",
+            "future",
+            "expected",
+            "immediate"
+          ]
+        },
+        "certainty": {
+          "enum": [
+            "unknown",
+            "unobserved",
+            "possible",
+            "unlikely",
+            "likely",
+            "observed"
+          ]
+        },
+        "onset": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "expires": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "areas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "headline": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "instruction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sender": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "astro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "computed_at",
+        "moon",
+        "sun"
+      ],
+      "properties": {
+        "computed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "moon": {
+          "$ref": "#/$defs/moon"
+        },
+        "sun": {
+          "$ref": "#/$defs/sun"
+        }
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "url",
+        "notice",
+        "location_notice",
+        "retrieved_at"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "notice": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location_notice": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current",
+        "hourly",
+        "daily",
+        "alerts",
+        "max_days",
+        "requires_key",
+        "key_env",
+        "locations"
+      ],
+      "properties": {
+        "current": {
+          "type": "boolean"
+        },
+        "hourly": {
+          "type": "boolean"
+        },
+        "daily": {
+          "type": "boolean"
+        },
+        "alerts": {
+          "type": "boolean"
+        },
+        "max_days": {
+          "type": "integer"
+        },
+        "requires_key": {
+          "type": "boolean"
+        },
+        "key_env": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "locations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "city",
+            "station",
+            "lat_lon"
+          ],
+          "properties": {
+            "city": {
+              "type": "boolean"
+            },
+            "station": {
+              "type": "boolean"
+            },
+            "lat_lon": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "text"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "condition",
+        "temp_c",
+        "feels_like_c",
+        "humidity_pct",
+        "precip_mm",
+        "pressure_hpa",
+        "visibility_km",
+        "wind_kmh",
+        "wind_dir_deg",
+        "wind_gust_kmh",
+        "cloud_cover_pct",
+        "uv_index",
+        "is_day"
+      ],
+      "properties": {
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        },
+        "temp_c": {
+          "type": "number"
+        },
+        "feels_like_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "humidity_pct": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "precip_mm": {
+          "type": "number"
+        },
+        "pressure_hpa": {
+          "type": "number"
+        },
+        "visibility_km": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wind_kmh": {
+          "type": "number"
+        },
+        "wind_dir_deg": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "wind_gust_kmh": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cloud_cover_pct": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uv_index": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "is_day": {
+          "type": "boolean"
+        }
+      }
+    },
+    "day": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "date",
+        "sunrise",
+        "sunset",
+        "min_c",
+        "max_c",
+        "parts"
+      ],
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "sunrise": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sunset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "min_c": {
+          "type": "number"
+        },
+        "max_c": {
+          "type": "number"
+        },
+        "parts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "morning",
+            "noon",
+            "evening",
+            "night"
+          ],
+          "properties": {
+            "morning": {
+              "$ref": "#/$defs/part"
+            },
+            "noon": {
+              "$ref": "#/$defs/part"
+            },
+            "evening": {
+              "$ref": "#/$defs/part"
+            },
+            "night": {
+              "$ref": "#/$defs/part"
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "query",
+        "error"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "query": {
+          "type": "string"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "admin1",
+        "country",
+        "country_code",
+        "lat",
+        "lon",
+        "timezone",
+        "elevation_m",
+        "source",
+        "station"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "admin1": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "country": {
+          "type": "string"
+        },
+        "country_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lon": {
+          "type": "number"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "elevation_m": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "source": {
+          "enum": [
+            "geocoder",
+            "offline",
+            "osm",
+            "coordinates",
+            "ip",
+            "station"
+          ]
+        },
+        "station": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "moon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "phase_key",
+        "illuminated_fraction",
+        "age_days",
+        "moonrise",
+        "moonset",
+        "next"
+      ],
+      "properties": {
+        "phase": {
+          "type": "string"
+        },
+        "phase_key": {
+          "enum": [
+            "new",
+            "waxing-crescent",
+            "first-quarter",
+            "waxing-gibbous",
+            "full",
+            "waning-gibbous",
+            "last-quarter",
+            "waning-crescent"
+          ]
+        },
+        "illuminated_fraction": {
+          "type": "number"
+        },
+        "age_days": {
+          "type": "number"
+        },
+        "moonrise": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "moonset": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "next": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "phase",
+              "phase_key",
+              "at"
+            ],
+            "properties": {
+              "phase": {
+                "type": "string"
+              },
+              "phase_key": {
+                "enum": [
+                  "new",
+                  "waxing-crescent",
+                  "first-quarter",
+                  "waxing-gibbous",
+                  "full",
+                  "waning-gibbous",
+                  "last-quarter",
+                  "waning-crescent"
+                ]
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "condition",
+        "temp_c",
+        "feels_like_c",
+        "precip_mm",
+        "precip_prob_pct",
+        "humidity_pct",
+        "visibility_km",
+        "wind_kmh",
+        "wind_dir_deg"
+      ],
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/condition"
+        },
+        "temp_c": {
+          "type": "number"
+        },
+        "feels_like_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "precip_mm": {
+          "type": "number"
+        },
+        "precip_prob_pct": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "humidity_pct": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "visibility_km": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wind_kmh": {
+          "type": "number"
+        },
+        "wind_dir_deg": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "pollen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alder",
+        "birch",
+        "grass",
+        "mugwort",
+        "olive",
+        "ragweed"
+      ],
+      "properties": {
+        "alder": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "birch": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "grass": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mugwort": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "olive": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ragweed": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "location",
+        "current",
+        "days",
+        "air",
+        "astro",
+        "alerts",
+        "capabilities",
+        "attribution",
+        "alert_credits"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "current": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/current"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/day"
+          }
+        },
+        "air": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/air"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "astro": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/astro"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alerts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/alert"
+          }
+        },
+        "capabilities": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/capabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attribution": {
+          "$ref": "#/$defs/attribution"
+        },
+        "alert_credits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sunrise",
+        "sunset",
+        "daylight_secs",
+        "polar",
+        "source"
+      ],
+      "properties": {
+        "sunrise": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "sunset": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "daylight_secs": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "polar": {
+          "enum": [
+            "day",
+            "night",
+            null
+          ]
+        },
+        "source": {
+          "enum": [
+            "provider",
+            "local"
+          ]
+        }
+      }
+    }
+  }
+}
