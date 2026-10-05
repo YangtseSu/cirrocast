@@ -85,7 +85,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 18b | D | [user-city-data-update](18b-user-city-data-update.md) | ✅ done | 18 |
 | 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ✅ done | 08, 14 |
 | 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ✅ done | 04, 05, 08, 18 |
-| 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ⬜ not-started | 12, 18, 19 |
+| 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ✅ done | 12, 18, 19 |
 | 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ⬜ not-started | 13, 19 |
 | 23 | F | [more-providers](23-more-providers.md) | ⬜ not-started | 10, 15, 16 |
 | 24 | F | [keyless-national-providers](24-keyless-national-providers.md) | ⬜ not-started | 06, 10, 23 |

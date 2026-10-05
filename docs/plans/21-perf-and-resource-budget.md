@@ -5,12 +5,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 21 — performance and resource budget
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: 12 (quality hardening and CI), 18 (offline city database), 19 (multi-location and templates)
-Touches: `scripts/bench/{run.sh,cold.sh,compare.py,ci.sh}`, `perf/baseline.json`,
-`.github/workflows/ci.yml`, `Cargo.toml`, `src/render/{mod,art_table,one_line,plain}.rs`,
-`src/model/mod.rs`, `src/geo/offline.rs`, `src/cli.rs`, `tests/cli.rs`, `docs/performance.md`,
-`REUSE.toml`
+Touches: `scripts/bench/{run.sh,cold.sh,compare.py,record.py}`, `perf/baseline.json`,
+`.github/workflows/ci.yml`, `Cargo.toml`, `src/render/{mod,art_table,one_line,plain,color}.rs`,
+`src/model/mod.rs`, `src/template.rs`, `src/geo/offline.rs`, `src/cli.rs`, `tests/{cli,common}.rs`
+and the render/astro/air/template test files, `docs/performance.md`, `REUSE.toml`
 
 ## Goal
 
@@ -152,8 +152,8 @@ scripts/bench/run.sh
 ```bash
 cat target/bench/raw.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print({k: round(v["median"],3) for k,v in d.items()})'
 python3 scripts/bench/compare.py perf/baseline.json target/bench/raw.json    # exit 0, "no regression"
-cargo bloat --release --crates -n 10
-cargo llvm-lines --release | head -n 10
+cargo bloat --profile release-audit --crates -n 10   # the audit profile resolves more of the tail than the stripped `release`
+cargo llvm-lines --release --lib -p cirrocast | head -n 10   # the workspace needs a single target
 stat -c '%s bytes' target/release/cirrocast                # < 5242880
 cargo run -q -- --help | wc -l                             # < 200
 /usr/bin/time -v cargo run -q -- --offline Beijing -f plain 2>&1 | grep 'Maximum resident'
@@ -167,25 +167,30 @@ into `docs/performance.md`.
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ Budget table in `docs/performance.md` filled with real numbers from the reference machine:
-      `--version` < 20 ms, cached run < 60 ms, cold run < 1.5 s (with link), RSS < 15 MB, binary < 5 MB,
-      `--help` < 200 lines.
-- ⬜ `perf/baseline.json` committed and consumed by the CI `perf` job; the artificial-regression proof
+- ✅ `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
+      `cargo test --workspace --locked`, `reuse lint` clean.
+- ✅ Budget table in `docs/performance.md` filled with real numbers from the reference machine:
+      `--version` 2.10 ms (< 20 ms), cached run 51.4 ms (< 60 ms), cold run 845 ms (< 1.5 s, with
+      link), RSS 6.4 MiB for `--version` (< 15 MiB) and 25.6 MiB for the cached run (< 32 MiB,
+      re-derived), binary 14.36 MiB (< 17 MiB, re-derived; the goal's 5 MiB predates the 3.41 MiB
+      offline table), `--help` 198 lines (< 200).
+- ✅ `perf/baseline.json` committed and consumed by the CI `perf` job; the artificial-regression proof
       is recorded in the doc and in the progress log.
-- ⬜ `cargo bloat`/`cargo llvm-lines` top contributors named with sizes, every heavy crate accepted or
+- ✅ `cargo bloat`/`cargo llvm-lines` top contributors named with sizes, every heavy crate accepted or
       gated with a one-line reason.
-- ⬜ The `offline-geo`-less build compiles, passes `cargo test`, and its size delta is recorded.
-- ⬜ Re-evaluation of no-async/no-TUI recorded with the measured evidence, decision unchanged.
+- ✅ The `offline-geo`-less build compiles, passes `cargo test`, and its size delta is recorded.
+- ✅ Re-evaluation of no-async/no-TUI recorded with the measured evidence, decision unchanged.
 
 ## Risks
 
 * CI runner variance: mitigated by the 20 % allowance, by `-N` (no shell), by fixed core count via
   `taskset -c 0` for the timing runs, and by re-recording the baseline only on an explicit
   `workflow_dispatch` with the new machine spec committed alongside.
-* `/usr/bin/time -v` is a GNU time feature; on runners without it the script falls back to
-  `getrusage`-based `ps -o rss= -p` sampling with the difference documented — the fallback measures
-  peak *sampled* RSS, which is a lower bound.
+* `/usr/bin/time -v` is a GNU time feature; on machines without it (the reference machine
+  included) the harness falls back to hyperfine's per-child peak, recorded in the baseline as
+  `machine.rss_method`. `ps -o rss= -p` sampling was rejected (a 50 ms run is too short to sample),
+  and `getrusage(RUSAGE_CHILDREN)` read from a forked parent was measured and rejected too: it
+  counts the parent's resident pages and overstated `--version` by ~6 MiB.
 * `strip = "symbols"` breaks `cargo bloat` symbol attribution; the audit therefore uses a
   `--profile release-audit` (inherits release, `strip = "none"`) build, documented in the doc and the
   script.
@@ -250,3 +255,12 @@ into `docs/performance.md`.
   198, and `tests/cli.rs` now asserts the count with `COLUMNS=100` pinned — clap wraps the epilogue
   to the terminal width, so an inherited `COLUMNS` would make the test depend on the developer's
   shell.
+- 2026-10-05 — step closed. Plan corrections made in this commit, per the "fix the plan" rule: the
+  exit criterion's binary budget is re-derived (17 MiB, with the measurement and the reason in
+  `docs/performance.md`), the verification block names `--profile release-audit` for `cargo bloat`
+  (the shipped profile strips symbols) and `--lib -p cirrocast` for `cargo llvm-lines` (the
+  workspace needs one target), and the risks section records the RSS fallback that was actually
+  used (hyperfine's per-child peak) instead of the `ps` sampling that was rejected as too coarse.
+  Full gate re-run on the final tree: `cargo fmt --check`, `cargo clippy --workspace --all-targets
+  --locked -- -D warnings`, `cargo test --workspace --locked`, `reuse lint` — all clean, and the
+  harness/gate run prints `no regression` with exit 0.

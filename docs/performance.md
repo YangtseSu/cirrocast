@@ -22,9 +22,10 @@ what machine, with what budget, and which decisions the measurements justify.
 | `strip` | `"symbols"` | the shipped binary needs no symbol table |
 | `panic` | `"abort"` | every user-triggered failure is a typed `Error`; no release path unwinds, so the landing pads only cost size |
 
-`[profile.release-audit]` inherits `release` with `strip = "none"`, because `cargo bloat` cannot
-attribute bytes to crates once the symbol table is gone. It is never shipped and never measured by
-the harness; it exists for the audit below.
+`[profile.release-audit]` inherits `release` with `strip = "none"`. `cargo bloat` attributes the
+top crates identically on the stripped binary, but the audit profile resolves more of the tail (51
+crates left in its "and more" bucket, against 63 on the shipped profile). It is never shipped and
+never measured by the harness; it exists for the audit below.
 
 `panic = "abort"` is compatible with the error policy in `AGENTS.md`: user-triggered failures are
 typed errors, `unwrap`/`expect`/`panic!` are banned outside tests, and the profile applies to

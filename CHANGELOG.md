@@ -13,7 +13,15 @@ records how each of them changes and which changes are breaking.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+* **Faster, smaller builds (step 21).** The release profile now uses one codegen unit and aborts on
+  panic, the renderers compose a report in a single buffer instead of a `String` per line, and each
+  report derives the location's clock once instead of per rendered field. The `--help` epilogue was
+  compacted to 198 lines (from 200) with the same content. Nothing about the CLI, the output
+  formats or the JSON schema changes; the enforced budgets and the measurement harness are recorded
+  in `docs/performance.md`, and `cargo build --release --no-default-features` stays the supported
+  reduced build (city search through the network geocoder, 3.41 MiB smaller).
 
 ## [1.2.0] - 2026-10-05
 
