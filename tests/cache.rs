@@ -362,6 +362,7 @@ fn stat_and_clean_count_what_they_say() {
             "ip",
             "station",
             "alerts",
+            "grid",
             "ratelimit",
             "geo",
         ]
@@ -425,10 +426,10 @@ fn clean_all_removes_state_files_without_counting_them() {
         )
         .expect("the freshness notice is written");
 
-    // The two state namespaces are listed after the five entry ones.
+    // The two state namespaces are listed after the six entry ones (step 24 added `grid`).
     let stat = cache.stat().expect("stat succeeds");
     assert_eq!(
-        stat.namespaces[5..]
+        stat.namespaces[6..]
             .iter()
             .map(|namespace| namespace.name)
             .collect::<Vec<_>>(),

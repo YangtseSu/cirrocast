@@ -188,8 +188,8 @@ pub struct QueryArgs {
     #[arg(value_name = "LOCATION", env = "CIRROCAST_LOCATION")]
     pub location: Vec<String>,
 
-    /// Provider chain, comma separated; `auto` expands to the implemented keyless backends (plus
-    /// `metar` with `--station`).
+    /// Provider chain, comma separated; `auto` ranks the keyless backends by coverage for the
+    /// resolved place (plus `metar` with `--station`).
     #[arg(short = 'p', long, value_name = "LIST", env = "CIRROCAST_PROVIDER")]
     pub provider: Option<String>,
 

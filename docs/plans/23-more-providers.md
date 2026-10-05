@@ -255,3 +255,11 @@ cargo run -q -- -p open-meteo-marine --lat 54.54 --lon 10.23; echo $?   # exit 2
   Corrections to the registry rows made in this pass: none — the four new rows were built from the
   probes recorded in the log above, and the existing rows' `verified` dates are unchanged because
   this step did not touch their endpoints.
+
+- 2026-10-06 — amended by step 24, in the commit that landed the coverage ranking: `auto` is no
+  longer the interim fixed list `open-meteo, met-no, smhi`. It expands per resolved location from
+  the registry's `covers` metadata (country, then bounding box, then global), so for a Stockholm
+  point the order is `smhi, open-meteo, met-no` and for a country-less coordinate it is
+  `open-meteo, met-no`. The fixed list this step shipped and the exit criteria below were verified
+  against it at the time; the ranking is step 24's, and `tests/provider_auto.rs` now pins the
+  expansions.
