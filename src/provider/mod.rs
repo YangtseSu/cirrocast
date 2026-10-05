@@ -24,6 +24,7 @@ pub mod dayparts;
 pub mod met_no;
 pub mod metar;
 pub mod open_meteo;
+pub mod open_meteo_archive;
 pub mod open_meteo_marine;
 pub mod openweathermap;
 pub mod pirateweather;
@@ -195,9 +196,11 @@ impl ProviderId {
                 granularity: "hourly and daily reanalysis",
                 limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
                 verified: "2026-10-06",
-                implemented: false,
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some(
+                    "Open-Meteo.com (CC BY 4.0, ERA5/Copernicus) — https://open-meteo.com/",
+                ),
             },
             Self::OpenMeteoMarine => ProviderMeta {
                 id: *self,
@@ -901,7 +904,8 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
         ProviderId::OpenMeteoMarine => Ok(Box::new(open_meteo_marine::OpenMeteoMarine)),
         ProviderId::MetNo => Ok(Box::new(met_no::MetNo)),
-        ProviderId::OpenMeteoArchive | ProviderId::VisualCrossing => Err(not_implemented(id)),
+        ProviderId::OpenMeteoArchive => Ok(Box::new(open_meteo_archive::OpenMeteoArchive)),
+        ProviderId::VisualCrossing => Err(not_implemented(id)),
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),
