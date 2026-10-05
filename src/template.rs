@@ -735,6 +735,23 @@ pub fn warnings(template: &str) -> Vec<String> {
         .collect()
 }
 
+/// Whether `template` reads the value of the token `letter`.
+///
+/// Only a real occurrence counts: `%%`, an unknown `%X` and a `%{...}` verbatim run are not the
+/// token (a braced run holding exactly one known letter *is* — see the module docs). A caller uses
+/// this to decide whether an upstream source only that token needs is worth a request: the
+/// step 22 `status` probe fetches the alert set only when the template shows `%A`, and the
+/// air-quality reading only when it shows `%q`.
+#[must_use]
+pub fn uses(template: &str, letter: char) -> bool {
+    let Some(wanted) = token(letter) else {
+        return false;
+    };
+    parse(template)
+        .into_iter()
+        .any(|piece| matches!(piece, Piece::Token { token, .. } if token == wanted))
+}
+
 /// Renders one token and applies its width/precision specifier.
 fn format_value(
     token: Token,
@@ -1103,9 +1120,25 @@ fn clock_time(at: DateTime<FixedOffset>) -> String {
 mod tests {
     use super::{
         MAX_PRECISION, PRESETS, Spec, TOKENS, Token, builtin_or_configured, parse, preset,
-        resolve_template, token, warnings,
+        resolve_template, token, uses, warnings,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn uses_finds_only_real_token_letters() {
+        // The rule the `status` probe's extra fetches hang on: `%A` really asks for the alert set.
+        assert!(uses("%A", 'A'));
+        assert!(uses("x %-3A y", 'A'));
+        assert!(uses("%A%t", 't'));
+        assert!(uses("%{A}", 'A'), "a braced single letter is the token");
+        assert!(!uses("%A", 'q'));
+        assert!(!uses("%a", 'A'), "letters are case sensitive");
+        assert!(!uses("%{alert}", 'A'), "a braced run of text is verbatim");
+        assert!(!uses("%%A", 'A'), "an escaped percent is literal");
+        assert!(!uses("%y", 'A'), "an unknown token asks for nothing");
+        assert!(!uses("no tokens here", 'A'));
+        assert!(!uses("%A", '!'), "a non-token letter is never used");
+    }
 
     #[test]
     fn the_token_table_binds_every_documented_letter() {

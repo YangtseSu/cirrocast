@@ -24,8 +24,10 @@ release that adds a backend is not a schema change, and a schema change is not a
 
 ## JSON output schema (v2)
 
-Written by `--format json` (`src/render/json.rs`, `SCHEMA_VERSION = 2`). The rules that make the
-document scriptable, in the order they matter:
+Written by `--format json` (`src/render/json.rs`, `SCHEMA_VERSION = 2`). The same contract as a
+JSON Schema (Draft 2020-12) is [`docs/schema/json-v2.json`](schema/json-v2.json); step 28 adds the
+frozen `json-v1.json` beside it and the test that validates live output against both. The rules
+that make the document scriptable, in the order they matter:
 
 * every key is **always present**; a value the provider did not report is `null`, never an omitted
   key, so `jq -r '.current.uv_index'` cannot fail with a missing path;
@@ -464,6 +466,9 @@ cache_ttl_secs = 300          # 5 minutes
 
 [air]
 index = "us"             # us | european: the AQI scale that drives the panel colour and %q
+
+[status]
+placeholder = "n/a"      # `cirrocast status` prints this when it has no reading to show
 
 [providers.metar]
 station = ""             # default ICAO identifier, e.g. "ZBAA"

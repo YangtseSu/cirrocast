@@ -14,7 +14,7 @@ use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum as _};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use crate::air::aqi::AqiIndex;
 use crate::alerts::{self, AlertsRequest};
@@ -48,7 +48,7 @@ use crate::render::{
 ///
 /// `cirrocast ... | head` is a normal thing to do and the reader going away is not a failure the
 /// user asked to hear about; `println!` would panic on the write error, this returns quietly.
-fn print_line(line: impl std::fmt::Display) -> Result<()> {
+pub(crate) fn print_line(line: impl std::fmt::Display) -> Result<()> {
     write_stdout(line, true)
 }
 
@@ -162,9 +162,8 @@ ONE-LINE TOKENS (--format one-line, full, minimal, or a [templates] key)
   numbers; %% prints one %; %{...} verbatim unless one token letter; \\n \\t \\\\ escapes; bad %X is exit 2.
   Presets (@NAME, and --format NAME), listed with their templates:
     @default  %l: %c %C %t (%f), %w, %h, %p, %P, %v   @short  %c %t
-    @minimal  %c%t                                    @uv     %l: UV %U
+    @minimal  %c%t   @uv  %l: UV %U   @sun  %l: sunrise %S sunset %s (%z %Z)
     @full     %l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z
-    @sun      %l: sunrise %S sunset %s (%z %Z)
 
 MULTI-LOCATION RUNS
   Several LOCATION arguments are fetched at most four at a time and printed in argument order.
@@ -403,12 +402,96 @@ pub enum Command {
     /// Inspect and maintain the on-disk cache.
     Cache(CacheArgs),
 
+    /// Print one line for a status bar: never aborts on a network failure.
+    #[command(long_about = STATUS_LONG_ABOUT)]
+    Status(StatusArgs),
+
     /// Print a shell completion script.
     Completion(CompletionArgs),
 
     /// Print the manual page as roff.
     Man(ManArgs),
 }
+
+/// Arguments of `cirrocast status`.
+///
+/// The whole output is one template, so `-f/--format` here names a `%`-template rather than the
+/// global format enum — `--template` is the same flag under its literal name. Everything the probe
+/// renders comes from the provider chain, the cache and the template engine the query uses.
+#[derive(Debug, Args)]
+pub struct StatusArgs {
+    /// The `%`-template to render, or `@NAME` for a `[templates]` key. Default: `%c %t`.
+    #[arg(
+        short = 'f',
+        long,
+        value_name = "TEMPLATE",
+        conflicts_with = "template"
+    )]
+    pub format: Option<String>,
+
+    /// A synonym of `--format` on this subcommand. The global `-f/--format <NAME>` enum (with
+    /// `art-table`, `json`, …) does not apply to `status`, whose output is always one line.
+    #[arg(long, value_name = "TEMPLATE", conflicts_with = "format")]
+    pub template: Option<String>,
+
+    /// Location to report on: any location argument (`Beijing`, `@39.9,116.4`, `@home`). Omitted,
+    /// `CIRROCAST_LOCATION` then `[location] default` supplies it. The public-IP lookup never runs
+    /// here.
+    #[arg(long, value_name = "SPEC")]
+    pub location: Option<String>,
+
+    /// Serve a cached answer younger than this many seconds without revalidating; `0` follows
+    /// `[cache] weather_ttl_secs`, which is also the default of the flag. At most a week.
+    #[arg(long, value_name = "SECS", value_parser = clap::value_parser!(u64).range(0..=604_800))]
+    pub max_age: Option<u64>,
+
+    /// Serve from the cache only: never open a socket, and accept any cached answer however old.
+    #[arg(long)]
+    pub offline: bool,
+
+    /// What to print on stdout instead of a reading when the probe cannot produce one (the
+    /// network is unavailable and nothing is cached). Default: `[status] placeholder`.
+    #[arg(long, value_name = "TEXT")]
+    pub placeholder: Option<String>,
+
+    /// Colour: `never` (default, so a bar sees no ANSI escapes) or `always`.
+    #[arg(long, value_name = "WHEN", value_enum, default_value_t = StatusColor::Never)]
+    pub color: StatusColor,
+}
+
+/// `cirrocast status --color`: the two modes that make sense for a one-line probe.
+///
+/// `auto` is deliberately absent — the probe is read by tools that strip ANSI inconsistently, so
+/// colour is opt-in rather than detected. `never` is the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum StatusColor {
+    /// Never emit ANSI escapes.
+    Never,
+    /// Emit ANSI escapes even into a pipe.
+    Always,
+}
+
+/// The long help of `cirrocast status`: the contract a status bar is written against.
+const STATUS_LONG_ABOUT: &str = "\
+Print exactly one line (plus a newline) for a status bar or a prompt, and exit 0 whatever the
+weather, the network or the cache is doing.
+
+  cirrocast status --location Beijing               # -> `+18°C`
+  cirrocast status -f '%c %t' --offline             # cache only, never a socket
+  cirrocast status --format '%l %t' --max-age 900   # at most one fetch per 15 minutes
+
+The output is the `%`-template named by --format/--template (default `%c %t`) expanded by the
+same engine as `--format one-line`; a template newline becomes a space and the line is trimmed.
+Colour is off unless --color always is given.
+
+Exit codes: 0 for a reading *and* for every transient or data failure (the placeholder goes to
+stdout and one `error: …` line to stderr), 2 for a usage mistake (an unknown token, an unknown
+flag) and 4 for a configuration problem (an unreadable config, no location configured). A status
+bar can therefore run this on a timer without ever showing a crashed module.
+
+With no --location, `CIRROCAST_LOCATION` then `[location] default` must name one: the probe never
+performs the public-IP lookup, so an empty location is exit 4 rather than a lookup. Alerts are
+fetched only when the template shows `%A`, and the air reading only when it shows `%q`.";
 
 /// Arguments of `cirrocast completion`.
 #[derive(Debug, Args)]
@@ -706,6 +789,7 @@ impl Cli {
             Some(Command::Provider(args)) => run_provider(&args.command).map(|()| 0),
             Some(Command::Location(args)) => run_location(&args.command, self).map(|()| 0),
             Some(Command::Cache(args)) => run_cache(&args.command, self).map(|()| 0),
+            Some(Command::Status(args)) => crate::status::run(args, self),
             Some(Command::Completion(args)) => {
                 run_completion(args);
                 Ok(0)
@@ -937,7 +1021,7 @@ fn provider_chain(
 /// A station configured while another backend is the default has no effect on that backend (the
 /// registry's location forms say a station is not a city), and a configured `location.default`
 /// outranks it: a station is the aviation backend's *fallback* location, not a global one.
-fn configured_station(config: &Config, ids: &[ProviderId]) -> Option<String> {
+pub(crate) fn configured_station(config: &Config, ids: &[ProviderId]) -> Option<String> {
     if ids.first() != Some(&ProviderId::Metar) {
         return None;
     }
@@ -956,7 +1040,11 @@ fn configured_station(config: &Config, ids: &[ProviderId]) -> Option<String> {
 /// CLI's own vocabulary, and the cache key is built for the horizon that is really fetched. The
 /// caller silences the warning with `-q`; an observations-only backend (`max_days == 0`) clamps
 /// everything to zero, which is what a station forecast is.
-fn request_days(requested: u8, ids: &[ProviderId], days_explicit: bool) -> (u8, Option<String>) {
+pub(crate) fn request_days(
+    requested: u8,
+    ids: &[ProviderId],
+    days_explicit: bool,
+) -> (u8, Option<String>) {
     let Some(primary) = ids.first() else {
         return (requested, None);
     };
@@ -1073,6 +1161,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
         http: &http,
         cache: &geo_cache,
         offline,
+        prompt: Prompt::Policy,
         limit: QUERY_CANDIDATES,
     };
     let targets = location_targets(query, &settings, &config)?;
@@ -1549,6 +1638,36 @@ fn alert_request(
     }))
 }
 
+/// The alert request of a run with no alert flags: the coverage-selected (or configured explicit)
+/// sources under the configured threshold, or `None` when `[alerts] enabled = false`.
+///
+/// The `status` probe uses this: its template decides whether an alert fetch is worth a request at
+/// all (`%A`), and it has no `--alerts`/`--no-alerts`/`--severity` of its own. The query's
+/// [`alert_request`] layers those flags on top of the same rules.
+pub(crate) fn configured_alert_request(
+    location: &Location,
+    ids: &[ProviderId],
+    config: &Config,
+) -> Result<Option<AlertsRequest>> {
+    if !config.alerts.enabled {
+        return Ok(None);
+    }
+    let sources = alerts::sources_for(location, ids, &config.alerts)?;
+    if sources.is_empty() {
+        return Ok(None);
+    }
+    let threshold = config
+        .alerts
+        .severity_threshold
+        .parse::<Severity>()
+        .map_err(|error| Error::Config(format!("alerts.severity_threshold: {error}")))?;
+    Ok(Some(AlertsRequest {
+        sources,
+        explicit: !alerts::is_auto(&config.alerts.sources),
+        threshold,
+    }))
+}
+
 /// Prints the catalog misses the render recorded, one line each, under `-v`.
 fn report_missing_keys(setup: &RenderSetup) {
     for note in setup.i18n.notes() {
@@ -1594,7 +1713,7 @@ fn verbose_report(report: &crate::model::Report) {
 
 /// The location this run forecasts for: a station placeholder the provider fills in, or the
 /// resolved location argument.
-fn location_for_run(
+pub(crate) fn location_for_run(
     station: Option<&str>,
     target: &LocationTarget,
     geo: &GeoRequest<'_>,
@@ -1613,9 +1732,29 @@ fn location_for_run(
     }
 }
 
+/// Whether a resolution run may ask which candidate to use.
+///
+/// The picker reads stdin, so only the query path (where the user typed the command) may reach it:
+/// a run that must never block — the `status` probe, which a status bar executes on a timer —
+/// takes the ranked winner instead, exactly as a non-terminal query does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Prompt {
+    /// Ask per `[location] pick` when stdin and stderr are terminals (`--pick` forces it).
+    Policy,
+    /// Never ask; take the ranked winner.
+    Never,
+}
+
+impl Prompt {
+    /// Whether the pick policy applies at all.
+    const fn allowed(self) -> bool {
+        matches!(self, Self::Policy)
+    }
+}
+
 /// One location argument as this run treats it: the text as typed (for the ambiguity note and the
 /// JSON `query` field) and the alias-expanded spec to resolve.
-struct LocationTarget {
+pub(crate) struct LocationTarget {
     /// The argument as typed; empty when nothing was given and the configured default or the IP
     /// lookup applies.
     text: String,
@@ -1655,18 +1794,30 @@ fn location_targets(
         return Ok(vec![default()]);
     }
     raw.into_iter()
-        .map(|text| {
-            let parsed = LocationSpec::parse_arg(Some(&text))?;
-            let spec = crate::geo::expand_aliases(parsed, &config.locations)?;
-            Ok(LocationTarget { text, spec })
-        })
+        .map(|text| location_target(&text, config))
         .collect()
+}
+
+/// One location argument as a target: parsed and with its `@name` aliases expanded.
+///
+/// The single step [`location_targets`] repeats per argument and the `status` probe runs once for
+/// its `--location`, so both agree on what an alias means and on which parse errors are usage
+/// errors.
+pub(crate) fn location_target(text: &str, config: &Config) -> Result<LocationTarget> {
+    let parsed = LocationSpec::parse_arg(Some(text))?;
+    let spec = crate::geo::expand_aliases(parsed, &config.locations)?;
+    Ok(LocationTarget {
+        text: text.to_owned(),
+        spec,
+    })
 }
 
 /// The location a weather query forecasts for, with the commentary a user needs to trust it.
 ///
-/// The ambiguity note (silenced by `-q`) and the `-v` candidate list go to stderr; stdout carries
-/// only the report, so a script piping the query never has to filter prose out of the answer.
+/// The ambiguity note (silenced by `-q`, and not printed at all when `geo.prompt` forbids the
+/// picker, since its `--pick`/`--yes` advice would then describe flags that run does not have) and
+/// the `-v` candidate list go to stderr; stdout carries only the report, so a script piping the
+/// query never has to filter prose out of the answer.
 fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> Result<Location> {
     let Resolved {
         location,
@@ -1674,7 +1825,7 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
         resolution,
     } = resolve_location(&target.spec, geo, cli)?;
     let query = target.spec.query().unwrap_or_default();
-    let picked = should_pick(&cli.query, geo.config, candidates.len())?;
+    let picked = geo.prompt.allowed() && should_pick(&cli.query, geo.config, candidates.len())?;
     let location = if picked {
         let chosen = prompt_location(query, &candidates)?;
         // The echo is a coordinate spec, not the name: a name would re-run the ranking that just
@@ -1692,6 +1843,7 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
         location
     };
     if !picked
+        && geo.prompt.allowed()
         && let Some(text) = target.spec.query()
         && !cli.quiet
     {
@@ -1810,7 +1962,7 @@ fn location_arg(query: &QueryArgs) -> Option<String> {
 
 /// How many ranked geocoder candidates a weather query asks for; the ambiguity note and the `-v`
 /// listing use them, and a later step may expose the number as a flag.
-const QUERY_CANDIDATES: u8 = 10;
+pub(crate) const QUERY_CANDIDATES: u8 = 10;
 
 /// The configured colour mode.
 ///
@@ -2111,6 +2263,7 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
         http: &http,
         cache: &cache,
         offline,
+        prompt: Prompt::Policy,
         limit: args.limit,
     };
     let resolved = resolve_location(&spec, &geo_request, cli)?;
@@ -2535,22 +2688,24 @@ fn exact_spec(spec: LocationSpec, exact: bool) -> Result<LocationSpec> {
 ///
 /// Bundled so the resolution helpers keep one parameter instead of six, and so the offline policy
 /// and the geo-scoped cache cannot be passed inconsistently.
-struct GeoRequest<'a> {
+pub(crate) struct GeoRequest<'a> {
     /// The effective configuration (the strategy, the table source and the geocode TTL).
-    config: &'a Config,
+    pub(crate) config: &'a Config,
     /// The XDG directories, for the user-installed table (step 18b). Unread in a build without
     /// the `offline-geo` feature, where there is no local table to open.
     #[cfg_attr(not(feature = "offline-geo"), allow(dead_code))]
-    paths: &'a Paths,
+    pub(crate) paths: &'a Paths,
     /// The shared HTTP client.
-    http: &'a HttpClient,
+    pub(crate) http: &'a HttpClient,
     /// The cache view for the geo scope: pinned to `CacheMode::Offline` when the policy silences
     /// it, so a socket can never be opened on this path.
-    cache: &'a Cache,
+    pub(crate) cache: &'a Cache,
     /// The run's offline policy.
-    offline: OfflineMode,
+    pub(crate) offline: OfflineMode,
+    /// Whether the picker may run (see [`Prompt`]): a run that must not block reads stdin never.
+    pub(crate) prompt: Prompt,
     /// How many candidates to rank.
-    limit: u8,
+    pub(crate) limit: u8,
 }
 
 /// Opens the two cache views of a weather query: the geo scope and the weather scope, each under
@@ -2559,7 +2714,7 @@ struct GeoRequest<'a> {
 /// An offline policy silences only its own scope (`--offline=geo` still fetches live weather,
 /// `--offline=weather` still geocodes), and two `Cache` handles over the same root are what keep
 /// that split out of every provider and geocoder call site.
-fn open_query_caches(
+pub(crate) fn open_query_caches(
     paths: &Paths,
     config: &Config,
     flags: CacheFlags,
@@ -2737,7 +2892,7 @@ fn cache_mode(
 }
 
 /// The configured default location, when there is one.
-fn configured_location(config: &Config) -> Option<String> {
+pub(crate) fn configured_location(config: &Config) -> Option<String> {
     let text = config.location.default.trim();
     if text.is_empty() {
         None

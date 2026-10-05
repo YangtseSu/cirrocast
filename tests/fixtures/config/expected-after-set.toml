@@ -53,6 +53,9 @@ cache_ttl_secs = 300
 [air]
 index = "us"
 
+[status]
+placeholder = "n/a"
+
 [providers.metar]
 station = ""
 

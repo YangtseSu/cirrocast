@@ -139,6 +139,8 @@ pub struct Config {
     pub alerts: AlertsConfig,
     /// Air-quality panel settings.
     pub air: AirConfig,
+    /// The `status` probe settings.
+    pub status: StatusConfig,
     /// Per-provider settings.
     pub providers: Providers,
     /// `@NAME` location aliases: the name after `@` mapped to any location argument.
@@ -296,6 +298,23 @@ pub struct AirConfig {
     pub index: String,
 }
 
+/// `[status]` — the `cirrocast status` probe (step 22).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StatusConfig {
+    /// What the probe prints on stdout when it cannot produce a line (the network is unavailable
+    /// and nothing is cached). Overridden per run by `--placeholder`.
+    pub placeholder: String,
+}
+
+impl Default for StatusConfig {
+    fn default() -> Self {
+        Self {
+            placeholder: "n/a".to_owned(),
+        }
+    }
+}
+
 /// `[providers]`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -336,6 +355,7 @@ impl Default for Config {
             render: RenderConfig::default(),
             alerts: AlertsConfig::default(),
             air: AirConfig::default(),
+            status: StatusConfig::default(),
             providers: Providers::default(),
             locations: BTreeMap::new(),
             templates: BTreeMap::new(),
@@ -1136,6 +1156,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "render",
             "alerts",
             "air",
+            "status",
             "providers",
             "locations",
             "templates",
@@ -1172,6 +1193,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "cache_ttl_secs",
         ],
         "air" => &["index"],
+        "status" => &["placeholder"],
         "providers" => &["metar", "qweather"],
         "providers.metar" => &["station"],
         "providers.qweather" => &["host"],
@@ -1436,6 +1458,9 @@ cache_ttl_secs = 300          # 5 minutes
 
 [air]
 index = "us"             # us | european: the AQI scale that drives the panel colour and %q
+
+[status]
+placeholder = "n/a"      # `cirrocast status` prints this when it has no reading to show
 
 [providers.metar]
 station = ""             # default ICAO identifier, e.g. "ZBAA"
@@ -1720,6 +1745,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "status.placeholder",
+        kind: KeyKind::Str,
+        doc: "what `status` prints when it has no reading",
+        env: None,
+    },
+    KeySpec {
         name: "providers.metar.station",
         kind: KeyKind::Str,
         doc: "default ICAO station",
@@ -1800,6 +1831,7 @@ impl Config {
             "alerts.fpas_url" => self.alerts.fpas_url.clone(),
             "alerts.cache_ttl_secs" => self.alerts.cache_ttl_secs.to_string(),
             "air.index" => self.air.index.clone(),
+            "status.placeholder" => self.status.placeholder.clone(),
             "providers.metar.station" => self.providers.metar.station.clone(),
             "providers.qweather.host" => self.providers.qweather.host.clone(),
             _ => return Err(Error::Usage(unknown_key_message(spec.name))),
@@ -1903,6 +1935,7 @@ impl Config {
                 check_enum(spec.name, &value, AQI_INDEXES)?;
                 self.air.index = value;
             }
+            "status.placeholder" => self.status.placeholder = value,
             "providers.metar.station" => self.providers.metar.station = value,
             "providers.qweather.host" => self.providers.qweather.host = value,
             _ => return Err(Error::Usage(unknown_key_message(spec.name))),
@@ -1957,6 +1990,9 @@ impl Config {
             "alerts.fpas_url" => self.validate_fpas_url(),
             "alerts.cache_ttl_secs" => check_positive(key, self.alerts.cache_ttl_secs),
             "air.index" => self.validate_air(),
+            // `status.placeholder` accepts any text — it is the one part of the probe's output the
+            // user chooses, and an empty one (print nothing) is a legitimate choice — so it has no
+            // arm here; the wildcard below is its validation.
             "providers.metar.station" => self.validate_metar_station(),
             "providers.qweather.host" => self.validate_qweather_host(),
             _ => Ok(()),
@@ -2201,6 +2237,8 @@ mod tests {
         assert_eq!(config.alerts.sources, ["auto"]);
         assert_eq!(config.alerts.fpas_url, "");
         assert_eq!(config.alerts.cache_ttl_secs, 300);
+        assert_eq!(config.air.index, "us");
+        assert_eq!(config.status.placeholder, "n/a");
         assert_eq!(config.providers.metar.station, "");
         assert_eq!(config.providers.qweather.host, "");
     }

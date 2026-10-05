@@ -126,6 +126,25 @@ precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# The cache fixture step 22's `status` probe and `contrib/statusbar/verify.sh` read offline: a real
+# cache envelope (`CacheEntry`) around the recorded Beijing forecast body above, so it carries that
+# payload's upstream licence rather than the GPL rule for first-party fixtures. The `fetched_at`
+# stamp is deliberately old and the TTL the provider really writes, which is what makes the
+# fixture exercise the stale answer `--offline` promises to serve.
+[[annotations]]
+path = "tests/fixtures/cache/weather/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# JSON Schema documents (step 22's `docs/schema/json-v2.json`, step 28's frozen v1 beside it): JSON
+# cannot carry a comment header, and the schemas are our own description of our own output.
+[[annotations]]
+path = "docs/schema/*.json"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # Recorded proprietary API payloads (WeatherAPI.com, World Weather Online, Pirate Weather,
 # QWeather): the data stays the provider's property, so the fixtures carry a custom licence
 # reference rather than GPL or an open-data identifier. See the notice file for the terms links.

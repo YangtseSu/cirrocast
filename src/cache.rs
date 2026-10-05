@@ -446,15 +446,20 @@ pub struct CacheEntry {
 }
 
 impl CacheEntry {
-    /// Whether the entry is still fresh at `now`.
+    /// Whether the entry is still fresh at `now`, under the entry's own TTL widened to `max_age`
+    /// when the caller set one ([`Cache::with_max_age`]).
     ///
     /// A clock that appears to run backwards counts as fresh: a stale-looking entry is a miss, but
     /// a wrong wall clock must not make every cache read fail.
     #[must_use]
-    fn is_fresh(&self, now: SystemTime) -> bool {
+    fn is_fresh(&self, now: SystemTime, max_age: Option<Duration>) -> bool {
+        let ttl = Duration::from_secs(self.ttl_secs);
+        let window = match max_age {
+            Some(max_age) => ttl.max(max_age),
+            None => ttl,
+        };
         let fetched: SystemTime = self.fetched_at.into();
-        now.duration_since(fetched)
-            .map_or(true, |age| age < Duration::from_secs(self.ttl_secs))
+        now.duration_since(fetched).map_or(true, |age| age < window)
     }
 }
 
@@ -495,6 +500,8 @@ pub struct Cache {
     mode: CacheMode,
     clock: Arc<dyn Clock>,
     verbose: u8,
+    /// A floor on every entry's freshness window (see [`Cache::with_max_age`]).
+    max_age: Option<Duration>,
 }
 
 impl Cache {
@@ -506,6 +513,7 @@ impl Cache {
             mode,
             clock,
             verbose,
+            max_age: None,
         }
     }
 
@@ -522,6 +530,21 @@ impl Cache {
             mode,
             clock,
             verbose,
+            max_age: None,
+        }
+    }
+
+    /// Widens every entry's freshness window to at least `max_age`.
+    ///
+    /// The entry's own TTL still decides for anything younger than it; this only keeps an answer
+    /// *older* than its TTL servable, which is what a status bar needs when it refreshes more
+    /// slowly than the TTL (`cirrocast status --max-age`, step 22). The cache never shortens a
+    /// window, so the knob can only make a read more tolerant, never stricter.
+    #[must_use]
+    pub fn with_max_age(self, max_age: Duration) -> Self {
+        Self {
+            max_age: Some(max_age),
+            ..self
         }
     }
 
@@ -563,7 +586,7 @@ impl Cache {
         let Some(entry) = self.load_entry(key)? else {
             return Ok(None);
         };
-        if !entry.is_fresh(self.clock.now()) {
+        if !entry.is_fresh(self.clock.now(), self.max_age) {
             self.log(&format!("{}: expired", self.entry_path(key).display()));
             return Ok(None);
         }
@@ -769,7 +792,7 @@ impl Cache {
                 if let Ok(text) = fs::read_to_string(&path)
                     && let Ok(entry) = serde_json::from_str::<CacheEntry>(&text)
                 {
-                    if !entry.is_fresh(now) {
+                    if !entry.is_fresh(now, None) {
                         namespace.expired += 1;
                     }
                     namespace.oldest = Some(
@@ -830,7 +853,7 @@ impl Cache {
                     let Ok(entry) = serde_json::from_str::<CacheEntry>(&text) else {
                         continue;
                     };
-                    if !entry.is_fresh(now) && fs::remove_file(&path).is_ok() {
+                    if !entry.is_fresh(now, None) && fs::remove_file(&path).is_ok() {
                         removed += 1;
                     }
                 }
@@ -1101,6 +1124,69 @@ mod tests {
     }
 
     #[test]
+    fn max_age_widens_the_served_window_without_touching_the_ttl() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let fake = std::sync::Arc::new(super::FakeClock::new(SystemTime::UNIX_EPOCH));
+        let clock: std::sync::Arc<dyn super::Clock> = fake.clone();
+        let key = CacheKey::weather("open-meteo", 39.9, 116.4, 3, chrono::NaiveDate::MIN);
+        let writer = super::Cache::with_root(
+            directory.path(),
+            CacheMode::Normal,
+            std::sync::Arc::clone(&clock),
+            0,
+        );
+        writer
+            .write(&key, 200, "{}", Duration::from_secs(600))
+            .expect("the write succeeds");
+        fake.advance(Duration::from_secs(700));
+
+        let strict = super::Cache::with_root(
+            directory.path(),
+            CacheMode::Normal,
+            std::sync::Arc::clone(&clock),
+            0,
+        );
+        assert!(
+            strict.read(&key).expect("a read succeeds").is_none(),
+            "past its TTL the entry is a miss"
+        );
+
+        let widened = super::Cache::with_root(
+            directory.path(),
+            CacheMode::Normal,
+            std::sync::Arc::clone(&clock),
+            0,
+        )
+        .with_max_age(Duration::from_mins(15));
+        assert!(
+            widened.read(&key).expect("a read succeeds").is_some(),
+            "--max-age serves the entry its TTL no longer covers"
+        );
+
+        // Offline mode is where the widening matters most: an unlimited window is a stale answer
+        // instead of a hard miss.
+        let offline = super::Cache::with_root(
+            directory.path(),
+            CacheMode::Offline,
+            std::sync::Arc::clone(&clock),
+            0,
+        )
+        .with_max_age(Duration::MAX);
+        assert!(
+            offline.read(&key).expect("a read succeeds").is_some(),
+            "an unlimited window serves any entry that is on disk"
+        );
+        // `stat` and `clean` keep judging by the entry's own TTL, never by the read override.
+        let stat = widened.stat().expect("a stat succeeds");
+        let weather = stat
+            .namespaces
+            .iter()
+            .find(|namespace| namespace.name == "weather")
+            .expect("the weather namespace");
+        assert_eq!(weather.expired, 1);
+    }
+
+    #[test]
     fn freshness_is_strictly_before_the_ttl() {
         let fetched = chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("a valid instant");
         let entry = CacheEntry {
@@ -1112,9 +1198,15 @@ mod tests {
             body: String::new(),
         };
         let at = |offset: u64| SystemTime::from(fetched) + Duration::from_secs(offset);
-        assert!(entry.is_fresh(at(599)));
-        assert!(!entry.is_fresh(at(600)));
-        assert!(entry.is_fresh(SystemTime::from(fetched) - Duration::from_secs(60)));
+        // Without an override the TTL alone decides ...
+        assert!(entry.is_fresh(at(599), None));
+        assert!(!entry.is_fresh(at(600), None));
+        assert!(entry.is_fresh(SystemTime::from(fetched) - Duration::from_secs(60), None));
+        // ... and `--max-age` can only widen the window, never narrow it.
+        assert!(entry.is_fresh(at(599), Some(Duration::from_secs(90))));
+        assert!(!entry.is_fresh(at(600), Some(Duration::from_secs(90))));
+        assert!(entry.is_fresh(at(600), Some(Duration::from_secs(700))));
+        assert!(entry.is_fresh(at(86_400), Some(Duration::MAX)));
     }
 
     #[test]

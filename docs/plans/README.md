@@ -86,7 +86,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 19 | D | [multi-location-and-templates](19-multi-location-and-templates.md) | ✅ done | 08, 14 |
 | 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ✅ done | 04, 05, 08, 18 |
 | 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ✅ done | 12, 18, 19 |
-| 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ⬜ not-started | 13, 19 |
+| 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ✅ done | 13, 19 |
 | 23 | F | [more-providers](23-more-providers.md) | ⬜ not-started | 10, 15, 16 |
 | 24 | F | [keyless-national-providers](24-keyless-national-providers.md) | ⬜ not-started | 06, 10, 23 |
 | 25 | F | [location-sources-2](25-location-sources-2.md) | ⬜ not-started | 04, 05, 18, 20 |
@@ -208,6 +208,7 @@ src/
     metar/station_table.rs   the embedded 55-station table and its lookup
   template.rs        the `%`-token engine: TOKENS table, presets, width/precision, escapes (step 19)
   parallel.rs        ordered parallel mapping for multi-location runs (step 19)
+  status.rs          the `status` probe: one line, the failure policy, `--max-age`, the placeholder (step 22)
   render/
     mod.rs           Renderer trait, Slot/render_slots, RenderContext, terminal capability detection
     art_table.rs     wttr.in-style day-part column table, 2-4 location summary layout (step 19)
@@ -389,6 +390,16 @@ report so that no renderer or template token converts a clock per field.
 * Coordinates and IP answers carry no credit: the first is the user's own input, and none of the IP
   services (`ipwho.is`, `ipapi.co`, IP.SB) asks for one (the `--ip` disclosure already names the
   service).
+* **The machine-readable outputs are frozen contracts (step 22).** `json` (`schema_version` 2,
+  additive within a version), the `one-line` token meanings and the `plain` record and field order
+  change only as a release event: a minor bump, one release of dual emission where feasible, and a
+  `### Breaking` entry in `CHANGELOG.md` naming both shapes. `docs/ecosystem.md` is the document,
+  `docs/schema/json-v2.json` the JSON Schema of the `json` document, and `tests/plain_order.rs`,
+  `tests/status_contract.rs` and `contrib/statusbar/verify.sh` (the CI job `statusbar`) are the
+  gates. `art-table`/`dumb` are display formats and deliberately *not* contracts. `cirrocast
+  status` is the probe those contracts are written for: one line, colour off unless
+  `--color always`, exit 0 on every transient or data failure (placeholder on stdout), 2 on a usage
+  mistake, 4 on a configuration problem, never the public-IP lookup and never a prompt.
 * Art blocks and translated condition strings are **re-authored** in this repo. Copying wego or
   wttr.in source, data files or art is forbidden (see AGENTS.md).
 
@@ -419,6 +430,7 @@ schema_version = 2
 [render]    color = "auto"  width = 0
 [alerts]    enabled = true  severity_threshold = "minor"  sources = ["auto"]  fpas_url = ""  cache_ttl_secs = 300  # step 15
 [air]       index = "us"            # us | european — the AQI scale behind the panel colour and %q
+[status]    placeholder = "n/a"     # what `cirrocast status` prints when it has no reading (step 22)
 [providers.metar]    station = ""
 [providers.qweather] host = ""
 ```
@@ -526,6 +538,8 @@ cirrocast config   <path|init|show|get|set|edit|validate>
 cirrocast key      <set|rm|list>            # `key set qweather --jwt --key-file <PATH|->` (step 27)
 cirrocast provider <list|info>
 cirrocast cache    <stat|clean>
+cirrocast status   [--format <TEMPLATE>|--template <TEMPLATE>] [--location <SPEC>] [--max-age <SECS>]
+                   [--offline] [--placeholder <TEXT>] [--color never|always]           # step 22
 cirrocast location <search|update-data>     # `location search [--offline] [--all] [--limit N] [--exact]` (steps 18, 20)
                                             # `location update-data [--from <path|url>] [--check]` (step 18b)
 cirrocast completion <shell>    cirrocast man

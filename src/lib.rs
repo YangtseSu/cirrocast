@@ -27,6 +27,7 @@ pub mod parallel;
 pub mod paths;
 pub mod provider;
 pub mod render;
+pub mod status;
 pub mod template;
 
 use crate::error::{Error, Result};

@@ -13,7 +13,7 @@ use predicates::prelude::*;
 
 /// Every key of `KEY_TABLE` with a value that passes validation — the table is the source of truth
 /// for the *set* of keys, so this list is checked against it below.
-const PROBES: [(&str, &str); 37] = [
+const PROBES: [(&str, &str); 38] = [
     ("schema_version", "2"),
     ("defaults.provider", "smhi"),
     ("defaults.format", "json"),
@@ -52,6 +52,7 @@ const PROBES: [(&str, &str); 37] = [
     ("alerts.fpas_url", "https://alerts.example.org"),
     ("alerts.cache_ttl_secs", "60"),
     ("air.index", "european"),
+    ("status.placeholder", "waiting"),
     ("providers.metar.station", "ZBAA"),
     (
         "providers.qweather.host",
