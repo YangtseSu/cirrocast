@@ -200,6 +200,23 @@ precedence = "override"
 SPDX-FileCopyrightText = "OpenWeather Ltd."
 SPDX-License-Identifier = "ODbL-1.0"
 
+# Recorded Bright Sky `/weather` responses: Bright Sky resells DWD open data, and the DWD
+# publishes it under CC BY 4.0, so the recording keeps the upstream licence and the provider prints
+# `Bright Sky (DWD open data, CC BY 4.0)`. `edge-nulls.json` is hand-authored from the same schema
+# to exercise `null` readings and the unknown condition/icon fallback, so it stays first-party and
+# is carved out below (a later annotation wins for that exact path).
+[[annotations]]
+path = "tests/fixtures/brightsky/berlin-3day.json"
+precedence = "override"
+SPDX-FileCopyrightText = "Deutscher Wetterdienst (DWD open data, served by Bright Sky)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "tests/fixtures/brightsky/edge-nulls.json"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # Recorded SMHI SNOW1gv1 responses: SMHI's open data is CC BY 4.0 SE (SPDX has no port identifier,
 # and the port is CC BY 4.0 adapted to Swedish law), so the fixtures keep the upstream licence and
 # the provider prints `SMHI (CC BY 4.0 SE)`. `point_sentinel_2026-10-01.json` is hand-written from

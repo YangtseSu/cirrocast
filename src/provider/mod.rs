@@ -20,6 +20,7 @@
 //! walks that chain with the documented fallback rule. Every backend module above implements the
 //! trait; the registry row's `implemented` flag is what [`select`] filters the chain by.
 
+pub mod brightsky;
 pub mod dayparts;
 pub mod met_no;
 pub mod metar;
@@ -74,13 +75,15 @@ pub enum ProviderId {
     QWeather,
     /// `SMHI` open data (Sweden and neighbours).
     Smhi,
+    /// Bright Sky's resale of DWD open data (Germany).
+    BrightSky,
     /// `METAR` observations from aviationweather.gov.
     Metar,
 }
 
 impl ProviderId {
     /// Every provider, in registry order (this is the order `provider list` prints).
-    pub const fn all() -> [Self; 12] {
+    pub const fn all() -> [Self; 13] {
         [
             Self::OpenMeteo,
             Self::MetNo,
@@ -93,6 +96,7 @@ impl ProviderId {
             Self::PirateWeather,
             Self::QWeather,
             Self::Smhi,
+            Self::BrightSky,
             Self::Metar,
         ]
     }
@@ -111,6 +115,7 @@ impl ProviderId {
             Self::PirateWeather => "pirateweather",
             Self::QWeather => "qweather",
             Self::Smhi => "smhi",
+            Self::BrightSky => "brightsky",
             Self::Metar => "metar",
         }
     }
@@ -413,6 +418,31 @@ impl ProviderId {
                 alerts: false,
                 licence: Some("SMHI (CC BY 4.0 SE)"),
             },
+            Self::BrightSky => ProviderMeta {
+                id: *self,
+                display_name: "Bright Sky",
+                requires_key: false,
+                key_env: None,
+                docs_url: "https://brightsky.dev/docs/",
+                max_days: 10,
+                history_days: 0,
+                marine: false,
+                current: true,
+                hourly: true,
+                daily: true,
+                location_kinds: LocationKinds::CITY_AND_LAT_LON,
+                notes: "keyless, Germany (DWD open data resold by Bright Sky; a self-hosted instance qualifies); measured horizon 10 whole days — the forecast feed's `sources[].last_record` ended at `2026-10-16T04:00Z` on the 2026-10-06 probe, so `today + 10` still fits; `units` left at the API's `dwd` default (°C, km/h), since `si` would return Kelvins and m/s",
+                auth: "none (keyless); the public instance is free to use and the project is open source",
+                coverage: "Germany (DWD station network; DWD forecasts also cover the world at low density)",
+                covers: Coverage::Countries(&["DE"]),
+                network: NetworkClass::Free,
+                granularity: "hourly; 10-day horizon",
+                limits: "no key and no documented quota on the public instance; the DWD's Terms of Use apply to the data",
+                verified: "2026-10-06",
+                implemented: true,
+                alerts: false,
+                licence: Some("Bright Sky (DWD open data, CC BY 4.0) — https://brightsky.dev/"),
+            },
             Self::Metar => ProviderMeta {
                 id: *self,
                 display_name: "METAR",
@@ -472,6 +502,7 @@ impl FromStr for ProviderId {
             "pirateweather" => Ok(Self::PirateWeather),
             "qweather" => Ok(Self::QWeather),
             "smhi" => Ok(Self::Smhi),
+            "brightsky" => Ok(Self::BrightSky),
             "metar" => Ok(Self::Metar),
             _ => Err(Error::Usage(format!(
                 "unknown provider `{input}`; known providers: {}",
@@ -1001,6 +1032,7 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),
         ProviderId::Smhi => Ok(Box::new(smhi::Smhi)),
+        ProviderId::BrightSky => Ok(Box::new(brightsky::BrightSky)),
         ProviderId::WeatherApi => Ok(Box::new(weatherapi::WeatherApi)),
         ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),
         ProviderId::Metar => Ok(Box::new(metar::Metar)),
