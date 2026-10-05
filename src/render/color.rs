@@ -14,6 +14,7 @@
 //! escape into a pipe.
 
 use std::borrow::Cow;
+use std::fmt::Write as _;
 
 use super::ColorDepth;
 use super::art::ArtStyle;
@@ -147,6 +148,43 @@ pub fn paint(text: &str, fg: u8, depth: ColorDepth) -> Cow<'_, str> {
 /// One `38;5` foreground escape plus a reset.
 fn sgr(text: &str, colour: u8) -> String {
     format!("\x1b[38;5;{colour}m{text}\x1b[0m")
+}
+
+/// The palette entry `fg` resolves to at `depth`, or `None` when nothing may be painted.
+fn painted_colour(fg: u8, depth: ColorDepth) -> Option<u8> {
+    match depth {
+        ColorDepth::Mono => None,
+        ColorDepth::Ansi16 => Some(ansi16_from_256(fg)),
+        ColorDepth::Ansi256 => Some(fg),
+    }
+}
+
+/// Writes `text` painted in `fg` into `out`, the buffer-writing twin of [`paint`].
+///
+/// The table's hot path composes a whole line in one `String`, so a coloured fragment has to be
+/// written into it instead of being painted into a temporary that is copied once and dropped. A
+/// monochrome depth (or an empty fragment) writes the text bare, exactly as [`paint`] returns it
+/// borrowed.
+pub fn write_paint(out: &mut String, text: &str, fg: u8, depth: ColorDepth) {
+    match painted_colour(fg, depth).filter(|_| !text.is_empty()) {
+        Some(colour) => {
+            let _ = write!(out, "\x1b[38;5;{colour}m{text}\x1b[0m");
+        }
+        None => out.push_str(text),
+    }
+}
+
+/// Writes `text` painted as an alert severity, the buffer-writing twin of [`paint_severity`].
+pub fn write_paint_severity(out: &mut String, text: &str, severity: Severity, depth: ColorDepth) {
+    if depth == ColorDepth::Mono || text.is_empty() {
+        out.push_str(text);
+        return;
+    }
+    if severity == Severity::Extreme {
+        let _ = write!(out, "\x1b[1;97;41m{text}\x1b[0m");
+        return;
+    }
+    write_paint(out, text, severity_fg(severity), depth);
 }
 
 /// The colour of an alert severity, authored here: grey for unknown, blue for minor, yellow for

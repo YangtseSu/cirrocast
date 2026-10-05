@@ -53,7 +53,7 @@ impl Renderer for MoonView {
         let astro = if let Some(astro) = report.astro.as_ref() {
             astro
         } else {
-            computed = Astro::compute(report, ctx.now);
+            computed = Astro::compute(report, ctx.times.now);
             &computed
         };
         let mut lines = vec![location_line(&report.location), computed_line(astro, ctx)];
@@ -134,7 +134,7 @@ fn computed_line(astro: &Astro, ctx: &RenderContext<'_>) -> String {
         ctx.i18n.text(&keys::ASTRO_COMPUTED),
         astro
             .computed_at
-            .with_timezone(&ctx.tz)
+            .with_timezone(&ctx.times.tz)
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
     )
 }
@@ -147,7 +147,7 @@ fn next_lines(astro: &Astro, ctx: &RenderContext<'_>) -> Vec<String> {
     }
     let mut lines = vec![format!("{}:", ctx.i18n.text(&keys::ASTRO_NEXT))];
     lines.extend(astro.moon.next.iter().map(|(phase, at)| {
-        let local = at.with_timezone(&ctx.tz);
+        let local = at.with_timezone(&ctx.times.tz);
         format!(
             "  {} {} {}",
             ctx.i18n.moon_phase(*phase),
@@ -265,7 +265,7 @@ mod tests {
     use crate::i18n::{I18n, LanguageRequest};
     use crate::model::astro::{Astro, Moon, MoonPhase, Polar, Sun, SunSource};
     use crate::model::units::UnitSystem;
-    use crate::model::{Attribution, Location, LocationSource, Report};
+    use crate::model::{Attribution, LocalTimes, Location, LocationSource, Report};
     use crate::render::{Charset, ColorMode, RenderContext, Renderer, TermCaps};
 
     fn english() -> I18n {
@@ -325,6 +325,9 @@ mod tests {
     }
 
     fn context(i18n: &I18n) -> RenderContext<'_> {
+        static TIMES: std::sync::LazyLock<LocalTimes> = std::sync::LazyLock::new(|| {
+            LocalTimes::new(moment("2026-10-04T12:30:00+08:00"), Tz::Asia__Shanghai)
+        });
         RenderContext {
             units: UnitSystem::Metric
                 .resolve(&UnitOverrides::default())
@@ -332,8 +335,7 @@ mod tests {
             color: ColorMode::Never,
             width: 80,
             term: capable(),
-            now: moment("2026-10-04T12:30:00+08:00"),
-            tz: Tz::Asia__Shanghai,
+            times: TIMES.clone(),
             lang: i18n.lang(),
             i18n,
             alert_credits: &[],

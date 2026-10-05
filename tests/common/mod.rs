@@ -161,6 +161,13 @@ pub fn fixture_now(report: &Report) -> chrono::DateTime<chrono::FixedOffset> {
         .fixed_offset()
 }
 
+/// The render clock for `report`: [`fixture_now`] at the location's zone, as the CLI derives it.
+///
+/// A context borrows the value (`times: &times`), so a test builds it once beside the context.
+pub fn fixture_times(report: &Report) -> cirrocast::model::LocalTimes {
+    cirrocast::model::LocalTimes::new(fixture_now(report), report.location.tz)
+}
+
 /// Asserts that `directory` holds no leftover `.<file>.tmp.<pid>` from the atomic writer.
 pub fn assert_no_temporary_files(directory: &Path) {
     let leftovers: Vec<String> = fs::read_dir(directory)

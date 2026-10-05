@@ -164,9 +164,9 @@ fn time_value(
     at: chrono::DateTime<chrono::FixedOffset>,
     ctx: &RenderContext<'_>,
 ) -> FluentValue<'static> {
-    let local = at.with_timezone(&ctx.tz);
+    let local = at.with_timezone(&ctx.times.tz);
     let clock = local.format("%H:%M %Z").to_string();
-    if local.date_naive() == ctx.now.date_naive() {
+    if local.date_naive() == ctx.times.date {
         FluentValue::from(clock)
     } else {
         FluentValue::from(format!(
@@ -231,9 +231,14 @@ mod tests {
 
     use super::{BANNER_MAX, banner, banner_text};
     use crate::i18n::{I18n, LanguageRequest};
-    use crate::model::{Alert, AlertSource, Certainty, Severity, Urgency};
+    use crate::model::{Alert, AlertSource, Certainty, LocalTimes, Severity, Urgency};
     use crate::render::alerts::Alerts;
     use crate::render::{Charset, ColorMode, RenderContext, Renderer, TermCaps};
+
+    /// The fixture clock, derived once: the context borrows it, and every test wants this instant.
+    static TIMES: std::sync::LazyLock<LocalTimes> = std::sync::LazyLock::new(|| {
+        LocalTimes::new(at("2026-10-03T12:40:00-05:00"), Tz::America__Chicago)
+    });
 
     fn at(text: &str) -> DateTime<FixedOffset> {
         DateTime::parse_from_rfc3339(text).expect("a valid instant")
@@ -270,8 +275,7 @@ mod tests {
             color: ColorMode::Never,
             width: 80,
             term: TermCaps::default(),
-            now: at("2026-10-03T12:40:00-05:00"),
-            tz: Tz::America__Chicago,
+            times: TIMES.clone(),
             lang: i18n.lang(),
             i18n,
             alert_credits: credits,

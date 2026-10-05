@@ -31,7 +31,8 @@ pub use astro::{Astro, Moon, MoonPhase, Polar, Sun, SunSource};
 pub use condition::Condition;
 
 use chrono::{
-    DateTime, FixedOffset, LocalResult, NaiveDate, NaiveDateTime, TimeDelta, TimeZone as _, Utc,
+    DateTime, FixedOffset, LocalResult, NaiveDate, NaiveDateTime, TimeDelta, TimeZone as _,
+    Timelike as _, Utc,
 };
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
@@ -194,6 +195,63 @@ impl DayPartKind {
             Self::Noon => "Noon",
             Self::Evening => "Evening",
             Self::Night => "Night",
+        }
+    }
+
+    /// The part a location-local hour falls in, with the same bands the providers aggregate with.
+    #[must_use]
+    pub const fn from_hour(hour: u32) -> Self {
+        match hour {
+            6..=11 => Self::Morning,
+            12..=17 => Self::Noon,
+            18..=23 => Self::Evening,
+            _ => Self::Night,
+        }
+    }
+}
+
+/// The clock of one location, derived once per report.
+///
+/// A renderer used to re-derive the same three things from the injected run clock and the
+/// location's zone for every field it printed: the local date, the day part the current hour falls
+/// in, and the clock spellings (`%H:%M`, `%z`, the zone name). This type is that conversion,
+/// performed once by the CLI when it builds a [`RenderContext`](crate::render::RenderContext); the
+/// renderers and the template engine then read plain fields, and a report's time zone is looked up
+/// once instead of once per rendered value.
+///
+/// `now` is the run clock at the location's offset, not the wall clock: a renderer never reads the
+/// system clock, so a snapshot test cannot drift.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalTimes {
+    /// The run clock at the location's offset.
+    pub now: DateTime<FixedOffset>,
+    /// The location-local date of `now`.
+    pub date: NaiveDate,
+    /// The day part `now` falls in.
+    pub part: DayPartKind,
+    /// `now` as `HH:MM`.
+    pub clock: String,
+    /// `now` as the numeric offset `+0800`.
+    pub offset: String,
+    /// The zone's IANA name, e.g. `Asia/Shanghai`.
+    pub zone: String,
+    /// The location's time zone, for converting other instants (alerts, moon events).
+    pub tz: Tz,
+}
+
+impl LocalTimes {
+    /// The clock of `tz` at the instant `now`.
+    #[must_use]
+    pub fn new(now: impl Into<DateTime<Utc>>, tz: Tz) -> Self {
+        let local = now.into().with_timezone(&tz).fixed_offset();
+        Self {
+            now: local,
+            date: local.date_naive(),
+            part: DayPartKind::from_hour(local.hour()),
+            clock: local.format("%H:%M").to_string(),
+            offset: local.format("%z").to_string(),
+            zone: tz.name().to_owned(),
+            tz,
         }
     }
 }

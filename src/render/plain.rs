@@ -48,59 +48,75 @@ pub struct Plain;
 
 impl Renderer for Plain {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
-        let mut lines = vec![format!(
-            "{} {}",
-            record_key(&ctx.i18n.text(&keys::LABEL_LOCATION)),
-            location_line(&report.location)
-        )];
+        // One buffer, one line at a time: the record separator is the `\n` written before each
+        // record after the first, which is what the old `Vec<String>` + `join` spelled out.
+        let mut out = String::with_capacity(4096);
+        write_record_key(&mut out, &ctx.i18n.text(&keys::LABEL_LOCATION));
+        out.push(' ');
+        out.push_str(&location_line(&report.location));
 
         // The banner, degraded to the record shape: the warning sign and the colour are dropped
         // (a pipe gets no escapes), and the record key keeps the line greppable.
         for alert in &report.alerts {
-            lines.push(format!(
-                "{} {}",
-                record_key(&ctx.i18n.text(&keys::LABEL_ALERT)),
-                super::alerts::banner_text(alert, ctx)
-            ));
+            out.push('\n');
+            write_record_key(&mut out, &ctx.i18n.text(&keys::LABEL_ALERT));
+            out.push(' ');
+            out.push_str(&super::alerts::banner_text(alert, ctx));
         }
 
         if let Some(current) = &report.current {
-            lines.push(updated_line(current, ctx));
-            lines.push(current_line(current, ctx));
+            out.push('\n');
+            write_updated_line(&mut out, current, ctx);
+            out.push('\n');
+            write_current_line(&mut out, current, ctx);
         }
         for day in &report.days {
-            lines.push(day_line(day, ctx));
+            out.push('\n');
+            write_day_line(&mut out, day, ctx);
         }
-        lines.extend(super::air::records(report, ctx));
-        lines.extend(super::moon::records(report, ctx));
+        for line in super::air::records(report, ctx) {
+            out.push('\n');
+            out.push_str(&line);
+        }
+        for line in super::moon::records(report, ctx) {
+            out.push('\n');
+            out.push_str(&line);
+        }
 
         if let Some(credit) = attribution_line(&report.location) {
-            lines.push(credit.to_owned());
+            out.push('\n');
+            out.push_str(credit);
         }
         if let Some(licence) = report.attribution.licence.as_deref() {
-            lines.push(format!("{} {licence}", ctx.i18n.text(&keys::LABEL_DATA)));
+            out.push('\n');
+            let _ = write!(out, "{} {licence}", ctx.i18n.text(&keys::LABEL_DATA));
         }
-        lines.extend(ctx.alert_credits.iter().cloned());
-        lines.push(format!(
-            "{} {} {}",
-            record_key(&ctx.i18n.text(&keys::LABEL_ATTRIBUTION)),
+        for credit in ctx.alert_credits {
+            out.push('\n');
+            out.push_str(credit);
+        }
+        out.push('\n');
+        write_record_key(&mut out, &ctx.i18n.text(&keys::LABEL_ATTRIBUTION));
+        let _ = write!(
+            out,
+            " {} {}",
             report.attribution.provider,
             endpoint(&report.attribution.url)
-        ));
+        );
 
-        Ok(lines.join("\n"))
+        Ok(out)
     }
 }
 
 /// When the current conditions were observed, at the location's own offset.
-fn updated_line(current: &Current, ctx: &RenderContext<'_>) -> String {
-    format!(
-        "{} {}",
-        record_key(&ctx.i18n.text(&keys::LABEL_UPDATED)),
-        current
+fn write_updated_line(out: &mut String, current: &Current, ctx: &RenderContext<'_>) {
+    write_record_key(out, &ctx.i18n.text(&keys::LABEL_UPDATED));
+    out.push(' ');
+    out.push_str(
+        &current
             .observed_at
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
-    )
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+    );
 }
 
 /// A record key: the catalog's label in the shape the format documents — lower case, no spaces.
@@ -109,40 +125,43 @@ fn updated_line(current: &Current, ctx: &RenderContext<'_>) -> String {
 /// change; a language whose label contains spaces or capitals gets the same stable shape instead of
 /// a second format.
 pub(crate) fn record_key(label: &str) -> String {
-    let mut key: String = label
-        .chars()
-        .map(|character| {
-            if character.is_whitespace() {
-                '_'
-            } else {
-                character
-            }
-        })
-        .collect();
-    key.make_ascii_lowercase();
-    key.push(':');
+    let mut key = String::with_capacity(label.len() + 1);
+    write_record_key(&mut key, label);
     key
 }
 
+/// Writes a record key into `out`, in the shape [`record_key`] documents.
+fn write_record_key(out: &mut String, label: &str) {
+    for character in label.chars() {
+        out.push(if character.is_whitespace() {
+            '_'
+        } else {
+            character.to_ascii_lowercase()
+        });
+    }
+    out.push(':');
+}
+
 /// The current conditions: one line, the parts the provider has no value for omitted.
-fn current_line(current: &Current, ctx: &RenderContext<'_>) -> String {
+fn write_current_line(out: &mut String, current: &Current, ctx: &RenderContext<'_>) {
     let units = ctx.units;
-    let mut text = format!(
-        "{} {} {}",
-        record_key(&ctx.i18n.text(&keys::LABEL_CURRENT)),
+    write_record_key(out, &ctx.i18n.text(&keys::LABEL_CURRENT));
+    let _ = write!(
+        out,
+        " {} {}",
         ctx.i18n.condition(current.weather),
         format_temp(current.temp_c, units.temp),
     );
     if let Some(feels_like) = current.feels_like_c {
         let _ = write!(
-            text,
+            out,
             " ({} {})",
             ctx.i18n.text(&keys::LABEL_FEELS),
             format_temp(feels_like, units.temp),
         );
     }
     let _ = write!(
-        text,
+        out,
         " {} {} {} {} {} {} {} {} {}",
         ctx.i18n.text(&keys::LABEL_WIND),
         format_wind(current.wind_kmh, units.wind, UnitStyle::Compact),
@@ -162,34 +181,33 @@ fn current_line(current: &Current, ctx: &RenderContext<'_>) -> String {
     );
     if let Some(visibility) = current.visibility_km {
         let _ = write!(
-            text,
+            out,
             " {} {}",
             ctx.i18n.text(&keys::LABEL_VISIBILITY),
             format_visibility(visibility, units.distance, UnitStyle::Compact)
         );
     }
-    text
 }
 
 /// One forecast day: the date, then the four parts in display order.
-fn day_line(day: &DayForecast, ctx: &RenderContext<'_>) -> String {
-    let parts: Vec<String> = day
-        .parts
-        .iter()
-        .map(|part| part_summary(part, ctx))
-        .collect();
-    format!(
-        "{} {}: {}",
-        ctx.i18n.text(&keys::LABEL_DAY),
-        day.date,
-        parts.join(" | ")
-    )
+///
+/// The label keeps its plain spelling here (`day 2026-09-30: …`, no record colon after the word):
+/// the colon belongs to the date that follows it, as the module docs show.
+fn write_day_line(out: &mut String, day: &DayForecast, ctx: &RenderContext<'_>) {
+    let _ = write!(out, "{} {}: ", ctx.i18n.text(&keys::LABEL_DAY), day.date);
+    for (index, part) in day.parts.iter().enumerate() {
+        if index > 0 {
+            out.push_str(" | ");
+        }
+        write_part_summary(out, part, ctx);
+    }
 }
 
 /// One part of a day: label, condition, temperature, precipitation and wind.
-fn part_summary(part: &DayPart, ctx: &RenderContext<'_>) -> String {
+fn write_part_summary(out: &mut String, part: &DayPart, ctx: &RenderContext<'_>) {
     let units = ctx.units;
-    let mut text = format!(
+    let _ = write!(
+        out,
         "{} {} {} {}",
         ctx.i18n.day_part(part.kind),
         ctx.i18n.condition(part.weather),
@@ -197,18 +215,17 @@ fn part_summary(part: &DayPart, ctx: &RenderContext<'_>) -> String {
         format_precip(part.precip_mm, units.precip, UnitStyle::Compact),
     );
     if let Some(probability) = part.precip_prob_pct {
-        let _ = write!(text, " ({probability}%)");
+        let _ = write!(out, " ({probability}%)");
     }
     let _ = write!(
-        text,
+        out,
         " {} {}",
         ctx.i18n.text(&keys::LABEL_WIND),
         format_wind(part.wind_kmh, units.wind, UnitStyle::Compact)
     );
     if let Some(direction) = part.wind_dir_deg {
-        let _ = write!(text, " {}", ctx.i18n.direction(direction));
+        let _ = write!(out, " {}", ctx.i18n.direction(direction));
     }
-    text
 }
 
 /// The endpoint of a request URL: everything before the query string.
@@ -228,7 +245,7 @@ mod tests {
     use crate::i18n::{I18n, LanguageId, LanguageRequest};
     use crate::model::units::UnitSystem;
     use crate::model::{
-        Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
+        Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, LocalTimes, Location,
         LocationSource, Report,
     };
     use crate::render::{ColorMode, RenderContext, Renderer, TermCaps};
@@ -350,6 +367,8 @@ mod tests {
     }
 
     fn context(i18n: &I18n, units: UnitSystem, width: usize) -> RenderContext<'_> {
+        static TIMES: std::sync::LazyLock<LocalTimes> =
+            std::sync::LazyLock::new(|| LocalTimes::new(moment(12, 30), Tz::Asia__Shanghai));
         RenderContext {
             units: units
                 .resolve(&crate::config::UnitOverrides::default())
@@ -357,8 +376,7 @@ mod tests {
             color: ColorMode::Never,
             width,
             term: TermCaps::default(),
-            now: moment(12, 30),
-            tz: Tz::Asia__Shanghai,
+            times: TIMES.clone(),
             lang: LanguageId::EN_US,
             i18n,
             alert_credits: &[],

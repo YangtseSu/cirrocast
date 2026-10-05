@@ -425,6 +425,7 @@ fn capable() -> TermCaps {
 
 /// Renders `report` in `format` with `i18n`, at the run's own clock.
 fn render(report: &Report, format: Format, i18n: &I18n, now: DateTime<FixedOffset>) -> String {
+    let times = cirrocast::model::LocalTimes::new(now, report.location.tz);
     let ctx = RenderContext {
         units: UnitSystem::Metric
             .resolve(&UnitOverrides::default())
@@ -432,8 +433,7 @@ fn render(report: &Report, format: Format, i18n: &I18n, now: DateTime<FixedOffse
         color: ColorMode::Never,
         width: 80,
         term: capable(),
-        now,
-        tz: report.location.tz,
+        times: times.clone(),
         lang: i18n.lang(),
         i18n,
         alert_credits: &[],

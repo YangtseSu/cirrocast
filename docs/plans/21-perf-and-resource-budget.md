@@ -52,11 +52,11 @@ evidence — keeping the decision, recording why.
       versions, commit), methodology (commands, cache priming, RSS and size measurement, why the cold
       run is not gated), the budget table with the measured numbers, the dependency-weight audit, and
       the async/TUI re-evaluation with evidence.
-- ⬜ `src/render/{mod,art_table,one_line,plain}.rs`: `fmt::Write` rendering into one pre-sized
+- ✅ `src/render/{mod,art_table,one_line,plain}.rs`: `fmt::Write` rendering into one pre-sized
       `String` (`with_capacity(4096)`), no per-cell `format!`, no intermediate `Vec<String>` of lines
       or per-line `String`; colour codes written as escapes into the same buffer; `Renderer::render`
       keeps its signature.
-- ⬜ `src/model/mod.rs` + `src/cli.rs`: `LocalTimes` computed once per report (`chrono_tz` lookup,
+- ✅ `src/model/mod.rs` + `src/cli.rs`: `LocalTimes` computed once per report (`chrono_tz` lookup,
       day-part `DateTime<FixedOffset>`, preformatted clock strings), carried in `RenderContext`;
       renderers and the template engine stop converting per field.
 - ⬜ `src/geo/offline.rs`: lazy table decode (header first, `OnceLock` per shard) when step 18
@@ -200,3 +200,12 @@ into `docs/performance.md`.
   packaging matrix → B02); depends on 18 added because the lazy-decode deliverable needs the offline
   table, the feature name unified to step 18's `offline-geo`, and the release-archive/musl references
   now point at backlog B02.
+- 2026-10-05 — the render-buffer rewrite and the `LocalTimes` hoist landed in **one** commit, a
+  deviation from "one deliverable = one commit": the hoist rewrites the same functions the rewrite
+  moves (day headings, the metrics, the template tokens), and splitting them would have meant
+  reconstructing an intermediate tree by hand. `color::write_paint`/`write_paint_severity` were
+  added beside `paint` (outside the step's `Touches` list, but the only place the escape-writing
+  twin belongs); `RenderContext` now carries `times: LocalTimes` and is `Clone` rather than `Copy`
+  (its two `Copy` users — `panel_context` and the CLI's slot assembly — clone once per render and
+  per location). Behaviour verified beyond the suite by diffing the old and new release binaries
+  over 21 format/width/colour/alert/multi-location cases: byte-identical output.

@@ -44,7 +44,7 @@ impl Renderer for OneLine {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
         // The banner travels above the one-liner: it is data, not a credit, and `%A` alone would
         // drop the until/instruction details. The glyph follows the terminal's charset.
-        let mut out = String::new();
+        let mut out = String::with_capacity(4096);
         for line in super::alerts::banner(&report.alerts, ctx.term.charset(), ctx) {
             out.push_str(&line.text);
             out.push('\n');

@@ -131,6 +131,70 @@ impl ArtTable {
     }
 }
 
+/// The document under construction: one output buffer, plus the scratch the current line is
+/// composed in.
+///
+/// Every line is written into [`Table::line`] and handed to [`Table::flush`], which folds it for
+/// a 7-bit terminal and clips it to the resolved width exactly once, on the way out. That is the
+/// same two steps the old `Vec<String>` + `join` composition ran per line — without the vector,
+/// without a `String` per line, and without the second copy of the whole document `join` made.
+/// The two buffers are allocated once and reused for every line of the table.
+struct Table {
+    /// The document, newline-separated, no trailing newline.
+    out: String,
+    /// The line being composed; cleared by every `flush`.
+    line: String,
+    /// The 7-bit spelling of `line`, reused by the ASCII fold.
+    folded: String,
+    /// The charset the document is drawn in.
+    charset: Charset,
+    /// The width every line is clipped to.
+    width: usize,
+    /// Whether a line has been flushed; the newline separator is written between lines, exactly
+    /// like `join("\n")`, including around empty lines.
+    started: bool,
+}
+
+impl Table {
+    fn new(charset: Charset, width: usize) -> Self {
+        Self {
+            out: String::with_capacity(4096),
+            line: String::with_capacity(256),
+            folded: String::with_capacity(256),
+            charset,
+            width,
+            started: false,
+        }
+    }
+
+    /// Ends the current line: folds and clips it, appends it to the document, and clears the
+    /// scratch for the next line.
+    fn flush(&mut self) {
+        if self.started {
+            self.out.push('\n');
+        }
+        self.started = true;
+        match self.charset {
+            Charset::Unicode => self
+                .out
+                .push_str(&fit(&self.line, self.width, self.charset)),
+            Charset::Ascii => {
+                self.folded.clear();
+                write_fold_ascii(&mut self.folded, &self.line);
+                self.out
+                    .push_str(&fit(&self.folded, self.width, self.charset));
+            }
+        }
+        self.line.clear();
+    }
+
+    /// A blank line: the block separator between the table's sections.
+    fn blank(&mut self) {
+        self.line.clear();
+        self.flush();
+    }
+}
+
 impl Renderer for ArtTable {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
         let charset = self.charset;
@@ -139,18 +203,22 @@ impl Renderer for ArtTable {
         } else {
             ctx.depth()
         };
+        let mut table = Table::new(charset, ctx.width);
 
-        let mut lines: Vec<String> = Vec::new();
         for line in super::alerts::banner(&report.alerts, charset, ctx) {
-            lines.push(match line.severity {
-                Some(severity) => color::paint_severity(&line.text, severity, depth).into_owned(),
-                None => line.text,
-            });
+            match line.severity {
+                Some(severity) => {
+                    color::write_paint_severity(&mut table.line, &line.text, severity, depth);
+                }
+                None => table.line.push_str(&line.text),
+            }
+            table.flush();
         }
-        lines.push(header(report, ctx));
+        write_header(&mut table.line, report, ctx);
+        table.flush();
         if let Some(current) = &report.current {
-            lines.push(String::new());
-            lines.extend(current_block(current, ctx, charset, depth));
+            table.blank();
+            current_block(&mut table, current, ctx, charset, depth);
         }
         // An observation-only backend has no day table to show: the current block states when it
         // was taken, and a footer says why nothing follows. Both are capability-driven — the
@@ -162,15 +230,17 @@ impl Renderer for ArtTable {
             .is_some_and(|capabilities| capabilities.current && !capabilities.daily);
         if observation_only {
             if let Some(current) = &report.current {
-                lines.push(observed_line(current, ctx, charset));
+                write_observed_line(&mut table.line, current, ctx, charset);
+                table.flush();
             }
-            lines.push(no_forecast_footer(report, ctx));
+            write_no_forecast_footer(&mut table.line, report, ctx);
+            table.flush();
         }
         if !report.days.is_empty() {
             if ctx.width < STACKED_BELOW {
-                lines.extend(stacked(&report.days, ctx, charset, depth));
+                stacked(&mut table, &report.days, ctx, charset, depth);
             } else {
-                lines.extend(columns(&report.days, ctx, charset, depth));
+                columns(&mut table, &report.days, ctx, charset, depth);
             }
         }
         // The moon block sits between the forecast and the air panel: it is sky data like the
@@ -178,30 +248,25 @@ impl Renderer for ArtTable {
         let panels = panel_context(ctx, charset);
         let moon = super::moon::panel(report, &panels);
         if !moon.is_empty() {
-            lines.push(String::new());
-            lines.extend(moon);
+            table.blank();
+            for line in moon {
+                table.line.push_str(&line);
+                table.flush();
+            }
         }
         // The air panel sits between the forecast and the credits: the air credit is part of the
         // panel (it belongs to those numbers), the place and forecast credits stay last.
         let panel = super::air::panel(report, &panels, depth);
         if !panel.is_empty() {
-            lines.push(String::new());
-            lines.extend(panel);
+            table.blank();
+            for line in panel {
+                table.line.push_str(&line);
+                table.flush();
+            }
         }
-        let credits = credits(report, ctx);
-        if !credits.is_empty() {
-            lines.push(String::new());
-            lines.extend(credits);
-        }
+        write_credits(&mut table, report, ctx);
 
-        Ok(lines
-            .into_iter()
-            .map(|line| match charset {
-                Charset::Ascii => fit(&fold_ascii(&line), ctx.width, charset).into_owned(),
-                Charset::Unicode => fit(&line, ctx.width, charset).into_owned(),
-            })
-            .collect::<Vec<_>>()
-            .join("\n"))
+        Ok(table.out)
     }
 
     /// 2–4 locations: one header line and one aligned grid row each, blank line between blocks.
@@ -248,14 +313,19 @@ struct SummaryCells {
 impl ArtTable {
     /// The fallback composition: each slot's full table (or its placeholder), blank line between.
     fn full_tables(self, slots: &[Slot<'_>]) -> Result<String> {
-        let mut blocks: Vec<String> = Vec::with_capacity(slots.len());
+        let mut out = String::with_capacity(4096);
+        let mut first = true;
         for slot in slots {
+            if !first {
+                out.push_str("\n\n");
+            }
+            first = false;
             match (slot.report, slot.ctx.as_ref()) {
-                (Some(report), Some(ctx)) => blocks.push(self.render(report, ctx)?),
-                _ => blocks.push(slot.placeholder()),
+                (Some(report), Some(ctx)) => out.push_str(&self.render(report, ctx)?),
+                _ => out.push_str(&slot.placeholder()),
             }
         }
-        Ok(blocks.join("\n\n"))
+        Ok(out)
     }
 
     /// The combined 2–4 location summary, or `None` when it cannot honour the width or the data.
@@ -299,20 +369,27 @@ impl ArtTable {
         let temp_w = column(|cells| &cells.temp);
         let high_w = column(|cells| &cells.high_low);
 
-        let mut blocks: Vec<String> = Vec::with_capacity(slots.len());
+        let mut out = String::with_capacity(4096);
+        let mut first = true;
         for (slot, row) in slots.iter().zip(&rows) {
+            if !first {
+                out.push_str("\n\n");
+            }
+            first = false;
             let Some(cells) = row else {
                 let line = slot.placeholder();
                 if display_width(&line) > width {
                     return None;
                 }
-                blocks.push(line);
+                out.push_str(&line);
                 continue;
             };
             let (Some(report), Some(ctx)) = (slot.report, slot.ctx.as_ref()) else {
                 return None;
             };
-            let header = folded(&header(report, ctx), charset);
+            let mut header_text = String::with_capacity(64);
+            write_header(&mut header_text, report, ctx);
+            let header = folded(&header_text, charset);
             let art = pad_columns(&cells.art, art_w);
             let condition = pad_columns(&cells.condition, condition_w);
             let temp = pad_left(&cells.temp, temp_w);
@@ -328,9 +405,11 @@ impl ArtTable {
                 paint(&temp, cells.temp_fg, depth),
                 paint(&high_low, cells.high_low_fg, depth)
             );
-            blocks.push(format!("{header}\n{row_line}"));
+            out.push_str(&header);
+            out.push('\n');
+            out.push_str(&row_line);
         }
-        Some(blocks.join("\n\n"))
+        Some(out)
     }
 }
 
@@ -341,12 +420,12 @@ fn summary_cells(
     ctx: &RenderContext<'_>,
     charset: Charset,
 ) -> Option<SummaryCells> {
-    let day = crate::template::today(report, ctx.now.date_naive());
+    let day = crate::template::today(report, ctx.times.date);
     let (condition, is_day, temp_c) = if let Some(current) = &report.current {
         (current.weather, current.is_day, current.temp_c)
     } else {
         let day = day?;
-        let kind = crate::template::hour_part(ctx.now);
+        let kind = ctx.times.part;
         let part = day.part(kind);
         (part.weather, kind != DayPartKind::Night, part.temp_c)
     };
@@ -377,7 +456,8 @@ fn summary_cells(
 
 /// Right-aligns `text` in `width` display columns.
 fn pad_left(text: &str, width: usize) -> String {
-    let mut padded = " ".repeat(width.saturating_sub(display_width(text)));
+    let mut padded = String::with_capacity(text.len() + width);
+    write_spaces(&mut padded, width.saturating_sub(display_width(text)));
     padded.push_str(text);
     padded
 }
@@ -386,7 +466,7 @@ fn pad_left(text: &str, width: usize) -> String {
 /// UTF-8) forces the 7-bit charset on the air and moon blocks too, so a format that promises
 /// ASCII cannot end up drawing the unicode moon disc.
 fn panel_context<'a>(ctx: &RenderContext<'a>, charset: Charset) -> RenderContext<'a> {
-    let mut panels = *ctx;
+    let mut panels = ctx.clone();
     if charset == Charset::Ascii {
         panels.term.term = TermKind::Dumb;
         panels.term.utf8 = false;
@@ -397,10 +477,16 @@ fn panel_context<'a>(ctx: &RenderContext<'a>, charset: Charset) -> RenderContext
 /// `observed 23:51Z · 12 min ago`: when the observation was taken and how old it is.
 ///
 /// The clock is UTC — that is how the aviation world reads a METAR — while the age comes from the
-/// injected `ctx.now`, so the line is deterministic in tests. A report dated in the future (a clock
-/// skew, or a station's own clock) clamps to "0 min ago" rather than printing a negative age.
-fn observed_line(current: &Current, ctx: &RenderContext<'_>, charset: Charset) -> String {
-    let minutes = (ctx.now - current.observed_at).num_minutes().max(0);
+/// injected `ctx.times.now`, so the line is deterministic in tests. A report dated in the future
+/// (a clock skew, or a station's own clock) clamps to "0 min ago" rather than printing a negative
+/// age.
+fn write_observed_line(
+    out: &mut String,
+    current: &Current,
+    ctx: &RenderContext<'_>,
+    charset: Charset,
+) {
+    let minutes = (ctx.times.now - current.observed_at).num_minutes().max(0);
     let age = if minutes < 60 {
         ctx.i18n.format(
             &keys::FORMAT_AGE_MINUTES,
@@ -424,29 +510,29 @@ fn observed_line(current: &Current, ctx: &RenderContext<'_>, charset: Charset) -
         Charset::Unicode => '·',
         Charset::Ascii => '|',
     };
-    format!(
+    let _ = write!(
+        out,
         "{} {}Z {separator} {age}",
         ctx.i18n.text(&keys::LABEL_OBSERVED),
         current
             .observed_at
             .with_timezone(&chrono::Utc)
             .format("%H:%M")
-    )
+    );
 }
 
 /// `no forecast: METAR is an observation`: why an observation-only report has no day table.
-fn no_forecast_footer(report: &Report, ctx: &RenderContext<'_>) -> String {
+fn write_no_forecast_footer(out: &mut String, report: &Report, ctx: &RenderContext<'_>) {
     let provider = if report.attribution.display_name.is_empty() {
         report.attribution.provider.clone()
     } else {
         report.attribution.display_name.clone()
     };
-    ctx.i18n
-        .format(
-            &keys::NOTE_NO_FORECAST,
-            &[("provider", fluent_bundle::FluentValue::from(provider))],
-        )
-        .into_owned()
+    let text = ctx.i18n.format(
+        &keys::NOTE_NO_FORECAST,
+        &[("provider", fluent_bundle::FluentValue::from(provider))],
+    );
+    out.push_str(&text);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -455,13 +541,17 @@ fn no_forecast_footer(report: &Report, ctx: &RenderContext<'_>) -> String {
 
 /// `Weather report: <place> (<lat>, <lon>)`, without coordinates for a location that *is* a
 /// coordinate pair — repeating `39.90, 116.41 (39.90, 116.41)` would say nothing.
-fn header(report: &Report, ctx: &RenderContext<'_>) -> String {
+fn write_header(out: &mut String, report: &Report, ctx: &RenderContext<'_>) {
     let location = &report.location;
-    let mut text = format!("{} {}", ctx.i18n.text(&keys::LABEL_REPORT), place(location));
+    let _ = write!(
+        out,
+        "{} {}",
+        ctx.i18n.text(&keys::LABEL_REPORT),
+        place(location)
+    );
     if location.source != LocationSource::Coordinates {
-        let _ = write!(text, " ({:.2}, {:.2})", location.lat, location.lon);
+        let _ = write!(out, " ({:.2}, {:.2})", location.lat, location.lon);
     }
-    text
 }
 
 /// The current conditions: four art lines, and to their right the condition, the temperatures, the
@@ -470,96 +560,109 @@ fn header(report: &Report, ctx: &RenderContext<'_>) -> String {
 /// The art is chosen from the report's own `is_day`, never from the wall clock; a provider that
 /// cannot tell day from night gets the day block.
 fn current_block(
+    table: &mut Table,
     current: &Current,
     ctx: &RenderContext<'_>,
     charset: Charset,
     depth: ColorDepth,
-) -> Vec<String> {
+) {
     let key = weather_key(current.weather.art_key(), current.is_day);
     let block = art::art(key);
     let [art0, art1, art2, art3] = block.map_or(art::NO_BLOCK, |block| block.lines(charset));
     let fg = block.map_or(FG_DEFAULT, |block| color::art_fg(block.style));
 
     let condition = ctx.i18n.condition(current.weather);
-    let temp = temp_metric(
+    let mut metric = String::with_capacity(48);
+
+    start_art_line(table, art0, fg, depth);
+    color::write_paint(&mut table.line, &condition, fg, depth);
+    table.flush();
+
+    start_art_line(table, art1, fg, depth);
+    write_temp_metric(
+        &mut metric,
         current.temp_c,
         current.feels_like_c,
         ctx.units,
         METRICS_W,
         charset,
     );
-    let wind = wind_metric(
+    color::write_paint(
+        &mut table.line,
+        &metric,
+        color::temp_fg(current.temp_c),
+        depth,
+    );
+    table.flush();
+
+    start_art_line(table, art2, fg, depth);
+    metric.clear();
+    write_wind_metric(
+        &mut metric,
         current.wind_kmh,
         Some(current.wind_dir_deg),
         ctx,
         charset,
         METRICS_W,
     );
+    color::write_paint(
+        &mut table.line,
+        &metric,
+        color::wind_fg(current.wind_kmh),
+        depth,
+    );
+    table.flush();
 
-    vec![
-        open_line(art0, &paint(&condition, fg, depth), fg, depth),
-        open_line(
-            art1,
-            &paint(&temp, color::temp_fg(current.temp_c), depth),
-            fg,
-            depth,
-        ),
-        open_line(
-            art2,
-            &paint(&wind, color::wind_fg(current.wind_kmh), depth),
-            fg,
-            depth,
-        ),
-        open_line(art3, &measurements(current, ctx, depth), fg, depth),
-    ]
+    start_art_line(table, art3, fg, depth);
+    write_measurements(&mut table.line, current, ctx, depth);
+    table.flush();
 }
 
-/// One line of the current block: the art line in `fg`, the gap, then `text` — already painted,
-/// because the measurements have a palette entry per value.
-fn open_line(art_line: &str, text: &str, fg: u8, depth: ColorDepth) -> String {
-    let mut line = paint(art_line, fg, depth).into_owned();
-    line.push_str(&gap_after(art_line));
-    line.push_str(text);
-    line
+/// Starts a line with the art block in the block's own colour and the gap after it.
+fn start_art_line(table: &mut Table, art_line: &str, fg: u8, depth: ColorDepth) {
+    table.line.clear();
+    color::write_paint(&mut table.line, art_line, fg, depth);
+    write_spaces(
+        &mut table.line,
+        ART_W.saturating_sub(display_width(art_line)) + GAP,
+    );
 }
 
 /// `56% 1013hPa 10km 0.0mm`: the measurements under the current conditions, each in its own
 /// palette entry. Visibility is dropped when the provider has no value for it.
-fn measurements(current: &Current, ctx: &RenderContext<'_>, depth: ColorDepth) -> String {
+fn write_measurements(
+    out: &mut String,
+    current: &Current,
+    ctx: &RenderContext<'_>,
+    depth: ColorDepth,
+) {
     let units = ctx.units;
-    let mut pieces = vec![
-        paint(
-            &format!("{}%", current.humidity_pct),
-            color::humidity_fg(current.humidity_pct),
-            depth,
-        )
-        .into_owned(),
-        paint(
-            &format_pressure(current.pressure_hpa, units.pressure, UnitStyle::Compact),
+    let mut value = String::with_capacity(24);
+    let _ = write!(value, "{}%", current.humidity_pct);
+    color::write_paint(out, &value, color::humidity_fg(current.humidity_pct), depth);
+    out.push(' ');
+    color::write_paint(
+        out,
+        &format_pressure(current.pressure_hpa, units.pressure, UnitStyle::Compact),
+        FG_DEFAULT,
+        depth,
+    );
+    if let Some(visibility) = current.visibility_km {
+        out.push(' ');
+        color::write_paint(
+            out,
+            &format_visibility(visibility, units.distance, UnitStyle::Compact),
             FG_DEFAULT,
             depth,
-        )
-        .into_owned(),
-    ];
-    if let Some(visibility) = current.visibility_km {
-        pieces.push(
-            paint(
-                &format_visibility(visibility, units.distance, UnitStyle::Compact),
-                FG_DEFAULT,
-                depth,
-            )
-            .into_owned(),
         );
     }
-    pieces.push(
-        paint(
-            &format_precip(current.precip_mm, units.precip, UnitStyle::Compact),
-            color::precip_fg(current.precip_mm),
-            depth,
-        )
-        .into_owned(),
+    out.push(' ');
+    color::write_paint(
+        out,
+        &format_precip(current.precip_mm, units.precip, UnitStyle::Compact),
+        color::precip_fg(current.precip_mm),
+        depth,
     );
-    pieces.join(" ")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -568,12 +671,17 @@ fn measurements(current: &Current, ctx: &RenderContext<'_>, depth: ColorDepth) -
 
 /// The boxed day columns: bands of at most [`CELLS_PER_ROW`] days, each band a box of one header
 /// row and four day-part blocks.
+///
+/// Each day's cell content is composed once into a single text (heading and parts, newline
+/// separated) and the rows read their line back out of it, so a cell is never materialised as its
+/// own `String` and the row buffer is filled directly.
 fn columns(
+    table: &mut Table,
     days: &[DayForecast],
     ctx: &RenderContext<'_>,
     charset: Charset,
     depth: ColorDepth,
-) -> Vec<String> {
+) {
     let (cell_w, metrics_w) = if ctx.width >= WIDE_FROM {
         (CELL_W, METRICS_W)
     } else {
@@ -581,67 +689,78 @@ fn columns(
     };
     let per_row = ((ctx.width - 1) / (cell_w + 3)).clamp(1, CELLS_PER_ROW);
 
-    let mut lines = Vec::new();
     for band in days.chunks(per_row) {
-        lines.push(String::new());
-        let per_day: Vec<Vec<String>> = band
-            .iter()
-            .map(|day| day_lines(day, ctx, charset, metrics_w, depth))
-            .collect();
-        let height = per_day.first().map_or(0, Vec::len);
-        lines.push(border(
+        table.blank();
+        let mut day_texts: Vec<String> = Vec::with_capacity(band.len());
+        for day in band {
+            let mut text = String::with_capacity(512);
+            write_day(&mut text, day, ctx, charset, metrics_w, depth);
+            day_texts.push(text);
+        }
+        let height = day_texts.first().map_or(0, |text| text.split('\n').count());
+
+        table.line.clear();
+        write_border(
+            &mut table.line,
             Border::Top,
-            per_row.min(band.len()),
+            day_texts.len(),
             cell_w,
             charset,
-        ));
-        // One buffer for the row's borrowed cells, reused for every row of the band: the cells are
-        // the day lines themselves, so nothing is copied between building and drawing a row.
-        let mut cells: Vec<&str> = Vec::with_capacity(per_day.len());
+        );
+        table.flush();
         for row in 0..height {
-            cells.clear();
-            cells.extend(
-                per_day
-                    .iter()
-                    .map(|day| day.get(row).map_or("", String::as_str)),
-            );
-            lines.push(cell_row(&cells, cell_w, charset));
+            table.line.clear();
+            write_cell_row(&mut table.line, &day_texts, row, cell_w, charset);
+            table.flush();
             if row % ART_LINES == 0 {
                 let kind = if row + 1 == height {
                     Border::Bottom
                 } else {
                     Border::Middle
                 };
-                lines.push(border(kind, cells.len(), cell_w, charset));
+                table.line.clear();
+                write_border(&mut table.line, kind, day_texts.len(), cell_w, charset);
+                table.flush();
             }
         }
     }
-    lines
 }
 
-/// One day's cell content: the date heading, then the four part blocks.
-fn day_lines(
+/// The `index`-th line of a day text built by [`write_day`]; `""` past the end.
+fn nth_line(text: &str, index: usize) -> &str {
+    text.split('\n').nth(index).unwrap_or("")
+}
+
+/// One day's cell content: the date heading, then the four part blocks, newline separated.
+fn write_day(
+    text: &mut String,
     day: &DayForecast,
     ctx: &RenderContext<'_>,
     charset: Charset,
     metrics_w: usize,
     depth: ColorDepth,
-) -> Vec<String> {
-    let mut lines = vec![ctx.i18n.format_day_heading(day.date, ctx.now.date_naive())];
+) {
+    let _ = write!(
+        text,
+        "{}",
+        ctx.i18n.format_day_heading(day.date, ctx.times.date)
+    );
+    let mut metric = String::with_capacity(64);
     for part in &day.parts {
-        lines.extend(part_block(part, ctx, charset, metrics_w, depth));
+        write_part(text, part, ctx, charset, metrics_w, depth, &mut metric);
     }
-    lines
 }
 
 /// One day part as [`ART_LINES`] lines — the contract documented at the top of the module.
-fn part_block(
+fn write_part(
+    text: &mut String,
     part: &DayPart,
     ctx: &RenderContext<'_>,
     charset: Charset,
     metrics_w: usize,
     depth: ColorDepth,
-) -> [String; ART_LINES] {
+    metric: &mut String,
+) {
     let daytime = part.kind != DayPartKind::Night;
     let key = weather_key(part.weather.art_key(), daytime);
     let block = art::art(key);
@@ -649,51 +768,72 @@ fn part_block(
     let fg = block.map_or(FG_DEFAULT, |block| color::art_fg(block.style));
 
     let label = ctx.i18n.day_part(part.kind);
-    let temp = temp_metric(
+    text.push('\n');
+    write_cell(
+        text, art0, &label, FG_DEFAULT, fg, metrics_w, charset, depth,
+    );
+
+    metric.clear();
+    write_temp_metric(
+        metric,
         part.temp_c,
         part.feels_like_c,
         ctx.units,
         metrics_w,
         charset,
     );
-    let wind = wind_metric(part.wind_kmh, part.wind_dir_deg, ctx, charset, metrics_w);
-    let tail = part_tail(part, ctx.units, true);
+    text.push('\n');
+    write_cell(
+        text,
+        art1,
+        metric,
+        color::temp_fg(part.temp_c),
+        fg,
+        metrics_w,
+        charset,
+        depth,
+    );
 
-    [
-        cell_line(art0, &label, FG_DEFAULT, fg, metrics_w, charset, depth),
-        cell_line(
-            art1,
-            &temp,
-            color::temp_fg(part.temp_c),
-            fg,
-            metrics_w,
-            charset,
-            depth,
-        ),
-        cell_line(
-            art2,
-            &wind,
-            color::wind_fg(part.wind_kmh),
-            fg,
-            metrics_w,
-            charset,
-            depth,
-        ),
-        cell_line(
-            art3,
-            &tail,
-            color::precip_fg(part.precip_mm),
-            fg,
-            metrics_w,
-            charset,
-            depth,
-        ),
-    ]
+    metric.clear();
+    write_wind_metric(
+        metric,
+        part.wind_kmh,
+        part.wind_dir_deg,
+        ctx,
+        charset,
+        metrics_w,
+    );
+    text.push('\n');
+    write_cell(
+        text,
+        art2,
+        metric,
+        color::wind_fg(part.wind_kmh),
+        fg,
+        metrics_w,
+        charset,
+        depth,
+    );
+
+    metric.clear();
+    write_part_tail(metric, part, ctx.units, true);
+    text.push('\n');
+    write_cell(
+        text,
+        art3,
+        metric,
+        color::precip_fg(part.precip_mm),
+        fg,
+        metrics_w,
+        charset,
+        depth,
+    );
 }
 
 /// One line of a day cell: the art line, the gap, then the metric padded to the column.
 #[allow(clippy::too_many_arguments)]
-fn cell_line(
+fn write_cell(
+    out: &mut String,
     art_line: &str,
     metric: &str,
     metric_fg: u8,
@@ -701,13 +841,12 @@ fn cell_line(
     metrics_w: usize,
     charset: Charset,
     depth: ColorDepth,
-) -> String {
-    let mut line = paint(art_line, art_fg, depth).into_owned();
-    line.push_str(&gap_after(art_line));
-    let metric = fit(metric, metrics_w, charset);
-    line.push_str(&paint(metric.as_ref(), metric_fg, depth));
-    line.push_str(&" ".repeat(metrics_w.saturating_sub(display_width(&metric))));
-    line
+) {
+    color::write_paint(out, art_line, art_fg, depth);
+    write_spaces(out, ART_W.saturating_sub(display_width(art_line)) + GAP);
+    let fitted = fit(metric, metrics_w, charset);
+    color::write_paint(out, &fitted, metric_fg, depth);
+    write_spaces(out, metrics_w.saturating_sub(display_width(&fitted)));
 }
 
 /// `0.0mm 56%` — a part's precipitation, and its precipitation probability when the provider
@@ -716,12 +855,15 @@ fn cell_line(
 /// The probability, not the humidity: this slot pairs with the precipitation amount, exactly as
 /// the `plain` document's `0.0mm (0%)` and wttr.in's `0.0 mm | 0%` do. Humidity is a current
 /// reading and stays in the conditions block above the table.
-fn part_tail(part: &DayPart, units: ResolvedUnits, with_probability: bool) -> String {
-    let mut text = format_precip(part.precip_mm, units.precip, UnitStyle::Compact);
+fn write_part_tail(out: &mut String, part: &DayPart, units: ResolvedUnits, with_probability: bool) {
+    out.push_str(&format_precip(
+        part.precip_mm,
+        units.precip,
+        UnitStyle::Compact,
+    ));
     if let Some(probability) = part.precip_prob_pct.filter(|_| with_probability) {
-        let _ = write!(text, " {probability}%");
+        let _ = write!(out, " {probability}%");
     }
-    text
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -731,37 +873,46 @@ fn part_tail(part: &DayPart, units: ResolvedUnits, with_probability: bool) -> St
 /// One section per day for terminals too narrow for columns: a blank line, the day heading, then
 /// one line per part. Same content, no horizontal joining.
 fn stacked(
+    table: &mut Table,
     days: &[DayForecast],
     ctx: &RenderContext<'_>,
     charset: Charset,
     depth: ColorDepth,
-) -> Vec<String> {
+) {
     // The characters of the stacked layout come from the renderer's charset; `ctx.term` only
     // describes the terminal, and `--format dumb` asks for ASCII even on a unicode one.
-    let mut lines = Vec::new();
+    let mut scratch = String::with_capacity(64);
     for day in days {
-        lines.push(String::new());
-        lines.push(ctx.i18n.format_day_heading(day.date, ctx.now.date_naive()));
+        table.blank();
+        let _ = write!(
+            table.line,
+            "{}",
+            ctx.i18n.format_day_heading(day.date, ctx.times.date)
+        );
+        table.flush();
         for part in &day.parts {
-            lines.push(stacked_part(part, ctx, charset, depth));
+            table.line.clear();
+            write_stacked_part(&mut table.line, part, ctx, charset, depth, &mut scratch);
+            table.flush();
         }
     }
-    lines
 }
 
 /// `  Morning │ \o/ │ +22°C (+23°C) │ ↗ 12km/h NE │ 0.0mm 56%`
-fn stacked_part(
+fn write_stacked_part(
+    out: &mut String,
     part: &DayPart,
     ctx: &RenderContext<'_>,
     charset: Charset,
     depth: ColorDepth,
-) -> String {
+    scratch: &mut String,
+) {
     let daytime = part.kind != DayPartKind::Night;
     let key = weather_key(part.weather.art_key(), daytime);
     let fg = art::art(key).map_or(FG_DEFAULT, |block| color::art_fg(block.style));
-    let glyph = pad_columns(art::one_line_art(key), GLYPH_W);
-    let label = pad_columns(&ctx.i18n.day_part(part.kind), LABEL_W);
-    let separator = format!(" {} ", vertical(charset));
+    let glyph = art::one_line_art(key);
+    let label = ctx.i18n.day_part(part.kind);
+    let separator = vertical(charset);
 
     // The degradation ladder of a narrow terminal. Apparent temperature, cardinal direction (the
     // arrow already names the sector), precipitation probability, the precipitation tail and then
@@ -769,7 +920,6 @@ fn stacked_part(
     // on the line — before the line is clipped at all. The two rungs that drop the tail and the
     // wind are what keep a width between `MIN_WIDTH` and a full line from silently truncating a
     // complete part.
-    let mut line = String::new();
     for (with_glyph, feels_like, cardinal, probability, with_tail, with_wind) in [
         (true, true, true, true, true, true),
         (true, true, true, false, true, true),
@@ -779,38 +929,54 @@ fn stacked_part(
         (false, false, false, false, false, true),
         (false, false, false, false, false, false),
     ] {
-        let temp = temp_metric(
+        out.clear();
+        out.push_str("  ");
+        out.push_str(&label);
+        write_spaces(out, LABEL_W.saturating_sub(display_width(&label)));
+        if with_glyph {
+            let _ = write!(out, " {separator} ");
+            scratch.clear();
+            scratch.push_str(glyph);
+            write_spaces(scratch, GLYPH_W.saturating_sub(display_width(glyph)));
+            color::write_paint(out, scratch, fg, depth);
+        }
+
+        scratch.clear();
+        write_temp_metric(
+            scratch,
             part.temp_c,
             part.feels_like_c.filter(|_| feels_like),
             ctx.units,
             METRICS_W,
             charset,
         );
-        let wind =
-            with_wind.then(|| wind_text(part.wind_kmh, part.wind_dir_deg, ctx, charset, cardinal));
-        let tail = with_tail.then(|| part_tail(part, ctx.units, probability));
+        let _ = write!(out, " {separator} ");
+        color::write_paint(out, scratch, color::temp_fg(part.temp_c), depth);
 
-        let mut text = format!("  {label}");
-        if with_glyph {
-            text.push_str(&separator);
-            text.push_str(&paint(&glyph, fg, depth));
+        if with_wind {
+            scratch.clear();
+            write_wind_text(
+                scratch,
+                part.wind_kmh,
+                part.wind_dir_deg,
+                ctx,
+                charset,
+                cardinal,
+            );
+            let _ = write!(out, " {separator} ");
+            color::write_paint(out, scratch, color::wind_fg(part.wind_kmh), depth);
         }
-        for (value, fg) in [
-            (Some(&temp), color::temp_fg(part.temp_c)),
-            (wind.as_ref(), color::wind_fg(part.wind_kmh)),
-            (tail.as_ref(), color::precip_fg(part.precip_mm)),
-        ] {
-            if let Some(value) = value {
-                text.push_str(&separator);
-                text.push_str(&paint(value, fg, depth));
-            }
+        if with_tail {
+            scratch.clear();
+            write_part_tail(scratch, part, ctx.units, probability);
+            let _ = write!(out, " {separator} ");
+            color::write_paint(out, scratch, color::precip_fg(part.precip_mm), depth);
         }
-        line = text;
-        if display_width(&line) <= ctx.width {
+
+        if display_width(out) <= ctx.width {
             break;
         }
     }
-    line
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -847,60 +1013,62 @@ const fn vertical(charset: Charset) -> char {
 }
 
 /// A border line: `┌───┬───┐`, `├───┼───┤` or `└───┴───┘`, each run `cell_w + 2 * PAD` wide.
-fn border(kind: Border, cells: usize, cell_w: usize, charset: Charset) -> String {
+fn write_border(out: &mut String, kind: Border, cells: usize, cell_w: usize, charset: Charset) {
     let (left, join, right) = border_glyphs(kind, charset);
     let run = match charset {
         Charset::Unicode => '\u{2500}',
         Charset::Ascii => '-',
     };
-    let mut text = String::new();
-    text.push(left);
+    out.reserve(cells * (cell_w + 2 * PAD + 1) + 1);
+    out.push(left);
     for index in 0..cells {
         for _ in 0..cell_w + 2 * PAD {
-            text.push(run);
+            out.push(run);
         }
-        text.push(if index + 1 == cells { right } else { join });
+        out.push(if index + 1 == cells { right } else { join });
     }
-    text
 }
 
 /// One screen row: `│`, then every cell padded to `cell_w` and surrounded by [`PAD`] spaces.
 ///
-/// The cells arrive borrowed and the row is written into one [`String`]; `fit` returns the cell
-/// borrowed too, so an untruncated cell — every cell of every committed layout — is copied once,
-/// into the row, instead of three times on its way there.
-fn cell_row(cells: &[&str], cell_w: usize, charset: Charset) -> String {
+/// The cells are the `row`-th line of each day text, read back out of it and fitted borrowed, so
+/// an untruncated cell — every cell of every committed layout — is copied once, into the row.
+fn write_cell_row(out: &mut String, days: &[String], row: usize, cell_w: usize, charset: Charset) {
     let bar = vertical(charset);
-    let mut text = String::with_capacity(cells.len() * (cell_w + 2 * PAD + 1) + 1);
-    for cell in cells {
-        let fitted = fit(cell, cell_w, charset);
-        text.push(bar);
-        for _ in 0..PAD {
-            text.push(' ');
-        }
-        text.push_str(&fitted);
-        for _ in 0..cell_w.saturating_sub(display_width(&fitted)) {
-            text.push(' ');
-        }
-        for _ in 0..PAD {
-            text.push(' ');
-        }
+    out.reserve(days.len() * (cell_w + 2 * PAD + 1) + 1);
+    for day in days {
+        out.push(bar);
+        write_spaces(out, PAD);
+        let fitted = fit(nth_line(day, row), cell_w, charset);
+        out.push_str(&fitted);
+        write_spaces(out, cell_w.saturating_sub(display_width(&fitted)));
+        write_spaces(out, PAD);
     }
-    text.push(bar);
-    text
+    out.push(bar);
 }
 
 /// The credits the place and data licences require, next to the data they describe.
-fn credits(report: &Report, ctx: &RenderContext<'_>) -> Vec<String> {
-    let mut lines = Vec::new();
-    if let Some(location) = attribution_line(&report.location) {
-        lines.push(location.to_owned());
+fn write_credits(table: &mut Table, report: &Report, ctx: &RenderContext<'_>) {
+    let location_credit = attribution_line(&report.location);
+    if location_credit.is_none()
+        && report.attribution.licence.is_none()
+        && ctx.alert_credits.is_empty()
+    {
+        return;
+    }
+    table.blank();
+    if let Some(location) = location_credit {
+        table.line.push_str(location);
+        table.flush();
     }
     if let Some(licence) = report.attribution.licence.as_deref() {
-        lines.push(format!("{} {licence}", ctx.i18n.text(&keys::LABEL_DATA)));
+        let _ = write!(table.line, "{} {licence}", ctx.i18n.text(&keys::LABEL_DATA));
+        table.flush();
     }
-    lines.extend(ctx.alert_credits.iter().cloned());
-    lines
+    for credit in ctx.alert_credits {
+        table.line.push_str(credit);
+        table.flush();
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -919,23 +1087,34 @@ fn weather_key(key: &str, daytime: bool) -> &str {
     }
 }
 
-/// The spaces that make `text` occupy `width` display columns, never negative.
-fn pad_columns(text: &str, width: usize) -> String {
-    let mut padded = text.to_owned();
-    padded.push_str(&" ".repeat(width.saturating_sub(display_width(text))));
-    padded
+/// Writes `count` spaces — the padding every cell and gap of the table is made of, without a
+/// temporary `String` per call.
+fn write_spaces(out: &mut String, count: usize) {
+    for _ in 0..count {
+        out.push(' ');
+    }
 }
 
-/// The spaces that separate an art line from the metrics of the same line.
-fn gap_after(art_line: &str) -> String {
-    " ".repeat(ART_W.saturating_sub(display_width(art_line)) + GAP)
+/// The spaces that make `text` occupy `width` display columns, never negative.
+fn pad_columns(text: &str, width: usize) -> String {
+    let mut padded = String::with_capacity(text.len() + width);
+    padded.push_str(text);
+    write_spaces(&mut padded, width.saturating_sub(display_width(text)));
+    padded
 }
 
 /// `text` in the charset's spelling.
 fn folded(text: &str, charset: Charset) -> String {
+    let mut folded = String::with_capacity(text.len());
+    write_folded(&mut folded, text, charset);
+    folded
+}
+
+/// Writes `text` in the charset's spelling into `out`.
+fn write_folded(out: &mut String, text: &str, charset: Charset) {
     match charset {
-        Charset::Ascii => fold_ascii(text),
-        Charset::Unicode => text.to_owned(),
+        Charset::Ascii => write_fold_ascii(out, text),
+        Charset::Unicode => out.push_str(text),
     }
 }
 
@@ -950,19 +1129,24 @@ pub(crate) fn fold_ascii(text: &str) -> String {
         return text.to_owned();
     }
     let mut folded = String::with_capacity(text.len());
+    write_fold_ascii(&mut folded, text);
+    folded
+}
+
+/// Writes the 7-bit spelling of `text` into `out`, with the rules of [`fold_ascii`].
+pub(crate) fn write_fold_ascii(out: &mut String, text: &str) {
     for character in text.chars() {
         match character {
             '\u{b0}' => {}
-            '\u{2014}' => folded.push_str("--"),
-            '\u{b7}' => folded.push('.'),
+            '\u{2014}' => out.push_str("--"),
+            '\u{b7}' => out.push('.'),
             // `μ` (micro sign) and `μ` (Greek mu) are both in use for μg/m³, and `³` has no ASCII
             // form either; the unit reads `ug/m3` on a dumb terminal.
-            '\u{b5}' | '\u{3bc}' => folded.push('u'),
-            '\u{b3}' => folded.push('3'),
-            other => folded.push(other),
+            '\u{b5}' | '\u{3bc}' => out.push('u'),
+            '\u{b3}' => out.push('3'),
+            other => out.push(other),
         }
     }
-    folded
 }
 
 /// The display width of a line: escape sequences take no columns.
@@ -1045,75 +1229,91 @@ pub(crate) fn fit(line: &str, width: usize, charset: Charset) -> Cow<'_, str> {
 /// `+22°C (+23°C)`, or just the temperature when the pair does not fit the column.
 ///
 /// Three-digit Fahrenheit readings are the reason the rule exists; dropping the apparent
-/// temperature keeps the number a reader came for.
-fn temp_metric(
+/// temperature keeps the number a reader came for. The caller's buffer is the scratch: it is
+/// cleared, filled with the pair, and shortened back to the single reading when the pair is too
+/// wide.
+fn write_temp_metric(
+    out: &mut String,
     temp_c: f32,
     feels_like_c: Option<f32>,
     units: ResolvedUnits,
     metrics_w: usize,
     charset: Charset,
-) -> String {
+) {
     // The ASCII table has no degree sign, and the column width has to be measured in the
     // characters that will really be printed — otherwise every ASCII cell is two columns short.
-    let temp = folded(&format_temp_signed(temp_c, units.temp), charset);
+    out.clear();
+    write_folded(out, &format_temp_signed(temp_c, units.temp), charset);
     if let Some(feels_like) = feels_like_c {
-        let pair = format!(
-            "{temp} ({})",
-            folded(&format_temp_signed(feels_like, units.temp), charset)
-        );
-        if display_width(&pair) <= metrics_w {
-            return pair;
+        let single = out.len();
+        out.push_str(" (");
+        write_folded(out, &format_temp_signed(feels_like, units.temp), charset);
+        out.push(')');
+        if display_width(out) <= metrics_w {
+            return;
         }
+        out.truncate(single);
     }
-    fit(&temp, metrics_w, charset).into_owned()
+    if display_width(out) > metrics_w {
+        let fitted = fit(out, metrics_w, charset).into_owned();
+        out.clear();
+        out.push_str(&fitted);
+    }
 }
 
 /// `↗ 12km/h NE`, or less of it when the column is narrow.
 ///
 /// The cardinal direction goes first — the arrow already names the sector — and only then is the
-/// text clipped, so a ten column cell still reads `↗ 12km/h` instead of `↗ 12km…`.
-fn wind_metric(
+/// text clipped, so a ten column cell still reads `↗ 12km/h` instead of `↗ 12km…`. The caller's
+/// buffer holds whichever candidate survives.
+fn write_wind_metric(
+    out: &mut String,
     kmh: f32,
     dir_deg: Option<u16>,
     ctx: &RenderContext<'_>,
     charset: Charset,
     metrics_w: usize,
-) -> String {
+) {
+    out.clear();
+    write_wind_text(out, kmh, dir_deg, ctx, charset, true);
+    if display_width(out) <= metrics_w {
+        return;
+    }
+    out.clear();
+    write_wind_text(out, kmh, dir_deg, ctx, charset, false);
+    if display_width(out) <= metrics_w {
+        return;
+    }
+    out.clear();
     let speed = format_wind(kmh, ctx.units.wind, UnitStyle::Compact);
-    let full = wind_text(kmh, dir_deg, ctx, charset, true);
-    if display_width(&full) <= metrics_w {
-        return full;
-    }
-    let short = wind_text(kmh, dir_deg, ctx, charset, false);
-    if display_width(&short) <= metrics_w {
-        return short;
-    }
-    fit(&speed, metrics_w, charset).into_owned()
+    out.push_str(&fit(&speed, metrics_w, charset));
 }
 
 /// `↗ 12km/h NE`, or `↗ 12km/h` when the caller has no room for the cardinal direction.
 ///
 /// The arrow comes from [`art::wind_arrow`] and follows the character set, while the point's name
 /// comes from the catalog: a dumb terminal draws an ASCII arrow where a UTF-8 one draws a glyph, and
-/// a Chinese run reads `东北风` where an English one reads `NE`.
-fn wind_text(
+/// a Chinese run reads `东北风` where an English one reads `NE`. `out` must be empty (or already
+/// hold a prefix the caller wants).
+fn write_wind_text(
+    out: &mut String,
     kmh: f32,
     dir_deg: Option<u16>,
     ctx: &RenderContext<'_>,
     charset: Charset,
     with_cardinal: bool,
-) -> String {
+) {
     let speed = format_wind(kmh, ctx.units.wind, UnitStyle::Compact);
     match dir_deg {
         Some(dir) => {
             let arrow = art::wind_arrow(dir, charset);
             if with_cardinal {
-                format!("{arrow} {speed} {}", ctx.i18n.direction(dir))
+                let _ = write!(out, "{arrow} {speed} {}", ctx.i18n.direction(dir));
             } else {
-                format!("{arrow} {speed}")
+                let _ = write!(out, "{arrow} {speed}");
             }
         }
-        None => speed,
+        None => out.push_str(&speed),
     }
 }
 
@@ -1130,7 +1330,7 @@ mod tests {
     use crate::i18n::{I18n, LanguageId, LanguageRequest};
     use crate::model::units::UnitSystem;
     use crate::model::{
-        Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
+        Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, LocalTimes, Location,
         LocationSource, Report,
     };
     use crate::render::{
@@ -1245,6 +1445,8 @@ mod tests {
     }
 
     fn context(i18n: &I18n, width: usize) -> RenderContext<'_> {
+        static TIMES: std::sync::LazyLock<LocalTimes> =
+            std::sync::LazyLock::new(|| LocalTimes::new(moment(12, 30), Tz::Asia__Shanghai));
         RenderContext {
             units: UnitSystem::Metric
                 .resolve(&UnitOverrides::default())
@@ -1252,8 +1454,7 @@ mod tests {
             color: ColorMode::Never,
             width,
             term: TermCaps::default(),
-            now: moment(12, 30),
-            tz: Tz::Asia__Shanghai,
+            times: TIMES.clone(),
             lang: LanguageId::EN_US,
             i18n,
             alert_credits: &[],

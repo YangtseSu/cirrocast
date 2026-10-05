@@ -37,13 +37,12 @@ pub mod plain;
 use std::collections::BTreeMap;
 use std::io::IsTerminal as _;
 
-use chrono::{DateTime, FixedOffset};
-use chrono_tz::Tz;
 use clap::ValueEnum;
 
 use crate::air::aqi::AqiIndex;
 use crate::error::{Error, Result};
 use crate::i18n::{I18n, LanguageId};
+use crate::model::LocalTimes;
 use crate::model::Report;
 use crate::model::units::ResolvedUnits;
 
@@ -377,10 +376,12 @@ fn terminal_width() -> Option<usize> {
 
 /// Everything a renderer may look at beyond the report itself.
 ///
-/// `now` and `tz` are injected rather than read from the clock inside a renderer, so a snapshot
-/// test cannot drift with the wall clock; `width` and `color` have already been resolved by
-/// [`resolve_width`] and [`resolve_color`], so a renderer never reads the environment.
-#[derive(Debug, Clone, Copy)]
+/// `times` is derived from the injected run clock and the location's zone rather than read from
+/// the system clock inside a renderer, so a snapshot test cannot drift; the local date, the day
+/// part and the clock spellings are computed once there instead of per rendered field. `width` and
+/// `color` have already been resolved by [`resolve_width`] and [`resolve_color`], so a renderer
+/// never reads the environment.
+#[derive(Debug, Clone)]
 pub struct RenderContext<'a> {
     /// The units to convert into.
     pub units: ResolvedUnits,
@@ -390,10 +391,8 @@ pub struct RenderContext<'a> {
     pub width: usize,
     /// Terminal capabilities.
     pub term: TermCaps,
-    /// The current instant, at the location's offset.
-    pub now: DateTime<FixedOffset>,
-    /// The location's time zone.
-    pub tz: Tz,
+    /// The location's clock: the run instant, its local date, day part and spellings.
+    pub times: LocalTimes,
     /// The language the report is rendered in.
     pub lang: LanguageId,
     /// The message catalog behind every label a renderer prints.
@@ -429,14 +428,20 @@ pub trait Renderer {
     /// [`render`]: Renderer::render
     /// [`slot_separator`]: Renderer::slot_separator
     fn render_slots(&self, slots: &[Slot<'_>]) -> Result<String> {
-        let mut blocks: Vec<String> = Vec::with_capacity(slots.len());
+        let separator = self.slot_separator();
+        let mut out = String::with_capacity(4096);
+        let mut first = true;
         for slot in slots {
+            if !first {
+                out.push_str(separator);
+            }
+            first = false;
             match (slot.report, slot.ctx.as_ref()) {
-                (Some(report), Some(ctx)) => blocks.push(self.render(report, ctx)?),
-                _ => blocks.push(slot.placeholder()),
+                (Some(report), Some(ctx)) => out.push_str(&self.render(report, ctx)?),
+                _ => out.push_str(&slot.placeholder()),
             }
         }
-        Ok(blocks.join(self.slot_separator()))
+        Ok(out)
     }
 
     /// What goes between two location blocks in [`render_slots`](Renderer::render_slots).
@@ -458,7 +463,7 @@ pub trait Renderer {
 ///
 /// Exactly one of `report` and `error` is set; `ctx` is set with `report` and carries that
 /// location's time zone, so a renderer never has to build a context itself.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Slot<'a> {
     /// The location argument as the user typed it (an alias keeps its `@name` spelling).
     pub query: &'a str,

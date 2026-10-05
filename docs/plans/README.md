@@ -279,9 +279,9 @@ pub trait Provider {
 ### Rendering contract (binding)
 
 ```rust
-pub struct RenderContext<'a> {  // built once in main, passed by reference
+pub struct RenderContext<'a> {  // built once per report, passed by reference
     pub units: ResolvedUnits, pub lang: LanguageId, pub color: ColorMode, pub width: usize,
-    pub term: TermCaps, pub now: DateTime<FixedOffset>, pub tz: chrono_tz::Tz, pub i18n: &'a I18n,
+    pub term: TermCaps, pub times: LocalTimes, pub i18n: &'a I18n,
 }
 pub trait Renderer {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String>;
@@ -298,7 +298,10 @@ summary.
 
 `units` is the *resolved* unit set (step 03's `UnitSystem::resolve`), `color` is already resolved
 (never `Auto`) and `width` already clamped, so a renderer never consults the environment; `term`
-is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_pref`).
+is the `TermCaps` step 07 describes (`is_tty`, `term`, `utf8`, `depth`, `color_pref`). `times` is
+step 21's `model::LocalTimes`: the run instant at the location's offset, its local date, the day
+part the hour falls in and the preformatted `HH:MM` / `+0800` / zone-name strings, derived once per
+report so that no renderer or template token converts a clock per field.
 
 * The `json` document carries a `capabilities` object (the registry row of the answering backend:
   `current`, `hourly`, `daily`, `alerts`, `max_days`, `requires_key`, `key_env`, `locations`), so a

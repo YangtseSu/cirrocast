@@ -50,7 +50,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use chrono::{DateTime, FixedOffset, Timelike as _};
+use chrono::{DateTime, FixedOffset};
 
 use crate::air::aqi::{AqiCategory, AqiIndex};
 use crate::error::{Error, Result};
@@ -815,10 +815,10 @@ struct Snapshot {
 }
 
 impl Snapshot {
-    /// Reads the values for `ctx.now` at the report's location.
+    /// Reads the values for `ctx.times` at the report's location.
     fn of(report: &Report, ctx: &RenderContext<'_>) -> Self {
         let mut snapshot = Self::default();
-        let today = today(report, ctx.now.date_naive());
+        let today = today(report, ctx.times.date);
 
         if let Some(day) = today {
             snapshot.sunrise = day.sunrise;
@@ -843,7 +843,7 @@ impl Snapshot {
         }
 
         if let Some(day) = today {
-            let kind = hour_part(ctx.now);
+            let kind = ctx.times.part;
             let part = &day.parts[kind.index()];
             snapshot.condition = Some(part.weather);
             snapshot.is_day = kind != crate::model::DayPartKind::Night;
@@ -871,17 +871,6 @@ pub(crate) fn today(report: &Report, date: chrono::NaiveDate) -> Option<&DayFore
         .iter()
         .find(|day| day.date == date)
         .or_else(|| report.days.first())
-}
-
-/// The day part a local hour falls in, matching the aggregation the providers use.
-pub(crate) fn hour_part(now: DateTime<FixedOffset>) -> crate::model::DayPartKind {
-    use crate::model::DayPartKind;
-    match now.hour() {
-        6..=11 => DayPartKind::Morning,
-        12..=17 => DayPartKind::Noon,
-        18..=23 => DayPartKind::Evening,
-        _ => DayPartKind::Night,
-    }
 }
 
 /// The dew point from temperature and relative humidity (the Magnus formula, the inverse of the
@@ -966,20 +955,20 @@ fn value(
         Token::UvBand => snapshot
             .uv_index
             .map_or_else(|| n_a(ctx), |uv| uv_band_value(uv, ctx)),
-        Token::Date => ctx.i18n.format_date(ctx.now.date_naive(), DateStyle::Iso),
-        Token::DateLong => ctx.i18n.format_date(ctx.now.date_naive(), DateStyle::Short),
-        Token::Time => ctx.now.format("%H:%M").to_string(),
-        Token::TzName => ctx.tz.name().to_owned(),
-        Token::TzOffset => ctx.now.format("%z").to_string(),
+        Token::Date => ctx.i18n.format_date(ctx.times.date, DateStyle::Iso),
+        Token::DateLong => ctx.i18n.format_date(ctx.times.date, DateStyle::Short),
+        Token::Time => ctx.times.clock.clone(),
+        Token::TzName => ctx.times.zone.clone(),
+        Token::TzOffset => ctx.times.offset.clone(),
         Token::Sunrise => snapshot.sunrise.map_or_else(|| n_a(ctx), clock_time),
         Token::Sunset => snapshot.sunset.map_or_else(|| n_a(ctx), clock_time),
         Token::Location => report.location.name.clone(),
         Token::Moon => {
-            let phase = crate::astro::phase_at(ctx.now);
+            let phase = crate::astro::phase_at(ctx.times.now);
             art::moon_glyph(phase, ctx.term.charset()).to_owned()
         }
         Token::MoonPhase => {
-            let phase = crate::astro::phase_at(ctx.now);
+            let phase = crate::astro::phase_at(ctx.times.now);
             ctx.i18n.moon_phase(phase).into_owned()
         }
         // Unlike every other token, an absent alert is the empty string, not `n/a`: a template is

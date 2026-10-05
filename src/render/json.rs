@@ -761,7 +761,7 @@ mod tests {
     use crate::i18n::{I18n, LanguageId, LanguageRequest};
     use crate::model::units::UnitSystem;
     use crate::model::{
-        Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, Location,
+        Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, LocalTimes, Location,
         LocationSource, Report,
     };
     use crate::render::{ColorMode, RenderContext, Renderer, TermCaps};
@@ -777,6 +777,10 @@ mod tests {
             .single()
             .expect("a valid local time")
     }
+
+    /// The fixture clock, derived once: every `json` test renders at this instant.
+    static TIMES: std::sync::LazyLock<LocalTimes> =
+        std::sync::LazyLock::new(|| LocalTimes::new(moment(12, 30), Tz::Asia__Shanghai));
 
     fn part(kind: DayPartKind, temp_c: f32, code: u8, visibility_km: Option<f32>) -> DayPart {
         DayPart {
@@ -863,8 +867,7 @@ mod tests {
             color: ColorMode::Never,
             width: 80,
             term: TermCaps::default(),
-            now: moment(12, 30),
-            tz: Tz::Asia__Shanghai,
+            times: TIMES.clone(),
             lang: LanguageId::EN_US,
             i18n: &i18n,
             alert_credits: &[],

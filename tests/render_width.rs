@@ -54,6 +54,7 @@ fn render_with(report: &Report, width: usize, format: Format, color: ColorMode) 
         },
         true,
     );
+    let times = common::fixture_times(report);
     let ctx = RenderContext {
         units: UnitSystem::Metric
             .resolve(&UnitOverrides::default())
@@ -61,8 +62,7 @@ fn render_with(report: &Report, width: usize, format: Format, color: ColorMode) 
         color,
         width,
         term: caps,
-        now: common::fixture_now(report),
-        tz: report.location.tz,
+        times: times.clone(),
         lang: i18n.lang(),
         i18n: &i18n,
         alert_credits: &[],

@@ -95,6 +95,7 @@ impl Live {
     /// The report as the CLI would print it.
     fn render(&self, report: &Report) -> String {
         let i18n = english();
+        let times = cirrocast::model::LocalTimes::new(Utc::now(), report.location.tz);
         let ctx = RenderContext {
             units: UnitSystem::Metric
                 .resolve(&self.config.units)
@@ -106,8 +107,7 @@ impl Live {
             i18n: &i18n,
             alert_credits: &[],
             aqi_index: cirrocast::air::aqi::AqiIndex::Us,
-            now: Utc::now().fixed_offset(),
-            tz: report.location.tz,
+            times: times.clone(),
         };
         renderer_for(Format::Plain, &ctx.term, None)
             .expect("plain exists")

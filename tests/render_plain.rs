@@ -51,12 +51,12 @@ fn render(report: &Report, units: UnitSystem) -> String {
         i18n: &i18n,
         alert_credits: &[],
         aqi_index: cirrocast::air::aqi::AqiIndex::Us,
-        now: Utc
-            .with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
-            .single()
-            .expect("a valid instant")
-            .fixed_offset(),
-        tz: report.location.tz,
+        times: cirrocast::model::LocalTimes::new(
+            Utc.with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
+                .single()
+                .expect("a valid instant"),
+            report.location.tz,
+        ),
     };
     Plain
         .render(report, &ctx)
@@ -167,12 +167,12 @@ fn the_width_does_not_change_the_output() {
         i18n: &i18n,
         alert_credits: &[],
         aqi_index: cirrocast::air::aqi::AqiIndex::Us,
-        now: Utc
-            .with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
-            .single()
-            .expect("a valid instant")
-            .fixed_offset(),
-        tz: report.location.tz,
+        times: cirrocast::model::LocalTimes::new(
+            Utc.with_ymd_and_hms(2026, 7, 15, 12, 0, 0)
+                .single()
+                .expect("a valid instant"),
+            report.location.tz,
+        ),
     };
     let narrow = Plain
         .render(&report, &context(20))

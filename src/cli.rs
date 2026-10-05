@@ -30,6 +30,7 @@ use crate::geo::{
 };
 use crate::http::{HttpClient, UreqTransport};
 use crate::i18n::{I18n, LanguageRequest};
+use crate::model::LocalTimes;
 use crate::model::Location;
 use crate::model::Severity;
 use crate::model::alert::AlertSource;
@@ -1210,8 +1211,7 @@ fn output_slots(
                 color: setup.color,
                 width: setup.width.columns,
                 term: setup.term,
-                now: now.with_timezone(&report.location.tz).fixed_offset(),
-                tz: report.location.tz,
+                times: LocalTimes::new(now, report.location.tz),
                 lang: setup.i18n.lang(),
                 i18n: &setup.i18n,
                 alert_credits: &credits[index],
@@ -1236,7 +1236,7 @@ fn output_slots(
             query: &target.text,
             report: results.get(index).and_then(|result| result.as_ref().ok()),
             error: results.get(index).and_then(|result| result.as_ref().err()),
-            ctx: contexts.get(index).copied().flatten(),
+            ctx: contexts.get(index).cloned().flatten(),
         })
         .collect();
 
@@ -1315,8 +1315,7 @@ fn output_report(
         color: setup.color,
         width: setup.width.columns,
         term: setup.term,
-        now: now.with_timezone(&report.location.tz).fixed_offset(),
-        tz: report.location.tz,
+        times: LocalTimes::new(now, report.location.tz),
         lang: setup.i18n.lang(),
         i18n: &setup.i18n,
         alert_credits,
