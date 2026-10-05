@@ -81,7 +81,7 @@ jobs:
           cargo llvm-lines --release --lib -p cirrocast | head -n 20 | tee target/bench/llvm-lines.txt
       # `always()` keeps last run's numbers available when the gate itself failed — that is exactly
       # the run whose `raw.json` the reviewer needs.
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() && !inputs.record_baseline }}
         with:
           name: perf-measurements
@@ -90,7 +90,7 @@ jobs:
             target/bench/*.json
             target/bench/*.txt
           if-no-files-found: warn
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ inputs.record_baseline }}
         with:
           name: perf-baseline
