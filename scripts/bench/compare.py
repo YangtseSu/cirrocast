@@ -6,9 +6,10 @@
 Prints one row per metric with its budget, the baseline, the fresh median and the delta, and exits
 1 when a gated metric fails. A metric fails when
 
-* its fresh median exceeds the baseline by more than [`TOLERANCE`] (the ratio gate: shared CI
-  runners fluctuate more than absolute numbers can absorb, so the committed baseline is the
-  reference and the allowance is the noise floor), or
+* its fresh median exceeds the baseline by more than [`TOLERANCE`] **and** the delta reaches the
+  metric's absolute floor (the ratio gate: shared CI runners fluctuate more than absolute numbers
+  can absorb, and inside the timer's own resolution — a 2 ms median moves by ±1 ms, ±50 % — a ratio
+  alone measures noise; the floor keeps the test on costs a user can feel), or
 * its fresh median exceeds the hard budget **and** the baseline was inside that budget — a budget
   the baseline already misses is not a regression, it is a budget to re-derive, and it is reported
   as such instead of failing every run.
@@ -46,6 +47,27 @@ BUDGETS = {
 
 # The ratio a fresh median may exceed the baseline by before it counts as a regression.
 TOLERANCE = 1.20
+
+# ... and the absolute delta it must also reach. A ratio alone is meaningless inside the timer's own
+# resolution: a 2 ms median on a shared runner moves by a whole millisecond between runs (±50 %),
+# while a regression a user can feel is milliseconds, mebibytes or megabytes. A metric therefore
+# fails the ratio test only when it clears both `TOLERANCE` and this floor. The size and count
+# metrics carry their floors too, so the rule is readable per metric rather than per unit, and a
+# metric without a row falls back to the unit's floor (`ms` → [`DEFAULT_MS_FLOOR`], everything else
+# ratio-only) instead of silently inheriting a timing floor.
+FLOORS = {
+    "version_ms": 5.0,
+    "help_ms": 5.0,
+    "offline_plain_ms": 5.0,
+    "warm_plain_ms": 5.0,
+    "version_rss_kib": 1024.0,
+    "plain_rss_kib": 1024.0,
+    "binary_bytes": 512.0 * 1024.0,
+    "help_lines": 5.0,
+}
+
+# The floor a timing metric without its own row falls back to, in milliseconds.
+DEFAULT_MS_FLOOR = 5.0
 
 # Metrics whose value is a plain number rather than a distribution; the baseline's own shape is
 # `{"median": …}` for every metric, so the only difference is how the row prints.
@@ -106,10 +128,16 @@ def main() -> int:
                 failed = True
         else:
             ratio = fresh / base if base else 1.0
+            delta_value = fresh - base
+            floor = FLOORS.get(
+                name, DEFAULT_MS_FLOOR if UNITS.get(name) == "ms" else 0.0
+            )
             delta = f"{(ratio - 1) * 100:+.1f}%"
-            if ratio > TOLERANCE:
+            if ratio > TOLERANCE and delta_value >= floor:
                 verdict = f"FAIL +{(ratio - 1) * 100:.0f}% vs baseline"
                 failed = True
+            elif ratio > TOLERANCE:
+                verdict = f"ok (under the {floor:,.0f} {unit} floor)".strip()
             elif budget is not None and fresh > budget and base <= budget:
                 verdict = "FAIL over budget"
                 failed = True

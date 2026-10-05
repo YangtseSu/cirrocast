@@ -3,60 +3,60 @@
     "conditions": "CachyOS box, direct fibre (no proxy); Beijing via open-meteo, alerts disabled as in the bench config",
     "median_ms": 845.0
   },
-  "commit": "c0f1b5b",
+  "commit": "126396f",
   "machine": {
-    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27) (Arch Linux rust 1:1.99.0-1)",
-    "cores": "12",
-    "cpu": "AMD Ryzen 5 3600X 6-Core Processor",
-    "hyperfine": "hyperfine 1.20.0",
-    "kernel": "7.2.8-1-cachyos",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "cores": "4",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "hyperfine": "hyperfine 1.19.0",
+    "kernel": "7.0.0-1012-azure",
     "os": "Linux x86_64",
-    "python": "3.14.8",
-    "rss_method": "hyperfine-wait4",
-    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28) (Arch Linux rust 1:1.99.0-1)"
+    "python": "3.14.4",
+    "rss_method": "gnu-time",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)"
   },
   "metrics": {
     "binary_bytes": {
-      "median": 15057960.0,
+      "median": 15018608.0,
       "unit": "B"
     },
     "help_lines": {
-      "median": 198.0,
+      "median": 199.0,
       "unit": "lines"
     },
     "help_ms": {
-      "max": 2.620959,
-      "median": 2.336641,
-      "min": 2.232225,
+      "max": 2.45158,
+      "median": 2.3101205000000005,
+      "min": 2.219145,
       "runs": 30,
       "unit": "ms"
     },
     "offline_plain_ms": {
-      "max": 52.481537,
-      "median": 51.35490050000001,
-      "min": 47.180690000000006,
+      "max": 51.128829,
+      "median": 48.560584500000004,
+      "min": 48.25389,
       "runs": 30,
       "unit": "ms"
     },
     "plain_rss_kib": {
-      "median": 26228.0,
+      "median": 24364.0,
       "unit": "KiB"
     },
     "version_ms": {
-      "max": 2.3739860000000004,
-      "median": 2.028967,
-      "min": 1.9649910000000002,
+      "max": 2.226015,
+      "median": 2.1113850000000003,
+      "min": 2.037054,
       "runs": 30,
       "unit": "ms"
     },
     "version_rss_kib": {
-      "median": 6604.0,
+      "median": 6316.0,
       "unit": "KiB"
     },
     "warm_plain_ms": {
-      "max": 47.921918,
-      "median": 47.3911615,
-      "min": 46.82725500000001,
+      "max": 49.576684,
+      "median": 48.407878000000004,
+      "min": 48.134793,
       "runs": 30,
       "unit": "ms"
     }

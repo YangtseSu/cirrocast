@@ -280,3 +280,18 @@ into `docs/performance.md`.
   `ubuntu-26.04` on stable — the project tracks stable, `rust-version` moves with the toolchain
   (now `1.99`) and carries no floor below it, and macOS is covered where it ships, by `release.yml`'s
   `cargo test --release` on `macos-26`. Per-push runner allocations: 16 → 8.
+- 2026-10-06 — first manual dispatch of `perf.yml` on pushed `main`, and it did what the docs say a
+  baseline must not do: the compare step failed because the committed baseline was the dev box's and
+  the runner measured some 15 % slower that day — `--version` 3 ms (+26.5 %), `--help` 3 ms
+  (+20.1 %), `--offline` 57 ms (+10.3 %), warm-cache 56 ms (+19.1 %), RSS 6 % *lower*. Both failures
+  were one millisecond of timer resolution, not a regression, so `scripts/bench/compare.py` now
+  requires an absolute floor beside the ratio (`FLOORS`: 5 ms timing, 1 MiB RSS, 0.5 MiB binary,
+  5 lines `--help`; the docstring and this doc's gate section explain why), and the synthetic cases
+  (runner-like spread → ok, +7 ms startup → FAIL, +21 % offline → FAIL) were run before the fix was
+  committed.
+- 2026-10-06 — the baseline was then re-recorded from the runner class (`record_baseline` dispatch,
+  `perf/baseline.json` at the commit above): `--version` 2.11 ms, `--help` 2.31 ms / 199 lines,
+  `--offline` 48.6 ms, warm-cache 48.4 ms, RSS 6,316 / 24,364 KiB, binary 15,018,608 B, machine
+  `AMD EPYC 9V74` / `ubuntu-26.04` / hyperfine 1.19.0 / `gnu-time` RSS. The dev-box figures stay in
+  `docs/performance.md` as the recording the budgets were re-derived from, and the doc now documents
+  both reference machines.

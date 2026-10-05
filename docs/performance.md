@@ -68,9 +68,21 @@ built and reverted to obtain the number):
 Feature-gating the remaining dependency defaults was considered and rejected: every one of them
 either is required at runtime (TLS, gzip, time zones) or saves less than 0.1 % of the binary.
 
-## Reference machine
+## Reference machines
 
-The committed baseline was recorded on 2026-10-05 on the maintainer's machine:
+`perf/baseline.json` — the file the gate compares against — is recorded from the machine class the
+gate runs on, GitHub's `ubuntu-26.04` runner:
+
+| | |
+|---|---|
+| CPU | AMD EPYC 9V74 (4 vCPU) |
+| OS | Ubuntu 26.04, kernel `7.0.0-1012-azure` |
+| Toolchain | rustc/cargo 1.99.0 |
+| Harness | hyperfine 1.19.0, Python 3.14.4 |
+| RSS method | `gnu-time` (`/usr/bin/time -v`) |
+
+The budgets themselves, and the harness, come from the maintainer's machine, where the first
+baseline was also recorded (2026-10-05):
 
 | | |
 |---|---|
@@ -81,13 +93,14 @@ The committed baseline was recorded on 2026-10-05 on the maintainer's machine:
 | Harness | hyperfine 1.20.0, Python 3.14.8 |
 | RSS method | `hyperfine-wait4` (GNU time is not installed) |
 
-`perf/baseline.json`'s `machine` object carries the same spec, so a baseline is never detached
-from the machine it describes. The gate compares a runner's fresh medians against it with the 20 %
-ratio allowance; if the runner class is materially slower, the baseline is re-recorded *from the
-runner* — dispatch `.github/workflows/perf.yml` with `record_baseline` and commit the uploaded file
-— because a baseline must come from the machine class the gate runs on, and re-recording is a
-commit, not a side effect. The workflow is dispatch-only: a budget run belongs to a release
-preparation or a dependency change, not to every push.
+`perf/baseline.json`'s `machine` object carries the spec of whichever machine recorded it, so a
+baseline is never detached from the machine it describes. The gate compares a runner's fresh medians
+against it with the 20 % ratio allowance and the floors above; when the runner class or its typical
+numbers change, the baseline is re-recorded *from the runner* — dispatch
+`.github/workflows/perf.yml` with `record_baseline` and commit the uploaded file — because a
+baseline must come from the machine class the gate runs on, and re-recording is a commit, not a side
+effect. The workflow is dispatch-only: a budget run belongs to a release preparation or a
+dependency change, not to every push.
 
 ## Methodology
 
@@ -121,7 +134,7 @@ document per FPAS area); that figure is informational and is not a budget.
 
 ## The budget table
 
-| Metric | Budget | Baseline (2026-10-05) | Notes |
+| Metric | Budget | Measured (dev box, 2026-10-05) | Notes |
 |---|---|---|---|
 | `--version` | 20 ms | **2.03 ms** | startup: no runtime, no table |
 | `--help` | < 200 lines | **198 lines** | clap wraps to the width; the test pins `COLUMNS=100` |
@@ -131,6 +144,12 @@ document per FPAS area); that figure is informational and is not a budget.
 | RSS, cached run | 32 MiB (re-derived) | **25.6 MiB** | the decoded name index is ~19 MiB |
 | binary | 17 MiB (re-derived) | **14.36 MiB** | see the re-derivation below |
 | cold run | 1.5 s, not gated | **845 ms** | link-dependent, manual, recorded with its conditions |
+
+The table's third column is the maintainer's recording, which the budgets were re-derived from. The
+committed `perf/baseline.json` is the runner recording that followed the first manual dispatch
+(2026-10-05): `--version` 2.11 ms, `--help` 2.31 ms / 199 lines, a cached `--offline` run 48.6 ms, a
+warm-cache run 48.4 ms, RSS 6,316 KiB (`--version`) and 24,364 KiB (cached), binary 15,018,608 B —
+within a few per cent of the dev box, so no budget moved.
 
 ### Budget re-derivation
 
@@ -150,8 +169,12 @@ rejected: it trades a user-visible feature (offline city search, step 18) for a 
 ## The gate, and the proof that it bites
 
 `scripts/bench/compare.py` exits 1 when a fresh median exceeds the committed baseline by more than
-20 %, or when it exceeds a hard budget the baseline was inside. A budget the baseline already misses
-is printed as "budget re-derivation due" rather than failing every run — that state means the budget
+20 % **and** the delta reaches the metric's absolute floor (5 ms for a timing metric, 1 MiB for RSS,
+0.5 MiB for the binary, 5 lines for `--help`), or when it exceeds a hard budget the baseline was
+inside. The floor is there because inside the timer's own resolution a ratio measures noise: the
+2 ms `--version` median moves by a whole millisecond between machines and runs, ±50 %, while a
+regression a user can feel is milliseconds and mebibytes. A budget the baseline already misses is
+printed as "budget re-derivation due" rather than failing every run — that state means the budget
 needs review, not that the run regressed.
 
 The gate was verified against a deliberately injected regression (2026-10-05): a 300 ms sleep on
@@ -175,6 +198,15 @@ exit=1
 
 The sleep was then removed, the binary rebuilt, and the same two commands printed `no regression:
 every gated metric is inside its budget and the baseline` with exit 0.
+
+The first manual dispatch of `perf.yml` produced the evidence for the floor and for the runner
+baseline. Against the dev-box baseline the same commit measured `--version` 3 ms (+26.5 %),
+`--help` 3 ms (+20.1 %), `--offline` 57 ms (+10.3 %) and warm-cache 56 ms (+19.1 %), while the RSS
+numbers came in *lower* by 6 % — a run where the whole machine was some 15 % slower, and where the
+two failures were one millisecond of timer resolution, not a regression. Minutes later, re-recording
+on the same runner class (the `record_baseline` dispatch) measured `--version` 2.11 ms and
+`--offline` 48.6 ms: the spread between two runner runs is larger than the ratio the gate was
+holding, which is what the absolute floors and the runner-recorded baseline are for.
 
 ## Dependency weight
 
