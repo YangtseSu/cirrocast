@@ -288,3 +288,19 @@ path = "tests/fixtures/alerts/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+# Recorded NWS forecast API payloads (api.weather.gov, the `points` lookup, the hourly series, the
+# daily periods and the out-of-coverage 404 body). NOAA/NWS is US government material and therefore
+# public domain, so these carry the same `LicenseRef` as the aviationweather.gov recordings.
+# `edge_hourly.json` is hand-authored to the same schema for the Fahrenheit conversion, wind-range
+# and null-value traps, so it is carved out below as first-party.
+[[annotations]]
+path = "tests/fixtures/nws/**"
+precedence = "override"
+SPDX-FileCopyrightText = "NOAA/NWS (api.weather.gov)"
+SPDX-License-Identifier = "LicenseRef-US-Government-Public-Domain"
+
+[[annotations]]
+path = "tests/fixtures/nws/edge_hourly.json"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
