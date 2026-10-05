@@ -126,6 +126,16 @@ precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# Recorded Open-Meteo archive (historical weather API) responses: the reanalysis is ERA5/
+# ERA5-Land/IFS, distributed by Open-Meteo under CC BY 4.0, so the fixture keeps the upstream
+# licence and the provider prints the matching credit line. The body is verbatim, requested with the
+# provider's own parameter list over the archive endpoint.
+[[annotations]]
+path = "tests/fixtures/archive/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com (ERA5/Copernicus reanalysis)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
 # The cache fixture step 22's `status` probe and `contrib/statusbar/verify.sh` read offline: a real
 # cache envelope (`CacheEntry`) around the recorded Beijing forecast body above, so it carries that
 # payload's upstream licence rather than the GPL rule for first-party fixtures. The `fetched_at`
