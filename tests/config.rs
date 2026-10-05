@@ -446,8 +446,8 @@ fn validate_rejects_the_documented_impossible_values() {
             "location.default:",
         ),
         (
-            "[render]\nwidth = 12\n",
-            "render.width: 12 is not 0 or within 40..=500",
+            "[render]\nwidth = 501\n",
+            "render.width: 501 is not 0 or within 1..=500",
         ),
         (
             "[cache]\nweather_ttl_secs = 0\n",

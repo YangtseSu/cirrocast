@@ -140,7 +140,7 @@ expression: "render(&report, UnitSystem::Metric)"
   "attribution": {
     "provider": "open-meteo",
     "url": "https://api.open-meteo.com/v1/forecast",
-    "notice": "Open-Meteo.com (CC BY 4.0)",
+    "notice": "Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/",
     "location_notice": "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
     "retrieved_at": "2026-09-30T04:11:00Z"
   },

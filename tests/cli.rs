@@ -5,7 +5,6 @@
 
 mod common;
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 
 /// Every provider id the registry knows, in `provider list` order.
@@ -20,10 +19,6 @@ const PROVIDER_IDS: [&str; 8] = [
     "metar",
 ];
 
-fn cirrocast() -> Command {
-    Command::cargo_bin("cirrocast").expect("the cirrocast binary is built by cargo test")
-}
-
 /// The table row whose first column is `id`.
 fn row<'a>(table: &'a str, id: &str) -> &'a str {
     table
@@ -34,7 +29,9 @@ fn row<'a>(table: &'a str, id: &str) -> &'a str {
 
 #[test]
 fn version_follows_the_scripting_contract() {
-    cirrocast()
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
         .arg("--version")
         .assert()
         .success()
@@ -46,7 +43,8 @@ fn version_follows_the_scripting_contract() {
 
 #[test]
 fn help_exits_successfully() {
-    cirrocast().arg("--help").assert().success().stdout(
+    let sandbox = common::Sandbox::new();
+    sandbox.cirrocast().arg("--help").assert().success().stdout(
         predicate::str::contains("Usage: cirrocast")
             .and(predicate::str::contains("provider"))
             .and(predicate::str::contains("config")),
@@ -58,7 +56,9 @@ fn help_stays_inside_the_line_budget() {
     // Step 21's budget is "`--help` under 200 lines". The count depends on how clap wraps the
     // epilogue, and clap reads `COLUMNS` even when stdout is a pipe, so the width is pinned here
     // rather than inherited from whoever runs the tests.
-    let assert = cirrocast()
+    let sandbox = common::Sandbox::new();
+    let assert = sandbox
+        .cirrocast()
         .env("COLUMNS", "100")
         .arg("--help")
         .assert()
@@ -73,7 +73,12 @@ fn help_stays_inside_the_line_budget() {
 
 #[test]
 fn provider_list_shows_every_provider_and_its_key_requirement() {
-    let assert = cirrocast().args(["provider", "list"]).assert().success();
+    let sandbox = common::Sandbox::new();
+    let assert = sandbox
+        .cirrocast()
+        .args(["provider", "list"])
+        .assert()
+        .success();
     let stdout =
         String::from_utf8(assert.get_output().stdout.clone()).expect("stdout should be UTF-8");
 
@@ -102,7 +107,9 @@ fn provider_list_shows_every_provider_and_its_key_requirement() {
 
 #[test]
 fn provider_info_rejects_an_unknown_id_as_a_usage_error() {
-    cirrocast()
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
         .args(["provider", "info", "nope"])
         .assert()
         .code(2)
@@ -114,17 +121,15 @@ fn provider_info_rejects_an_unknown_id_as_a_usage_error() {
 
 #[test]
 fn config_path_prints_the_xdg_config_file() {
-    let config_home = tempfile::tempdir().expect("tempdir");
-
-    cirrocast()
-        .env("XDG_CONFIG_HOME", config_home.path())
-        .env("XDG_CONFIG_DIRS", config_home.path().join("system"))
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
         .args(["config", "path"])
         .assert()
         .success()
         .stdout(predicate::eq(format!(
             "{}\n",
-            config_home.path().join("cirrocast/config.toml").display()
+            sandbox.config_file().display()
         )));
 }
 
@@ -298,7 +303,7 @@ fn cache_stat_and_clean_report_an_empty_cache() {
         .assert()
         .success()
         .stdout(predicate::eq(
-            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\nstation      0 entries       0 B\nalerts       0 entries       0 B\n",
+            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\nstation      0 entries       0 B\nalerts       0 entries       0 B\nratelimit    0 entries       0 B\ngeo          0 entries       0 B\n",
         ));
 
     sandbox
@@ -346,11 +351,6 @@ fn cache_mode_flags_are_mutually_exclusive() {
 /// is the one a fetched report produces.
 #[test]
 fn a_coordinate_query_renders_a_report_from_the_cache() {
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
-
     let sandbox = common::Sandbox::new();
     let body = std::fs::read_to_string(common::fixture_path(
         "open_meteo/forecast_beijing_2026-07-15.json",
@@ -358,18 +358,17 @@ fn a_coordinate_query_renders_a_report_from_the_cache() {
     .expect("the fixture is readable");
 
     // The key the CLI computes for `@39.9042,116.4074 --days 3`: the location is coordinates, so
-    // its zone is still UTC when the key is built and `local_today` is today's UTC date.
-    let today = chrono::Utc::now().date_naive();
-    let key = CacheKey::weather("open-meteo", 39.9042, 116.4074, 3, today);
-    let cache = Cache::with_root(
-        sandbox.cache_dir(),
-        CacheMode::Normal,
-        Arc::new(SystemClock),
-        0,
+    // its zone is still UTC when the key is built and `local_today` is today's UTC date. The seed
+    // covers the date on either side of local midnight so the pair cannot race the clock.
+    common::seed_weather(
+        &sandbox,
+        "open-meteo",
+        39.9042,
+        116.4074,
+        3,
+        chrono_tz::Tz::UTC,
+        &body,
     );
-    cache
-        .write(&key, 200, &body, Duration::from_secs(600))
-        .expect("the cache entry is written");
 
     let assert = sandbox
         .cirrocast()
@@ -400,7 +399,7 @@ fn a_coordinate_query_renders_a_report_from_the_cache() {
         assert!(stdout.contains(label), "`{label}` missing from:\n{stdout}");
     }
     assert!(
-        stdout.contains("Data: Open-Meteo.com (CC BY 4.0)"),
+        stdout.contains("Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/"),
         "{stdout}"
     );
     assert!(
@@ -459,4 +458,21 @@ fn an_unknown_format_is_a_usage_error() {
                     "presets: default, short, minimal, full",
                 )),
         );
+}
+
+/// A build without the bundled city table refuses `location update-data` with a message naming the
+/// missing feature, rather than failing to compile or silently doing nothing. It only exists in the
+/// `--no-default-features` build, which the dedicated CI job runs (review §3.14 / nit 13).
+#[cfg(not(feature = "offline-geo"))]
+#[test]
+fn a_build_without_the_city_table_refuses_update_data() {
+    let sandbox = common::Sandbox::new();
+    sandbox
+        .cirrocast()
+        .args(["location", "update-data"])
+        .assert()
+        .code(4)
+        .stderr(predicate::str::contains(
+            "this build has no offline city table (the `offline-geo` feature is off); nothing to install",
+        ));
 }

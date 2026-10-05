@@ -101,17 +101,13 @@ fn a_guarded_offline_run_works_without_any_external_network() {
         &fs::read_to_string(fixture_path("geo/open_meteo_geocode_beijing.json"))
             .expect("the geocode fixture is readable"),
     );
-    seed(
+    common::seed_weather(
         &sandbox,
-        &CacheKey::weather(
-            "open-meteo",
-            39.9075,
-            116.39723,
-            3,
-            Utc::now()
-                .with_timezone(&chrono_tz::Tz::Asia__Shanghai)
-                .date_naive(),
-        ),
+        "open-meteo",
+        39.9075,
+        116.39723,
+        3,
+        chrono_tz::Tz::Asia__Shanghai,
         &fs::read_to_string(fixture_path("open_meteo/forecast_beijing_2026-07-15.json"))
             .expect("the forecast fixture is readable"),
     );

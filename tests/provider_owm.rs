@@ -87,12 +87,12 @@ fn the_current_block_comes_from_the_recorded_response() {
     );
     assert_eq!(current.temp_c, 15.92);
     assert_eq!(current.feels_like_c, Some(13.96));
-    assert_eq!(current.humidity_pct, 15);
+    assert_eq!(current.humidity_pct, Some(15));
     assert_eq!(current.pressure_hpa, 1022.0);
-    assert_eq!(current.cloud_cover_pct, 0);
+    assert_eq!(current.cloud_cover_pct, Some(0));
     // `units=metric` serves m/s; the model is km/h.
     assert_eq!(current.wind_kmh, 5.41 * 3.6);
-    assert_eq!(current.wind_dir_deg, 309);
+    assert_eq!(current.wind_dir_deg, Some(309));
     assert_eq!(current.wind_gust_kmh, Some(10.16 * 3.6));
     assert_eq!(current.visibility_km, Some(10.0));
     assert_eq!(current.weather, Condition::from_u8(0));

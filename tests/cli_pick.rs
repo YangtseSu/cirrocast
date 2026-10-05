@@ -114,7 +114,7 @@ fn pick_selects_the_second_candidate_end_to_end() {
 }
 
 #[test]
-fn quiet_keeps_the_prompt_but_silences_the_notes() {
+fn quiet_keeps_the_prompt_and_the_selection_echo_but_silences_the_notes() {
     let sandbox = sandbox(&[1], "");
     let assert = run(&sandbox)
         .args(["Beijing", "--pick", "-q", "-f", "plain", "--offline"])
@@ -126,7 +126,15 @@ fn quiet_keeps_the_prompt_but_silences_the_notes() {
         err.contains("choose a location [1-3, Enter=1, q=quit]: "),
         "{err}"
     );
-    assert!(!err.contains("selected: "), "{err}");
+    // The selection echo is the reproducibility affordance for a prompted choice: it is printed
+    // unconditionally, so `-q` keeps it.
+    assert!(
+        err.contains(
+            "selected: Beijing, Shanxi, China — use @35.20917,110.73278 to skip the prompt"
+        ),
+        "{err}"
+    );
+    // The commentary note is still silenced.
     assert!(!err.contains("candidates for `Beijing`"), "{err}");
 }
 

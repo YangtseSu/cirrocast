@@ -15,6 +15,14 @@
 
 name: CI
 
+# Every job here only reads the repository: no step writes a ref, an issue or a release artifact
+# (the perf job uploads to the workflow's own run, which the token's default scope also allows from
+# a read-only token). Declaring the scope at the top keeps a `pull_request` run of contributor test
+# code — and the third-party actions it runs — off the repository's default token scope instead of
+# inheriting it implicitly. `release.yml` sets the same block.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -83,6 +91,45 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo test --workspace --locked
 
+  build-no-default-features:
+    name: cargo build --no-default-features (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-26]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # The reduced build is a supported configuration (review §3.14 / nit 13), not a by-product:
+      # without `offline-geo` there is no bundled city table, so `location update-data` and the
+      # table-backed search paths must still compile and fail with their documented message instead
+      # of a `#[cfg]`-driven compile error or a silent wrong answer.
+      - run: cargo build --workspace --no-default-features --locked
+
+  test-no-default-features:
+    name: cargo test --no-default-features (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-26]
+    env:
+      CIRROCAST_FORBID_NETWORK: "1"
+      INSTA_UPDATE: "no"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # `tests/offline_geo.rs` and `tests/offline_lazy.rs` compile to nothing in this build (their
+      # file-level `#![cfg(feature = "offline-geo")]`); everything else runs unchanged.
+      - run: cargo test --workspace --no-default-features --locked
+
   package:
     name: cargo package (dry-run publish)
     runs-on: ubuntu-26.04
@@ -108,21 +155,113 @@ jobs:
       # The render layer must not reach into the transport, the cache or the provider registry:
       # the renderers shape their output from what the report carries (step 12's render-path audit).
       #
-      # The pattern is deliberately wider than an import: a grouped `use crate::{cache, provider}`
-      # and a bare body path `crate::cache::Cache::new()` are both dependency edges, so both are
-      # caught along with `crate::http`, `crate::provider`, `crate::cache` and the `super::` forms.
-      # Comment lines (doc links such as `crate::provider::Capabilities` inside a doc comment) are
-      # stripped first: a rustdoc link is documentation, not a code dependency, and would otherwise
-      # fail the gate on a model doc comment.
+      # A line-based grep is defeatable by ordinary Rust: `use crate::{\n cache::Cache, …}` and
+      # `crate :: cache::Cache` (spaces around the path separator) both pass one. This step is a
+      # small token-aware scan instead. It first blanks comment and string-literal text (so a
+      # rustdoc link such as `crate::provider::Capabilities`, or an error message that merely names
+      # a module, is documentation rather than a dependency) while keeping every byte offset, then
+      # looks for:
+      #   * a `crate`/`super` path segment naming `http`, `provider` or `cache` — whatever the
+      #     spacing around `::`, so `crate :: cache` is one path;
+      #   * the names inside a grouped import, whose braces are matched by balance so a nested group
+      #     (`crate::{model::{…}, cache}`) cannot hide one.
+      # It needs nothing but the interpreter the runner already ships.
       - name: no render/model dependency on http, provider or cache
         run: |
-          hits=$(grep -rnE 'crate::(http|provider|cache)|crate::\{[^}]*(http|provider|cache)|super::(http|provider|cache)' src/render src/model \
-            | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|/\*)' || true)
-          if [ -n "$hits" ]; then
-            printf '%s\n' "$hits"
-            echo "::error::src/render and src/model must not reference http, provider or cache"
-            exit 1
-          fi
+          python3 - <<'PY'
+          import pathlib, re, sys
+
+          ROOTS = ("src/render", "src/model")
+
+
+          def blanked(src):
+              """Comment and string-literal text replaced by spaces, offsets and newlines kept."""
+              out = list(src)
+              n = len(src)
+
+              def blank(a, b):
+                  for k in range(a, b):
+                      if out[k] != "\n":
+                          out[k] = " "
+
+              i = 0
+              while i < n:
+                  c = src[i]
+                  if c == "/" and i + 1 < n and src[i + 1] == "/":
+                      j = src.find("\n", i)
+                      j = n if j == -1 else j
+                      blank(i, j)
+                      i = j
+                  elif c == "/" and i + 1 < n and src[i + 1] == "*":
+                      depth, j = 0, i
+                      while j < n:
+                          if src.startswith("/*", j):
+                              depth += 1
+                              j += 2
+                          elif src.startswith("*/", j):
+                              depth -= 1
+                              j += 2
+                              if depth == 0:
+                                  break
+                          else:
+                              j += 1
+                      blank(i, j)
+                      i = j
+                  elif c == '"':
+                      j = i + 1
+                      while j < n:
+                          if src[j] == "\\":
+                              j += 2
+                              continue
+                          if src[j] == '"':
+                              j += 1
+                              break
+                          j += 1
+                      blank(i, j)
+                      i = j
+                  else:
+                      i += 1
+              return "".join(out)
+
+
+          PATH = re.compile(
+              r"(?<![A-Za-z0-9_])(?:crate|super)\s*::\s*(http|provider|cache)(?![A-Za-z0-9_])"
+          )
+          GROUP = re.compile(r"(?<![A-Za-z0-9_])(?:crate|super)\s*::\s*\{")
+          NAME = re.compile(r"(?<![A-Za-z0-9_])(http|provider|cache)(?![A-Za-z0-9_])")
+
+
+          def offences(text):
+              hits = []
+              for match in PATH.finditer(text):
+                  hits.append(match.start(1))
+              for match in GROUP.finditer(text):
+                  depth, j = 0, match.end() - 1
+                  while j < len(text):
+                      if text[j] == "{":
+                          depth += 1
+                      elif text[j] == "}":
+                          depth -= 1
+                          if depth == 0:
+                              break
+                      j += 1
+                  for name in NAME.finditer(text, match.end(), j):
+                      hits.append(name.start(1))
+              return hits
+
+
+          found = False
+          for root in ROOTS:
+              for source in sorted(pathlib.Path(root).rglob("*.rs")):
+                  text = blanked(source.read_text())
+                  for offset in sorted(offences(text)):
+                      line = text.count("\n", 0, offset) + 1
+                      print(f"{source}:{line}")
+                      found = True
+          if found:
+              print("::error::src/render and src/model must not reference http, provider or cache")
+              sys.exit(1)
+          PY
       # LICENSES/GPL-3.0-or-later.txt is a real copy (a Windows checkout cannot rely on symlinks),
       # so it must not drift from the root LICENSE GitHub detects.
       - name: LICENSE copy matches LICENSES/GPL-3.0-or-later.txt

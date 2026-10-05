@@ -170,7 +170,7 @@ fn the_adapter_requests_the_documented_url_and_decodes_the_reading() {
         "the wall clock plus the response offset"
     );
     let pollen = reading.pollen.expect("Berlin is inside the pollen domain");
-    assert_eq!(pollen.values(), [0.0; 6], "October: present but zero");
+    assert_eq!(pollen.values(), [Some(0.0); 6], "October: present but zero");
 
     let calls = harness.calls();
     assert_eq!(calls.len(), 1);
@@ -239,7 +239,7 @@ fn reykjavik_zero_pollen_stays_a_forecast() {
     let pollen = reading
         .pollen
         .expect("zero is a measured forecast, not a coverage gap");
-    assert_eq!(pollen.values(), [0.0; 6]);
+    assert_eq!(pollen.values(), [Some(0.0); 6]);
 }
 
 #[test]

@@ -145,15 +145,15 @@ fn the_current_block_uses_the_latest_started_step() {
         "2026-09-30T19:00:00+02:00"
     );
     assert_eq!(current.temp_c, 13.9);
-    assert_eq!(current.humidity_pct, 98);
+    assert_eq!(current.humidity_pct, Some(98));
     assert_eq!(current.pressure_hpa, 1035.1);
     assert_eq!(current.wind_kmh, 4.1 * 3.6);
     assert_eq!(current.wind_gust_kmh, Some(7.4 * 3.6));
-    assert_eq!(current.wind_dir_deg, 108);
+    assert_eq!(current.wind_dir_deg, Some(108));
     assert_eq!(current.visibility_km, Some(28.3));
     assert_eq!(current.weather, Condition::from_u8(3));
     // 8 oktas of cloud cover is a fully overcast sky.
-    assert_eq!(current.cloud_cover_pct, 100);
+    assert_eq!(current.cloud_cover_pct, Some(100));
     // 19:00 local is outside the civil day.
     assert!(!current.is_day);
     // SMHI publishes neither an apparent temperature nor a UV index.
@@ -203,8 +203,15 @@ fn the_sentinel_fixture_keeps_missing_values_missing() {
         current.observed_at.to_rfc3339(),
         "2026-10-01T09:00:00+02:00"
     );
+    // The same step carries the in-band `9999` for humidity: only that field is nulled, and the
+    // rest of the block — the temperature, the sky, the instant — still decodes.
+    assert!(
+        current.humidity_pct.is_none(),
+        "9999 humidity must be null, not a reading: {:?}",
+        current.humidity_pct
+    );
     // Three oktas is 37.5 % of the sky, rounded.
-    assert_eq!(current.cloud_cover_pct, 38);
+    assert_eq!(current.cloud_cover_pct, Some(38));
     assert!(current.is_day);
 }
 

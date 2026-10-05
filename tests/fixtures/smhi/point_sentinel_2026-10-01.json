@@ -169,7 +169,7 @@
         "wind_from_direction": 180.0,
         "wind_speed": 3.0,
         "wind_speed_of_gust": 6.0,
-        "relative_humidity": 70.0,
+        "relative_humidity": 9999.0,
         "air_pressure_at_mean_sea_level": 1013.0,
         "visibility_in_air": 20.0,
         "symbol_code": 1.0,

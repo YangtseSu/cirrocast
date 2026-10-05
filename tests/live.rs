@@ -153,7 +153,10 @@ fn live_open_meteo_beijing() {
 
     let text = live.render(&report);
     println!("{text}");
-    assert!(text.contains("Data: Open-Meteo.com (CC BY 4.0)"), "{text}");
+    assert!(
+        text.contains("Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/"),
+        "{text}"
+    );
 }
 
 #[test]

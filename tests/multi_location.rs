@@ -10,11 +10,9 @@
 
 mod common;
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use assert_cmd::Command;
-use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
 use cirrocast::model::Report;
 use predicates::prelude::*;
 
@@ -39,18 +37,18 @@ fn seeded() -> Sandbox {
     ))
     .expect("the fixture is readable");
     // A coordinate location still carries the provisional UTC zone when the key is built, so the
-    // day is today's UTC date — the same rule the CLI follows.
-    let cache = Cache::with_root(
-        sandbox.cache_dir(),
-        CacheMode::Normal,
-        Arc::new(SystemClock),
-        0,
-    );
+    // day is today's UTC date — the same rule the CLI follows. The seed spans local midnight so the
+    // seed/execute pair cannot race it.
     for (lat, lon) in [(LAT, LON), (LAT2, LON2)] {
-        let key = CacheKey::weather("open-meteo", lat, lon, 3, chrono::Utc::now().date_naive());
-        cache
-            .write(&key, 200, &body, Duration::from_secs(600))
-            .expect("the cache entry is written");
+        common::seed_weather(
+            &sandbox,
+            "open-meteo",
+            lat,
+            lon,
+            3,
+            chrono_tz::Tz::UTC,
+            &body,
+        );
     }
     sandbox
 }
@@ -74,26 +72,29 @@ fn stderr(assert: &assert_cmd::assert::Assert) -> String {
 
 #[test]
 fn ordering_follows_the_argument_order_whatever_the_delays_are() {
-    // Descending delays: the last item finishes first. The slots are input-ordered by
-    // construction, so the names must come back exactly as they went in.
-    let items: Vec<String> = (0..8).map(|index| format!("L{index}")).collect();
+    // Distinct, identifiable names, so a slot mix-up names the misplaced place instead of printing
+    // two anonymous vectors. Descending delays make the last item finish first: a completion-order
+    // collector would reverse this. (`src/parallel.rs` unit-tests the same property on the internal
+    // map; this drives the public `fetch_reports` wrapper the CLI uses.)
+    let items = [
+        "Oslo", "Cairo", "Lima", "Tokyo", "Perth", "Quito", "Dakar", "Riga",
+    ];
     let results = cirrocast::fetch_reports(&items, |index, item| {
-        let delay = u64::try_from(8 - index).unwrap_or(1);
+        let delay = u64::try_from(items.len() - index).unwrap_or(1);
         std::thread::sleep(Duration::from_millis(delay * 20));
         let mut report: Report = common::fixture_report("beijing-1d.json");
-        report.location.name = item.clone();
+        report.location.name = (*item).to_owned();
         Ok(report)
     });
-    let names: Vec<String> = results
-        .into_iter()
-        .map(|result| {
-            result
-                .expect("the injected fetch never fails")
-                .location
-                .name
-        })
-        .collect();
-    assert_eq!(names, items);
+    for (index, (result, expected)) in results.into_iter().zip(items).enumerate() {
+        let report =
+            result.unwrap_or_else(|error| panic!("slot {index} ({expected}) failed: {error}"));
+        assert_eq!(
+            report.location.name, expected,
+            "slot {index} carries `{}` instead of `{expected}`",
+            report.location.name
+        );
+    }
 }
 
 #[test]

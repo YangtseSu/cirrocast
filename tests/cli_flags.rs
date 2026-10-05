@@ -15,7 +15,6 @@ use std::time::Duration;
 
 use assert_cmd::Command;
 use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
-use cirrocast::error::Error;
 use predicates::prelude::*;
 
 use common::Sandbox;
@@ -35,23 +34,17 @@ fn seeded(days: u8) -> Sandbox {
     ))
     .expect("the fixture is readable");
     // A coordinate location still carries the provisional UTC zone when the key is built, so the
-    // day is today's UTC date — the same rule the CLI follows.
-    let key = CacheKey::weather(
+    // day is today's UTC date — the same rule the CLI follows. The seed spans local midnight so the
+    // seed/execute pair cannot race it.
+    common::seed_weather(
+        &sandbox,
         "open-meteo",
         LAT,
         LON,
         days,
-        chrono::Utc::now().date_naive(),
+        chrono_tz::Tz::UTC,
+        &body,
     );
-    let cache = Cache::with_root(
-        sandbox.cache_dir(),
-        CacheMode::Normal,
-        Arc::new(SystemClock),
-        0,
-    );
-    cache
-        .write(&key, 200, &body, Duration::from_secs(600))
-        .expect("the cache entry is written");
     sandbox
 }
 
@@ -66,34 +59,107 @@ fn run(sandbox: &Sandbox, args: &[&str]) -> Command {
 fn every_flag_is_accepted_in_both_spellings() {
     let sandbox = seeded(3);
 
-    // Each case: the flag, then a fragment the output must carry.
-    let cases: [(&[&str], &str); 20] = [
-        (&["-p", "open-meteo"], "Weather report:"),
-        (&["--provider", "open-meteo"], "Weather report:"),
-        (&["-f", "plain"], "location: "),
-        (&["--format", "plain"], "location: "),
-        (&["-f", "json"], "\"schema_version\": 2"),
-        (&["--format", "json"], "\"schema_version\": 2"),
-        (&["-f", "one-line"], "Clear sky"),
-        (&["--format", "one-line", "--template", "@short"], "*o*"),
-        (&["-f", "dumb"], "+18C"),
-        (&["-d", "3"], "Weather report:"),
-        (&["--days", "3"], "Weather report:"),
-        (&["-u", "metric"], "Weather report:"),
-        (&["--units", "us", "-f", "plain"], "current: Clear sky 65°F"),
-        (&["--lang", "en-US"], "Weather report:"),
-        (&["--lang", "auto"], "Weather report:"),
-        (&["--timeout", "30"], "Weather report:"),
-        (&["--color", "never"], "Weather report:"),
-        (&["--width", "60"], "Weather report:"),
-        (&["-q"], "Weather report:"),
-        (&["-v"], "Weather report:"),
+    // Each case: the flag, a fragment stdout must carry, and a fragment stderr must carry. Only
+    // the flags whose effect the rendered output cannot show (a *resolution* the renderer does not
+    // print) add `-v`; the note that then names the flag's tier is the observable effect. Cases
+    // whose effect is entirely in the output keep an empty stderr fragment.
+    let cases: [(&[&str], &str, &str); 20] = [
+        (
+            &["-p", "open-meteo", "-v"],
+            "Weather report:",
+            "provider: open-meteo (from the command line)",
+        ),
+        (
+            &["--provider", "open-meteo", "-v"],
+            "Weather report:",
+            "provider: open-meteo (from the command line)",
+        ),
+        (&["-f", "plain"], "location: ", ""),
+        (&["--format", "plain"], "location: ", ""),
+        (&["-f", "json"], "\"schema_version\": 2", ""),
+        (&["--format", "json"], "\"schema_version\": 2", ""),
+        (&["-f", "one-line"], "Clear sky", ""),
+        (&["--format", "one-line", "--template", "@short"], "*o*", ""),
+        (&["-f", "dumb"], "+18C", ""),
+        (
+            &["-d", "3", "-v"],
+            "Weather report:",
+            "days: 3 (from the command line)",
+        ),
+        (
+            &["--days", "3", "-v"],
+            "Weather report:",
+            "days: 3 (from the command line)",
+        ),
+        (
+            &["-u", "metric", "-v"],
+            "Weather report:",
+            "units: metric (from the command line)",
+        ),
+        (
+            &["--units", "us", "-f", "plain"],
+            "current: Clear sky 65°F",
+            "",
+        ),
+        (
+            &["--lang", "en-US", "-v"],
+            "Weather report:",
+            "language: en-US (from the command line)",
+        ),
+        (
+            &["--lang", "auto", "-v"],
+            "Weather report:",
+            "language: auto (from the command line)",
+        ),
+        (
+            &["--timeout", "30", "-v"],
+            "Weather report:",
+            "timeout: 30s (from the command line)",
+        ),
+        (
+            &["--color", "never", "-v"],
+            "Weather report:",
+            "color: never",
+        ),
+        (
+            &["--width", "60", "-v"],
+            "Weather report:",
+            "width: 60 columns",
+        ),
+        (&["-v"], "Weather report:", "provider: "),
+        (&["--verbose"], "Weather report:", "provider: "),
     ];
 
-    for (args, expected) in cases {
+    for (args, expected, note) in cases {
         let assert = run(&sandbox, args).arg(LOCATION).assert().success();
         let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
+        let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
         assert!(stdout.contains(expected), "{args:?}:\n{stdout}");
+        assert!(stderr.contains(note), "{args:?} (stderr):\n{stderr}");
+    }
+
+    // `-q`/`--quiet` suppress the one note a clean run can print: the fallback warning for an
+    // unsupported language. The same run without the flag carries it, so the flag's effect — not
+    // just its acceptance — is what is asserted.
+    let warning = sandbox
+        .cirrocast()
+        .args(["--lang", "de-DE", "--offline"])
+        .arg(LOCATION)
+        .assert()
+        .success();
+    let stderr = String::from_utf8(warning.get_output().stderr.clone()).expect("UTF-8 stderr");
+    assert!(stderr.contains("unsupported language"), "{stderr}");
+
+    for flag in ["-q", "--quiet"] {
+        let assert = run(&sandbox, &[flag, "--lang", "de-DE"])
+            .arg(LOCATION)
+            .assert()
+            .success();
+        let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
+        assert!(
+            !stderr.contains("unsupported language"),
+            "{flag} did not silence the note:\n{stderr}"
+        );
     }
 }
 
@@ -170,6 +236,56 @@ fn color_and_width_reach_the_renderer() {
 }
 
 #[test]
+fn the_colour_environment_ladder_decides_when_the_flag_is_auto() {
+    let sandbox = seeded(3);
+
+    // Every run asks for `auto`, so the decision is the environment's. Both halves of the ladder
+    // are cleared unless the case sets one, so the ambient shell cannot influence the result.
+    let render = |signals: &[(&str, &str)]| -> String {
+        let mut command = sandbox.cirrocast();
+        command.args([
+            LOCATION,
+            "--offline",
+            "--format",
+            "art-table",
+            "--color",
+            "auto",
+        ]);
+        for name in ["NO_COLOR", "CLICOLOR_FORCE"] {
+            command.env_remove(name);
+        }
+        for &(name, value) in signals {
+            command.env(name, value);
+        }
+        let assert = command.assert().success();
+        String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output")
+    };
+
+    // Neither signal: stdout is a pipe, so `auto` resolves to no colour.
+    let plain = render(&[]);
+    assert!(
+        !plain.contains('\u{1b}'),
+        "a pipe with neither signal must not colour: {plain:?}"
+    );
+
+    // CLICOLOR_FORCE outranks the tty check.
+    let forced = render(&[("CLICOLOR_FORCE", "1")]);
+    assert!(
+        forced.contains('\u{1b}'),
+        "CLICOLOR_FORCE must force colour even into a pipe"
+    );
+
+    // NO_COLOR disables; an empty value is still present, which is what the convention keys on.
+    for value in ["1", ""] {
+        let denied = render(&[("NO_COLOR", value)]);
+        assert!(
+            !denied.contains('\u{1b}'),
+            "NO_COLOR={value:?} must disable colour: {denied:?}"
+        );
+    }
+}
+
+#[test]
 fn every_conflict_rule_exits_two_with_its_message() {
     let sandbox = Sandbox::new();
 
@@ -240,8 +356,8 @@ fn a_station_needs_the_station_backend() {
         .code(3)
         .stderr(predicate::str::contains("offline:"));
 
-    // Without `--provider`, `--station` selects `metar` itself; the same offline miss proves the
-    // run reached the station backend rather than failing on the flag combination.
+    // Without `--provider`, `--station` prepends `metar` to the configured chain; the same offline
+    // miss proves the run reached the station backend rather than failing on the flag combination.
     sandbox
         .cirrocast()
         .args(["--station", "ZBAA", "--offline"])
@@ -358,7 +474,7 @@ fn one_line_credits_travel_on_stderr() {
     assert_eq!(stdout.lines().count(), 1, "one line by contract: {stdout}");
     assert!(!stdout.contains("Data:"), "{stdout}");
     assert!(
-        stderr.contains("Data: Open-Meteo.com (CC BY 4.0)"),
+        stderr.contains("Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/"),
         "the licence credit goes to stderr: {stderr}"
     );
 }
@@ -453,83 +569,6 @@ fn an_environment_location_is_overridden_by_a_flag_not_treated_as_a_conflict() {
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
     assert!(stdout.contains("39.9042, 116.4074"), "{stdout}");
-}
-
-#[test]
-fn the_exit_code_table_is_reachable_end_to_end() {
-    let sandbox = seeded(3);
-
-    // 0 — success.
-    sandbox
-        .cirrocast()
-        .arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::starts_with("cirrocast "));
-
-    // 1 — a generic failure: the editor `config edit` runs does not exist. Both variables are
-    // pinned, because `VISUAL` outranks `EDITOR` and the developer's shell has one of them set.
-    let missing_editor = sandbox.home().join("no-such-editor");
-    sandbox
-        .cirrocast()
-        .args(["config", "edit"])
-        .env("VISUAL", &missing_editor)
-        .env("EDITOR", &missing_editor)
-        .assert()
-        .code(1)
-        .stderr(predicate::str::contains("cannot run"));
-
-    // 2 — usage: a conflict the command line alone can decide.
-    sandbox
-        .cirrocast()
-        .args(["@39.9,116.4", "--no-cache", "--offline"])
-        .assert()
-        .code(2)
-        .stderr(predicate::str::contains("cannot be used with"));
-
-    // 3 — network: offline with nothing cached.
-    let empty = Sandbox::new();
-    empty
-        .cirrocast()
-        .args(["@39.9,116.41", "--offline"])
-        .assert()
-        .code(3)
-        .stderr(predicate::str::contains(
-            "offline: no cached open-meteo forecast for",
-        ));
-
-    // 4 — configuration: a file that does not parse.
-    let broken = Sandbox::new();
-    broken.install_fixture("config/bad-syntax.toml");
-    broken
-        .cirrocast()
-        .args(["location", "search", "@39.9,116.4"])
-        .assert()
-        .code(4)
-        .stderr(predicate::str::contains("config error:"));
-
-    // 5 — location: nothing answers (the bundled table has no `Nowhereville`, and `--offline`
-    // forbids the network geocoder).
-    let empty = Sandbox::new();
-    empty
-        .cirrocast()
-        .args(["location", "search", "Nowhereville", "--offline"])
-        .assert()
-        .code(5)
-        .stderr(predicate::str::contains(
-            "location not found: no location found for `Nowhereville`",
-        ));
-
-    // 6 — a missing key is only reachable once a key-requiring backend exists (step 10); the
-    // mapping itself is part of the error type and asserted here.
-    assert_eq!(
-        Error::MissingKey {
-            provider: "qweather".to_owned(),
-            env: "CIRROCAST_QWEATHER_KEY".to_owned(),
-        }
-        .exit_code(),
-        6
-    );
 }
 
 #[test]

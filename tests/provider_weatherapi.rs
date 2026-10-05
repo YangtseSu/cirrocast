@@ -78,10 +78,10 @@ fn the_current_block_comes_from_the_recorded_response() {
     );
     assert_eq!(current.temp_c, 15.1);
     assert_eq!(current.feels_like_c, Some(7.7));
-    assert_eq!(current.humidity_pct, 13);
+    assert_eq!(current.humidity_pct, Some(13));
     assert_eq!(current.pressure_hpa, 1023.0);
     assert_eq!(current.wind_kmh, 20.9);
-    assert_eq!(current.wind_dir_deg, 302);
+    assert_eq!(current.wind_dir_deg, Some(302));
     assert_eq!(current.wind_gust_kmh, Some(37.9));
     assert_eq!(current.visibility_km, Some(10.0));
     assert_eq!(current.uv_index, Some(0.0));

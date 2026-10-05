@@ -122,7 +122,7 @@ fn a_current_only_request_asks_for_neither_hourly_nor_daily() {
     let current = report.current.expect("the current block is present");
     assert_eq!(current.temp_c, 18.1);
     assert_eq!(current.weather, Condition::from_u8(0));
-    assert_eq!(current.humidity_pct, 11);
+    assert_eq!(current.humidity_pct, Some(11));
     assert_eq!(current.visibility_km, Some(17.28));
     assert_eq!(current.uv_index, Some(0.0));
     assert!(!current.is_day);

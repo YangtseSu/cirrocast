@@ -88,11 +88,6 @@ fn body(name: &str) -> String {
     fs::read_to_string(fixture_path(name)).expect("the fixture is readable")
 }
 
-/// Today in the location's zone: the weather key carries the location-local date.
-fn today() -> chrono::NaiveDate {
-    Utc::now().with_timezone(&Tz::Asia__Shanghai).date_naive()
-}
-
 /// Runs the binary offline for `provider` and returns stdout.
 fn render(sandbox: &Sandbox, provider: &str) -> String {
     let assert = sandbox
@@ -126,13 +121,21 @@ fn assert_rendered(stdout: &str, temperature: &str, credit: &str) {
 fn open_meteo_renders_from_the_recorded_payload() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
-    seed(
+    common::seed_weather(
         &sandbox,
-        &CacheKey::weather("open-meteo", LAT, LON, DAYS, today()),
+        "open-meteo",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("open_meteo/forecast_beijing_2026-07-15.json"),
     );
     let stdout = render(&sandbox, "open-meteo");
-    assert_rendered(&stdout, "18°C", "Data: Open-Meteo.com (CC BY 4.0)");
+    assert_rendered(
+        &stdout,
+        "18°C",
+        "Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/",
+    );
     assert!(stdout.contains("Clear sky"), "{stdout}");
 }
 
@@ -140,9 +143,13 @@ fn open_meteo_renders_from_the_recorded_payload() {
 fn smhi_renders_from_the_recorded_payload() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
-    seed(
+    common::seed_weather(
         &sandbox,
-        &CacheKey::weather("smhi", LAT, LON, DAYS, today()),
+        "smhi",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("smhi/point_stockholm_2026-09-30.json"),
     );
     let stdout = render(&sandbox, "smhi");
@@ -155,15 +162,24 @@ fn openweathermap_renders_from_the_recorded_payloads() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
     seed_keys(&sandbox);
-    let date = today();
-    seed(
+    common::seed_weather_part(
         &sandbox,
-        &CacheKey::weather_part("openweathermap", "current", LAT, LON, DAYS, date),
+        "openweathermap",
+        "current",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("owm/current.json"),
     );
-    seed(
+    common::seed_weather_part(
         &sandbox,
-        &CacheKey::weather_part("openweathermap", "forecast", LAT, LON, DAYS, date),
+        "openweathermap",
+        "forecast",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("owm/forecast.json"),
     );
     let stdout = render(&sandbox, "openweathermap");
@@ -180,9 +196,13 @@ fn weatherapi_renders_from_the_recorded_payload() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
     seed_keys(&sandbox);
-    seed(
+    common::seed_weather(
         &sandbox,
-        &CacheKey::weather("weatherapi", LAT, LON, DAYS, today()),
+        "weatherapi",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("weatherapi/forecast.json"),
     );
     let stdout = render(&sandbox, "weatherapi");
@@ -199,9 +219,13 @@ fn worldweatheronline_renders_from_the_recorded_payload() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
     seed_keys(&sandbox);
-    seed(
+    common::seed_weather(
         &sandbox,
-        &CacheKey::weather("worldweatheronline", LAT, LON, DAYS, today()),
+        "worldweatheronline",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("wwo/weather_ashx.json"),
     );
     let stdout = render(&sandbox, "worldweatheronline");
@@ -218,9 +242,13 @@ fn pirateweather_renders_from_the_recorded_payload() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
     seed_keys(&sandbox);
-    seed(
+    common::seed_weather(
         &sandbox,
-        &CacheKey::weather("pirateweather", LAT, LON, DAYS, today()),
+        "pirateweather",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("pirateweather/forecast.json"),
     );
     let stdout = render(&sandbox, "pirateweather");
@@ -240,15 +268,24 @@ fn qweather_renders_from_the_recorded_payloads() {
     // The account host comes from the configuration; the shape has to be the documented
     // `<account>.re.qweatherapi.com`, so the placeholder account is `example`.
     sandbox.write_config("[providers.qweather]\nhost = \"https://example.re.qweatherapi.com\"\n");
-    let date = today();
-    seed(
+    common::seed_weather_part(
         &sandbox,
-        &CacheKey::weather_part("qweather", "current", LAT, LON, DAYS, date),
+        "qweather",
+        "current",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("qweather/current.json"),
     );
-    seed(
+    common::seed_weather_part(
         &sandbox,
-        &CacheKey::weather_part("qweather", "hourly", LAT, LON, DAYS, date),
+        "qweather",
+        "hourly",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("qweather/hourly.json"),
     );
     let stdout = render(&sandbox, "qweather");
@@ -264,15 +301,24 @@ fn qweather_renders_from_the_recorded_payloads() {
 fn no_run_output_or_cache_entry_carries_the_api_key() {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
-    let date = today();
-    seed(
+    common::seed_weather_part(
         &sandbox,
-        &CacheKey::weather_part("openweathermap", "current", LAT, LON, DAYS, date),
+        "openweathermap",
+        "current",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("owm/current.json"),
     );
-    seed(
+    common::seed_weather_part(
         &sandbox,
-        &CacheKey::weather_part("openweathermap", "forecast", LAT, LON, DAYS, date),
+        "openweathermap",
+        "forecast",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("owm/forecast.json"),
     );
 
@@ -318,17 +364,20 @@ const MIN_SECRET_LEN: usize = 16;
 
 /// The fixtures must not carry any recorded API key.
 ///
-/// Two independent passes, so the test asserts a real property on CI, where the developer's
-/// `~/.config/cirrocast/keys.toml` does not exist:
+/// Unconditional and machine-independent. The developer's real `~/.config/cirrocast/keys.toml` is
+/// not consulted: it is machine state (absent on CI) and the old test returned early on it, so the
+/// valuable pass never ran there. Two passes instead:
 ///
 /// 1. every fixture is scanned for a key-shaped assignment (`api_key`, `apikey`, `appid`,
-///    `access_key`, `token`) followed by a long alphanumeric value — machine-independent, and it
-///    names the offending file when it fires;
-/// 2. when the developer's `keys.toml` exists, its values must not appear in any fixture either,
-///    catching a recording made from a live authenticated session.
+///    `access_key`, `token`) followed by a long alphanumeric value, and the offending file is named;
+/// 2. the value scan is proven non-vacuous against a secret planted in a sandbox, then applied to
+///    the tree — a fixture recording a live authenticated session would surface here.
 #[test]
 fn no_fixture_carries_an_api_key() {
-    let (scanned, found) = scan_for_key_shaped_assignments(Path::new("tests/fixtures"));
+    // The fixtures live beside the crate root, not under the test runner's working directory.
+    let root = fixture_path("");
+
+    let (scanned, found) = scan_for_key_shaped_assignments(&root);
     assert!(scanned > 0, "no fixtures were scanned");
     if let Some((path, value)) = found {
         panic!(
@@ -337,23 +386,42 @@ fn no_fixture_carries_an_api_key() {
         );
     }
 
-    let keys =
-        std::env::var("HOME").map(|home| PathBuf::from(home).join(".config/cirrocast/keys.toml"));
-    let Ok(path) = keys else {
-        return;
-    };
-    let Ok(text) = fs::read_to_string(&path) else {
-        return;
-    };
-    let secrets: Vec<&str> = text
+    // The value scan, run against a sandbox instead of the developer's real
+    // `~/.config/cirrocast/keys.toml` (machine state that does not exist on CI). A planted secret
+    // proves the scanner detects a key-shaped assignment before the same scan clears the tree: a
+    // fixture recorded from a live authenticated session would surface here.
+    let sandbox = Sandbox::new();
+    let canary = "sklive0123456789abcdef";
+    fs::write(
+        sandbox.home().join("planted.json"),
+        format!("{{\"api_key\": \"{canary}\"}}"),
+    )
+    .expect("the planted secret is written");
+    assert!(
+        scan_for_key_shaped_assignments(sandbox.home()).1.is_some(),
+        "the scanner did not detect the planted secret"
+    );
+
+    fs::create_dir_all(sandbox.config_dir()).expect("the config directory is writable");
+    fs::write(
+        sandbox.keys_file(),
+        format!("[keys]\nopenweathermap = \"{canary}\"\n"),
+    )
+    .expect("the sandbox key store is written");
+    let store = fs::read_to_string(sandbox.keys_file()).expect("the sandbox key store is readable");
+    let secrets: Vec<&str> = store
         .lines()
         .filter_map(|line| line.split_once('='))
         .map(|(_, value)| value.trim().trim_matches('"'))
         .filter(|value| value.len() >= 8)
         .collect();
-    assert_ne!(secrets, Vec::<&str>::new(), "no keys to scan for");
+    assert_eq!(
+        secrets,
+        vec![canary],
+        "the key reader must recover the canary"
+    );
 
-    scan(Path::new("tests/fixtures"), &secrets);
+    scan(&root, &secrets);
 }
 
 /// Walks `directory`, returning how many files were read and the first key-shaped assignment found.
@@ -443,9 +511,13 @@ fn scan(directory: &Path, secrets: &[&str]) {
 fn warm_sandbox() -> Sandbox {
     let sandbox = Sandbox::new();
     seed_geocode(&sandbox);
-    seed(
+    common::seed_weather(
         &sandbox,
-        &CacheKey::weather("open-meteo", LAT, LON, DAYS, today()),
+        "open-meteo",
+        LAT,
+        LON,
+        DAYS,
+        Tz::Asia__Shanghai,
         &body("open_meteo/forecast_beijing_2026-07-15.json"),
     );
     sandbox
@@ -462,6 +534,54 @@ fn plain_run(sandbox: &Sandbox, flags: &[&str]) -> std::process::Output {
         .success()
         .get_output()
         .clone()
+}
+
+#[test]
+fn the_documented_offline_spelling_all_serves_the_cache() {
+    let sandbox = warm_sandbox();
+
+    // `--offline=all` is the spelling the CHANGELOG tells users to adopt; it must behave exactly
+    // like the bare flag (whose `default_missing_value` is `all`).
+    let bare = plain_run(&sandbox, &["--offline"]);
+    assert!(bare.status.success(), "{bare:?}");
+    let all = plain_run(&sandbox, &["--offline=all"]);
+    assert!(all.status.success(), "{all:?}");
+    assert_eq!(
+        bare.stdout, all.stdout,
+        "`--offline=all` differs from `--offline`"
+    );
+    assert_eq!(
+        bare.stderr, all.stderr,
+        "`--offline=all` differs from `--offline`"
+    );
+}
+
+#[test]
+fn the_offline_default_comes_from_the_config_and_the_flag_wins() {
+    let args = ["@39.9,116.4", "-p", "open-meteo", "-d", "3", "-f", "plain"];
+
+    // `[network] offline = "all"` supplies the default: over a cold cache the run is cache-only and
+    // fails on the miss, naming the missing entry rather than the transport.
+    let configured = Sandbox::new();
+    configured.write_config("[network]\noffline = \"all\"\n");
+    configured
+        .cirrocast()
+        .args(args)
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(
+            "offline: no cached open-meteo forecast",
+        ));
+
+    // The flag outranks the configuration: `--offline=off` asks for a live run over a config that
+    // says cache-only, so the failure is the guard's transport refusal, not the cache miss.
+    configured
+        .cirrocast()
+        .args(args)
+        .arg("--offline=off")
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("CIRROCAST_FORBID_NETWORK"));
 }
 
 #[test]

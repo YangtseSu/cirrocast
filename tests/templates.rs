@@ -235,7 +235,7 @@ fn an_unknown_token_is_reported_with_its_position_and_specifier() {
         template::warnings("%y %c %12y"),
         vec![
             "unknown template token `%y` at position 1".to_owned(),
-            "unknown template token `%y` at position 7".to_owned(),
+            "unknown template token `%12y` at position 7".to_owned(),
         ]
     );
     assert_eq!(

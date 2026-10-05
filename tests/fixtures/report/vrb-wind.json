@@ -1,0 +1,54 @@
+{
+  "location": {
+    "name": "Paris",
+    "admin1": null,
+    "country": "France",
+    "country_code": "FR",
+    "lat": 49.0097,
+    "lon": 2.5479,
+    "tz": "Europe/Paris",
+    "elevation_m": 119.0,
+    "population": null,
+    "source": "station",
+    "station": "LFPG"
+  },
+  "current": {
+    "observed_at": "2026-09-30T12:15:00+02:00",
+    "temp_c": 19.0,
+    "feels_like_c": 18.5,
+    "humidity_pct": 60,
+    "precip_mm": 0.0,
+    "weather": 3,
+    "cloud_cover_pct": 80,
+    "pressure_hpa": 1010.0,
+    "wind_kmh": 11.0,
+    "wind_dir_deg": null,
+    "wind_gust_kmh": null,
+    "visibility_km": 9.0,
+    "uv_index": 3.0,
+    "is_day": true
+  },
+  "days": [],
+  "attribution": {
+    "provider": "metar",
+    "display_name": "METAR",
+    "licence": "NOAA/NWS (aviationweather.gov)",
+    "capabilities": {
+      "current": true,
+      "hourly": false,
+      "daily": false,
+      "alerts": false,
+      "max_days": 0,
+      "requires_key": false,
+      "key_env": null,
+      "locations": {
+        "city": false,
+        "station": true,
+        "lat_lon": true
+      }
+    },
+    "url": "https://aviationweather.gov/api/data/metar",
+    "fetched_at": "2026-09-30T10:11:00Z",
+    "raw": null
+  }
+}

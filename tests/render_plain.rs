@@ -74,7 +74,7 @@ updated: 2026-09-30T19:30:00+08:00
 current: Clear sky 18°C (feels 13°C) wind 13km/h NW humidity 11% precip 0.0mm pressure 1021hPa visibility 17km
 day 2026-07-15: Morning Clear sky 29°C 0.0mm (0%) wind 2.5km/h N | Noon Clear sky 35°C 0.0mm (0%) wind 4.7km/h SW | Evening Overcast 30°C 0.0mm (0%) wind 13km/h SW | Night Overcast 26°C 0.0mm (0%) wind 6.0km/h SW
 Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
-Data: Open-Meteo.com (CC BY 4.0)
+Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/
 attribution: open-meteo https://api.open-meteo.com/v1/forecast"
     );
 }

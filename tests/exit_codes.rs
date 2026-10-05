@@ -8,16 +8,35 @@
 //! while "which value was wrong?" stays asserted. Every scenario is offline: the network guard is
 //! exported for the runs that would otherwise reach out, and the cache is seeded through the
 //! crate's own key constructors where a run needs data.
+//!
+//! This file is the one end-to-end driver of the 0–6 table. The `Error` variants that share a code
+//! are pinned where the process boundary can reach them: code 3 is driven both as [`Error::Network`]
+//! (the guard) and as [`Error::Upstream`] (a cached answer the decoder refuses), and code 6 as
+//! [`Error::MissingKey`] (through `qweather`). `InvalidKey`/`InvalidToken` also map to 6, but their
+//! only process-boundary path is a live `401` from an upstream — the alert sources that use a token
+//! degrade to a note by design — so the conversion is pinned at the stub-transport level in
+//! `tests/meteoalarm_token.rs` instead of by opening a socket here.
 
 mod common;
 
 use std::fs;
 
 use chrono::Utc;
+use chrono_tz::Tz;
 use predicates::prelude::*;
 
 use cirrocast::cache::{CACHE_SCHEMA_VERSION, CacheKey};
-use common::Sandbox;
+use common::{Sandbox, seed_weather};
+
+/// The coordinates of the seeded weather cache entry.
+const LAT: f64 = 39.9042;
+const LON: f64 = 116.4074;
+
+/// The location argument those coordinates spell.
+const LOCATION: &str = "@39.9042,116.4074";
+
+/// The forecast days the seeded entry is keyed by.
+const DAYS: u8 = 3;
 
 /// Writes one fresh cache entry for `key`, the way a previous run would have left it.
 fn seed(sandbox: &Sandbox, key: &CacheKey, body: &str) {
@@ -153,10 +172,10 @@ fn six_is_a_missing_key_and_names_both_ways_to_store_one() {
 }
 
 #[test]
-fn three_is_network_when_a_fetch_is_blocked() {
+fn three_is_a_blocked_fetch_or_a_failing_upstream() {
+    // Network: `--refresh` skips the cache, so the run must fetch; the guard turns the attempt into
+    // the documented network failure before a socket exists.
     let sandbox = Sandbox::new();
-    // `--refresh` skips the cache, so the run must fetch; the guard turns the attempt into the
-    // documented network failure before a socket exists.
     sandbox
         .cirrocast()
         .args(["--refresh", "@39.9,116.4", "-f", "plain"])
@@ -164,6 +183,54 @@ fn three_is_network_when_a_fetch_is_blocked() {
         .assert()
         .code(3)
         .stderr(predicate::str::contains("CIRROCAST_FORBID_NETWORK"));
+
+    // Upstream: a cached body that parses as a forecast envelope but carries no `daily` block is
+    // refused by the provider's own decoder. Serving it from the cache needs no socket, which is
+    // what lets `Error::Upstream` be pinned at the process boundary deterministically.
+    let upstream = Sandbox::new();
+    seed_weather(
+        &upstream,
+        "open-meteo",
+        LAT,
+        LON,
+        DAYS,
+        Tz::UTC,
+        r#"{"latitude":39.9042,"longitude":116.4074,"utc_offset_seconds":0,"timezone":"UTC"}"#,
+    );
+    upstream
+        .cirrocast()
+        .args([
+            LOCATION,
+            "-p",
+            "open-meteo",
+            "-d",
+            "3",
+            "--offline",
+            "-f",
+            "plain",
+        ])
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(
+            "the response has no `daily` block",
+        ));
+}
+
+#[test]
+fn one_is_a_generic_failure() {
+    let sandbox = Sandbox::new();
+    // `config edit` hands the file to an editor; a missing one fails the spawn, which is the generic
+    // code (1). Both variables are pinned because `VISUAL` outranks `EDITOR` and the developer's
+    // shell has one of them set.
+    let missing = sandbox.home().join("no-such-editor");
+    sandbox
+        .cirrocast()
+        .args(["config", "edit"])
+        .env("VISUAL", &missing)
+        .env("EDITOR", &missing)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("cannot run"));
 }
 
 #[test]

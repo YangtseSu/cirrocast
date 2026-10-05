@@ -10,13 +10,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use assert_cmd::Command;
 use chrono::{TimeZone as _, Utc};
 use chrono_tz::Tz;
 
-use cirrocast::cache::{Cache, CacheMode, FakeClock};
+use cirrocast::cache::{Cache, CacheKey, CacheMode, FakeClock, SystemClock};
 use cirrocast::config::Config;
 use cirrocast::config::keys::KeyStore;
 use cirrocast::http::{HttpClient, StubReply, StubTransport};
@@ -182,6 +182,92 @@ pub fn assert_no_temporary_files(directory: &Path) {
         .filter(|name| name.contains(".tmp."))
         .collect();
     assert_eq!(leftovers, Vec::<String>::new(), "temporary files left");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Weather-cache seeding for the CLI tests
+// ---------------------------------------------------------------------------------------------
+
+/// The calendar dates a weather cache key could carry around `now` in `zone`.
+///
+/// The binary asks its own clock for the location-local date; a test that seeds the cache before
+/// the process starts cannot read that clock, and a run that crosses local midnight between the
+/// write and the child would otherwise miss the entry it just wrote — failing with a message that
+/// reads like a product bug. Seeding yesterday, today and tomorrow in the same zone the binary
+/// uses makes the seed/execute pair immune in both directions.
+pub fn weather_key_dates(zone: Tz) -> [chrono::NaiveDate; 3] {
+    let today = Utc::now().with_timezone(&zone).date_naive();
+    [
+        today - chrono::Days::new(1),
+        today,
+        today + chrono::Days::new(1),
+    ]
+}
+
+/// Seeds one cache entry per date in [`weather_key_dates`], built by `key_for`.
+fn seed_weather_keys(
+    sandbox: &Sandbox,
+    zone: Tz,
+    mut key_for: impl FnMut(chrono::NaiveDate) -> CacheKey,
+    body: &str,
+) {
+    let cache = Cache::with_root(
+        sandbox.cache_dir(),
+        CacheMode::Normal,
+        Arc::new(SystemClock),
+        0,
+    );
+    for date in weather_key_dates(zone) {
+        let key = key_for(date);
+        cache
+            .write(&key, 200, body, Duration::from_secs(600))
+            .expect("the cache entry is written");
+    }
+}
+
+/// Seeds `body` as the weather cache entry for `provider`/`lat`/`lon`/`days`, dated in `zone`.
+///
+/// One entry is written per date in [`weather_key_dates`], so whichever local date the child
+/// computes finds a fresh entry. `zone` is the location's zone *as the binary sees it when it
+/// builds the key*: [`Tz::UTC`] for a coordinate query, whose zone stays provisional until the
+/// answer arrives, and the resolved zone for a geocoded name.
+pub fn seed_weather(
+    sandbox: &Sandbox,
+    provider: &str,
+    lat: f64,
+    lon: f64,
+    days: u8,
+    zone: Tz,
+    body: &str,
+) {
+    seed_weather_keys(
+        sandbox,
+        zone,
+        |date| CacheKey::weather(provider, lat, lon, days, date),
+        body,
+    );
+}
+
+/// [`seed_weather`] for a provider that splits one fetch across resource keys
+/// (`openweathermap`'s `current` and `forecast`, `qweather`'s `current` and `hourly`).
+// A seeding helper mirrors the key constructor's arguments; a builder struct would obscure it.
+#[allow(clippy::too_many_arguments)]
+pub fn seed_weather_part(
+    sandbox: &Sandbox,
+    provider: &str,
+    part: &str,
+    lat: f64,
+    lon: f64,
+    days: u8,
+    zone: Tz,
+    body: &str,
+) {
+    seed_weather_keys(
+        sandbox,
+        zone,
+        |date| CacheKey::weather_part(provider, part, lat, lon, days, date),
+        body,
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

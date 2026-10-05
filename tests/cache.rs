@@ -356,7 +356,15 @@ fn stat_and_clean_count_what_they_say() {
             .iter()
             .map(|namespace| namespace.name)
             .collect::<Vec<_>>(),
-        ["weather", "geocode", "ip", "station", "alerts"]
+        [
+            "weather",
+            "geocode",
+            "ip",
+            "station",
+            "alerts",
+            "ratelimit",
+            "geo",
+        ]
     );
     assert_eq!(stat.namespaces[0].entries, 0);
     assert_eq!(stat.namespaces[0].bytes, 0);
@@ -398,6 +406,55 @@ fn state_files_live_outside_the_entry_namespaces() {
     assert!(
         cache
             .read(&CacheKey::hash("ratelimit", "x"))
+            .expect("a read succeeds")
+            .is_none()
+    );
+}
+
+#[test]
+fn clean_all_removes_state_files_without_counting_them() {
+    let clock = clock();
+    let (cache, _directory) = cache(CacheMode::Normal, &clock);
+    cache
+        .write_state("ratelimit/nominatim.json", "{\"last_request_unix_ms\":1}")
+        .expect("the throttle state is written");
+    cache
+        .write_state(
+            "geo/update-notice.json",
+            "{\"checked_at\":\"2026-09-30T00:00:00Z\"}",
+        )
+        .expect("the freshness notice is written");
+
+    // The two state namespaces are listed after the five entry ones.
+    let stat = cache.stat().expect("stat succeeds");
+    assert_eq!(
+        stat.namespaces[5..]
+            .iter()
+            .map(|namespace| namespace.name)
+            .collect::<Vec<_>>(),
+        ["ratelimit", "geo"]
+    );
+
+    // The TTL sweep leaves state alone: a state file has no TTL to expire.
+    assert_eq!(cache.clean(false).expect("clean succeeds").removed, 0);
+    assert!(
+        cache
+            .read_state("ratelimit/nominatim.json")
+            .expect("a read succeeds")
+            .is_some()
+    );
+
+    // `--all` removes them, but they are not cache entries and are not counted.
+    assert_eq!(cache.clean(true).expect("clean succeeds").removed, 0);
+    assert!(
+        cache
+            .read_state("ratelimit/nominatim.json")
+            .expect("a read succeeds")
+            .is_none()
+    );
+    assert!(
+        cache
+            .read_state("geo/update-notice.json")
             .expect("a read succeeds")
             .is_none()
     );

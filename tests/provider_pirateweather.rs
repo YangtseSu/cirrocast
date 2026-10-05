@@ -96,13 +96,13 @@ fn the_current_block_converts_the_si_units_and_the_fractions() {
     assert_eq!(current.temp_c, 13.13);
     assert_eq!(current.feels_like_c, Some(9.43));
     // humidity and cloud cover are 0–1 decimals.
-    assert_eq!(current.humidity_pct, 24);
-    assert_eq!(current.cloud_cover_pct, 99);
+    assert_eq!(current.humidity_pct, Some(24));
+    assert_eq!(current.cloud_cover_pct, Some(99));
     assert_eq!(current.pressure_hpa, 1021.96);
     // wind is m/s under `units=si`.
     assert_eq!(current.wind_kmh, 1.03 * 3.6);
     assert_eq!(current.wind_gust_kmh, Some(10.38 * 3.6));
-    assert_eq!(current.wind_dir_deg, 310);
+    assert_eq!(current.wind_dir_deg, Some(310));
     assert_eq!(current.visibility_km, Some(16.09));
     assert_eq!(current.uv_index, Some(0.0));
     assert_eq!(current.weather, Condition::from_u8(3));

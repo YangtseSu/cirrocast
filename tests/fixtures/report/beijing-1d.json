@@ -89,7 +89,7 @@
   "attribution": {
     "provider": "open-meteo",
     "display_name": "Open-Meteo",
-    "licence": "Open-Meteo.com (CC BY 4.0)",
+    "licence": "Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/",
     "capabilities": {
       "current": true,
       "hourly": true,
