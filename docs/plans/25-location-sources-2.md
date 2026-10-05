@@ -197,3 +197,32 @@ for the same place and keeps step 04's order.
   which is why the no-username case is mapped to `MissingKey` rather than the shared helper's
   invalid-key path; both recorded in the deliverables above.
 - 2026-10-04 — renumbered from 27 to 25 by the plan reorganization; dependencies are now 18 and 20 (`20-location-candidate-selection.md` was 26).
+
+- 2026-10-06 — recon for the next session (no code yet). The subsystem this step extends is fully
+  mapped: `src/geo/mod.rs` holds `LocationSpec`/`parse_arg`, the `Geocoder` trait
+  (`fn search(&self, query: &str, limit: u8) -> Result<Vec<Location>>`), `resolve_candidates`,
+  `attribution_line` and `provisional_zone`; `open_meteo.rs`/`nominatim.rs` are the two geocoders;
+  `ip.rs` holds `IpService::{IpWhoIs, IpApiCo}` with `chain()`/`locate_with_service()`/`CacheKey::ip`
+  and the `--ip` disclosure line; `offline.rs`+`table.rs`+`build/geo-table/` are the bundled city
+  index and its builder; `rank.rs` owns `Candidate`/`rank`, `pick.rs` the step-20 prompt, `fold.rs`
+  the NFKD folding, `tz.rs` the offline coordinate → zone lookup. `[geo]` today has
+  `strategy`/`data`/`update`/`update_interval_days`/`update_url`; `check_known_keys` in
+  `src/config/mod.rs` rejects `search`/`reverse`, so adding them touches `allowed_keys`,
+  `GeoConfig`, its `Default`, `DEFAULT_DOCUMENT`, `KEY_TABLE` (getter/setter/validator) and
+  `validate_geo` — the file has a test that keeps `allowed_keys` and `KEY_TABLE` in step.
+  `cli.rs` resolves names in `resolve_location`/`name_location`/`local_lookup` and enforces
+  `--offline=geo` there.
+  Two decisions to make in the first commit, both recorded here so they are deliberate:
+  (1) **reverse naming and the credit.** The step's letter keeps `source = Coordinates` for a
+  name that reverse geocoding attached, but the rendering contract says attribution travels with
+  displayed data and `attribution_line` keys off `LocationSource` alone — so a named coordinate
+  should either carry a new source (`LocationSource::Geonames` for a direct GeoNames search, which
+  the contract already words) or a `named_by` field the line falls back to. Pick one, amend
+  `docs/plans/README.md`'s attribution paragraph in the same commit, and keep `coordinates → no
+  credit` true for the user's own input.
+  (2) **the Natural Earth layer.** `build/geo-table/` takes exactly one positional source and
+  emits `cities.bin.gz`+`keys.bin.gz`+`SNAPSHOT`; the country polygons need either a second
+  member in that same builder (same `--check`/install/compare discipline, one more
+  `[[annotations]]` entry and `LICENSES/CC0-1.0.txt`) or a separate builder. The 1:50m extract must
+  stay under the 1 MiB compressed fallback budget named in the step, and the four `ISO_A2 = -99`
+  shapes (Taiwan, Northern Cyprus, Kosovo, Somaliland) map through the explicit name table.
