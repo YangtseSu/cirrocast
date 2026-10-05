@@ -91,6 +91,22 @@ jobs:
       # why there is no separate reduced-build job any more.
       - run: cargo test --workspace --no-default-features --locked
 
+  # The status-bar recipes are part of the contract `status` documents, so the committed examples
+  # are executed rather than read: `verify.sh` runs every example's own probe command offline
+  # against the fixture cache. A recipe that stops working fails the build instead of rotting in
+  # `contrib/`. The script pins its own XDG tree and exports `CIRROCAST_FORBID_NETWORK`.
+  statusbar:
+    name: contrib/statusbar examples
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo build --locked
+      - run: sh contrib/statusbar/verify.sh
+
   package:
     name: cargo package (dry-run publish)
     runs-on: ubuntu-26.04

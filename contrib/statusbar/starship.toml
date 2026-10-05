@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# starship custom module that shows the one-line cirrocast status probe. Put
+# this block in ~/.config/starship.toml and add `$custom.weather` to your prompt
+# format; starship runs `command` through the shell on every prompt render.
+#
+# cirrocast-example: cirrocast status -q --format '%c %t'
+[custom.weather]
+command = "cirrocast status -q --format '%c %t'"
+when = true
+format = "$output "
+style = "bold"
