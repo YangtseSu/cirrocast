@@ -1,0 +1,212 @@
+{
+ "_provenance": "Hand-trimmed from the recorded /tmp/probe/met-no-oslo.json payload (2026-10-05); the record's shape is preserved, with a polartwilight symbol and a coarse trailing step",
+ "type": "Feature",
+ "geometry": {
+  "type": "Point",
+  "coordinates": [
+   15.6469,
+   78.2232,
+   5
+  ]
+ },
+ "properties": {
+  "meta": {
+   "updated_at": "2026-10-05T20:29:47Z",
+   "units": {
+    "air_pressure_at_sea_level": "hPa",
+    "air_temperature": "celsius",
+    "cloud_area_fraction": "%",
+    "precipitation_amount": "mm",
+    "relative_humidity": "%",
+    "wind_from_direction": "degrees",
+    "wind_speed": "m/s"
+   }
+  },
+  "timeseries": [
+   {
+    "time": "2026-10-06T00:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -4.0,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 3.0
+      }
+     },
+     "next_1_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 0.0
+      }
+     }
+    }
+   },
+   {
+    "time": "2026-10-06T06:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -5.5,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 3.5
+      }
+     },
+     "next_1_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 0.0
+      }
+     }
+    }
+   },
+   {
+    "time": "2026-10-06T12:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -3.0,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 4.0
+      }
+     },
+     "next_1_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 0.0
+      }
+     }
+    }
+   },
+   {
+    "time": "2026-10-06T18:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -4.5,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 3.2
+      }
+     },
+     "next_1_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 0.0
+      }
+     }
+    }
+   },
+   {
+    "time": "2026-10-07T00:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -6.0,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 3.0
+      }
+     },
+     "next_6_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 0.0
+      }
+     }
+    }
+   },
+   {
+    "time": "2026-10-07T06:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -7.0,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 3.5
+      }
+     },
+     "next_6_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 0.0
+      }
+     }
+    }
+   },
+   {
+    "time": "2026-10-07T12:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -5.0,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 4.0
+      }
+     },
+     "next_6_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 0.0
+      }
+     }
+    }
+   },
+   {
+    "time": "2026-10-07T18:00:00Z",
+    "data": {
+     "instant": {
+      "details": {
+       "air_pressure_at_sea_level": 1005.0,
+       "air_temperature": -6.5,
+       "cloud_area_fraction": 25.0,
+       "relative_humidity": 70.0,
+       "wind_from_direction": 180.0,
+       "wind_speed": 3.2
+      }
+     },
+     "next_6_hours": {
+      "summary": {
+       "symbol_code": "partlycloudy_polartwilight"
+      },
+      "details": {
+       "precipitation_amount": 1.2
+      }
+     }
+    }
+   }
+  ]
+ }
+}

@@ -183,6 +183,16 @@ precedence = "override"
 SPDX-FileCopyrightText = "SMHI (Swedish Meteorological and Hydrological Institute)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# Recorded MET Norway `Locationforecast/2.0 compact` responses: MET's open data is CC BY 4.0, so
+# the recordings keep the upstream licence and the provider prints `Data from MET Norway (CC BY
+# 4.0)`. `polar-twilight.json` is hand-trimmed from the `oslo.json` recording (its `_provenance`
+# field says so) but remains MET data, so the whole directory carries the one licence.
+[[annotations]]
+path = "tests/fixtures/met-no/**"
+precedence = "override"
+SPDX-FileCopyrightText = "MET Norway (Norwegian Meteorological Institute)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
 # The embedded GeoNames city table (step 18): the vendored `cities15000` snapshot
 # (`src/geo/data/cities.bin.gz`, `keys.bin.gz`) and the provenance record beside it. GeoNames
 # publishes the data under CC BY 4.0, so the members keep that licence and are *not* relicensed to
