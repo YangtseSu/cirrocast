@@ -298,6 +298,8 @@ mod tests {
             alerts: Vec::new(),
             air: None,
             astro,
+            marine: None,
+            mode: crate::model::ReportMode::Forecast,
             attribution: Attribution::unregistered(
                 "test",
                 "https://example.invalid",

@@ -1440,6 +1440,8 @@ mod tests {
             alerts: Vec::new(),
             air: None,
             astro: None,
+            marine: None,
+            mode: crate::model::ReportMode::Forecast,
             attribution: attribution(),
         }
     }

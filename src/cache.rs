@@ -443,11 +443,21 @@ pub struct CacheEntry {
     pub status: u16,
     /// The response body, verbatim.
     pub body: String,
+    /// The upstream's `Last-Modified`, echoed as `If-Modified-Since` on the next refresh.
+    ///
+    /// Additive to the envelope: entries written before this field existed parse with `None` and
+    /// simply take the uncompromised refetch path.
+    #[serde(default)]
+    pub last_modified: Option<String>,
+    /// The upstream's `Expires`: while it is in the future the entry counts as fresh even past
+    /// the configured TTL, because the upstream declared the answer's own lifetime.
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 impl CacheEntry {
     /// Whether the entry is still fresh at `now`, under the entry's own TTL widened to `max_age`
-    /// when the caller set one ([`Cache::with_max_age`]).
+    /// when the caller set one ([`Cache::with_max_age`]) and to the upstream's own expiry.
     ///
     /// A clock that appears to run backwards counts as fresh: a stale-looking entry is a miss, but
     /// a wrong wall clock must not make every cache read fail.
@@ -459,7 +469,55 @@ impl CacheEntry {
             None => ttl,
         };
         let fetched: SystemTime = self.fetched_at.into();
-        now.duration_since(fetched).map_or(true, |age| age < window)
+        if now.duration_since(fetched).map_or(true, |age| age < window) {
+            return true;
+        }
+        // Past our own TTL, the upstream's `Expires` decides: MET Norway asks clients to
+        // re-request only after it, and honouring it is what keeps the request rate inside the
+        // terms of service instead of inside our default ten minutes.
+        self.expires_at
+            .is_some_and(|expires| SystemTime::from(expires) > now)
+    }
+}
+
+/// One upstream answer plus the caching metadata its headers carried.
+///
+/// A provider only ever fills this from the response it received; a 304 carries no body at all and
+/// exists to refresh the entry that is already on disk, which is why the cache — not the provider —
+/// decides what a 304 means.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fetched {
+    /// The status the upstream answered with.
+    pub status: u16,
+    /// The body, verbatim (empty for a 304).
+    pub body: String,
+    /// The `Last-Modified` the answer carried.
+    pub last_modified: Option<String>,
+    /// The `Expires` instant the answer carried.
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+impl Fetched {
+    /// An answer with no caching metadata of its own: the TTL alone governs the entry.
+    #[must_use]
+    pub fn plain(status: u16, body: String) -> Self {
+        Self {
+            status,
+            body,
+            last_modified: None,
+            expires_at: None,
+        }
+    }
+
+    /// An answer along with the `Last-Modified`/`Expires` headers it carried.
+    #[must_use]
+    pub fn of(response: &crate::http::HttpResponse) -> Self {
+        Self {
+            status: response.status(),
+            body: response.body().to_owned(),
+            last_modified: response.last_modified(),
+            expires_at: response.expires_at(),
+        }
     }
 }
 
@@ -660,15 +718,24 @@ impl Cache {
             ));
             return Ok(());
         }
-        let entry = CacheEntry {
-            cache_schema_version: CACHE_SCHEMA_VERSION,
-            key: key.normalised.clone(),
-            fetched_at: self.clock.now().into(),
-            ttl_secs: ttl.as_secs(),
-            status,
-            body: body.to_owned(),
-        };
-        let text = serde_json::to_string_pretty(&entry)
+        self.store(
+            key,
+            &CacheEntry {
+                cache_schema_version: CACHE_SCHEMA_VERSION,
+                key: key.normalised.clone(),
+                fetched_at: self.clock.now().into(),
+                ttl_secs: ttl.as_secs(),
+                status,
+                body: body.to_owned(),
+                last_modified: None,
+                expires_at: None,
+            },
+        )
+    }
+
+    /// Writes one entry envelope, whatever produced it.
+    fn store(&self, key: &CacheKey, entry: &CacheEntry) -> Result<()> {
+        let text = serde_json::to_string_pretty(entry)
             .map_err(|error| Error::Other(format!("cannot encode a cache entry: {error}")))?;
         let path = self.entry_path(key);
         create_directories(&path)?;
@@ -710,13 +777,47 @@ impl Cache {
         place: &str,
         fetch: impl FnOnce() -> Result<(u16, String)>,
     ) -> Result<T> {
-        if let Some(entry) = self.read(key)? {
-            match serde_json::from_str(&entry.body) {
-                Ok(value) => return Ok(value),
-                Err(error) => self.log(&format!(
-                    "{}: body no longer parses ({error}), fetching again",
-                    key.path().display()
-                )),
+        self.read_or_fetch_with(key, ttl, provider, what, place, |_stale| {
+            let (status, body) = fetch()?;
+            Ok(Fetched::plain(status, body))
+        })
+    }
+
+    /// [`Cache::read_or_fetch_json`] with the stale entry handed to the fetch, so a provider can
+    /// send `If-Modified-Since` and answer a `304` without transferring the body again.
+    ///
+    /// The entry's `Expires` (when the upstream sent one) keeps it fresh past the configured TTL,
+    /// exactly as the upstream's terms ask; the closure sees the stale entry — `None` on a cold
+    /// cache — and its `Fetched` carries the new answer's own `Last-Modified`/`Expires`. A `304`
+    /// refreshes `fetched_at`/`ttl`/`expires_at` in place and serves the stored body.
+    pub fn read_or_fetch_with<T: DeserializeOwned>(
+        &self,
+        key: &CacheKey,
+        ttl: Duration,
+        provider: &str,
+        what: &str,
+        place: &str,
+        fetch: impl FnOnce(Option<&CacheEntry>) -> Result<Fetched>,
+    ) -> Result<T> {
+        let stale = if self.mode.reads() {
+            self.load_entry(key)?
+        } else {
+            None
+        };
+        if let Some(entry) = &stale {
+            if entry.is_fresh(self.clock.now(), self.max_age) {
+                match serde_json::from_str(&entry.body) {
+                    Ok(value) => {
+                        self.log(&format!("{}: hit", self.entry_path(key).display()));
+                        return Ok(value);
+                    }
+                    Err(error) => self.log(&format!(
+                        "{}: body no longer parses ({error}), fetching again",
+                        key.path().display()
+                    )),
+                }
+            } else {
+                self.log(&format!("{}: expired", self.entry_path(key).display()));
             }
         }
         if self.mode == CacheMode::Offline {
@@ -727,19 +828,84 @@ impl Cache {
             )));
         }
 
-        let (status, body) = fetch()?;
-        // The fetch succeeded; a cache write that fails (read-only or full cache directory,
-        // permissions) must not throw the answer away. The cache is an optimisation, so its
-        // failure is logged and the parsed value returned anyway.
-        self.write_best_effort(key, status, &body, ttl);
+        let fetched = fetch(stale.as_ref())?;
+        let body = if fetched.status == 304 {
+            let Some(entry) = stale else {
+                return Err(Error::Upstream {
+                    provider: provider.to_owned(),
+                    status: Some(304),
+                    message: format!(
+                        "the upstream answered `not modified` for {what} with nothing cached at {}",
+                        key.path().display()
+                    ),
+                });
+            };
+            // `not modified` is the upstream confirming the stored body; refresh the entry's
+            // clock and its caching metadata instead of transferring the answer again.
+            self.write_best_effort(key, entry.status, &entry.body, ttl);
+            self.refresh_metadata(key, ttl, &fetched);
+            entry.body.clone()
+        } else {
+            // The fetch succeeded; a cache write that fails (read-only or full cache directory,
+            // permissions) must not throw the answer away. The cache is an optimisation, so its
+            // failure is logged and the parsed value returned anyway.
+            self.write_fetched_best_effort(key, &fetched, ttl);
+            fetched.body
+        };
         serde_json::from_str(&body).map_err(|error| Error::Upstream {
             provider: provider.to_owned(),
-            status: Some(status),
+            status: Some(fetched.status),
             message: format!(
                 "the response stored at {} does not parse as JSON: {error}",
                 key.path().display()
             ),
         })
+    }
+
+    /// Stores a fetched answer with its caching metadata, treating a failure as a logged non-event.
+    fn write_fetched_best_effort(&self, key: &CacheKey, fetched: &Fetched, ttl: Duration) {
+        if !self.mode.writes() {
+            return;
+        }
+        let entry = CacheEntry {
+            cache_schema_version: CACHE_SCHEMA_VERSION,
+            key: key.normalised.clone(),
+            fetched_at: self.clock.now().into(),
+            ttl_secs: ttl.as_secs(),
+            status: fetched.status,
+            body: fetched.body.clone(),
+            last_modified: fetched.last_modified.clone(),
+            expires_at: fetched.expires_at,
+        };
+        if let Err(error) = self.store(key, &entry) {
+            self.log(&format!(
+                "{}: cache write failed ({error}); serving the fetched body",
+                key.path().display()
+            ));
+        }
+    }
+
+    /// Rewrites the entry's caching metadata (the body stays), after a `304` confirmed it.
+    fn refresh_metadata(&self, key: &CacheKey, ttl: Duration, fetched: &Fetched) {
+        if !self.mode.writes() {
+            return;
+        }
+        let Ok(Some(mut entry)) = self.load_entry(key) else {
+            return;
+        };
+        entry.fetched_at = self.clock.now().into();
+        entry.ttl_secs = ttl.as_secs();
+        entry.last_modified = fetched
+            .last_modified
+            .clone()
+            .or_else(|| entry.last_modified.clone());
+        entry.expires_at = fetched.expires_at.or(entry.expires_at);
+        if let Err(error) = self.store(key, &entry) {
+            self.log(&format!(
+                "{}: cache write failed ({error}); serving the stored body",
+                key.path().display()
+            ));
+        }
     }
 
     /// Reads a state file under the cache root (the Nominatim throttle lives in one).
@@ -1196,6 +1362,8 @@ mod tests {
             ttl_secs: 600,
             status: 200,
             body: String::new(),
+            last_modified: None,
+            expires_at: None,
         };
         let at = |offset: u64| SystemTime::from(fetched) + Duration::from_secs(offset);
         // Without an override the TTL alone decides ...
@@ -1265,6 +1433,8 @@ mod tests {
             ttl_secs: 600,
             status: 200,
             body: "{}".to_owned(),
+            last_modified: None,
+            expires_at: None,
         };
         fs::write(
             weather.join("entry.json"),
@@ -1309,5 +1479,106 @@ mod tests {
         assert!(!weather.join(".entry.json.tmp.999999").exists());
         assert!(!directory.path().join("geo/update-notice.json").exists());
         assert!(!directory.path().join("ratelimit/nominatim.json").exists());
+    }
+
+    /// A cache whose upstream speaks the `Expires`/`Last-Modified` handshake: the entry survives
+    /// past its TTL while `Expires` is in the future, the next request is conditional, and a `304`
+    /// serves the stored body without a second transfer.
+    #[test]
+    fn a_not_modified_answer_refreshes_the_entry_without_a_body_transfer() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let clock = Arc::new(FakeClock::new(start));
+        let cache = Cache::with_root(
+            directory.path(),
+            CacheMode::Normal,
+            Arc::clone(&clock) as Arc<dyn Clock>,
+            0,
+        );
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 10, 6).expect("a valid date");
+        let key = CacheKey::weather("met-no", 59.91, 10.75, 3, date);
+        let last_modified = "Mon, 05 Oct 2026 20:48:38 GMT";
+        let ttl = Duration::from_secs(600);
+
+        // The first fetch stores the body along with the headers that govern its lifetime.
+        let fetched: serde_json::Value = cache
+            .read_or_fetch_with(&key, ttl, "met-no", "forecast", "Oslo", |stale| {
+                assert!(stale.is_none(), "a cold cache has nothing to revalidate");
+                Ok(super::Fetched {
+                    status: 200,
+                    body: r#"{"rows":3}"#.to_owned(),
+                    last_modified: Some(last_modified.to_owned()),
+                    expires_at: Some(chrono::DateTime::from_timestamp(1_700_001_800, 0).unwrap()),
+                })
+            })
+            .expect("the first answer parses");
+        assert_eq!(fetched["rows"], 3);
+
+        // Past the TTL but inside `Expires`: the upstream's own deadline wins and the closure is
+        // not called at all.
+        clock.advance(Duration::from_mins(15));
+        let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&called);
+        let cached: serde_json::Value = cache
+            .read_or_fetch_with(&key, ttl, "met-no", "forecast", "Oslo", |_stale| {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(super::Fetched::plain(200, String::new()))
+            })
+            .expect("the entry is still fresh");
+        assert_eq!(cached["rows"], 3);
+        assert!(
+            !called.load(std::sync::atomic::Ordering::SeqCst),
+            "an entry inside its Expires window must not be re-requested"
+        );
+
+        // Past `Expires` the request goes out conditionally: the closure sees the stored entry so
+        // the provider can echo its Last-Modified, and a 304 refreshes it in place.
+        clock.advance(Duration::from_secs(1_000));
+        let saw = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let record = std::sync::Arc::clone(&saw);
+        let refreshed: serde_json::Value = cache
+            .read_or_fetch_with(&key, ttl, "met-no", "forecast", "Oslo", |stale| {
+                let stale = stale.expect("a stale entry is handed to the fetch");
+                *record.lock().expect("the recorder") = stale.last_modified.clone();
+                Ok(super::Fetched {
+                    status: 304,
+                    body: String::new(),
+                    last_modified: None,
+                    expires_at: Some(chrono::DateTime::from_timestamp(1_700_004_000, 0).unwrap()),
+                })
+            })
+            .expect("a 304 serves the stored body");
+        assert_eq!(refreshed["rows"], 3);
+        assert_eq!(
+            saw.lock().expect("the recorder").as_deref(),
+            Some(last_modified),
+            "the provider must be able to send If-Modified-Since"
+        );
+        assert!(
+            cache.read(&key).expect("readable").is_some(),
+            "the refreshed entry counts as fresh again"
+        );
+    }
+
+    /// A `304` with nothing on disk is an upstream error, not an empty body.
+    #[test]
+    fn a_not_modified_answer_without_a_stored_body_is_an_error() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        let cache = Cache::with_root(directory.path(), CacheMode::Normal, clock, 0);
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 10, 6).expect("a valid date");
+        let key = CacheKey::weather("met-no", 59.91, 10.75, 3, date);
+        let error = cache
+            .read_or_fetch_with::<serde_json::Value>(
+                &key,
+                Duration::from_secs(600),
+                "met-no",
+                "forecast",
+                "Oslo",
+                |_stale| Ok(super::Fetched::plain(304, String::new())),
+            )
+            .expect_err("a 304 needs something to revalidate");
+        assert_eq!(error.exit_code(), 3);
+        assert!(error.to_string().contains("nothing cached"), "{error}");
     }
 }

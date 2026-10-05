@@ -42,7 +42,7 @@ use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
 use crate::model::{
-    Condition, Current, DayForecast, Location, LocationSource, Report, resolve_local,
+    Condition, Current, DayForecast, Location, LocationSource, Report, ReportMode, resolve_local,
 };
 
 /// The provider id, as the registry and every error message spell it.
@@ -304,6 +304,8 @@ fn report(
         alerts: Vec::new(),
         air: None,
         astro: None,
+        marine: None,
+        mode: ReportMode::Forecast,
         attribution: attribution(
             ProviderId::OpenMeteo,
             url,

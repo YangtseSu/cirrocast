@@ -50,6 +50,14 @@ use crate::model::{Attribution, Location, Report, ReportCapabilities, ReportLoca
 pub enum ProviderId {
     /// Open-Meteo, keyless global model data (the default backend).
     OpenMeteo,
+    /// MET Norway's `Locationforecast` (keyless, global, step 23).
+    MetNo,
+    /// Open-Meteo's historical archive (keyless, 1940 onward, step 23).
+    OpenMeteoArchive,
+    /// Open-Meteo's marine API: waves, swell and sea-surface temperature (step 23).
+    OpenMeteoMarine,
+    /// Visual Crossing's timeline API (BYOK, supplies its own alerts, step 23).
+    VisualCrossing,
     /// `OpenWeatherMap`.
     OpenWeatherMap,
     /// `WeatherAPI.com`.
@@ -68,9 +76,13 @@ pub enum ProviderId {
 
 impl ProviderId {
     /// Every provider, in registry order (this is the order `provider list` prints).
-    pub const fn all() -> [Self; 8] {
+    pub const fn all() -> [Self; 12] {
         [
             Self::OpenMeteo,
+            Self::MetNo,
+            Self::OpenMeteoArchive,
+            Self::OpenMeteoMarine,
+            Self::VisualCrossing,
             Self::OpenWeatherMap,
             Self::WeatherApi,
             Self::WorldWeatherOnline,
@@ -85,6 +97,10 @@ impl ProviderId {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::OpenMeteo => "open-meteo",
+            Self::MetNo => "met-no",
+            Self::OpenMeteoArchive => "open-meteo-archive",
+            Self::OpenMeteoMarine => "open-meteo-marine",
+            Self::VisualCrossing => "visualcrossing",
             Self::OpenWeatherMap => "openweathermap",
             Self::WeatherApi => "weatherapi",
             Self::WorldWeatherOnline => "worldweatheronline",
@@ -119,6 +135,8 @@ impl ProviderId {
                 key_env: None,
                 docs_url: "https://open-meteo.com/en/docs",
                 max_days: 16,
+                history_days: 92,
+                marine: false,
                 current: true,
                 hourly: true,
                 daily: true,
@@ -133,6 +151,98 @@ impl ProviderId {
                 alerts: false,
                 licence: Some("Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/"),
             },
+            Self::MetNo => ProviderMeta {
+                id: *self,
+                display_name: "MET Norway",
+                requires_key: false,
+                key_env: None,
+                docs_url: "https://api.met.no/weatherapi/locationforecast/2.0/documentation",
+                max_days: 9,
+                history_days: 0,
+                marine: false,
+                current: true,
+                hourly: true,
+                daily: true,
+                location_kinds: LocationKinds::CITY_AND_LAT_LON,
+                notes: "keyless, global; hourly for the first ~52 h then 6-hourly; a descriptive User-Agent with contact information is mandatory (`403` otherwise)",
+                auth: "none (keyless); a descriptive User-Agent carrying contact information is required",
+                coverage: "global",
+                granularity: "hourly for the first ~52 h, 6-hourly beyond; 9-day horizon",
+                limits: "20 requests/second per application; re-request only after `Expires`; coordinates at most 4 decimals; no `Yr` in the product name",
+                verified: "2026-10-06",
+                implemented: false,
+                alerts: false,
+                licence: None,
+            },
+            Self::OpenMeteoArchive => ProviderMeta {
+                id: *self,
+                display_name: "Open-Meteo Archive",
+                requires_key: false,
+                key_env: None,
+                docs_url: "https://open-meteo.com/en/docs/historical-weather-api",
+                max_days: 0,
+                history_days: 30000,
+                marine: false,
+                current: false,
+                hourly: true,
+                daily: true,
+                location_kinds: LocationKinds::CITY_AND_LAT_LON,
+                notes: "keyless reanalysis (ERA5/ERA5-Land/IFS) from 1940-01-01; ~5-day latency, so a recent date is served by the forecast API instead; archive only — `--days` is a usage error",
+                auth: "none (keyless)",
+                coverage: "global",
+                granularity: "hourly and daily reanalysis",
+                limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
+                verified: "2026-10-06",
+                implemented: false,
+                alerts: false,
+                licence: None,
+            },
+            Self::OpenMeteoMarine => ProviderMeta {
+                id: *self,
+                display_name: "Open-Meteo Marine",
+                requires_key: false,
+                key_env: None,
+                docs_url: "https://open-meteo.com/en/docs/marine-weather-api",
+                max_days: 8,
+                history_days: 0,
+                marine: true,
+                current: true,
+                hourly: true,
+                daily: true,
+                location_kinds: LocationKinds::CITY_AND_LAT_LON,
+                notes: "keyless; waves, swell and sea-surface temperature for the nearest sea cell; supplementary — requested with `--marine`, never a forecast chain entry",
+                auth: "none (keyless)",
+                coverage: "coastal waters of the global wave models",
+                granularity: "hourly; 8 forecast days",
+                limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
+                verified: "2026-10-06",
+                implemented: false,
+                alerts: false,
+                licence: None,
+            },
+            Self::VisualCrossing => ProviderMeta {
+                id: *self,
+                display_name: "Visual Crossing",
+                requires_key: true,
+                key_env: Some("CIRROCAST_VISUALCROSSING_KEY"),
+                docs_url: "https://www.visualcrossing.com/resources/documentation/weather-api/timeline-weather-api/",
+                max_days: 15,
+                history_days: 0,
+                marine: false,
+                current: true,
+                hourly: true,
+                daily: true,
+                location_kinds: LocationKinds::CITY_AND_LAT_LON,
+                notes: "hourly timeline up to 15 days; the payload carries its own `alerts[]`, which the alert layer shows as source `visualcrossing`",
+                auth: "API key in the `key` query parameter",
+                coverage: "global",
+                granularity: "hourly; 15-day horizon",
+                limits: "free plan 1 000 records/day (`queryCost` ≈ 1 + 24×hours + days; the default 3-day query ≈ 76 records); keyed to the account's terms, no redistribution of cached data",
+                verified: "2026-10-06",
+                implemented: false,
+                alerts: true,
+                licence: None,
+            },
             Self::OpenWeatherMap => ProviderMeta {
                 id: *self,
                 display_name: "OpenWeatherMap",
@@ -140,6 +250,8 @@ impl ProviderId {
                 key_env: Some("CIRROCAST_OPENWEATHERMAP_KEY"),
                 docs_url: "https://openweathermap.org/forecast5",
                 max_days: 5,
+                history_days: 0,
+                marine: false,
                 current: true,
                 hourly: true,
                 daily: true,
@@ -161,6 +273,8 @@ impl ProviderId {
                 key_env: Some("CIRROCAST_WEATHERAPI_KEY"),
                 docs_url: "https://www.weatherapi.com/docs/",
                 max_days: 3,
+                history_days: 0,
+                marine: false,
                 current: true,
                 hourly: true,
                 daily: true,
@@ -184,6 +298,8 @@ impl ProviderId {
                 key_env: Some("CIRROCAST_WORLDWEATHERONLINE_KEY"),
                 docs_url: "https://www.worldweatheronline.com/weather-api/api/docs/local-city-town-weather-api.aspx",
                 max_days: 5,
+                history_days: 0,
+                marine: false,
                 current: true,
                 hourly: true,
                 daily: true,
@@ -207,6 +323,8 @@ impl ProviderId {
                 key_env: Some("CIRROCAST_PIRATEWEATHER_KEY"),
                 docs_url: "https://docs.pirateweather.net/",
                 max_days: 7,
+                history_days: 0,
+                marine: false,
                 current: true,
                 hourly: true,
                 daily: true,
@@ -228,6 +346,8 @@ impl ProviderId {
                 key_env: Some("CIRROCAST_QWEATHER_KEY"),
                 docs_url: "https://dev.qweather.com/en/docs/api/weather/",
                 max_days: 10,
+                history_days: 0,
+                marine: false,
                 current: true,
                 hourly: true,
                 daily: true,
@@ -249,6 +369,8 @@ impl ProviderId {
                 key_env: None,
                 docs_url: "https://opendata.smhi.se/metfcst/snow1gv1",
                 max_days: 10,
+                history_days: 0,
+                marine: false,
                 current: true,
                 hourly: true,
                 daily: true,
@@ -270,6 +392,8 @@ impl ProviderId {
                 key_env: None,
                 docs_url: "https://aviationweather.gov/data/api/",
                 max_days: 0,
+                history_days: 0,
+                marine: false,
                 current: true,
                 hourly: false,
                 daily: false,
@@ -308,6 +432,10 @@ impl FromStr for ProviderId {
 
         match normalized.as_str() {
             "openmeteo" => Ok(Self::OpenMeteo),
+            "metno" => Ok(Self::MetNo),
+            "openmeteoarchive" => Ok(Self::OpenMeteoArchive),
+            "openmeteomarine" => Ok(Self::OpenMeteoMarine),
+            "visualcrossing" => Ok(Self::VisualCrossing),
             "openweathermap" => Ok(Self::OpenWeatherMap),
             "weatherapi" => Ok(Self::WeatherApi),
             "worldweatheronline" => Ok(Self::WorldWeatherOnline),
@@ -342,6 +470,17 @@ pub struct ProviderMeta {
     pub docs_url: &'static str,
     /// Longest forecast the provider serves, in days (`0` = observations only).
     pub max_days: u8,
+    /// How many days back the provider can answer for (`0` = no archive).
+    ///
+    /// The machine-readable form of "archive only" is `max_days: 0` with `history_days > 0`; the
+    /// CLI refuses `--days` for such an entry and accepts `--date`/`--history` only when some
+    /// chain entry's span covers the request.
+    pub history_days: u16,
+    /// Whether the backend serves marine data (waves, swell, sea-surface temperature).
+    ///
+    /// The one backend that sets it is a *supplementary* source: it is never a forecast chain
+    /// entry, and `--marine` is what requests it (step 23).
+    pub marine: bool,
     /// Whether current conditions are available.
     pub current: bool,
     /// Whether hourly data is available.
@@ -457,6 +596,8 @@ impl ProviderMeta {
             daily: self.daily,
             alerts: self.alerts,
             max_days: self.max_days,
+            history_days: self.history_days,
+            marine: self.marine,
             requires_key: self.requires_key,
             key_env: self.key_env,
             location_kinds: self.location_kinds,
@@ -478,6 +619,10 @@ pub struct Capabilities {
     pub alerts: bool,
     /// Longest forecast the backend serves, in days (`0` = observations only).
     pub max_days: u8,
+    /// How many days back the backend can answer for (`0` = no archive).
+    pub history_days: u16,
+    /// Whether the backend serves marine data; the one that sets it is supplementary (step 23).
+    pub marine: bool,
     /// Whether an API key has to be present before the backend can be used.
     pub requires_key: bool,
     /// Environment variable that supplies the key, when there is one.
@@ -496,13 +641,53 @@ pub enum HourlyResolution {
     Hourly,
 }
 
-/// One fetch: for how many days and at what resolution.
+/// One fetch: for how many days, at what resolution, and over which absolute window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FetchRequest {
     /// Forecast days requested; `0` means current conditions only.
     pub days: u8,
     /// Detail requested from the hourly data.
     pub hourly_resolution: HourlyResolution,
+    /// An absolute window (`--date`, `--history`), which replaces the forecast span.
+    ///
+    /// Only a backend whose registry row declares `history_days > 0` receives one: the CLI refuses
+    /// the flags otherwise. Such a backend serves exactly `start..=end` and ignores `max_days`
+    /// (the archive is not a forecast); `days` still carries the window's length so the cache key
+    /// stays honest.
+    pub window: Option<DateWindow>,
+}
+
+/// An absolute date window, inclusive on both ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DateWindow {
+    /// First local date the answer must cover.
+    pub start: NaiveDate,
+    /// Last local date the answer must cover.
+    pub end: NaiveDate,
+}
+
+impl DateWindow {
+    /// A window covering exactly one date.
+    #[must_use]
+    pub const fn day(date: NaiveDate) -> Self {
+        Self {
+            start: date,
+            end: date,
+        }
+    }
+
+    /// The window's length in days, inclusive.
+    #[must_use]
+    pub fn days(self) -> u8 {
+        let span = self.end.signed_duration_since(self.start).num_days();
+        u8::try_from(span.clamp(0, i64::from(u8::MAX)) + 1).unwrap_or(u8::MAX)
+    }
+
+    /// Whether the window ends before `today`, i.e. whether its data is historical.
+    #[must_use]
+    pub fn is_archive(self, today: NaiveDate) -> bool {
+        self.end < today
+    }
 }
 
 impl FetchRequest {
@@ -512,6 +697,29 @@ impl FetchRequest {
         Self {
             days,
             hourly_resolution,
+            window: None,
+        }
+    }
+
+    /// The same request, restricted to an absolute window.
+    ///
+    /// `days` becomes the window's length: the caller cannot ask for a span and a day count at
+    /// once, and the cache key is built from the span that is actually requested.
+    #[must_use]
+    pub fn for_window(window: DateWindow, hourly_resolution: HourlyResolution) -> Self {
+        Self {
+            days: window.days(),
+            hourly_resolution,
+            window: Some(window),
+        }
+    }
+
+    /// Whether this request asked for historical data, given the location's local today.
+    #[must_use]
+    pub fn mode(&self, today: NaiveDate) -> crate::model::ReportMode {
+        match self.window {
+            Some(window) if window.is_archive(today) => crate::model::ReportMode::Archive,
+            _ => crate::model::ReportMode::Forecast,
         }
     }
 }
@@ -667,8 +875,12 @@ pub trait Provider {
     /// a report that carries `inf` or `NaN` in a weather reading is refused as [`Error::Upstream`]
     /// instead of being stored, cached and rendered as if it were a measurement.
     fn fetch(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
-        let report = self.fetch_report(loc, req, env)?;
+        let mut report = self.fetch_report(loc, req, env)?;
         validate_readings(self.id().as_str(), &report)?;
+        // The mode is a property of the *request* (`--date`/`--history`), not of the backend, so
+        // it is stamped here — the one path every backend's answer takes — instead of in each
+        // decoder.
+        report.mode = req.mode(local_today(env, loc.tz));
         Ok(report)
     }
 
@@ -685,6 +897,10 @@ pub trait Provider {
 pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
     match id {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
+        ProviderId::MetNo
+        | ProviderId::OpenMeteoArchive
+        | ProviderId::OpenMeteoMarine
+        | ProviderId::VisualCrossing => Err(not_implemented(id)),
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),
@@ -693,6 +909,14 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
         ProviderId::WorldWeatherOnline => Ok(Box::new(worldweatheronline::WorldWeatherOnline)),
         ProviderId::Metar => Ok(Box::new(metar::Metar)),
     }
+}
+
+/// The refusal a registry row without a backend answers with.
+///
+/// [`select`] filters those rows out of every chain, so this error is only reachable through a
+/// hand-built chain or a row whose `implemented` flag was flipped before its module landed.
+fn not_implemented(id: ProviderId) -> Error {
+    Error::Config(format!("provider `{id}` is not implemented yet"))
 }
 
 /// The credit line a provider's data licence requires, for the renderers that print it.
@@ -720,6 +944,8 @@ impl Capabilities {
             daily: self.daily,
             alerts: self.alerts,
             max_days: self.max_days,
+            history_days: self.history_days,
+            marine: self.marine,
             requires_key: self.requires_key,
             key_env: self.key_env.map(str::to_owned),
             locations: ReportLocationKinds {
@@ -813,6 +1039,11 @@ pub fn select(spec: &str) -> Result<Vec<ProviderId>> {
             continue;
         }
         let id: ProviderId = token.parse()?;
+        if id.metadata().marine {
+            return Err(Error::Usage(format!(
+                "provider `{id}` is a supplementary marine source; pass `--marine` instead of `--provider {id}`"
+            )));
+        }
         if !id.metadata().implemented {
             return Err(Error::Usage(format!(
                 "provider `{id}` is not implemented yet"
@@ -829,14 +1060,17 @@ pub fn select(spec: &str) -> Result<Vec<ProviderId>> {
     Ok(ids)
 }
 
-/// The keyless backends that answer for a resolved place, in registry order.
+/// The keyless backends `auto` expands to, in order.
+///
+/// Step 23 ships the interim fixed list `open-meteo, met-no, smhi` (the implemented keyless
+/// backends that answer for a resolved place); step 24 replaces this with the coverage-ranked
+/// expansion over the registry's `covers` metadata, and `metar` never enters either shape (a
+/// station has to be requested explicitly). Rows whose `implemented` flag is still `false` are
+/// filtered out, so the list is always a set of backends that can actually answer.
 fn auto_chain() -> Result<Vec<ProviderId>> {
-    let ids: Vec<ProviderId> = ProviderId::all()
+    let ids: Vec<ProviderId> = [ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
         .into_iter()
-        .filter(|id| {
-            let meta = id.metadata();
-            meta.implemented && !meta.requires_key && meta.location_kinds.city
-        })
+        .filter(|id| id.metadata().implemented)
         .collect();
     if ids.is_empty() {
         return Err(Error::Config(
@@ -1023,12 +1257,12 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use chrono::Utc;
+    use chrono::{NaiveDate, Utc};
     use chrono_tz::Tz;
 
     use super::{
-        Capabilities, Env, FetchRequest, HourlyResolution, LocationKinds, Provider, ProviderId,
-        fetch_chain_with, provider_for, select,
+        Capabilities, DateWindow, Env, FetchRequest, HourlyResolution, LocationKinds, Provider,
+        ProviderId, fetch_chain_with, provider_for, select,
     };
     use crate::cache::{Cache, CacheMode, SystemClock};
     use crate::config::Config;
@@ -1147,6 +1381,8 @@ mod tests {
             assert_eq!(mirror.daily, meta.daily);
             assert_eq!(mirror.alerts, meta.alerts);
             assert_eq!(mirror.max_days, meta.max_days);
+            assert_eq!(mirror.history_days, meta.history_days);
+            assert_eq!(mirror.marine, meta.marine);
             assert_eq!(mirror.requires_key, meta.requires_key);
             assert_eq!(mirror.key_env.as_deref(), meta.key_env);
             assert_eq!(
@@ -1205,14 +1441,71 @@ mod tests {
                 .contains("unknown provider `does-not-exist`")
         );
 
-        // Every registry row is implemented now, so the "not implemented yet" arm is unreachable
-        // through `select`; the guard is still exercised by a row that is not implemented.
-        assert!(ProviderId::all().iter().all(|id| id.metadata().implemented));
+        // A row that is not implemented is refused by `select` before any factory call, and the
+        // factory keeps its own guard for a hand-built chain. Once every row is implemented the
+        // loop is vacuous, which is the state the exit criteria check for.
+        for id in ProviderId::all()
+            .iter()
+            .filter(|id| !id.metadata().implemented && !id.metadata().marine)
+        {
+            let refused = select(id.as_str()).expect_err("a planned row is not selectable");
+            assert_eq!(refused.exit_code(), 2);
+            assert!(
+                refused.to_string().contains("not implemented yet"),
+                "{refused}"
+            );
+            let error = provider_for(*id).err().expect("no backend exists");
+            assert_eq!(error.exit_code(), 4);
+        }
         assert_eq!(
             provider_for(ProviderId::Metar)
                 .expect("metar has a backend")
                 .id(),
             ProviderId::Metar
+        );
+    }
+
+    #[test]
+    fn a_supplementary_marine_source_is_never_a_chain_entry() {
+        // The registry's `marine` row is a supplementary source: `--marine` requests it, and a
+        // chain that names it is a usage error rather than a silent full-report fetch.
+        for id in ProviderId::all().iter().filter(|id| id.metadata().marine) {
+            let refused = select(id.as_str()).expect_err("not a chain entry");
+            assert_eq!(refused.exit_code(), 2);
+            assert!(refused.to_string().contains("--marine"), "{refused}");
+        }
+    }
+
+    #[test]
+    fn a_window_request_carries_its_span_and_its_mode() {
+        let today = NaiveDate::from_ymd_opt(2026, 10, 6).expect("a valid date");
+        let forecast = FetchRequest::new(3, HourlyResolution::Hourly);
+        assert_eq!(forecast.window, None);
+        assert_eq!(forecast.mode(today), crate::model::ReportMode::Forecast);
+
+        let single = DateWindow::day(NaiveDate::from_ymd_opt(2026, 9, 14).expect("a valid date"));
+        let request = FetchRequest::for_window(single, HourlyResolution::Hourly);
+        assert_eq!(request.days, 1);
+        assert_eq!(request.mode(today), crate::model::ReportMode::Archive);
+
+        let recent = DateWindow {
+            start: NaiveDate::from_ymd_opt(2026, 9, 29).expect("a valid date"),
+            end: DateWindow::day(NaiveDate::from_ymd_opt(2026, 10, 5).expect("a valid date")).end,
+        };
+        assert_eq!(recent.days(), 7);
+        assert_eq!(
+            FetchRequest::for_window(recent, HourlyResolution::Hourly).mode(today),
+            crate::model::ReportMode::Archive
+        );
+
+        // A window that reaches into today (or beyond) is a forecast request, not an archive one.
+        let spans_today = DateWindow {
+            start: recent.start,
+            end: today,
+        };
+        assert_eq!(
+            FetchRequest::for_window(spans_today, HourlyResolution::Hourly).mode(today),
+            crate::model::ReportMode::Forecast
         );
     }
 
@@ -1328,6 +1621,8 @@ mod tests {
             alerts: Vec::new(),
             air: None,
             astro: None,
+            marine: None,
+            mode: crate::model::ReportMode::Forecast,
             attribution: Attribution::unregistered(
                 id.to_string(),
                 "https://example.invalid/forecast",

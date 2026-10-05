@@ -50,7 +50,7 @@ use super::{Capabilities, Env, FetchRequest, Provider, ProviderId, attribution, 
 use crate::cache::{CacheKey, CacheMode};
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
-use crate::model::{Current, Location, LocationSource, Report};
+use crate::model::{Current, Location, LocationSource, Report, ReportMode};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "metar";
@@ -114,6 +114,8 @@ impl Provider for Metar {
             alerts: Vec::new(),
             air: None,
             astro: None,
+            marine: None,
+            mode: ReportMode::Forecast,
             attribution: attribution(
                 ProviderId::Metar,
                 observation_request(&icao).redacted_url(),

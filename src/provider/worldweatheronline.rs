@@ -41,7 +41,7 @@ use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::geo::provisional_zone;
 use crate::http::HttpRequest;
-use crate::model::{Condition, Current, Location, Report, resolve_local};
+use crate::model::{Condition, Current, Location, Report, ReportMode, resolve_local};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "worldweatheronline";
@@ -351,6 +351,8 @@ fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> 
         alerts: Vec::new(),
         air: None,
         astro: None,
+        marine: None,
+        mode: ReportMode::Forecast,
         attribution: attribution(
             ProviderId::WorldWeatherOnline,
             url,

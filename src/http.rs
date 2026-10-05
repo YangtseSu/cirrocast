@@ -384,6 +384,28 @@ impl HttpResponse {
         })
     }
 
+    /// The `Last-Modified` header, when the upstream sent one.
+    ///
+    /// A provider echoes it back as `If-Modified-Since` on the next refresh, so an unchanged
+    /// answer costs headers instead of a body (MET Norway's terms require exactly that handshake).
+    #[must_use]
+    pub fn last_modified(&self) -> Option<String> {
+        self.header("last-modified").map(str::to_owned)
+    }
+
+    /// The `Expires` header as an instant: the upstream's own freshness deadline for this answer.
+    ///
+    /// The cache treats an entry as fresh while this instant is in the future even when the
+    /// configured TTL has passed, because the upstream said so; an absent or unparsable value
+    /// (`0`, `-1` and the like) is `None` and leaves the TTL in charge.
+    #[must_use]
+    pub fn expires_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let value = self.header("expires")?.trim();
+        chrono::DateTime::parse_from_rfc2822(value)
+            .ok()
+            .map(|at| at.with_timezone(&chrono::Utc))
+    }
+
     /// The `Retry-After` delay, when the header is present and usable: delta-seconds or an
     /// HTTP-date in the future. A negative, past or unparsable value is `None`, so the caller
     /// falls back to the exponential schedule.

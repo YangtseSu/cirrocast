@@ -37,7 +37,7 @@ use super::{
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
-use crate::model::{Condition, Current, Location, LocationSource, Report};
+use crate::model::{Condition, Current, Location, LocationSource, Report, ReportMode};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "weatherapi";
@@ -313,6 +313,8 @@ fn report(
         alerts: Vec::new(),
         air: None,
         astro: None,
+        marine: None,
+        mode: ReportMode::Forecast,
         attribution: attribution(
             ProviderId::WeatherApi,
             url,

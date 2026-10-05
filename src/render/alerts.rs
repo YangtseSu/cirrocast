@@ -347,6 +347,8 @@ mod tests {
             alerts,
             air: None,
             astro: None,
+            marine: None,
+            mode: crate::model::ReportMode::Forecast,
             attribution: crate::model::Attribution::unregistered(
                 "nws",
                 "https://api.weather.gov/alerts/active",
