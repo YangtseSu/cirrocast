@@ -68,14 +68,16 @@ precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com"
 SPDX-License-Identifier = "CC-BY-4.0"
 
-# Recorded IP-geolocation payloads (ipwho.is primary, ipapi.co fallback). Their terms forbid
-# redistribution — ipwho.is is "personal or internal use, no redistribution" and ipapi.co is
-# "internal use, no resale" (README's data-sources table) — so they cannot be relicensed GPL and
-# carry the same custom licence reference as the other recorded proprietary payloads.
+# Recorded IP-geolocation payloads (ipwho.is primary, ipapi.co then IP.SB as the fallbacks). Their
+# terms forbid redistribution — ipwho.is is "personal or internal use, no redistribution" and
+# ipapi.co is "internal use, no resale" (README's data-sources table) — so they cannot be relicensed
+# GPL and carry the same custom licence reference as the other recorded proprietary payloads. The
+# ip.sb recordings are minimised to the fields the decoder reads, with the machine's own address
+# replaced by an RFC 5737 documentation address.
 [[annotations]]
 path = "tests/fixtures/ip/**"
 precedence = "override"
-SPDX-FileCopyrightText = "ipwho.is and ipapi.co (recorded API responses)"
+SPDX-FileCopyrightText = "ipwho.is, ipapi.co and IP.SB (recorded API responses)"
 SPDX-License-Identifier = "LicenseRef-Proprietary-API-Data"
 
 # The Open-Meteo 400 envelope is a verbatim recording of the forecast API's error body, so it

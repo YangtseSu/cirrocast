@@ -94,7 +94,7 @@ impl Harness {
 fn the_setting_selects_the_services() {
     assert_eq!(
         IpService::chain("auto").expect("`auto` is a known setting"),
-        vec![IpService::IpWhoIs, IpService::IpApiCo]
+        vec![IpService::IpWhoIs, IpService::IpApiCo, IpService::IpSb]
     );
     assert_eq!(
         IpService::chain("ipwhois").expect("`ipwhois` is a known setting"),
@@ -104,8 +104,14 @@ fn the_setting_selects_the_services() {
         IpService::chain("ipapi").expect("`ipapi` is a known setting"),
         vec![IpService::IpApiCo]
     );
+    assert_eq!(
+        IpService::chain("ipsb").expect("`ipsb` is a known setting"),
+        vec![IpService::IpSb]
+    );
 
-    for junk in ["", " ", "ipwho.is", "ip-api", "Auto", "both", "all"] {
+    for junk in [
+        "", " ", "ipwho.is", "ip-api", "Auto", "both", "all", "ip.sb",
+    ] {
         let error = IpService::chain(junk).expect_err("junk must be rejected");
         assert!(
             matches!(error, Error::Usage(_)),
@@ -118,6 +124,8 @@ fn the_setting_selects_the_services() {
     assert_eq!(IpService::IpWhoIs.label(), "ipwho.is");
     assert_eq!(IpService::IpApiCo.slug(), "ipapi-co");
     assert_eq!(IpService::IpApiCo.label(), "ipapi.co");
+    assert_eq!(IpService::IpSb.slug(), "ip.sb");
+    assert_eq!(IpService::IpSb.label(), "ip.sb");
 }
 
 /// The primary's answer, its request and the service the disclosure line reports.
@@ -183,14 +191,18 @@ fn a_refused_address_falls_through_to_the_next_service() {
     );
 }
 
-/// With both services refusing, the failure names every attempt instead of only the last one.
+/// With all three services refusing, the failure names every attempt instead of only the last one.
 #[test]
 fn both_services_failing_names_every_attempt() {
     let harness = Harness::new(vec![
         reply("ipwho_is_failure.json"),
         reply("ipapi_co_error.json"),
+        reply("ip_sb_unlocated.json"),
     ]);
-    let error = harness.auto().locate().expect_err("both services refuse");
+    let error = harness
+        .auto()
+        .locate()
+        .expect_err("all three services refuse");
 
     assert!(matches!(error, Error::Chain { .. }), "{error}");
     assert_eq!(error.exit_code(), 3);
@@ -201,10 +213,77 @@ fn both_services_failing_names_every_attempt() {
     );
     assert!(text.contains("ipwho.is"), "{text}");
     assert!(text.contains("ipapi.co"), "{text}");
+    assert!(text.contains("ip.sb"), "{text}");
     // The short `reason` wins over the longer `message` sentence.
     assert!(text.contains("RateLimited"), "{text}");
     assert!(!text.contains("ratelimited/"), "{text}");
-    assert_eq!(harness.calls(), 2);
+    assert_eq!(harness.calls(), 3);
+}
+
+/// The third service answers when the first two refuse, and keeps its own cache entry.
+#[test]
+#[allow(clippy::float_cmp)]
+fn the_third_service_answers_when_the_first_two_refuse() {
+    let harness = Harness::new(vec![
+        reply("ipwho_is_failure.json"),
+        reply("ipapi_co_error.json"),
+        reply("ip_sb_xinxiang.json"),
+    ]);
+    let (location, service) = harness
+        .auto()
+        .locate_with_service()
+        .expect("the third service resolves");
+
+    assert_eq!(service, IpService::IpSb);
+    assert_eq!(location.name, "Xinxiang");
+    assert_eq!(location.admin1.as_deref(), Some("Henan"));
+    assert_eq!(location.country, "China");
+    assert_eq!(location.country_code.as_deref(), Some("CN"));
+    assert_eq!(location.lat, 35.1874);
+    assert_eq!(location.lon, 113.8025);
+    assert_eq!(location.tz, Tz::Asia__Shanghai);
+    assert_eq!(location.source, LocationSource::Ip);
+
+    let calls = harness.transport.calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[0].normalized(), "GET https://ipwho.is/");
+    assert_eq!(calls[1].normalized(), "GET https://ipapi.co/json/");
+    assert_eq!(calls[2].normalized(), "GET https://api.ip.sb/geoip");
+    // The third service's answer is cached under its own key, never under the primary's.
+    assert!(harness.cache.entry_path(&CacheKey::ip("ip.sb")).is_file());
+    assert!(
+        harness
+            .cache
+            .entry_path(&CacheKey::ip("ipapi-co"))
+            .is_file()
+    );
+}
+
+/// `IP.SB`'s null-island answer is a refusal: the chain moves on instead of querying the Gulf of
+/// Guinea, and alone it is reported naming the service and the sentinel.
+#[test]
+fn the_null_island_answer_is_a_refusal() {
+    let harness = Harness::new(vec![
+        reply("ip_sb_unlocated.json"),
+        reply("ipapi_co_beijing.json"),
+    ]);
+    let (location, service) = harness
+        .chain(vec![IpService::IpSb, IpService::IpApiCo])
+        .locate_with_service()
+        .expect("the fallback resolves");
+    assert_eq!(service, IpService::IpApiCo);
+    assert_eq!(location.name, "Beijing");
+
+    let harness = Harness::new(vec![reply("ip_sb_unlocated.json")]);
+    let error = harness
+        .chain(IpService::chain("ipsb").expect("`ipsb` is a known setting"))
+        .locate()
+        .expect_err("0, 0 is not a place");
+    assert_eq!(error.exit_code(), 3);
+    let text = error.to_string();
+    assert!(text.contains("ip.sb"), "{text}");
+    assert!(text.contains("0, 0"), "{text}");
+    assert_eq!(harness.calls(), 1);
 }
 
 /// A fresh answer is served from the cache; an expired one is fetched again.

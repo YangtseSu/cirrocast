@@ -3,13 +3,14 @@
 
 //! IP-derived locations: where the forecast is for when the user names no place at all.
 //!
-//! Two donated services answer the same question, so one is the fallback for the other: `ipwho.is`
-//! first, because its answer carries the zone in IANA form and its refusals are explicit, then
-//! `ipapi.co`. Only the *kinds* of failure a second service can plausibly answer differently fall
-//! through — a network failure and an upstream failure, which includes the `success: false`
-//! envelope a service sends for an address it refuses to place (a reserved or blocked range, a
-//! rate limit). Anything else stops the run. When every service fails, the last failure is returned
-//! unchanged, so the message names the service the run actually ended on.
+//! Three donated services answer the same question, so each is the fallback for the one before it:
+//! `ipwho.is` first, because its answer carries the zone in IANA form and its refusals are
+//! explicit, then `ipapi.co`, then `IP.SB` — keyless and worldwide, and reachable from networks
+//! where the first two are not. Only the *kinds* of failure a later service can plausibly answer
+//! differently fall through — a network failure and an upstream failure, which includes the
+//! `success: false` envelope a service sends for an address it refuses to place (a reserved or
+//! blocked range, a rate limit). Anything else stops the run. When every service fails, the last
+//! failure is returned unchanged, so the message names the service the run actually ended on.
 //!
 //! Two rules are worth restating because they are easy to undo by accident:
 //!
@@ -40,11 +41,14 @@ use crate::model::{Location, LocationSource};
 /// bogus location.
 const IPWHO_IS_URL: &str = "https://ipwho.is/";
 
-/// `ipapi.co`: the address-of-the-caller endpoint of the fallback service.
+/// `ipapi.co`: the address-of-the-caller endpoint of the first fallback service.
 const IPAPI_CO_URL: &str = "https://ipapi.co/json/";
 
+/// `IP.SB`: the address-of-the-caller endpoint of the last fallback service.
+const IP_SB_URL: &str = "https://api.ip.sb/geoip";
+
 /// What [`IpService::chain`] accepts, appended to every rejection so the message is actionable.
-const ACCEPTED: &str = "accepted: auto, ipwhois, ipapi";
+const ACCEPTED: &str = "accepted: auto, ipwhois, ipapi, ipsb";
 
 /// A source of locations derived from the machine's public IP address.
 ///
@@ -61,17 +65,20 @@ pub trait IpLocator {
 pub enum IpService {
     /// The primary: `ipwho.is`.
     IpWhoIs,
-    /// The fallback: `ipapi.co`.
+    /// The first fallback: `ipapi.co`.
     IpApiCo,
+    /// The last fallback: `IP.SB`, keyless and worldwide.
+    IpSb,
 }
 
 impl IpService {
-    /// The service's short id, which names its cache file: `ipwho-is`, `ipapi-co`.
+    /// The service's short id, which names its cache file: `ipwho-is`, `ipapi-co`, `ip.sb`.
     #[must_use]
     pub const fn slug(self) -> &'static str {
         match self {
             Self::IpWhoIs => "ipwho-is",
             Self::IpApiCo => "ipapi-co",
+            Self::IpSb => "ip.sb",
         }
     }
 
@@ -81,20 +88,22 @@ impl IpService {
         match self {
             Self::IpWhoIs => "ipwho.is",
             Self::IpApiCo => "ipapi.co",
+            Self::IpSb => "ip.sb",
         }
     }
 
     /// The services `setting` selects, in the order they are tried.
     ///
-    /// `auto` — the default — is `ipwho.is` first with `ipapi.co` behind it; the two
-    /// single-service spellings exist so a user whose network blocks one of them can pin the other.
+    /// `auto` — the default — is `ipwho.is` first, `ipapi.co` behind it and `IP.SB` last; the
+    /// single-service spellings exist so a user whose network blocks one of them can pin another.
     /// Anything else is [`Error::Usage`]: a typo in the configuration must stop the run, not
     /// silently pick a service.
     pub fn chain(setting: &str) -> Result<Vec<Self>> {
         match setting.trim() {
-            "auto" => Ok(vec![Self::IpWhoIs, Self::IpApiCo]),
+            "auto" => Ok(vec![Self::IpWhoIs, Self::IpApiCo, Self::IpSb]),
             "ipwhois" => Ok(vec![Self::IpWhoIs]),
             "ipapi" => Ok(vec![Self::IpApiCo]),
+            "ipsb" => Ok(vec![Self::IpSb]),
             other => Err(Error::Usage(format!(
                 "unknown IP location service {other:?} ({ACCEPTED})"
             ))),
@@ -106,14 +115,15 @@ impl IpService {
         match self {
             Self::IpWhoIs => IPWHO_IS_URL,
             Self::IpApiCo => IPAPI_CO_URL,
+            Self::IpSb => IP_SB_URL,
         }
     }
 }
 
 /// The fallback chain: the configured services, tried in order.
 ///
-/// There is no type per service, because the two differ only in the shape of their JSON, and that
-/// shape is decoded immediately before it becomes a [`Location`].
+/// There is no type per service, because the three differ only in the shape of their JSON, and
+/// that shape is decoded immediately before it becomes a [`Location`].
 pub struct IpLocatorChain<'a> {
     http: &'a HttpClient,
     cache: &'a Cache,
@@ -192,6 +202,7 @@ impl<'a> IpLocatorChain<'a> {
         match service {
             IpService::IpWhoIs => from_ipwho_is(service, &body),
             IpService::IpApiCo => from_ipapi_co(service, &body),
+            IpService::IpSb => from_ip_sb(service, &body),
         }
     }
 }
@@ -254,6 +265,69 @@ fn from_ipapi_co(service: IpService, body: &Value) -> Result<Location> {
         source: LocationSource::Ip,
         station: None,
     })
+}
+
+/// Translates an `IP.SB` answer.
+///
+/// The endpoint answers flat JSON with no envelope, and its field names are the ones this project
+/// uses (`latitude`, `longitude`, `country_code`, `timezone`). An address the service cannot place
+/// comes back as the null island — `0, 0` — with empty names, which is a refusal, not a place: a
+/// coordinate there would query the weather for the Gulf of Guinea, so it becomes
+/// [`Error::Upstream`] and the chain moves on.
+fn from_ip_sb(service: IpService, body: &Value) -> Result<Location> {
+    let answer: IpSbAnswer = decode(service, body)?;
+    let (lat, lon) = coordinates(service, answer.latitude, answer.longitude)?;
+    if null_island(lat, lon) {
+        return Err(upstream(
+            service,
+            "the answer places the address at 0, 0, which is not a location",
+        ));
+    }
+    Ok(Location {
+        name: required(service, "city", text(answer.city))?,
+        admin1: text(answer.region),
+        country: text(answer.country).unwrap_or_default(),
+        country_code: text(answer.country_code),
+        lat,
+        lon,
+        tz: zone(service, answer.timezone)?,
+        elevation_m: None,
+        population: None,
+        source: LocationSource::Ip,
+        station: None,
+    })
+}
+
+/// The `IP.SB` answer, reduced to the fields that become a [`Location`].
+///
+/// The service also sends `ip`, `asn`, `isp`, `organization`, `offset`, … — nothing downstream
+/// reads any of it, so it is ignored on purpose.
+#[derive(Debug, Deserialize)]
+struct IpSbAnswer {
+    /// City name, e.g. `Xinxiang`.
+    city: Option<String>,
+    /// Region or province name, e.g. `Henan`.
+    region: Option<String>,
+    /// Country name, e.g. `China`.
+    country: Option<String>,
+    /// ISO 3166-1 alpha 2 country code, e.g. `CN`.
+    country_code: Option<String>,
+    /// Latitude in degrees, WGS 84; `0` when the address cannot be placed.
+    latitude: Option<f64>,
+    /// Longitude in degrees, WGS 84; `0` when the address cannot be placed.
+    longitude: Option<f64>,
+    /// IANA zone name, e.g. `Asia/Shanghai`.
+    timezone: Option<String>,
+}
+
+/// Whether a pair is exactly the null island, the refusal `IP.SB` sends for an address it cannot
+/// place.
+///
+/// Exact comparison is the point: `0, 0` is the sentinel, not a place near it, and every other
+/// coordinate — `0.0001, 0` included — is a real one.
+#[allow(clippy::float_cmp)]
+fn null_island(lat: f64, lon: f64) -> bool {
+    lat == 0.0 && lon == 0.0
 }
 
 /// The `ipwho.is` answer, reduced to the fields that become a [`Location`].
@@ -390,7 +464,7 @@ fn zone(service: IpService, name: Option<String>) -> Result<Tz> {
 mod tests {
     use serde_json::Value;
 
-    use super::{IpService, from_ipwho_is};
+    use super::{IpService, from_ip_sb, from_ipwho_is};
     use crate::error::Error;
 
     /// An `ipwho.is` answer with the given coordinate spellings.
@@ -430,5 +504,42 @@ mod tests {
             0.0,
             f64::INFINITY
         ));
+    }
+
+    /// An `IP.SB` answer with the given coordinate spellings.
+    fn ip_sb_answer(lat: &str, lon: &str) -> Value {
+        serde_json::from_str(&format!(
+            r#"{{"city": "Xinxiang", "region": "Henan", "country": "China",
+                 "country_code": "CN", "latitude": {lat}, "longitude": {lon},
+                 "timezone": "Asia/Shanghai"}}"#
+        ))
+        .expect("the fixture parses")
+    }
+
+    #[test]
+    fn ip_sb_decodes_its_flat_answer() {
+        let location = from_ip_sb(IpService::IpSb, &ip_sb_answer("35.1874", "113.8025"))
+            .expect("the answer is a location");
+        assert_eq!(location.name, "Xinxiang");
+        assert_eq!(location.admin1.as_deref(), Some("Henan"));
+        assert_eq!(location.country, "China");
+        assert_eq!(location.country_code.as_deref(), Some("CN"));
+        assert_eq!(location.source, crate::model::LocationSource::Ip);
+    }
+
+    #[test]
+    fn ip_sb_null_island_is_a_refusal_not_a_place() {
+        let error = from_ip_sb(IpService::IpSb, &ip_sb_answer("0", "0"))
+            .expect_err("0, 0 is the service's sentinel");
+        match error {
+            Error::Upstream { message, .. } => {
+                assert!(message.contains("0, 0"), "{message}");
+            }
+            other => panic!("expected an upstream error, got {other:?}"),
+        }
+        // A coordinate merely near it is a real place.
+        assert!(from_ip_sb(IpService::IpSb, &ip_sb_answer("0.0001", "0")).is_ok());
+        // So is a coordinate on the equator or the prime meridian alone.
+        assert!(from_ip_sb(IpService::IpSb, &ip_sb_answer("0", "113.8")).is_ok());
     }
 }

@@ -22,7 +22,7 @@ bundled credential: GeoNames is BYOK.
 
 ## Deliverables
 
-- ⬜ `src/geo/ip.rs`: `IpService::IpSb` — `GET https://api.ip.sb/geoip`, keyless, worldwide;
+- ✅ `src/geo/ip.rs`: `IpService::IpSb` — `GET https://api.ip.sb/geoip`, keyless, worldwide;
   consumes `latitude`, `longitude`, `city`, `region`, `country`, `country_code`, `timezone`; rejects
   a null or `0,0` answer and a missing IANA zone exactly as the existing services do (no silent
   UTC); cached as `ip/ip.sb.json` under the 24 h cap; `CIRROCAST_IP_SERVICE` gains the `ipsb`
@@ -198,6 +198,26 @@ for the same place and keeps step 04's order.
   invalid-key path; both recorded in the deliverables above.
 - 2026-10-04 — renumbered from 27 to 25 by the plan reorganization; dependencies are now 18 and 20 (`20-location-candidate-selection.md` was 26).
 
+- 2026-10-06 — the two decisions the recon note left open, taken before the first line of code:
+  (1) **credit for a named coordinate** goes through a new `Location::named_by:
+  Option<LocationSource>` (serde-defaulted, not part of the `json` projection), not a new
+  `LocationSource`: a coordinate keeps `source = Coordinates` because that is what drives
+  `provisional_zone` and the providers' zone-correction allowlist, while `attribution_line` falls
+  back to `named_by` so a name attached by the bundled tables or Nominatim still carries its
+  credit; a bare coordinate keeps carrying none. A *direct* GeoNames search gets the new
+  `LocationSource::Geonames` variant the contract already words. The README attribution paragraph
+  is amended in the commit that lands `named_by`.
+  (2) **the Natural Earth layer** is a second mode of the one builder, not a second crate:
+  `cargo run -p geo-table -- --countries <path-or-url> [output-dir] [--check]` writes
+  `countries.bin.gz` plus a `COUNTRIES` provenance record beside the city members, with the same
+  compare/install discipline, one more `[[annotations]]` entry and `LICENSES/CC0-1.0.txt`.
+  Measured on the 2026-10-06 download (`ne_50m_admin_0_countries.geojson`, 242 features, 99 613
+  points): 408 KiB gzipped at 1e-3 quantisation, inside the 1 MiB budget, so 1:50m ships.
+- 2026-10-06 — `IpService::IpSb` landed: third service, `ipsb` spelling, `auto` = ipwhois → ipapi →
+  ipsb, `0,0` answers refused as the service's own sentinel. Live run (`CIRROCAST_IP_SERVICE=ipsb
+  cirrocast location search --ip`) answered `Xinxiang, Henan, China (35.19, 113.80) Asia/Shanghai`
+  through `api.ip.sb/geoip`; the fixtures are minimised recordings of that answer and of the
+  sentinel, and the chain failure test now names all three attempts.
 - 2026-10-06 — recon for the next session (no code yet). The subsystem this step extends is fully
   mapped: `src/geo/mod.rs` holds `LocationSpec`/`parse_arg`, the `Geocoder` trait
   (`fn search(&self, query: &str, limit: u8) -> Result<Vec<Location>>`), `resolve_candidates`,

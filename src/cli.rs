@@ -227,8 +227,8 @@ pub struct QueryArgs {
     pub lon: Option<f64>,
 
     /// Locate from the public IP address. This sends the address to ipwho.is (falling back to
-    /// ipapi.co); the answer is cached for 24 hours. It never happens without `--ip` or an empty
-    /// location everywhere.
+    /// ipapi.co and IP.SB); the answer is cached for 24 hours. It never happens without `--ip` or
+    /// an empty location everywhere.
     #[arg(long, conflicts_with = "station")]
     pub ip: bool,
 
@@ -614,8 +614,8 @@ pub struct SearchArgs {
     pub query: Option<String>,
 
     /// Locate from the public IP address. This sends the address to ipwho.is (falling back to
-    /// ipapi.co); the answer is cached for 24 hours. It never happens without `--ip` or an empty
-    /// location everywhere.
+    /// ipapi.co and IP.SB); the answer is cached for 24 hours. It never happens without `--ip` or
+    /// an empty location everywhere.
     #[arg(long)]
     pub ip: bool,
 

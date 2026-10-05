@@ -624,9 +624,10 @@ cirrocast location search @39.9042,116.4074
 **Privacy:** the public-IP lookup is the only request that reveals anything about *you* rather than
 about a place you asked for, and it is never implicit — it runs only with `--ip` or when no location
 is configured anywhere (`location.default` empty and no positional argument). It sends the public IP
-to `ipwho.is`, falling back to `ipapi.co` (`CIRROCAST_IP_SERVICE=auto|ipwhois|ipapi`), caches the
-answer for 24 hours and names the service it used on stderr. An offline policy that silences the
-geo scope (`--offline`, `--offline=geo`) refuses the lookup instead, and never opens a socket.
+to `ipwho.is`, falling back to `ipapi.co` and `IP.SB` (`CIRROCAST_IP_SERVICE=auto|ipwhois|ipapi|ipsb`),
+caches the answer for 24 hours and names the service it used on stderr. An offline policy that
+silences the geo scope (`--offline`, `--offline=geo`) refuses the lookup instead, and never opens a
+socket.
 
 ## Data sources, limits and licences
 
@@ -656,6 +657,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [Hong Kong Observatory](https://data.weather.gov.hk/) | alerts for Hong Kong | keyless open data | credit printed with the warnings: `Warnings by the Hong Kong Observatory` |
 | [ipwho.is](https://ipwho.is/) | `--ip` (primary) | free endpoint: 1 000 requests/day per client IP, then `429` + `Retry-After` | personal or internal use, no redistribution |
 | [ipapi.co](https://ipapi.co/) | `--ip` (fallback) | free tier: up to 1 000 requests/day | internal use, no resale; its terms allow keeping an answer for **at most 24 hours**, which is why `cache.ip_ttl_secs` is capped there |
+| [IP.SB](https://ip.sb/) | `--ip` (last fallback) | keyless public endpoint, worldwide, no documented quota; a 429 is honoured like the others' | no attribution required; answers are cached under the same 24-hour cap |
 
 Alert output carries its own credits: WMO SWIC names the issuing agencies and FPAS the instance,
 printed in the `alerts` listing, the `art-table`/`plain` footers, the `json` `alert_credits` array
