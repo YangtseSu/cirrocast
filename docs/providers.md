@@ -29,6 +29,15 @@ registry re-verification of that step needs a written record of what was checked
   a number.
 * **Client notes** at the end of each section state what our implementation must do about the facts
   above; they are the seed of the corresponding `src/provider/<id>.rs`.
+* **Network class** (step 24) is a separate axis from the licence: `free` means the backend is
+  keyless or needs a key the user can self-host, its endpoint is documented and public, and no
+  proprietary service sits in the request path (a self-hosted Bright Sky instance reading DWD open
+  data is `free`); `nonfree` means a commercial service reached with the user's own key
+  (OpenWeatherMap, WeatherAPI, WWO, PirateWeather, Visual Crossing, QWeather) or a portal-issued
+  token for a commercial redistribution service (MeteoAlarm). It is metadata, not a filter:
+  `provider list` prints it in the `NET` column and `provider info` prints a `network:` row, so a
+  distribution can document what a default install talks to without a `--free-only` switch that
+  would be a dead flag for most users.
 
 ## At a glance
 

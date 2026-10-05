@@ -104,6 +104,29 @@ fn provider_list_shows_every_provider_and_its_key_requirement() {
         "qweather should name its env var:\n{}",
         row(&stdout, "qweather")
     );
+
+    // The network class (step 24): keyless rows are free, commercial BYOK services are not.
+    assert!(
+        columns("open-meteo").contains(&"free".to_owned()),
+        "open-meteo should be free:\n{}",
+        row(&stdout, "open-meteo")
+    );
+    assert!(
+        columns("qweather").contains(&"nonfree".to_owned()),
+        "qweather should be nonfree:\n{}",
+        row(&stdout, "qweather")
+    );
+
+    // `provider info` prints the same metadata, plus the history/marine rows.
+    let assert = sandbox
+        .cirrocast()
+        .args(["provider", "info", "open-meteo"])
+        .assert()
+        .success();
+    let info = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
+    for needle in ["network:     free", "history days:92", "marine:      no"] {
+        assert!(info.contains(needle), "{needle:?} missing from:\n{info}");
+    }
 }
 
 #[test]
