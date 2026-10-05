@@ -29,9 +29,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cirrocast::cache::SystemClock;
-use cirrocast::config::Network;
+use cirrocast::config::{Config, Network};
 use cirrocast::geo::update::{self, Candidate};
 use cirrocast::http::{HttpClient, UreqTransport};
+use cirrocast::paths::Paths;
 
 /// Where the members are written when the second argument is omitted.
 const DEFAULT_OUTPUT: &str = "src/geo/data";
@@ -48,13 +49,15 @@ enum Outcome {
     Built(String),
     /// `--check` found the committed snapshot current; exit 0.
     Current(String),
+    /// `-h`/`--help` was passed; exit 0.
+    Help(String),
     /// `--check` found a difference; exit 1.
     Differs(String),
 }
 
 fn main() -> ExitCode {
     match run() {
-        Ok(Outcome::Built(report) | Outcome::Current(report)) => {
+        Ok(Outcome::Built(report) | Outcome::Current(report) | Outcome::Help(report)) => {
             println!("{report}");
             ExitCode::SUCCESS
         }
@@ -76,6 +79,22 @@ fn main() -> ExitCode {
 
 fn usage() -> String {
     "usage: cargo run -p geo-table -- <path-or-url> [output-dir] [--check]".to_owned()
+}
+
+/// The `-h`/`--help` text: the synopsis plus one line on what the tool does.
+fn help() -> String {
+    format!(
+        "{}\n\nBuilds the offline city table (`cities.bin.gz`, `keys.bin.gz`, `SNAPSHOT`) from a\n\
+         GeoNames cities15000 dump — a local `.txt`/`.zip` or an `http(s)` URL — or, with\n\
+         `--check`, compares the committed snapshot against a dump and exits 1 when it differs.",
+        usage()
+    )
+}
+
+/// Whether the arguments ask for the help text rather than a build.
+fn wants_help(args: &[String]) -> bool {
+    args.iter()
+        .any(|argument| argument == "-h" || argument == "--help")
 }
 
 /// The parsed command line.
@@ -114,7 +133,11 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
 }
 
 fn run() -> Result<Outcome, String> {
-    let args = parse_args(env::args().skip(1))?;
+    let raw: Vec<String> = env::args().skip(1).collect();
+    if wants_help(&raw) {
+        return Ok(Outcome::Help(help()));
+    }
+    let args = parse_args(raw)?;
     if args.check {
         check_snapshot(&args.source, &args.output)
     } else {
@@ -196,7 +219,7 @@ fn check_snapshot(source: &str, output: &Path) -> Result<Outcome, String> {
 
 /// The build path itself: fetch or read, extract, parse, encode, validate.
 fn candidate(source: &str) -> Result<Candidate, String> {
-    let network = Network::default();
+    let network = network_config();
     let transport = UreqTransport::new(&network, TIMEOUT)
         .map_err(|error| format!("cannot build the HTTP client: {error}"))?;
     let http = HttpClient::new(
@@ -206,6 +229,18 @@ fn candidate(source: &str) -> Result<Candidate, String> {
         0,
     );
     update::build_candidate(source, &http, 1).map_err(|error| error.to_string())
+}
+
+/// The `[network]` table the maintainer's configuration holds, so the builder dials through the
+/// same proxy `cirrocast location update-data` would.
+///
+/// A missing or unreadable configuration falls back to [`Network::default`], which still honours
+/// `HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` from the environment.
+fn network_config() -> Network {
+    let Ok(paths) = Paths::resolve() else {
+        return Network::default();
+    };
+    Config::load(&paths).map_or_else(|_| Network::default(), |config| config.network)
 }
 
 /// The build report: counts, sizes and where the `SNAPSHOT` went.
@@ -245,7 +280,7 @@ fn describe(snapshot: Option<&str>) -> String {
 mod tests {
     use std::path::Path;
 
-    use super::{Outcome, build, check_snapshot, parse_args};
+    use super::{Outcome, build, check_snapshot, help, parse_args, wants_help};
 
     /// A dump with one usable row and one without a zone.
     const SAMPLE: &str = "\
@@ -370,5 +405,14 @@ mod tests {
             "a third positional is a usage error"
         );
         assert!(parse_args(["--help".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn help_is_recognised_before_a_build_is_attempted() {
+        assert!(wants_help(&["--help".to_owned()]));
+        assert!(wants_help(&["-h".to_owned()]));
+        assert!(wants_help(&["a.zip".to_owned(), "--help".to_owned()]));
+        assert!(!wants_help(&["a.zip".to_owned()]));
+        assert!(help().contains("usage:"), "{}", help());
     }
 }

@@ -212,13 +212,14 @@ fn from_ipwho_is(service: IpService, body: &Value) -> Result<Location> {
     if !answer.success {
         return Err(envelope_error(service, None, answer.message.as_deref()));
     }
+    let (lat, lon) = coordinates(service, answer.latitude, answer.longitude)?;
     Ok(Location {
         name: required(service, "city", text(answer.city))?,
         admin1: text(answer.region),
         country: text(answer.country).unwrap_or_default(),
         country_code: text(answer.country_code),
-        lat: required(service, "latitude", answer.latitude)?,
-        lon: required(service, "longitude", answer.longitude)?,
+        lat,
+        lon,
         tz: zone(service, answer.timezone.and_then(|timezone| timezone.id))?,
         elevation_m: None,
         population: None,
@@ -239,13 +240,14 @@ fn from_ipapi_co(service: IpService, body: &Value) -> Result<Location> {
         let message = answer.message.as_deref();
         return Err(envelope_error(service, reason, message));
     }
+    let (lat, lon) = coordinates(service, answer.latitude, answer.longitude)?;
     Ok(Location {
         name: required(service, "city", text(answer.city))?,
         admin1: text(answer.region),
         country: text(answer.country_name).unwrap_or_default(),
         country_code: text(answer.country).or_else(|| text(answer.country_code)),
-        lat: required(service, "latitude", answer.latitude)?,
-        lon: required(service, "longitude", answer.longitude)?,
+        lat,
+        lon,
         tz: zone(service, answer.timezone)?,
         elevation_m: None,
         population: None,
@@ -351,6 +353,23 @@ fn required<T>(service: IpService, field: &str, value: Option<T>) -> Result<T> {
     value.ok_or_else(|| upstream(service, detail))
 }
 
+/// The answer's coordinates as a pair, or an error naming the service.
+///
+/// A missing value, a non-finite one or one outside the geographic range is refused before it can
+/// reach a forecast request or the rendered header; the rule itself lives in
+/// [`crate::geo::nominatim::usable_coordinates`], shared with the other JSON-backed geocoders.
+fn coordinates(service: IpService, lat: Option<f64>, lon: Option<f64>) -> Result<(f64, f64)> {
+    let lat = required(service, "latitude", lat)?;
+    let lon = required(service, "longitude", lon)?;
+    if !crate::geo::nominatim::usable_coordinates(lat, lon) {
+        return Err(upstream(
+            service,
+            format!("the answer's coordinates ({lat}, {lon}) are not usable"),
+        ));
+    }
+    Ok((lat, lon))
+}
+
 /// The failure an answer's own error envelope describes, quoting the service's first non-empty
 /// detail.
 fn envelope_error(service: IpService, reason: Option<&str>, message: Option<&str>) -> Error {
@@ -365,4 +384,51 @@ fn zone(service: IpService, name: Option<String>) -> Result<Tz> {
     let name = required(service, "timezone", text(name))?;
     let detail = format!("the timezone {name:?} is not an IANA zone name");
     Tz::from_str(&name).map_err(|_| upstream(service, detail))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    use super::{IpService, from_ipwho_is};
+    use crate::error::Error;
+
+    /// An `ipwho.is` answer with the given coordinate spellings.
+    fn answer(lat: &str, lon: &str) -> Value {
+        serde_json::from_str(&format!(
+            r#"{{"success": true, "city": "X", "latitude": {lat}, "longitude": {lon},
+                 "timezone": {{"id": "Asia/Shanghai"}}}}"#
+        ))
+        .expect("the fixture parses")
+    }
+
+    #[test]
+    fn an_out_of_range_answer_is_refused() {
+        let error = from_ipwho_is(IpService::IpWhoIs, &answer("91.0", "116.4"))
+            .expect_err("a latitude above 90 is not a place");
+        match error {
+            Error::Upstream { message, .. } => {
+                assert!(message.contains("not usable"), "{message}");
+            }
+            other => panic!("expected an upstream error, got {other:?}"),
+        }
+        assert!(
+            from_ipwho_is(IpService::IpWhoIs, &answer("39.9", "181.0")).is_err(),
+            "a longitude above 180 is not a place either"
+        );
+    }
+
+    #[test]
+    fn unusable_coordinate_values_are_refused() {
+        // JSON has no `NaN`/`inf` literal, so a payload value is always finite; the pair rule is
+        // exercised directly for the non-finite and the overflowing shapes (`1e400` parses to
+        // `inf`).
+        let one_e400: f64 = "1e400".parse().expect("an overflow parses to infinity");
+        assert!(!crate::geo::nominatim::usable_coordinates(f64::NAN, 0.0));
+        assert!(!crate::geo::nominatim::usable_coordinates(one_e400, 0.0));
+        assert!(!crate::geo::nominatim::usable_coordinates(
+            0.0,
+            f64::INFINITY
+        ));
+    }
 }

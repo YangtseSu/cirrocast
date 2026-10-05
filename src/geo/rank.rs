@@ -3,13 +3,13 @@
 
 //! Candidate ordering, shared by every geocoding source.
 //!
-//! The network geocoder returns [`Location`] values, the bundled table returns [`City`] rows, and
+//! The network geocoder returns [`Location`] values, the bundled table returns `City` rows, and
 //! both are ordered by the one function here: an exact (folded) name match first, then a prefix
-//! match, then larger population, then the source's own order (the sort is stable). One
-//! implementation means `location search` cannot order the same query differently in offline and
-//! network modes, which is what step 18's equivalence test pins.
-//!
-//! [`City`]: crate::geo::offline::City
+//! match, then larger population, and finally the display name and ascii spelling as a
+//! deterministic tiebreak. Because the order depends on the candidates alone, `location search`
+//! cannot order the same query differently in offline and network modes — which is what step 18's
+//! equivalence test pins — and two runs resolve the same place even if a service returns its hits
+//! in another order.
 
 use std::cmp::Ordering;
 
@@ -86,20 +86,33 @@ impl Query {
     }
 
     fn order<A: Candidate + ?Sized, B: Candidate + ?Sized>(&self, left: &A, right: &B) -> Ordering {
-        self.tier(right).cmp(&self.tier(left)).then_with(|| {
-            right
-                .population()
-                .unwrap_or(0)
-                .cmp(&left.population().unwrap_or(0))
-        })
+        self.tier(right)
+            .cmp(&self.tier(left))
+            .then_with(|| by_population_then_name(left, right))
     }
+}
+
+/// Larger population first, then the display name and the ascii spelling.
+///
+/// The last two make the order total: without them two candidates with equal tier and equal
+/// population (including two `None`s collapsed to `0`) would fall back to the order the source
+/// happened to return, and a re-run could resolve a different place.
+fn by_population_then_name<A: Candidate + ?Sized, B: Candidate + ?Sized>(
+    left: &A,
+    right: &B,
+) -> Ordering {
+    right
+        .population()
+        .unwrap_or(0)
+        .cmp(&left.population().unwrap_or(0))
+        .then_with(|| left.name().cmp(right.name()))
+        .then_with(|| left.ascii_name().cmp(&right.ascii_name()))
 }
 
 /// Orders candidates the way [`resolve`](crate::geo::resolve) picks one, keeping at most `limit`.
 ///
-/// The order depends on nothing but the inputs, so re-running a query resolves to the same
-/// location even when the service returns its hits in a different order — the source's order is
-/// only the last tiebreaker, which the stable sort preserves.
+/// The order is a total order over the candidates' own fields, so re-running a query resolves to
+/// the same location even when the service returns its hits in a different order.
 #[must_use]
 pub fn rank<T: Candidate>(mut results: Vec<T>, query: Option<&str>, limit: u8) -> Vec<T> {
     match query {
@@ -107,12 +120,7 @@ pub fn rank<T: Candidate>(mut results: Vec<T>, query: Option<&str>, limit: u8) -
             let query = Query::new(query);
             results.sort_by(|left, right| query.order(left, right));
         }
-        None => results.sort_by(|left, right| {
-            right
-                .population()
-                .unwrap_or(0)
-                .cmp(&left.population().unwrap_or(0))
-        }),
+        None => results.sort_by(by_population_then_name),
     }
     results.truncate(usize::from(limit));
     results
@@ -210,6 +218,36 @@ mod tests {
         );
         let ranked = rank(hits, Some("Nope"), 10);
         assert_eq!(ranked[0].name, "Second");
+    }
+
+    #[test]
+    fn equal_candidates_are_ordered_by_name_not_source_order() {
+        // Equal tier and equal population: the name tiebreak must decide, whichever order the
+        // source returned the two in.
+        let hits = vec![
+            candidate("Zeta", None, None),
+            candidate("Alpha", None, None),
+        ];
+        let ranked = rank(hits, None, 10);
+        assert_eq!(
+            ranked
+                .iter()
+                .map(|location| location.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Alpha", "Zeta"]
+        );
+        let hits = vec![
+            candidate("Zeta", None, None),
+            candidate("Alpha", None, None),
+        ];
+        let ranked = rank(hits, Some("Nope"), 10);
+        assert_eq!(
+            ranked
+                .iter()
+                .map(|location| location.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Alpha", "Zeta"]
+        );
     }
 
     #[test]

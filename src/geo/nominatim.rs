@@ -23,6 +23,7 @@
 //! here: hits leave in the service's own order and [`super::resolve`] orders them.
 
 use std::str::FromStr;
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono_tz::Tz;
@@ -114,7 +115,17 @@ impl<'a> Nominatim<'a> {
     /// The stamp is written before the request goes out, so a run that crashes or is cancelled
     /// still counts against the limit. Nothing is recorded for a cache hit, because this is never
     /// called for one.
+    ///
+    /// The whole read-wait-write sequence is serialised across this process's threads: a
+    /// multi-location run resolves several names on worker threads, and without the lock two of
+    /// them would read the same "no request recorded yet" state and both send inside one second,
+    /// breaching the policy the state file exists to honour.
     fn throttle(&self) -> Result<()> {
+        /// Serialises the throttle across threads. A process-wide lock is enough because the two
+        /// racing threads of one run share it; the state file still orders separate processes.
+        static LOCK: Mutex<()> = Mutex::new(());
+        let _guard = LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+
         let clock = self.cache.clock();
         let now = clock.now();
         if let Some(previous) = self.last_request()?.and_then(instant) {
@@ -238,6 +249,15 @@ fn location_from_hit(hit: Hit) -> Result<Location> {
         .unwrap_or_else(|| "unnamed result".to_owned());
     let lat = coordinate(lat.as_deref(), "latitude", &name)?;
     let lon = coordinate(lon.as_deref(), "longitude", &name)?;
+    if !usable_coordinates(lat, lon) {
+        return Err(Error::Upstream {
+            provider: "nominatim".to_owned(),
+            status: None,
+            message: format!(
+                "geocoding result `{name}` has out-of-range coordinates ({lat}, {lon})"
+            ),
+        });
+    }
 
     let address = address.unwrap_or_default();
     let (tz, population) = match extratags {
@@ -288,6 +308,19 @@ fn coordinate(raw: Option<&str>, axis: &str, name: &str) -> Result<f64> {
             message: format!("geocoding result `{name}` has no usable {axis} (got {got})"),
         }
     })
+}
+
+/// Whether a latitude/longitude pair is usable as a location: both finite, latitude within `±90°`
+/// and longitude within `±180°`.
+///
+/// The JSON-backed geocoders ([`crate::geo::ip`], [`crate::geo::open_meteo`]) call this too: a
+/// payload value that parses but is not a real coordinate would otherwise reach a provider URL
+/// and the rendered header. It is exposed so all three apply exactly one rule.
+pub(crate) fn usable_coordinates(lat: f64, lon: f64) -> bool {
+    lat.is_finite()
+        && lon.is_finite()
+        && (-90.0..=90.0).contains(&lat)
+        && (-180.0..=180.0).contains(&lon)
 }
 
 /// The hit's IANA zone when it carries a usable one, UTC otherwise.
@@ -453,5 +486,69 @@ mod tests {
                 other => panic!("expected an upstream error, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn an_out_of_range_hit_is_refused() {
+        let error = location_from_hit(hit(r#"{"name": "Nowhere", "lat": "91", "lon": "0"}"#))
+            .expect_err("a latitude above 90 is not a place");
+        match error {
+            Error::Upstream { message, .. } => {
+                assert!(message.contains("out-of-range"), "{message}");
+                assert!(message.contains("Nowhere"), "{message}");
+            }
+            other => panic!("expected an upstream error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn usable_coordinates_rejects_non_finite_and_out_of_range_values() {
+        let one_e400: f64 = "1e400".parse().expect("an overflow parses to infinity");
+        assert!(one_e400.is_infinite());
+        assert!(usable_coordinates(39.9, 116.4));
+        assert!(!usable_coordinates(f64::NAN, 116.4));
+        assert!(!usable_coordinates(one_e400, 116.4));
+        assert!(!usable_coordinates(39.9, f64::INFINITY));
+        assert!(!usable_coordinates(91.0, 0.0));
+        assert!(!usable_coordinates(0.0, 181.0));
+    }
+
+    /// Two threads that start together must still be one second apart: the throttle's
+    /// read-wait-write is serialised inside the process, so exactly one of four waits out the
+    /// window when the state file starts empty.
+    #[test]
+    fn concurrent_calls_honour_the_one_request_per_second_throttle() {
+        use std::sync::{Arc, Barrier};
+
+        use crate::cache::{CacheMode, Clock, FakeClock};
+        use crate::http::{HttpClient, StubTransport};
+
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let fake = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        let clock: Arc<dyn Clock> = fake.clone();
+        let cache = Cache::with_root(directory.path(), CacheMode::Normal, Arc::clone(&clock), 0);
+        let http = HttpClient::new(
+            Box::new(StubTransport::new(Vec::new())),
+            0,
+            Arc::clone(&clock),
+            0,
+        );
+        let nominatim = Nominatim::new(&http, &cache, DEFAULT_URL);
+        let barrier = Barrier::new(4);
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                let nominatim = &nominatim;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    nominatim.throttle().expect("the throttle succeeds");
+                });
+            }
+        });
+        assert_eq!(
+            fake.sleeps(),
+            vec![Duration::from_secs(1); 3],
+            "three of the four callers must wait out the one-second window"
+        );
     }
 }

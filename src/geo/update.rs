@@ -143,6 +143,9 @@ fn source_kind(source: &str) -> Result<Kind> {
 
 /// Reads a dump from a path or URL. URLs go through the shared client, so the guard, the proxy and
 /// the retry policy all apply.
+///
+/// A value carrying an unsupported scheme (`file:///srv/dump.zip`) is a usage error naming it,
+/// rather than a confusing `cannot read file:///…` from treating it as a local path.
 fn read_source(source: &str, http: &HttpClient, verbose: u8) -> Result<Vec<u8>> {
     if source.starts_with("http://") || source.starts_with("https://") {
         if verbose > 0 {
@@ -150,6 +153,11 @@ fn read_source(source: &str, http: &HttpClient, verbose: u8) -> Result<Vec<u8>> 
         }
         let response = http.send(&HttpRequest::get(source))?;
         Ok(response.bytes().to_vec())
+    } else if let Some((scheme, _)) = source.split_once("://") {
+        Err(Error::Usage(format!(
+            "`{source}` names the unsupported scheme `{scheme}`; use an `http://` or `https://` \
+             URL, or a local path"
+        )))
     } else {
         fs::read(source).map_err(|error| Error::Other(format!("cannot read {source}: {error}")))
     }
@@ -200,16 +208,55 @@ pub fn build_candidate(source: &str, http: &HttpClient, verbose: u8) -> Result<C
     })
 }
 
-/// Installs the candidate under `$XDG_DATA_HOME/cirrocast/geo/` (atomic writes, previous table
-/// kept until every file is in place) and returns the directory.
+/// Installs the candidate under `$XDG_DATA_HOME/cirrocast/geo/` and returns the directory.
+///
+/// The three members are written into a sibling staging directory first and the whole directory is
+/// then swapped in with two renames, so a reader never sees a pair where `cities.bin.gz` and
+/// `keys.bin.gz` come from different builds; a crash mid-swap leaves either the old table, the new
+/// table, or no table (the bundled one then answers). The old directory is removed once the new
+/// one is in place.
 #[cfg(feature = "offline-geo")]
 pub(crate) fn install(candidate: &Candidate, paths: &Paths) -> Result<PathBuf> {
     let dir = table_dir(paths);
-    fs::create_dir_all(&dir)
-        .map_err(|error| Error::Config(format!("cannot create {}: {error}", dir.display())))?;
-    write_atomic(&dir.join("cities.bin.gz"), &candidate.cities_gz)?;
-    write_atomic(&dir.join("keys.bin.gz"), &candidate.keys_gz)?;
-    write_atomic(&dir.join("SNAPSHOT"), candidate.snapshot.as_bytes())?;
+    let parent = dir
+        .parent()
+        .ok_or_else(|| Error::Config(format!("{} has no parent directory", dir.display())))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| Error::Config(format!("cannot create {}: {error}", parent.display())))?;
+
+    let staging = parent.join(format!(".geo-staging-{}", std::process::id()));
+    let previous = parent.join(format!(".geo-previous-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&staging);
+    let _ = fs::remove_dir_all(&previous);
+    fs::create_dir_all(&staging)
+        .map_err(|error| Error::Config(format!("cannot create {}: {error}", staging.display())))?;
+    let staged = write_atomic(&staging.join("cities.bin.gz"), &candidate.cities_gz)
+        .and_then(|()| write_atomic(&staging.join("keys.bin.gz"), &candidate.keys_gz))
+        .and_then(|()| write_atomic(&staging.join("SNAPSHOT"), candidate.snapshot.as_bytes()));
+    if let Err(error) = staged {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+
+    // Move the old table aside, move the complete new one into place, then drop the old one. Every
+    // instant is one whole table or the other; a failed second rename restores the old table.
+    if dir.is_dir() {
+        fs::rename(&dir, &previous).map_err(|error| {
+            let _ = fs::remove_dir_all(&staging);
+            Error::Config(format!("cannot move {} aside: {error}", dir.display()))
+        })?;
+    }
+    if let Err(error) = fs::rename(&staging, &dir) {
+        if previous.is_dir() {
+            let _ = fs::rename(&previous, &dir);
+        }
+        let _ = fs::remove_dir_all(&staging);
+        return Err(Error::Config(format!(
+            "cannot install {}: {error}",
+            dir.display()
+        )));
+    }
+    let _ = fs::remove_dir_all(&previous);
     Ok(dir)
 }
 
@@ -321,20 +368,15 @@ fn extract_cities_txt(zip: &[u8]) -> std::result::Result<String, String> {
         .get(data..data + entry.compressed as usize)
         .ok_or_else(|| "the archive member is truncated".to_owned())?;
 
-    let mut out = Vec::with_capacity(entry.uncompressed as usize);
-    match entry.method {
-        0 => out.extend_from_slice(compressed),
-        8 => {
-            DeflateDecoder::new(compressed)
-                .read_to_end(&mut out)
-                .map_err(|error| format!("the archive member does not inflate: {error}"))?;
-        }
+    let out = match entry.method {
+        0 => compressed.to_vec(),
+        8 => bounded_inflate(compressed, MAX_DUMP_BYTES)?,
         method => {
             return Err(format!(
                 "compression method {method} is not supported (stored and deflate only)"
             ));
         }
-    }
+    };
     if out.len() != entry.uncompressed as usize {
         return Err(format!(
             "the archive member expanded to {} bytes, expected {}",
@@ -346,6 +388,25 @@ fn extract_cities_txt(zip: &[u8]) -> std::result::Result<String, String> {
         return Err("the archive member fails its CRC-32 check".to_owned());
     }
     String::from_utf8(out).map_err(|error| format!("the archive member is not UTF-8: {error}"))
+}
+
+/// Inflates a deflate stream, refusing one that expands past `cap`.
+///
+/// `.take(cap + 1)` bounds the read itself: a member declaring one byte and inflating to gigabytes
+/// is stopped at the cap instead of after `read_to_end` allocated the whole expansion. The cap is
+/// a parameter so the bound is testable with a tiny member.
+fn bounded_inflate(compressed: &[u8], cap: u64) -> std::result::Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    DeflateDecoder::new(compressed)
+        .take(cap + 1)
+        .read_to_end(&mut out)
+        .map_err(|error| format!("the archive member does not inflate: {error}"))?;
+    if out.len() as u64 > cap {
+        return Err(format!(
+            "the archive member inflates to more than the {cap} byte cap"
+        ));
+    }
+    Ok(out)
 }
 
 /// Walks the central directory and picks the dump member: `cities15000.txt` when it is there,
@@ -476,7 +537,12 @@ mod tests {
     use chrono::{TimeZone as _, Utc};
 
     use super::note_due;
-    use super::{crc32, extract_cities_txt, find_eocd, source_kind};
+    use super::{
+        bounded_inflate, build_candidate, crc32, extract_cities_txt, find_eocd, source_kind,
+    };
+
+    #[cfg(feature = "offline-geo")]
+    use super::{Candidate, install};
 
     #[test]
     fn the_note_fires_only_for_an_old_table_and_throttles_for_a_day() {
@@ -641,5 +707,106 @@ mod tests {
         );
         out.extend_from_slice(&0_u16.to_le_bytes());
         out
+    }
+
+    #[test]
+    fn a_deflate_stream_that_expands_past_the_cap_is_refused() {
+        use std::io::Write as _;
+
+        use flate2::Compression;
+        use flate2::write::DeflateEncoder;
+
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::best());
+        encoder
+            .write_all(&vec![0_u8; 512])
+            .expect("the payload writes");
+        let compressed = encoder.finish().expect("the deflate stream finishes");
+        // The stream declares nothing; only the bounded read can stop the expansion.
+        let error = bounded_inflate(&compressed, 16).expect_err("past the cap");
+        assert!(error.contains("cap"), "{error}");
+        assert_eq!(
+            bounded_inflate(&compressed, 4096)
+                .expect("a stream under the cap inflates")
+                .len(),
+            512
+        );
+    }
+
+    #[test]
+    fn a_non_http_url_scheme_is_a_usage_error() {
+        use std::sync::Arc;
+
+        use crate::cache::SystemClock;
+        use crate::http::{HttpClient, StubTransport};
+
+        let http = HttpClient::new(
+            Box::new(StubTransport::new(Vec::new())),
+            0,
+            Arc::new(SystemClock),
+            0,
+        );
+        match build_candidate("file:///srv/dump.zip", &http, 0) {
+            Err(error) => {
+                assert_eq!(error.exit_code(), 2, "{error}");
+                assert!(error.to_string().contains("file"), "{error}");
+            }
+            Ok(_) => panic!("a `file://` URL is not a supported source"),
+        }
+    }
+
+    #[cfg(feature = "offline-geo")]
+    #[test]
+    fn install_swaps_the_whole_table_in_and_leaves_no_staging_behind() {
+        use crate::paths::Paths;
+
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let paths = Paths {
+            config_dir: root.path().join("config"),
+            config_file: root.path().join("config/config.toml"),
+            keys_file: root.path().join("config/keys.toml"),
+            cache_dir: root.path().join("cache"),
+            data_dir: root.path().join("data"),
+        };
+        let candidate = |cities: u8| Candidate {
+            cities_gz: vec![cities],
+            keys_gz: vec![2],
+            snapshot: format!("dump-date = 2026-01-01\n{cities}"),
+            dump_date: "2026-01-01".to_owned(),
+            rows: 1,
+            skipped: 0,
+            keys: 1,
+            input_sha256: "0".repeat(64),
+        };
+
+        let dir = install(&candidate(1), &paths).expect("the first install succeeds");
+        assert_eq!(
+            std::fs::read(dir.join("cities.bin.gz")).expect("a member"),
+            vec![1]
+        );
+        assert_eq!(
+            std::fs::read(dir.join("keys.bin.gz")).expect("a member"),
+            vec![2]
+        );
+
+        let dir = install(&candidate(3), &paths).expect("the second install succeeds");
+        assert_eq!(
+            std::fs::read(dir.join("cities.bin.gz")).expect("a member"),
+            vec![3],
+            "the second install replaces the first"
+        );
+
+        // Only the table directory remains: no `.geo-staging-*`/`.geo-previous-*` sibling.
+        let mut names: Vec<String> = std::fs::read_dir(&paths.data_dir)
+            .expect("the data directory")
+            .map(|entry| {
+                entry
+                    .expect("a readable entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.sort();
+        assert_eq!(names, ["geo"]);
     }
 }

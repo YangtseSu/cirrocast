@@ -22,8 +22,12 @@
 //! * `CIRROCAST_FORBID_NETWORK` is enforced by [`UreqTransport`] before DNS or connect, so the
 //!   CLI's test suite can prove that no test reaches the network; loopback stays reachable so a
 //!   test can aim a provider's base URL at an in-process stub;
-//! * [`MAX_BODY_BYTES`] caps one response body, so a broken or hostile upstream cannot make the
-//!   client allocate without bound.
+//! * [`UreqTransport`] is built without `ureq`'s transparent content decoders and with redirects
+//!   allowed only for a request that carries no header, so [`MAX_BODY_BYTES`] bounds what is read
+//!   off the socket, a canonical `3xx` (the FPAS server's `/alert/<id>` → `/cap/alerts/…`) still
+//!   resolves, and a credential header can never survive a hop to another authority; a
+//!   non-identity `Content-Encoding` on a `2xx` is refused as an [`Error::Upstream`] naming the
+//!   cap.
 
 use std::collections::VecDeque;
 use std::path::Path;
@@ -57,6 +61,11 @@ const BACKOFF_STEP: Duration = Duration::from_millis(500);
 
 /// Upper bound for an upstream `Retry-After`, so a hostile header cannot hang the CLI.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
+
+/// The redirect hops a header-free request may follow. Small on purpose: the only canonical
+/// redirect in the registry is FPAS's `/alert/<id>` → `/cap/alerts/…`, so a longer chain means
+/// an upstream worth refusing rather than chasing.
+const MAX_REDIRECTS: u32 = 5;
 
 /// The most bytes one response body may occupy. Every upstream this project talks to answers in
 /// kilobytes; the cap turns a runaway or hostile body into a typed error instead of an allocation
@@ -93,11 +102,16 @@ fn is_loopback_url(url: &str) -> bool {
         .split(['/', '?', '#'])
         .next()
         .unwrap_or_default();
+    // Strip any `user:password@` userinfo before the authority is split: `http://localhost@evil.com`
+    // names `evil.com`, so an un-stripped authority would misclassify it as loopback.
+    let host_port = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
     // Bracketed IPv6 literals (`[::1]:8080`) take precedence over the `:`-splitting.
-    let host = if let Some(rest) = authority.strip_prefix('[') {
+    let host = if let Some(rest) = host_port.strip_prefix('[') {
         rest.split(']').next().unwrap_or_default()
     } else {
-        authority.split(':').next().unwrap_or_default()
+        host_port.split(':').next().unwrap_or_default()
     };
     if host.eq_ignore_ascii_case("localhost") {
         return true;
@@ -143,7 +157,6 @@ pub struct HttpRequest {
     url: String,
     query: Vec<(String, String)>,
     headers: Vec<(String, String)>,
-    timeout: Option<Duration>,
     secrets: Vec<String>,
 }
 
@@ -156,7 +169,6 @@ impl std::fmt::Debug for HttpRequest {
             .field("method", &self.method)
             .field("url", &self.redacted_url())
             .field("headers", &self.headers.len())
-            .field("timeout", &self.timeout)
             .field("secrets", &self.secrets.len())
             .finish_non_exhaustive()
     }
@@ -170,7 +182,6 @@ impl HttpRequest {
             url: url.into(),
             query: Vec::new(),
             headers: Vec::new(),
-            timeout: None,
             secrets: Vec::new(),
         }
     }
@@ -203,13 +214,6 @@ impl HttpRequest {
         self
     }
 
-    /// Overrides the client's timeout for this request only.
-    #[must_use]
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = Some(timeout);
-        self
-    }
-
     /// The method.
     #[must_use]
     pub const fn method(&self) -> Method {
@@ -232,12 +236,6 @@ impl HttpRequest {
     #[must_use]
     pub fn headers(&self) -> &[(String, String)] {
         &self.headers
-    }
-
-    /// The per-request timeout override, when the caller set one.
-    #[must_use]
-    pub const fn timeout_duration(&self) -> Option<Duration> {
-        self.timeout
     }
 
     /// The URL a transport actually fetches: query pairs percent-encoded, in insertion order.
@@ -453,14 +451,67 @@ pub trait Transport: Send + Sync {
 /// The proxy to use: `[network] proxy` when set, otherwise the environment
 /// (`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY`). A configured URL that does not parse is a
 /// configuration error, not a silent fallback.
+///
+/// The environment is checked for a SOCKS URL first: `ureq` accepts `socks5://` and then ignores
+/// it with only a `log` line (this crate installs no logger), so the request would go out direct
+/// with no warning anywhere. Recorded step-12 decision: SOCKS URLs are rejected.
 fn resolve_proxy(config: &Network) -> Result<Option<ureq::Proxy>> {
     if config.proxy.trim().is_empty() {
+        if let Some(message) = socks_env_proxy() {
+            return Err(Error::Config(message));
+        }
         return Ok(ureq::Proxy::try_from_env());
     }
     let url = config.proxy.trim();
     ureq::Proxy::new(url).map(Some).map_err(|error| {
         Error::Config(format!("network.proxy `{url}` is not a proxy URL: {error}"))
     })
+}
+
+/// The first environment proxy variable whose value is a SOCKS URL, as a [`Error::Config`] message,
+/// or `None` when none of them is.
+///
+/// The variables and their order mirror `ureq::Proxy::try_from_env`; a value `ureq` itself would
+/// reject is skipped, so a malformed `ALL_PROXY` does not mask a usable `HTTPS_PROXY`.
+fn socks_env_proxy() -> Option<String> {
+    const VARIABLES: [&str; 6] = [
+        "ALL_PROXY",
+        "all_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+    ];
+    for variable in VARIABLES {
+        let Ok(value) = std::env::var(variable) else {
+            continue;
+        };
+        if value.trim().is_empty() {
+            continue;
+        }
+        let Ok(proxy) = ureq::Proxy::new(&value) else {
+            continue;
+        };
+        if is_socks(proxy.protocol()) {
+            return Some(format!(
+                "{variable} `{value}` is a SOCKS proxy, which cirrocast does not support; \
+                 use an `http://` or `https://` proxy (in `[network] proxy` or the environment)"
+            ));
+        }
+        return None;
+    }
+    None
+}
+
+/// Whether a proxy protocol is one of the SOCKS family this crate refuses.
+fn is_socks(protocol: ureq::ProxyProtocol) -> bool {
+    matches!(
+        protocol,
+        ureq::ProxyProtocol::Socks4
+            | ureq::ProxyProtocol::Socks4A
+            | ureq::ProxyProtocol::Socks5
+            | ureq::ProxyProtocol::Socks5h
+    )
 }
 
 /// Shared transports: an `Arc` around one is itself a transport, which is what lets a test keep a
@@ -471,29 +522,64 @@ impl<T: Transport + ?Sized> Transport for Arc<T> {
     }
 }
 
-/// The real transport: `ureq` over rustls, with the agent configured once.
+/// The real transport: `ureq` over rustls, with an agent per redirect policy.
 pub struct UreqTransport {
-    agent: Agent,
+    /// Requests that carry no header: a `3xx` is followed, so an upstream that answers a
+    /// canonical same-or-cross-host redirect keeps working (the public FPAS server answers
+    /// `301 /alert/<id>` → `/cap/alerts/…`).
+    plain: Agent,
+    /// Requests that carry a header: redirects are refused, because `ureq` keeps custom headers
+    /// across a hop (it strips only `Authorization`, `Cookie` and `Content-Length`), so a `3xx`
+    /// would deliver a provider's credential (`QWeather`'s `X-QW-Api-Key`, a `MeteoAlarm` token) to
+    /// whatever authority the hop names. A `3xx` reaches the status mapping instead and becomes an
+    /// [`Error::Upstream`] naming the provider.
+    credentialed: Agent,
+}
+
+/// Builds one agent with the shared policy and the given redirect ceiling.
+fn build_agent(config: &Network, timeout: Duration, max_redirects: u32) -> Result<Agent> {
+    // `max_redirects(0)` is the credential-safe default; the plain agent follows a bounded chain.
+    if max_redirects > MAX_REDIRECTS {
+        return Err(Error::Config(format!(
+            "internal: {max_redirects} redirects exceeds the {MAX_REDIRECTS} hop limit"
+        )));
+    }
+    let proxy = resolve_proxy(config)?;
+    Ok(Agent::config_builder()
+        .http_status_as_error(false)
+        .user_agent(UA)
+        .timeout_global(Some(timeout))
+        .timeout_connect(Some(timeout))
+        .timeout_recv_response(Some(timeout))
+        .timeout_recv_body(Some(timeout))
+        .max_redirects(max_redirects)
+        .proxy(proxy)
+        .build()
+        .new_agent())
+}
+
+/// Whether a response to `request` may be followed to another URL.
+///
+/// Only a request with no header at all may follow one: any header is a credential (or carries
+/// one) and `ureq` would forward it. The registry's credentialed sources are `QWeather`'s
+/// `X-QW-Api-Key` and the `MeteoAlarm` bearer token; every other request is a public URL whose
+/// canonical redirects (FPAS) must keep working.
+#[must_use]
+fn follows_redirects(request: &HttpRequest) -> bool {
+    request.headers().is_empty()
 }
 
 impl UreqTransport {
-    /// Builds the agent: statuses are *not* errors (the retry policy needs the body), the user
-    /// agent is [`UA`], all three phase timeouts use `timeout`, and the proxy comes from
-    /// `[network] proxy` or, when that is empty, from the `HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY`
-    /// environment.
+    /// Builds the two agents: statuses are *not* errors (the retry policy needs the body), the
+    /// user agent is [`UA`], `timeout` bounds the whole request as well as each phase (connect,
+    /// response headers, body), and the proxy comes from `[network] proxy` or, when that is
+    /// empty, from the `HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` environment. A credentialed request
+    /// never follows a redirect (see [`follows_redirects`]).
     pub fn new(config: &Network, timeout: Duration) -> Result<Self> {
-        let proxy = resolve_proxy(config)?;
-
-        let agent = Agent::config_builder()
-            .http_status_as_error(false)
-            .user_agent(UA)
-            .timeout_connect(Some(timeout))
-            .timeout_recv_response(Some(timeout))
-            .timeout_recv_body(Some(timeout))
-            .proxy(proxy)
-            .build()
-            .new_agent();
-        Ok(Self { agent })
+        Ok(Self {
+            plain: build_agent(config, timeout, MAX_REDIRECTS)?,
+            credentialed: build_agent(config, timeout, 0)?,
+        })
     }
 }
 
@@ -505,14 +591,16 @@ impl Transport for UreqTransport {
             return Err(TransportError::Blocked);
         }
 
+        let agent = if follows_redirects(request) {
+            &self.plain
+        } else {
+            &self.credentialed
+        };
         let mut builder = match request.method() {
-            Method::Get => self.agent.get(request.full_url()),
+            Method::Get => agent.get(request.full_url()),
         };
         for (name, value) in request.headers() {
             builder = builder.header(name, value);
-        }
-        if let Some(timeout) = request.timeout_duration() {
-            builder = builder.config().timeout_global(Some(timeout)).build();
         }
 
         let mut response = builder.call().map_err(ureq_error)?;
@@ -673,7 +761,8 @@ impl HttpClient {
     ///
     /// Retried: transport timeouts, refused/reset connections, DNS failures, plus the `408`, `429`
     /// and `5xx` statuses. Everything else is returned at once. A `Retry-After` header on `429`
-    /// or `503` replaces the exponential wait, clamped to a minute.
+    /// or `503` replaces the exponential wait, clamped to a minute; every other retried status
+    /// uses the exponential schedule, so a `500` carrying `Retry-After: 120` does not sleep.
     pub fn send(&self, request: &HttpRequest) -> Result<HttpResponse> {
         let mut attempt = 1;
         loop {
@@ -683,9 +772,7 @@ impl HttpClient {
                         if attempt >= self.attempts {
                             return Err(upstream_error(&response));
                         }
-                        let delay = response
-                            .retry_after(self.clock.now())
-                            .map_or_else(|| backoff(attempt), |after| after.min(MAX_RETRY_AFTER));
+                        let delay = retry_delay(&response, self.clock.now(), attempt);
                         self.log(
                             request,
                             attempt,
@@ -695,6 +782,9 @@ impl HttpClient {
                         self.clock.sleep(delay);
                         attempt += 1;
                     } else if (200..300).contains(&response.status()) {
+                        if let Some(error) = undecodable_encoding(&response) {
+                            return Err(error);
+                        }
                         return Ok(response);
                     } else {
                         return Err(upstream_error(&response));
@@ -721,7 +811,10 @@ impl HttpClient {
         match self.transport.execute(request) {
             Ok(response) => {
                 if (200..300).contains(&response.status()) {
-                    Ok(response)
+                    match undecodable_encoding(&response) {
+                        Some(error) => Err(error),
+                        None => Ok(response),
+                    }
                 } else {
                     Err(upstream_error(&response))
                 }
@@ -772,6 +865,42 @@ fn retryable_status(status: u16) -> bool {
 /// `0.5 s`, `1 s`, `2 s`, … — one step further for each attempt already spent.
 fn backoff(attempt: u32) -> Duration {
     BACKOFF_STEP * 2_u32.pow(attempt.saturating_sub(1))
+}
+
+/// How long to wait before retrying `response`: its `Retry-After` on `429`/`503` (clamped to a
+/// minute), the exponential schedule otherwise.
+///
+/// The doc for [`HttpClient::send`] scopes `Retry-After` to those two statuses; consulting it on
+/// every retried status would let a `500` carrying `Retry-After: 120` sleep 60 s per attempt.
+fn retry_delay(response: &HttpResponse, now: SystemTime, attempt: u32) -> Duration {
+    if matches!(response.status(), 429 | 503) {
+        response
+            .retry_after(now)
+            .map_or_else(|| backoff(attempt), |after| after.min(MAX_RETRY_AFTER))
+    } else {
+        backoff(attempt)
+    }
+}
+
+/// The error for a `2xx` response whose `Content-Encoding` this build cannot decode, or `None`
+/// when the coding is absent or `identity`.
+///
+/// `ureq` is built without its transparent content decoders (see `Cargo.toml`), so a body that
+/// still declares a coding arrives as its still-compressed wire bytes. Refusing it names the cap
+/// that request was read under instead of handing the parsers something they would misread.
+fn undecodable_encoding(response: &HttpResponse) -> Option<Error> {
+    let encoding = response.header("content-encoding")?.trim();
+    if encoding.is_empty() || encoding.eq_ignore_ascii_case("identity") {
+        return None;
+    }
+    Some(Error::Upstream {
+        provider: host_of(&response.url),
+        status: Some(response.status()),
+        message: format!(
+            "the response is `{encoding}`-encoded and this build does not decode content codings; \
+             the {MAX_BODY_BYTES}-byte body cap bounds the wire bytes, not a decoded expansion"
+        ),
+    })
 }
 
 /// The upstream's own words when it sends an error envelope, the body's first 200 characters
@@ -864,9 +993,14 @@ fn ureq_error(error: ureq::Error) -> TransportError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::time::{Duration, SystemTime};
 
-    use super::{HttpRequest, HttpResponse, Method, TransportError, error_message, host_of};
+    use super::{
+        HttpClient, HttpRequest, HttpResponse, Method, StubReply, StubTransport, TransportError,
+        error_message, follows_redirects, host_of, retry_delay, undecodable_encoding,
+    };
+    use crate::cache::{Clock, FakeClock};
 
     /// A response with the given status and headers, for header-parsing tests.
     fn response(headers: Vec<(&str, &str)>) -> HttpResponse {
@@ -879,6 +1013,21 @@ mod tests {
             body: Vec::new(),
             url: "https://example.invalid/answered".to_owned(),
         }
+    }
+
+    #[test]
+    fn only_a_header_free_request_may_follow_a_redirect() {
+        assert!(
+            follows_redirects(&HttpRequest::get("https://example.invalid/a")),
+            "a public request must follow the FPAS canonical redirect"
+        );
+        let credentialed = HttpRequest::get("https://example.invalid/a")
+            .header("X-QW-Api-Key", "0123456789abcdef")
+            .secret("0123456789abcdef");
+        assert!(
+            !follows_redirects(&credentialed),
+            "a credential header must not survive a hop"
+        );
     }
 
     #[test]
@@ -972,11 +1121,6 @@ mod tests {
             "https://example.invalid/"
         );
         assert_eq!(request.method(), Method::Get);
-        assert_eq!(request.timeout_duration(), None);
-        assert_eq!(
-            request.timeout(Duration::from_secs(2)).timeout_duration(),
-            Some(Duration::from_secs(2))
-        );
     }
 
     #[test]
@@ -1088,6 +1232,9 @@ mod tests {
             "http://localhost:1234/x?y=1",
             "http://[::1]:8080/v1/forecast",
             "https://LOCALHOST/x",
+            // Userinfo is stripped before the host is read, so a loopback host stays loopback.
+            "http://user:password@localhost:8080/x",
+            "http://user@[::1]:8080/x",
         ] {
             assert!(
                 super::is_loopback_url(url),
@@ -1100,11 +1247,102 @@ mod tests {
             "http://10.0.0.1/",
             "ftp://example.invalid/x",
             "not-a-url",
+            // The userinfo must not mask the real host: `localhost:8080` here is userinfo.
+            "http://localhost:8080@evil.com/",
+            "http://[::1]@evil.com/x",
         ] {
             assert!(
                 !super::is_loopback_url(url),
                 "{url} needs a socket and must be blocked"
             );
         }
+    }
+
+    #[test]
+    fn retry_after_only_extends_a_429_or_503() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let with_header = |status: u16| HttpResponse {
+            status,
+            headers: vec![("Retry-After".to_owned(), "120".to_owned())],
+            body: Vec::new(),
+            url: "https://example.invalid/x".to_owned(),
+        };
+        // Only 429/503 consult the header (clamped to a minute); a 500 keeps the backoff schedule.
+        assert_eq!(
+            retry_delay(&with_header(429), now, 1),
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            retry_delay(&with_header(503), now, 1),
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            retry_delay(&with_header(500), now, 1),
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            retry_delay(&with_header(502), now, 2),
+            Duration::from_millis(1_000)
+        );
+    }
+
+    #[test]
+    fn a_non_identity_content_encoding_is_refused_as_an_upstream_error() {
+        // The stub transport is what lets this be tested without a server: it answers with a
+        // `Content-Encoding` header the real transport would have handed back undecoded.
+        let gzip = HttpResponse {
+            status: 200,
+            headers: vec![("Content-Encoding".to_owned(), "gzip".to_owned())],
+            body: b"not really gzip".to_vec(),
+            url: "https://example.invalid/data".to_owned(),
+        };
+        let error = undecodable_encoding(&gzip).expect("a gzip response is refused");
+        match error {
+            crate::error::Error::Upstream {
+                provider, message, ..
+            } => {
+                assert_eq!(provider, "example.invalid");
+                assert!(message.contains("gzip"), "{message}");
+                assert!(
+                    message.contains(&super::MAX_BODY_BYTES.to_string()),
+                    "the message must name the cap: {message}"
+                );
+            }
+            other => panic!("expected an upstream error, got {other:?}"),
+        }
+        // `identity` and an absent header are both fine.
+        let identity = HttpResponse {
+            headers: vec![("Content-Encoding".to_owned(), "identity".to_owned())],
+            ..gzip
+        };
+        assert!(undecodable_encoding(&identity).is_none());
+    }
+
+    #[test]
+    fn socks_protocols_are_recognised() {
+        assert!(super::is_socks(ureq::ProxyProtocol::Socks4));
+        assert!(super::is_socks(ureq::ProxyProtocol::Socks4A));
+        assert!(super::is_socks(ureq::ProxyProtocol::Socks5));
+        assert!(super::is_socks(ureq::ProxyProtocol::Socks5h));
+        assert!(!super::is_socks(ureq::ProxyProtocol::Http));
+        assert!(!super::is_socks(ureq::ProxyProtocol::Https));
+    }
+
+    #[test]
+    fn the_client_refuses_an_undecodable_body_through_the_stub_transport() {
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        let transport = StubTransport::new(vec![StubReply::status(
+            200,
+            vec![("Content-Encoding".to_owned(), "br".to_owned())],
+            "compressed",
+        )]);
+        let client = HttpClient::new(Box::new(transport), 0, clock, 0);
+        let error = client
+            .send(&HttpRequest::get("https://example.invalid/data"))
+            .expect_err("a brotli body is refused");
+        assert!(
+            matches!(error, crate::error::Error::Upstream { .. }),
+            "exit-3 upstream error, got {error:?}"
+        );
     }
 }

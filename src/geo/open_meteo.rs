@@ -171,6 +171,17 @@ struct Hit {
 impl Hit {
     /// The canonical [`Location`] for this hit.
     fn into_location(self) -> Result<Location> {
+        if !crate::geo::nominatim::usable_coordinates(self.latitude, self.longitude) {
+            let (lat, lon) = (self.latitude, self.longitude);
+            let name = &self.name;
+            return Err(Error::Upstream {
+                provider: PROVIDER.to_owned(),
+                status: None,
+                message: format!(
+                    "geocoding result `{name}` has unusable coordinates ({lat}, {lon})"
+                ),
+            });
+        }
         let tz = self.timezone()?;
         Ok(Location {
             name: self.name,
@@ -244,5 +255,34 @@ mod tests {
                 "`{body}` should hold no locations"
             );
         }
+    }
+
+    /// A hit whose coordinates are not a real place is refused before it can be resolved.
+    #[test]
+    fn an_out_of_range_hit_is_refused() {
+        let response: Response = serde_json::from_str(
+            r#"{"results":[{"name":"Nowhere","latitude":91.0,"longitude":0.0,"timezone":"UTC"}]}"#,
+        )
+        .expect("the envelope parses");
+        let error = response
+            .into_locations()
+            .expect_err("a latitude above 90 is not a place");
+        match error {
+            crate::error::Error::Upstream { message, .. } => {
+                assert!(message.contains("unusable"), "{message}");
+                assert!(message.contains("Nowhere"), "{message}");
+            }
+            other => panic!("expected an upstream error, got {other:?}"),
+        }
+
+        // A longitude above 180 is refused too, and `1e400` (which parses to `inf`) is exercised
+        // through the shared rule rather than through JSON, which has no such literal.
+        let response: Response = serde_json::from_str(
+            r#"{"results":[{"name":"East","latitude":0.0,"longitude":181.0,"timezone":"UTC"}]}"#,
+        )
+        .expect("the envelope parses");
+        assert!(response.into_locations().is_err());
+        let one_e400: f64 = "1e400".parse().expect("an overflow parses to infinity");
+        assert!(!crate::geo::nominatim::usable_coordinates(one_e400, 0.0));
     }
 }

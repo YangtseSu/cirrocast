@@ -44,9 +44,9 @@ clap = { version = "4.6", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.6"
 clap_mangen = "0.3"
 etcetera = "0.11"
-# gzip for the embedded city table (step 18). Already in the tree as ureq's response decoder; this
-# promotes it to a direct dependency so the offline decoder can use the same pure-Rust miniz_oxide
-# backend without a C toolchain.
+# gzip for the embedded city table (step 18): the offline decoder uses the pure-Rust miniz_oxide
+# backend without a C toolchain. `ureq` runs without its own transparent gzip decoder (see the
+# `ureq` line below), so this is the crate's only inflate dependency.
 flate2 = "1"
 fluent-bundle = "0.16"
 percent-encoding = "2.3.2"
@@ -68,7 +68,11 @@ unic-langid = { version = "0.9", features = ["macros"] }
 # runtime folds the query, and both sides must agree byte for byte. MIT OR Apache-2.0, no unsafe.
 unicode-normalization = "0.1.24"
 unicode-width = "0.2.2"
-ureq = { version = "3.4.2", features = ["rustls"] }
+# Default features are off on purpose: `gzip` (and `brotli`) install a transparent decoder that
+# sits *inside* `MAX_BODY_BYTES`'s `LimitReader`, so a small compressed response could inflate
+# without bound. Without them the cap bounds the bytes read off the socket, and `http.rs` refuses
+# any response that still declares a non-identity `Content-Encoding`.
+ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 assert_cmd = "2"

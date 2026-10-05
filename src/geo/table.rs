@@ -55,6 +55,12 @@ pub(crate) const KEYS_MAGIC: &[u8; 5] = b"CCKY\x01";
 /// The fixed-point scale of stored coordinates; five decimals are the dump's maximum.
 const SCALE: f64 = 10_000_000.0;
 
+/// The largest a decoded member may be. The bundled pair decompresses to a few MiB; the cap keeps
+/// a crafted or bit-rotted member from inflating to a multi-gigabyte allocation, which is what
+/// makes a bad member a [`DecodeError`] instead of an OOM kill.
+#[cfg(feature = "offline-geo")]
+const MAX_MEMBER_BYTES: u64 = 64 * 1024 * 1024;
+
 #[cfg(feature = "offline-geo")]
 /// Why a member could not be decoded; the caller wraps it with the fix it can offer.
 pub(crate) type DecodeError = String;
@@ -370,14 +376,27 @@ pub fn gzip(bytes: &[u8]) -> std::result::Result<Vec<u8>, String> {
         .map_err(|error| format!("cannot finish the gzip member: {error}"))
 }
 
-/// Decompresses one gzip member.
+/// Decompresses one gzip member, refusing one that inflates past [`MAX_MEMBER_BYTES`].
 #[cfg(feature = "offline-geo")]
 pub(crate) fn gunzip(compressed: &[u8]) -> std::result::Result<Vec<u8>, DecodeError> {
-    let mut decoder = GzDecoder::new(compressed);
+    gunzip_with_cap(compressed, MAX_MEMBER_BYTES)
+}
+
+/// [`gunzip`] with an explicit cap, so the bound itself is testable with a tiny member.
+#[cfg(feature = "offline-geo")]
+fn gunzip_with_cap(compressed: &[u8], cap: u64) -> std::result::Result<Vec<u8>, DecodeError> {
+    // `.take` caps the read itself, so a compression bomb is stopped while it inflates rather than
+    // after `read_to_end` has already allocated the whole expansion.
+    let mut decoder = GzDecoder::new(compressed).take(cap + 1);
     let mut bytes = Vec::new();
     decoder
         .read_to_end(&mut bytes)
         .map_err(|error| format!("gzip: {error}"))?;
+    if bytes.len() as u64 > cap {
+        return Err(format!(
+            "the member inflates to more than the {cap}-byte cap"
+        ));
+    }
     if bytes.is_empty() {
         return Err("the member decompresses to nothing".to_owned());
     }
@@ -477,11 +496,22 @@ impl Index {
         let mut cursor = Cursor::new(&bytes);
         cursor.expect(KEYS_MAGIC)?;
         let count = cursor.u32()?;
+        // Each key costs at least its 2-byte length plus a 4-byte id count, so a count larger than
+        // the bytes that remain cannot be honest. Check it before reserving anything sized from it,
+        // so a crafted member is a decode error instead of a multi-gigabyte `Vec`.
+        let count = usize::try_from(count)
+            .map_err(|_| "the index key count does not fit this platform".to_owned())?;
+        if count > cursor.remaining() / 6 {
+            return Err(format!(
+                "the index declares {count} keys, more than the {} remaining bytes can hold",
+                cursor.remaining()
+            ));
+        }
 
         let mut keys = String::new();
-        let mut key_offsets = Vec::with_capacity(usize::try_from(count).unwrap_or(0) + 1);
+        let mut key_offsets = Vec::with_capacity(count + 1);
         let mut ids = Vec::new();
-        let mut id_offsets = Vec::with_capacity(usize::try_from(count).unwrap_or(0) + 1);
+        let mut id_offsets = Vec::with_capacity(count + 1);
         key_offsets.push(0);
         id_offsets.push(0);
         for _ in 0..count {
@@ -624,9 +654,12 @@ impl Cities {
             }
         }
         if cities.len() != wanted.len() {
+            // A repeated geonameid in the row section can select *more* rows than the index names,
+            // so this must not be a subtraction: it is a disagreement in either direction.
             return Err(format!(
-                "the index names {} rows the table does not contain",
-                wanted.len() - cities.len()
+                "the index and the row section disagree: {} rows selected, {} named",
+                cities.len(),
+                wanted.len()
             ));
         }
         Ok(cities)
@@ -786,7 +819,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[cfg(feature = "offline-geo")]
-    use super::{Cities, Index, MatchMode, gunzip};
+    use super::{Cities, City, Index, KEYS_MAGIC, MatchMode, gunzip, gunzip_with_cap};
     use super::{
         encode_cities, encode_keys, gzip, input_sha256, parse_dump, snapshot_dump_date,
         snapshot_text,
@@ -907,5 +940,57 @@ mod tests {
             .expect("an empty index compresses");
         let index = Index::decode(&keys).expect("an empty index decodes");
         assert_eq!(index.len(), 0);
+    }
+
+    #[cfg(feature = "offline-geo")]
+    #[test]
+    fn a_declared_count_larger_than_the_bytes_is_refused_before_reserving() {
+        // magic + a count of u32::MAX + a little trailing data: an honest count cannot exceed the
+        // remaining bytes, so the decoder must reject it instead of reserving ~17 GiB.
+        let mut raw = Vec::new();
+        raw.extend_from_slice(KEYS_MAGIC);
+        raw.extend_from_slice(&u32::MAX.to_le_bytes());
+        raw.extend_from_slice(KEYS_MAGIC);
+        let member = gzip(&raw).expect("the crafted member compresses");
+        let error = Index::decode(&member).expect_err("a bogus count is not decodable");
+        assert!(error.contains("keys"), "{error}");
+    }
+
+    #[cfg(feature = "offline-geo")]
+    #[test]
+    fn a_member_that_inflates_past_the_cap_is_refused() {
+        let member = gzip(&[0_u8; 64]).expect("the member compresses");
+        assert!(
+            gunzip_with_cap(&member, 16).is_err(),
+            "an expansion past the cap is refused"
+        );
+        assert_eq!(
+            gunzip_with_cap(&member, 4096)
+                .expect("a member under the cap decodes")
+                .len(),
+            64
+        );
+    }
+
+    #[cfg(feature = "offline-geo")]
+    #[test]
+    fn a_repeated_geonameid_is_a_disagreement_not_an_underflow() {
+        let city = City {
+            id: 7,
+            name: "Twice".to_owned(),
+            ascii_name: "Twice".to_owned(),
+            country_code: "ZZ".to_owned(),
+            lat: 1.0,
+            lon: 2.0,
+            population: None,
+            tz: chrono_tz::Tz::UTC,
+        };
+        // Two rows with the same id, while the index names it once.
+        let bytes = encode_cities(&[city.clone(), city]).expect("the rows encode");
+        let cities = Cities { bytes };
+        let error = cities
+            .select(&[7])
+            .expect_err("a duplicate id is a decode-time disagreement");
+        assert!(error.contains("disagree"), "{error}");
     }
 }

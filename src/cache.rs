@@ -20,6 +20,26 @@
 //!
 //! Time is never read directly: everything that needs "now" asks the [`Clock`], so TTL boundaries
 //! and the Nominatim throttle are tested by asserting the requested waits instead of sleeping.
+//!
+//! ## Key shapes
+//!
+//! Every key is `<namespace>/<name>.json`; the shapes the module builds are:
+//!
+//! | namespace | `<name>` | built by |
+//! |-----------|----------|----------|
+//! | `weather` | `<provider>-<lat>-<lon>-<days>-<date>` | [`CacheKey::weather`] |
+//! | `weather` | `<provider>-<part>-<lat>-<lon>-<days>-<date>` | [`CacheKey::weather_part`] |
+//! | `weather` | `<provider>-<icao>-<resource>` | [`CacheKey::station_resource`] |
+//! | `weather` | `<source>-air-<lat>-<lon>-<date>` | [`CacheKey::air`] |
+//! | `geocode`, `alerts` | the lower-case hex SHA-256 of the normalised request | [`CacheKey::hash`] |
+//! | `ip` | `<service>` | [`CacheKey::ip`] |
+//! | `station` | `<icao>` | [`CacheKey::station`] |
+//! | `alerts` | `<source>-<lat>-<lon>-<YYYYmmddTH>` | [`CacheKey::alert`] |
+//!
+//! `<lat>`/`<lon>` are formatted with two decimals; `<date>` is the location-local `YYYY-MM-DD`.
+//! The `ratelimit/` and `geo/` directories hold *state* files (the Nominatim throttle and the
+//! `[geo] update` notice) rather than entries: [`Cache::stat`] reports them, but
+//! [`Cache::read`]/[`Cache::write`] never touch them and the TTL sweep never expires them.
 
 use std::fmt;
 use std::fs;
@@ -44,6 +64,13 @@ pub const CACHE_SCHEMA_VERSION: u32 = 1;
 
 /// The namespaces `cache stat` reports, always in this order.
 pub const NAMESPACES: [&str; 5] = ["weather", "geocode", "ip", "station", "alerts"];
+
+/// The state directories under the cache root that `cache stat` reports after [`NAMESPACES`].
+///
+/// They hold state, not entries: [`Cache::stat`] lists them so every directory the code writes is
+/// visible, while `cache clean --all` removes their files without counting them as entries and the
+/// TTL sweep leaves them alone.
+pub const STATE_NAMESPACES: [&str; 2] = ["ratelimit", "geo"];
 
 /// File mode of a freshly written cache entry.
 const ENTRY_MODE: u32 = 0o644;
@@ -627,6 +654,21 @@ impl Cache {
         Ok(())
     }
 
+    /// Stores a response body, but treats a failure as a logged non-event.
+    ///
+    /// The cache is an optimisation: when it cannot be written (read-only or full directory,
+    /// permissions) the fetched answer must still be served, so the error is logged at `-vv` and
+    /// swallowed. [`Cache::read_or_fetch_json`] and the METAR provider both use this instead of
+    /// repeating the "log and carry on" shape around [`Cache::write`].
+    pub fn write_best_effort(&self, key: &CacheKey, status: u16, body: &str, ttl: Duration) {
+        if let Err(error) = self.write(key, status, body, ttl) {
+            self.log(&format!(
+                "{}: cache write failed ({error}); serving the fetched body",
+                key.path().display()
+            ));
+        }
+    }
+
     /// Serves `T` from the cache when possible, otherwise calls `fetch`, stores the body as raw
     /// text and parses it.
     ///
@@ -666,12 +708,7 @@ impl Cache {
         // The fetch succeeded; a cache write that fails (read-only or full cache directory,
         // permissions) must not throw the answer away. The cache is an optimisation, so its
         // failure is logged and the parsed value returned anyway.
-        if let Err(error) = self.write(key, status, &body, ttl) {
-            self.log(&format!(
-                "{}: cache write failed ({error}); serving the fetched body",
-                key.path().display()
-            ));
-        }
+        self.write_best_effort(key, status, &body, ttl);
         serde_json::from_str(&body).map_err(|error| Error::Upstream {
             provider: provider.to_owned(),
             status: Some(status),
@@ -709,8 +746,8 @@ impl Cache {
     /// Counts and sizes the known namespaces.
     pub fn stat(&self) -> Result<CacheStat> {
         let now = self.clock.now();
-        let mut namespaces = Vec::with_capacity(NAMESPACES.len());
-        for name in NAMESPACES {
+        let mut namespaces = Vec::with_capacity(NAMESPACES.len() + STATE_NAMESPACES.len());
+        for name in NAMESPACES.into_iter().chain(STATE_NAMESPACES) {
             let directory = self.root.join(name);
             let mut namespace = NamespaceStat {
                 name,
@@ -720,7 +757,7 @@ impl Cache {
                 oldest: None,
                 newest: None,
             };
-            for path in entry_files(&directory)? {
+            for path in entry_files(&directory, false)? {
                 let Ok(metadata) = fs::metadata(&path) else {
                     continue;
                 };
@@ -764,26 +801,29 @@ impl Cache {
         let mut removed = 0;
         if all {
             for name in NAMESPACES {
-                for path in entry_files(&self.root.join(name))? {
+                for path in entry_files(&self.root.join(name), true)? {
                     if fs::remove_file(&path).is_ok() {
                         removed += 1;
                     }
                 }
             }
-            let throttle = self.root.join("ratelimit");
-            if let Ok(entries) = fs::read_dir(&throttle) {
-                for entry in entries.flatten() {
-                    if entry.path().is_file() {
-                        // State files (the Nominatim throttle) are cleaned too, but they are not
-                        // cache entries and are not counted as such in the report.
-                        let _ = fs::remove_file(entry.path());
+            for name in STATE_NAMESPACES {
+                let directory = self.root.join(name);
+                if let Ok(entries) = fs::read_dir(&directory) {
+                    for entry in entries.flatten() {
+                        if entry.path().is_file() {
+                            // State files (the Nominatim throttle, the freshness notice) are
+                            // cleaned too, but they are not cache entries and are not counted as
+                            // such in the report.
+                            let _ = fs::remove_file(entry.path());
+                        }
                     }
                 }
             }
         } else {
             let now = self.clock.now();
             for name in NAMESPACES {
-                for path in entry_files(&self.root.join(name))? {
+                for path in entry_files(&self.root.join(name), false)? {
                     let Ok(text) = fs::read_to_string(&path) else {
                         continue;
                     };
@@ -838,7 +878,11 @@ fn create_dir_all_private(path: &Path) -> std::io::Result<()> {
 }
 
 /// Every regular file directly inside `directory`; a missing directory is simply empty.
-fn entry_files(directory: &Path) -> Result<Vec<PathBuf>> {
+///
+/// `include_in_flight` also lists a crashed run's `.<name>.tmp.<pid>` leftovers, which are the
+/// atomic writer's private staging files rather than entries: `cache stat` and the TTL sweep skip
+/// them, while `clean --all` removes them.
+fn entry_files(directory: &Path, include_in_flight: bool) -> Result<Vec<PathBuf>> {
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
@@ -855,12 +899,23 @@ fn entry_files(directory: &Path) -> Result<Vec<PathBuf>> {
             Error::Config(format!("cannot list {}: {error}", directory.display()))
         })?;
         let path = entry.path();
-        if path.is_file() {
-            files.push(path);
+        if !path.is_file() {
+            continue;
         }
+        if !include_in_flight && is_in_flight_temp(&path) {
+            continue;
+        }
+        files.push(path);
     }
     files.sort();
     Ok(files)
+}
+
+/// Whether `path` is the atomic writer's `.<name>.tmp.<pid>` staging file for `name`.
+fn is_in_flight_temp(path: &Path) -> bool {
+    path.file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|name| name.starts_with('.') && name.contains(".tmp."))
 }
 
 /// Lower-case hex, the spelling cache file names use.
@@ -876,9 +931,11 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::sync::Arc;
     use std::time::{Duration, SystemTime};
 
-    use super::{CacheEntry, CacheKey, CacheMode, hex};
+    use super::{Cache, CacheEntry, CacheKey, CacheMode, Clock, FakeClock, hex};
 
     #[test]
     fn cache_modes_cover_reads_and_writes() {
@@ -1058,5 +1115,107 @@ mod tests {
         assert!(entry.is_fresh(at(599)));
         assert!(!entry.is_fresh(at(600)));
         assert!(entry.is_fresh(SystemTime::from(fetched) - Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn a_failed_cache_write_still_serves_the_fetched_value() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let weather = directory.path().join("weather");
+        fs::create_dir_all(&weather).expect("the namespace directory");
+        // A read-only namespace directory lets the miss and the fetch happen while the atomic
+        // writer cannot create its temporary file.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(&weather, fs::Permissions::from_mode(0o555))
+                .expect("the namespace becomes read-only");
+        }
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        let cache = Cache::with_root(directory.path(), CacheMode::Normal, Arc::clone(&clock), 2);
+        let key = CacheKey::weather(
+            "open-meteo",
+            1.0,
+            2.0,
+            3,
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 5).expect("a valid date"),
+        );
+        let value: serde_json::Value = cache
+            .read_or_fetch_json(
+                &key,
+                Duration::from_secs(60),
+                "open-meteo",
+                "forecast",
+                "test",
+                || Ok((200, r#"{"ok":true}"#.to_owned())),
+            )
+            .expect("the fetched body is served even though the cache cannot be written");
+        assert_eq!(value["ok"], true);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let _ = fs::set_permissions(&weather, fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    #[test]
+    fn stat_ignores_in_flight_temporaries_and_reports_state_namespaces() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        let cache = Cache::with_root(directory.path(), CacheMode::Normal, Arc::clone(&clock), 0);
+        let weather = directory.path().join("weather");
+        fs::create_dir_all(&weather).expect("the namespace directory");
+        let entry = CacheEntry {
+            cache_schema_version: super::CACHE_SCHEMA_VERSION,
+            key: "k".to_owned(),
+            fetched_at: chrono::DateTime::from_timestamp(1_700_000_000, 0)
+                .expect("a valid instant"),
+            ttl_secs: 600,
+            status: 200,
+            body: "{}".to_owned(),
+        };
+        fs::write(
+            weather.join("entry.json"),
+            serde_json::to_string(&entry).expect("the entry encodes"),
+        )
+        .expect("the entry is written");
+        // The atomic writer's in-flight spelling from a crashed run.
+        fs::write(weather.join(".entry.json.tmp.999999"), b"partial")
+            .expect("the leftover is written");
+        cache
+            .write_state("geo/update-notice.json", "{}")
+            .expect("the notice is written");
+        cache
+            .write_state("ratelimit/nominatim.json", "{}")
+            .expect("the throttle is written");
+
+        let stat = cache.stat().expect("stat succeeds");
+        assert_eq!(
+            stat.namespaces
+                .iter()
+                .map(|namespace| namespace.name)
+                .collect::<Vec<_>>(),
+            [
+                "weather",
+                "geocode",
+                "ip",
+                "station",
+                "alerts",
+                "ratelimit",
+                "geo"
+            ]
+        );
+        assert_eq!(
+            stat.namespaces[0].entries, 1,
+            "a crashed run's temporary file is not an entry"
+        );
+        assert_eq!(stat.namespaces[5].entries, 1);
+        assert_eq!(stat.namespaces[6].entries, 1);
+
+        // `clean --all` removes the temporary file and both state files.
+        cache.clean(true).expect("clean succeeds");
+        assert!(!weather.join(".entry.json.tmp.999999").exists());
+        assert!(!directory.path().join("geo/update-notice.json").exists());
+        assert!(!directory.path().join("ratelimit/nominatim.json").exists());
     }
 }
