@@ -43,7 +43,7 @@ evidence — keeping the decision, recording why.
       1 when a gated median exceeds `baseline × 1.20` or a hard budget.
 - ✅ `perf/baseline.json`: `{"schema": 1, "recorded": "YYYY-MM-DD", "commit": …, "machine": {…},
       "metrics": {…}}` with medians for every gated metric plus the cold-run figure and its conditions.
-- ⬜ `.github/workflows/ci.yml`: new `perf` job (release build, `scripts/bench/run.sh`,
+- ✅ `.github/workflows/ci.yml`: new `perf` job (release build, `scripts/bench/run.sh`,
       `scripts/bench/compare.py`, `cargo bloat --release --crates -n 20` and
       `cargo llvm-lines --release | head -n 20` uploaded as artifacts). Runner pinned to the same
       image class as the baseline was recorded on; the job is allowed to re-record only via an explicit
@@ -229,3 +229,10 @@ into `docs/performance.md`.
   47.5 ms, RSS 6,604 KiB (`--version`) and 26,228 KiB (cached run), binary 15,057,960 B, cold run
   845 ms. The 5 MiB binary budget and the 15 MiB RSS budget are re-derived in the doc: the offline
   table makes both unreachable by design (3.41 MiB embedded, ~20 MiB decoded index).
+- 2026-10-05 — CI: a `perf` job (release build, `run.sh`, `compare.py`, `cargo bloat
+  --crates`/`cargo llvm-lines --lib` into the artifact bundle) on `ubuntu-26.04`, and a
+  `record-baseline` job behind the new `workflow_dispatch` input `record_baseline` that measures
+  and uploads a fresh `perf/baseline.json` (the cold figure carries over, since it is manual by
+  design). `upload-artifact` is pinned to `330a01c4…` (v5.0.0, resolved with `git ls-remote`);
+  the three measurement tools are installed with `cargo install --locked`, so no new third-party
+  action enters the workflow.

@@ -19,6 +19,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The only way to re-record `perf/baseline.json`: an explicit dispatch. A normal run never
+  # writes a baseline, it only compares against the committed one (see the `perf` job).
+  workflow_dispatch:
+    inputs:
+      record_baseline:
+        description: Re-record perf/baseline.json on this runner and upload it as an artifact
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -157,3 +165,74 @@ jobs:
       - uses: rustsec/audit-check@858dc40f52ca2b8570b7a997c1c4e35c6fc9a432 # main, Node 24 fix (unreleased)
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # The performance budget (step 21, docs/performance.md). The harness measures the release binary
+  # in a pinned sandbox with the network forbidden, the compare tool holds the fresh medians against
+  # the committed baseline (a 20 % ratio gate) and the hard budgets, and the two weight tools are
+  # the dependency audit's input. A normal run never writes a baseline: re-recording is the
+  # `record_baseline` dispatch input and the job below, and the result is a reviewed commit.
+  perf:
+    name: performance budget
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.record_baseline) }}
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # None of the three tools is on the runner image. Installing them from source keeps the
+      # dependency policy (crates.io, versions visible in the log) and adds no third-party action.
+      - name: install the measurement tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends hyperfine
+          cargo install cargo-bloat cargo-llvm-lines --locked
+      - name: measure the release binary
+        run: scripts/bench/run.sh
+      - name: compare against the committed baseline
+        run: python3 scripts/bench/compare.py perf/baseline.json target/bench/raw.json
+      # The audit's raw material, uploaded rather than gated: the numbers move with the toolchain
+      # and the decisions they inform are reviewed in docs/performance.md, not enforced per run.
+      - name: dependency weight
+        run: |
+          cargo bloat --profile release-audit --crates -n 20 | tee target/bench/bloat-crates.txt
+          cargo llvm-lines --release --lib -p cirrocast | head -n 20 | tee target/bench/llvm-lines.txt
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: always()
+        with:
+          name: perf-measurements
+          path: |
+            target/bench/raw.json
+            target/bench/*.json
+            target/bench/*.txt
+          if-no-files-found: warn
+
+  record-baseline:
+    name: re-record the performance baseline
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.record_baseline }}
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: install the measurement tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends hyperfine
+      - name: measure the release binary
+        run: scripts/bench/run.sh
+      # The cold figure is manual (scripts/bench/cold.sh) and carries over from the committed
+      # baseline; everything else is this runner's measurement, machine spec included.
+      - name: compose the new baseline
+        run: python3 scripts/bench/record.py --raw target/bench/raw.json --out perf/baseline.json
+      - name: what changed
+        run: |
+          git --no-pager diff --stat perf/baseline.json
+          git --no-pager diff perf/baseline.json | head -n 60
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: perf-baseline
+          path: perf/baseline.json
