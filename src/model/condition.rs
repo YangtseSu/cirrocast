@@ -26,7 +26,7 @@ type Row = (u8, &'static str, &'static str, u8, &'static str);
 /// "higher means more significant weather", which is what the day-part aggregation needs when it
 /// picks a single code per part. Clear and mainly clear share rank 1, and unknown codes rank below
 /// both, so a described code always wins a tie.
-const CODES: [Row; 35] = [
+const CODES: [Row; 37] = [
     (0, "cond.0", "Clear sky", 1, "clear"),
     (1, "cond.1", "Mainly clear", 1, "mainly-clear"),
     (2, "cond.2", "Partly cloudy", 2, "partly-cloudy"),
@@ -75,6 +75,11 @@ const CODES: [Row; 35] = [
         15,
         "freezing-rain-heavy",
     ),
+    // Rain and snow mixed (WMO 4677's 68/69 pair, what most APIs call sleet). Added by step 23
+    // because MET Norway reports it as its own symbol family; the rest of the canonical set is
+    // Open-Meteo's list, which has no mixed-precipitation code.
+    (68, "cond.68", "Light rain and snow", 15, "sleet-light"),
+    (69, "cond.69", "Heavy rain and snow", 16, "sleet-heavy"),
     (71, "cond.71", "Slight snow fall", 16, "snow-light"),
     (73, "cond.73", "Moderate snow fall", 17, "snow"),
     (75, "cond.75", "Heavy snow fall", 18, "snow-heavy"),
@@ -192,7 +197,7 @@ impl Condition {
     /// ice pellets, rain and snow showers, and every thunderstorm code.
     #[must_use]
     pub fn is_precipitation(self) -> bool {
-        self.is_known() && matches!(self.0, 51..=57 | 61..=67 | 71..=79 | 80..=86 | 95..=99)
+        self.is_known() && matches!(self.0, 51..=57 | 61..=69 | 71..=79 | 80..=86 | 95..=99)
     }
 
     /// Whether visibility is reduced by fog (including depositing rime fog).

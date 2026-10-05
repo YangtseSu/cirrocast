@@ -30,6 +30,8 @@
 65	cond.65	Heavy rain	true	false	false	rain-heavy	13
 66	cond.66	Light freezing rain	true	false	false	freezing-rain-light	14
 67	cond.67	Heavy freezing rain	true	false	false	freezing-rain-heavy	15
+68	cond.68	Light rain and snow	true	false	false	sleet-light	15
+69	cond.69	Heavy rain and snow	true	false	false	sleet-heavy	16
 71	cond.71	Slight snow fall	true	false	false	snow-light	16
 73	cond.73	Moderate snow fall	true	false	false	snow	17
 75	cond.75	Heavy snow fall	true	false	false	snow-heavy	18
