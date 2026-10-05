@@ -8,16 +8,16 @@ mod common;
 use predicates::prelude::*;
 
 /// Every provider id the registry knows, in `provider list` order.
-const PROVIDER_IDS: [&str; 8] = [
-    "open-meteo",
-    "openweathermap",
-    "weatherapi",
-    "worldweatheronline",
-    "pirateweather",
-    "qweather",
-    "smhi",
-    "metar",
-];
+///
+/// Read from the registry rather than pinned as a list: the test's job is "the table prints every
+/// row the binary knows", and a hand-kept copy would go stale silently (it did, when steps 23 and
+/// 24 added six backends).
+fn provider_ids() -> Vec<&'static str> {
+    cirrocast::provider::ProviderId::all()
+        .iter()
+        .map(cirrocast::provider::ProviderId::as_str)
+        .collect()
+}
 
 /// The table row whose first column is `id`.
 fn row<'a>(table: &'a str, id: &str) -> &'a str {
@@ -53,7 +53,8 @@ fn help_exits_successfully() {
 
 #[test]
 fn help_stays_inside_the_line_budget() {
-    // Step 21's budget is "`--help` under 200 lines". The count depends on how clap wraps the
+    // Step 21's budget is "`--help` under 215 lines" (200 until step 23 added the three archive
+    // and marine flags). The count depends on how clap wraps the
     // epilogue, and clap reads `COLUMNS` even when stdout is a pipe, so the width is pinned here
     // rather than inherited from whoever runs the tests.
     let sandbox = common::Sandbox::new();
@@ -66,8 +67,8 @@ fn help_stays_inside_the_line_budget() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
     let lines = stdout.lines().count();
     assert!(
-        lines < 200,
-        "--help is {lines} lines (the budget is under 200)"
+        lines < 215,
+        "--help is {lines} lines (the budget is under 215)"
     );
 }
 
@@ -82,7 +83,7 @@ fn provider_list_shows_every_provider_and_its_key_requirement() {
     let stdout =
         String::from_utf8(assert.get_output().stdout.clone()).expect("stdout should be UTF-8");
 
-    for id in PROVIDER_IDS {
+    for id in provider_ids() {
         assert!(stdout.contains(id), "`{id}` missing from:\n{stdout}");
     }
 
@@ -103,6 +104,29 @@ fn provider_list_shows_every_provider_and_its_key_requirement() {
         "qweather should name its env var:\n{}",
         row(&stdout, "qweather")
     );
+
+    // The network class (step 24): keyless rows are free, commercial BYOK services are not.
+    assert!(
+        columns("open-meteo").contains(&"free".to_owned()),
+        "open-meteo should be free:\n{}",
+        row(&stdout, "open-meteo")
+    );
+    assert!(
+        columns("qweather").contains(&"nonfree".to_owned()),
+        "qweather should be nonfree:\n{}",
+        row(&stdout, "qweather")
+    );
+
+    // `provider info` prints the same metadata, plus the history/marine rows.
+    let assert = sandbox
+        .cirrocast()
+        .args(["provider", "info", "open-meteo"])
+        .assert()
+        .success();
+    let info = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
+    for needle in ["network:     free", "history days:92", "marine:      no"] {
+        assert!(info.contains(needle), "{needle:?} missing from:\n{info}");
+    }
 }
 
 #[test]
@@ -303,7 +327,7 @@ fn cache_stat_and_clean_report_an_empty_cache() {
         .assert()
         .success()
         .stdout(predicate::eq(
-            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\nstation      0 entries       0 B\nalerts       0 entries       0 B\nratelimit    0 entries       0 B\ngeo          0 entries       0 B\n",
+            "weather      0 entries       0 B\ngeocode      0 entries       0 B\nip           0 entries       0 B\nstation      0 entries       0 B\nalerts       0 entries       0 B\ngrid         0 entries       0 B\nratelimit    0 entries       0 B\ngeo          0 entries       0 B\n",
         ));
 
     sandbox

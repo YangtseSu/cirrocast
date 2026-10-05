@@ -102,6 +102,8 @@ expression: "render(&report, UnitSystem::Metric)"
       }
     }
   ],
+  "mode": "forecast",
+  "marine": null,
   "air": null,
   "astro": null,
   "alerts": [
@@ -129,6 +131,8 @@ expression: "render(&report, UnitSystem::Metric)"
     "daily": true,
     "alerts": false,
     "max_days": 16,
+    "history_days": 0,
+    "marine": false,
     "requires_key": false,
     "key_env": null,
     "locations": {

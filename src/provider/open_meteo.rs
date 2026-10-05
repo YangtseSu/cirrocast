@@ -35,14 +35,14 @@ use serde::Deserialize;
 
 use super::dayparts::{HourSample, aggregate_day};
 use super::{
-    Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
-    local_today, note_short_series, requested_days,
+    Capabilities, DateWindow, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution,
+    fetch_json, local_today, note_short_series, requested_days,
 };
 use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
 use crate::model::{
-    Condition, Current, DayForecast, Location, LocationSource, Report, resolve_local,
+    Condition, Current, DayForecast, Location, LocationSource, Report, ReportMode, resolve_local,
 };
 
 /// The provider id, as the registry and every error message spell it.
@@ -61,7 +61,11 @@ const HOURLY_VARIABLES: &str = "temperature_2m,apparent_temperature,precipitatio
 precipitation,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility";
 
 /// Daily variables, in the fixed order the request uses.
-const DAILY_VARIABLES: &str = "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset";
+///
+/// Shared with the archive backend, whose payload carries the same daily block: the decoder reads
+/// exactly these fields, so both requests must ask for exactly this list.
+pub(crate) const DAILY_VARIABLES: &str =
+    "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset";
 
 /// The Open-Meteo backend. Stateless: one value serves every fetch.
 #[derive(Debug, Clone, Copy, Default)]
@@ -77,6 +81,13 @@ impl Provider for OpenMeteo {
     }
 
     fn fetch_report(&self, loc: &Location, req: &FetchRequest, env: &Env<'_>) -> Result<Report> {
+        // A `--date`/`--history` run asks for an absolute window rather than a forecast horizon:
+        // the same decode answers it, with `start_date`/`end_date` and without a `current` block
+        // (a window that has already happened has no "now"). The CLI has already checked the
+        // window against this row's own span, so no clamp applies here.
+        if let Some(window) = req.window {
+            return fetch_window(loc, window, env);
+        }
         let max_days = self.capabilities().max_days;
         let days = requested_days(req.days, max_days, PROVIDER, env.quiet);
         let local_today = local_today(env, loc.tz);
@@ -96,27 +107,96 @@ impl Provider for OpenMeteo {
             },
         )?;
 
-        report(&response, loc, request.redacted_url(), days, env)
+        report_for(
+            ProviderId::OpenMeteo,
+            &response,
+            loc,
+            request.redacted_url(),
+            days,
+            env,
+        )
     }
+}
+
+/// Fetches an absolute window from the forecast endpoint.
+///
+/// This is the seam the archive backend delegates through: ERA5 lags the present by about five
+/// days, so a window that reaches into that latency band is not in the reanalysis yet and the
+/// forecast API — the one service that already has the day — answers for it instead. The window
+/// must lie inside the API's own range (the registry row's `history_days` back … `max_days`
+/// ahead); the caller is responsible for that, because only it knows which dates it can serve.
+///
+/// The request is the forecast request with an explicit `start_date`/`end_date` span instead of
+/// `forecast_days`, and it asks for no `current` block: a window that has already happened has no
+/// "now", so the shared decoder leaves [`Report::current`] as `None`, exactly as the archive's own
+/// answer does. The cache entry is keyed by the window's **end** date, so a window is cached under
+/// the span it covered rather than under the day the run happened to fetch it.
+pub(crate) fn fetch_window(loc: &Location, window: DateWindow, env: &Env<'_>) -> Result<Report> {
+    let days = window.days();
+    let key = CacheKey::weather(PROVIDER, loc.lat, loc.lon, days, window.end);
+    let request = window_request(loc, window);
+    let ttl = Duration::from_secs(u64::from(env.config.cache.weather_ttl_secs));
+
+    let response: ForecastResponse = fetch_json(
+        env,
+        loc,
+        &JsonFetch {
+            provider: ProviderId::OpenMeteo,
+            request: request.clone(),
+            key,
+            ttl,
+            what: "forecast window",
+        },
+    )?;
+
+    report_for(
+        ProviderId::OpenMeteo,
+        &response,
+        loc,
+        request.redacted_url(),
+        days,
+        env,
+    )
+}
+
+/// The two parameters every request starts with, in the order the tests pin.
+fn coordinates(loc: &Location) -> HttpRequest {
+    HttpRequest::get(BASE)
+        .query("latitude", format!("{:.4}", loc.lat))
+        .query("longitude", format!("{:.4}", loc.lon))
+}
+
+/// The metric unit parameters, always last and in this order.
+fn metric_units(request: HttpRequest) -> HttpRequest {
+    request
+        .query("timezone", "auto")
+        .query("temperature_unit", "celsius")
+        .query("wind_speed_unit", "kmh")
+        .query("precipitation_unit", "mm")
 }
 
 /// The request, assembled in a fixed parameter order (the tests assert the URL verbatim).
 fn forecast_request(loc: &Location, days: u8) -> HttpRequest {
-    let mut request = HttpRequest::get(BASE)
-        .query("latitude", format!("{:.4}", loc.lat))
-        .query("longitude", format!("{:.4}", loc.lon))
-        .query("current", CURRENT_VARIABLES);
+    let mut request = coordinates(loc).query("current", CURRENT_VARIABLES);
     if days > 0 {
         request = request
             .query("hourly", HOURLY_VARIABLES)
             .query("daily", DAILY_VARIABLES)
             .query("forecast_days", days.to_string());
     }
-    request
-        .query("timezone", "auto")
-        .query("temperature_unit", "celsius")
-        .query("wind_speed_unit", "kmh")
-        .query("precipitation_unit", "mm")
+    metric_units(request)
+}
+
+/// The same request restricted to an absolute window: `start_date`/`end_date` replace
+/// `forecast_days`, and `current` is not asked for (see [`fetch_window`]).
+fn window_request(loc: &Location, window: DateWindow) -> HttpRequest {
+    metric_units(
+        coordinates(loc)
+            .query("hourly", HOURLY_VARIABLES)
+            .query("daily", DAILY_VARIABLES)
+            .query("start_date", window.start.format("%Y-%m-%d").to_string())
+            .query("end_date", window.end.format("%Y-%m-%d").to_string()),
+    )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -247,15 +327,22 @@ pub struct DailyBlock {
 // Response → canonical model
 // ---------------------------------------------------------------------------------------------
 
-/// Turns one response into a [`Report`], correcting the location's zone when it was provisional.
-fn report(
+/// Turns one Open-Meteo shaped response into a [`Report`], for the backend `id` that fetched it.
+///
+/// The archive backend shares this decoder — its payload is this shape minus the `current` block —
+/// which is why the id is a parameter: it decides the attribution line, and every decode error
+/// names the provider whose answer it could not read. The location's zone is corrected when it was
+/// provisional.
+pub(crate) fn report_for(
+    id: ProviderId,
     response: &ForecastResponse,
     loc: &Location,
     url: String,
     days: u8,
     env: &Env<'_>,
 ) -> Result<Report> {
-    let tz = response_zone(response)?;
+    let provider = id.as_str();
+    let tz = response_zone(provider, response)?;
     let mut location = loc.clone();
     if matches!(
         loc.source,
@@ -269,32 +356,32 @@ fn report(
     let current = response
         .current
         .as_ref()
-        .map(|block| current_of(block, tz))
+        .map(|block| current_of(provider, block, tz))
         .transpose()?;
 
     let mut forecasts = Vec::new();
     if days > 0 {
         let hours = match response.hourly.as_ref() {
-            Some(block) => hourly_samples(block, tz)?,
+            Some(block) => hourly_samples(provider, block, tz)?,
             None => Vec::new(),
         };
         let daily = response.daily.as_ref().ok_or_else(|| Error::Upstream {
-            provider: PROVIDER.to_owned(),
+            provider: provider.to_owned(),
             status: None,
             message: "the response has no `daily` block".to_owned(),
         })?;
         for text in daily.time.iter().take(usize::from(days)) {
-            let date = parse_date(text)?;
-            forecasts.push(daily_forecast(&hours, daily, date, tz)?);
+            let date = parse_date(provider, text)?;
+            forecasts.push(daily_forecast(provider, &hours, daily, date, tz)?);
         }
         if forecasts.is_empty() {
             return Err(Error::Upstream {
-                provider: PROVIDER.to_owned(),
+                provider: provider.to_owned(),
                 status: None,
                 message: "the `daily` block has no days".to_owned(),
             });
         }
-        note_short_series(forecasts.len(), days, PROVIDER, env);
+        note_short_series(forecasts.len(), days, provider, env);
     }
 
     Ok(Report {
@@ -304,8 +391,10 @@ fn report(
         alerts: Vec::new(),
         air: None,
         astro: None,
+        marine: None,
+        mode: ReportMode::Forecast,
         attribution: attribution(
-            ProviderId::OpenMeteo,
+            id,
             url,
             env.cache.clock().now().into(),
             (env.verbose > 0).then(|| raw_pairs(response)),
@@ -314,40 +403,52 @@ fn report(
 }
 
 /// The zone the response is expressed in.
-fn response_zone(response: &ForecastResponse) -> Result<Tz> {
+fn response_zone(provider: &str, response: &ForecastResponse) -> Result<Tz> {
     response
         .timezone
         .parse::<Tz>()
         .map_err(|_| Error::Upstream {
-            provider: PROVIDER.to_owned(),
+            provider: provider.to_owned(),
             status: None,
             message: format!("`{}` is not a known time zone", response.timezone),
         })
 }
 
 /// The current conditions, requiring every field the canonical model has no `Option` for.
-fn current_of(block: &CurrentBlock, tz: Tz) -> Result<Current> {
-    let observed_at = parse_local(&block.time, tz, "current")?.fixed_offset();
+fn current_of(provider: &str, block: &CurrentBlock, tz: Tz) -> Result<Current> {
+    let observed_at = parse_local(provider, &block.time, tz, "current")?.fixed_offset();
     Ok(Current {
         observed_at,
-        temp_c: require(block.temperature_2m, "current.temperature_2m")?,
+        temp_c: require(provider, block.temperature_2m, "current.temperature_2m")?,
         feels_like_c: Some(require(
+            provider,
             block.apparent_temperature,
             "current.apparent_temperature",
         )?),
         humidity_pct: Some(percent(require(
+            provider,
             block.relative_humidity_2m,
             "current.relative_humidity_2m",
         )?)),
-        precip_mm: require(block.precipitation, "current.precipitation")?,
-        weather: condition_of(require(block.weather_code, "current.weather_code")?),
-        cloud_cover_pct: Some(percent(require(block.cloud_cover, "current.cloud_cover")?)),
+        precip_mm: require(provider, block.precipitation, "current.precipitation")?,
+        weather: condition_of(require(
+            provider,
+            block.weather_code,
+            "current.weather_code",
+        )?),
+        cloud_cover_pct: Some(percent(require(
+            provider,
+            block.cloud_cover,
+            "current.cloud_cover",
+        )?)),
         pressure_hpa: require(
+            provider,
             block.pressure_msl.or(block.surface_pressure),
             "current.pressure_msl",
         )?,
-        wind_kmh: require(block.wind_speed_10m, "current.wind_speed_10m")?,
+        wind_kmh: require(provider, block.wind_speed_10m, "current.wind_speed_10m")?,
         wind_dir_deg: Some(degrees(require(
+            provider,
             block.wind_direction_10m,
             "current.wind_direction_10m",
         )?)),
@@ -355,12 +456,12 @@ fn current_of(block: &CurrentBlock, tz: Tz) -> Result<Current> {
         // Upstream reports visibility in metres; the model stores kilometres.
         visibility_km: block.visibility.map(|metres| metres / 1000.0),
         uv_index: block.uv_index,
-        is_day: require(block.is_day, "current.is_day")? >= 0.5,
+        is_day: require(provider, block.is_day, "current.is_day")? >= 0.5,
     })
 }
 
 /// Decodes the hourly block into usable samples.
-fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
+fn hourly_samples(provider: &str, block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
     let arrays: [(&str, usize); 8] = [
         ("temperature_2m", block.temperature_2m.len()),
         ("apparent_temperature", block.apparent_temperature.len()),
@@ -374,7 +475,7 @@ fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
     for (name, length) in arrays {
         if length != block.time.len() {
             return Err(Error::Upstream {
-                provider: PROVIDER.to_owned(),
+                provider: provider.to_owned(),
                 status: None,
                 message: format!(
                     "the hourly `{name}` array holds {length} values for {} timestamps",
@@ -386,13 +487,23 @@ fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
 
     let mut samples = Vec::with_capacity(block.time.len());
     for index in 0..block.time.len() {
-        let instant = parse_local(at(&block.time, index, "time")?, tz, "hourly")?;
+        let instant = parse_local(
+            provider,
+            at(provider, &block.time, index, "time")?,
+            tz,
+            "hourly",
+        )?;
         let (Some(temp_c), Some(feels_like_c), Some(precip_mm), Some(wind_kmh), Some(code)) = (
-            *at(&block.temperature_2m, index, "temperature_2m")?,
-            *at(&block.apparent_temperature, index, "apparent_temperature")?,
-            *at(&block.precipitation, index, "precipitation")?,
-            *at(&block.wind_speed_10m, index, "wind_speed_10m")?,
-            *at(&block.weather_code, index, "weather_code")?,
+            *at(provider, &block.temperature_2m, index, "temperature_2m")?,
+            *at(
+                provider,
+                &block.apparent_temperature,
+                index,
+                "apparent_temperature",
+            )?,
+            *at(provider, &block.precipitation, index, "precipitation")?,
+            *at(provider, &block.wind_speed_10m, index, "wind_speed_10m")?,
+            *at(provider, &block.weather_code, index, "weather_code")?,
         ) else {
             // One of the values the canonical model cannot express as "missing"; the hour is
             // dropped, and a part left without any sample is reported as an upstream error.
@@ -413,12 +524,22 @@ fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
                 .map(percent),
             weather: condition_of(code),
             wind_kmh,
-            wind_dir_deg: (*at(&block.wind_direction_10m, index, "wind_direction_10m")?)
-                .map(degrees),
-            humidity_pct: (*at(&block.relative_humidity_2m, index, "relative_humidity_2m")?)
-                .map(percent),
+            wind_dir_deg: (*at(
+                provider,
+                &block.wind_direction_10m,
+                index,
+                "wind_direction_10m",
+            )?)
+            .map(degrees),
+            humidity_pct: (*at(
+                provider,
+                &block.relative_humidity_2m,
+                index,
+                "relative_humidity_2m",
+            )?)
+            .map(percent),
             // Upstream reports visibility in metres; the model stores kilometres.
-            visibility_km: (*at(&block.visibility, index, "visibility")?)
+            visibility_km: (*at(provider, &block.visibility, index, "visibility")?)
                 .map(|metres| metres / 1000.0),
         });
     }
@@ -428,6 +549,7 @@ fn hourly_samples(block: &HourlyBlock, tz: Tz) -> Result<Vec<HourSample>> {
 /// Aggregates one daily entry of the response: the daily extremes and sun times come from the
 /// `daily` block, the four parts from [`dayparts::aggregate_day`].
 fn daily_forecast(
+    provider: &str,
     hours: &[HourSample],
     daily: &DailyBlock,
     date: NaiveDate,
@@ -438,22 +560,42 @@ fn daily_forecast(
         .iter()
         .position(|text| text == &date.format("%Y-%m-%d").to_string())
         .ok_or_else(|| Error::Upstream {
-            provider: PROVIDER.to_owned(),
+            provider: provider.to_owned(),
             status: None,
             message: format!("the `daily` block has no entry for {date}"),
         })?;
 
     let temp_min_c = require(
-        *at(&daily.temperature_2m_min, index, "temperature_2m_min")?,
+        provider,
+        *at(
+            provider,
+            &daily.temperature_2m_min,
+            index,
+            "temperature_2m_min",
+        )?,
         "daily.temperature_2m_min",
     )?;
     let temp_max_c = require(
-        *at(&daily.temperature_2m_max, index, "temperature_2m_max")?,
+        provider,
+        *at(
+            provider,
+            &daily.temperature_2m_max,
+            index,
+            "temperature_2m_max",
+        )?,
         "daily.temperature_2m_max",
     )?;
 
-    let sunrise = event(at(&daily.sunrise, index, "sunrise")?.as_deref(), tz)?;
-    let sunset = event(at(&daily.sunset, index, "sunset")?.as_deref(), tz)?;
+    let sunrise = event(
+        provider,
+        at(provider, &daily.sunrise, index, "sunrise")?.as_deref(),
+        tz,
+    )?;
+    let sunset = event(
+        provider,
+        at(provider, &daily.sunset, index, "sunset")?.as_deref(),
+        tz,
+    )?;
     // Inside the polar circles upstream answers `00:00` for both instants rather than `null`; a
     // zero-length day is not a sunrise, so both become absent.
     let (sunrise, sunset) = match (sunrise, sunset) {
@@ -462,23 +604,29 @@ fn daily_forecast(
     };
 
     aggregate_day(
-        hours, date, tz, PROVIDER, temp_min_c, temp_max_c, sunrise, sunset,
+        hours, date, tz, provider, temp_min_c, temp_max_c, sunrise, sunset,
     )
 }
 
 /// One sunrise/sunset value: absent (`null`), or a local time in `tz`.
-fn event(text: Option<&str>, tz: Tz) -> Result<Option<DateTime<chrono::FixedOffset>>> {
+fn event(
+    provider: &str,
+    text: Option<&str>,
+    tz: Tz,
+) -> Result<Option<DateTime<chrono::FixedOffset>>> {
     match text.map(str::trim).filter(|text| !text.is_empty()) {
-        Some(text) => Ok(Some(parse_local(text, tz, "daily")?.fixed_offset())),
+        Some(text) => Ok(Some(
+            parse_local(provider, text, tz, "daily")?.fixed_offset(),
+        )),
         None => Ok(None),
     }
 }
 
 /// Parses a local wall clock timestamp (`2026-09-30T12:15`) into the location's zone.
-fn parse_local(text: &str, tz: Tz, section: &str) -> Result<DateTime<Tz>> {
+fn parse_local(provider: &str, text: &str, tz: Tz, section: &str) -> Result<DateTime<Tz>> {
     let naive =
         NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M").map_err(|error| Error::Upstream {
-            provider: PROVIDER.to_owned(),
+            provider: provider.to_owned(),
             status: None,
             message: format!(
                 "the `{section}` timestamp `{text}` is not a local date and time: {error}"
@@ -488,27 +636,27 @@ fn parse_local(text: &str, tz: Tz, section: &str) -> Result<DateTime<Tz>> {
 }
 
 /// Parses a `YYYY-MM-DD` date.
-fn parse_date(text: &str) -> Result<NaiveDate> {
+fn parse_date(provider: &str, text: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(text.trim(), "%Y-%m-%d").map_err(|error| Error::Upstream {
-        provider: PROVIDER.to_owned(),
+        provider: provider.to_owned(),
         status: None,
         message: format!("`{text}` is not a calendar date: {error}"),
     })
 }
 
 /// A required upstream value: `null` is an upstream error naming the field.
-fn require<T>(value: Option<T>, field: &str) -> Result<T> {
+fn require<T>(provider: &str, value: Option<T>, field: &str) -> Result<T> {
     value.ok_or_else(|| Error::Upstream {
-        provider: PROVIDER.to_owned(),
+        provider: provider.to_owned(),
         status: None,
         message: format!("the response carries no `{field}`"),
     })
 }
 
 /// One value of a parallel array, with an error instead of an index panic.
-fn at<'a, T>(values: &'a [T], index: usize, field: &str) -> Result<&'a T> {
+fn at<'a, T>(provider: &str, values: &'a [T], index: usize, field: &str) -> Result<&'a T> {
     values.get(index).ok_or_else(|| Error::Upstream {
-        provider: PROVIDER.to_owned(),
+        provider: provider.to_owned(),
         status: None,
         message: format!("the `{field}` array is shorter than `time`"),
     })
@@ -552,7 +700,7 @@ fn degrees(value: f32) -> u16 {
 }
 
 /// The `(local time, weather code)` pairs the `-v` attribution keeps.
-fn raw_pairs(response: &ForecastResponse) -> String {
+pub(crate) fn raw_pairs(response: &ForecastResponse) -> String {
     let pairs: Vec<(String, u8)> = response
         .hourly
         .as_ref()
@@ -582,8 +730,8 @@ mod tests {
     use chrono::NaiveDateTime;
 
     use super::{
-        BASE, CURRENT_VARIABLES, DAILY_VARIABLES, DailyBlock, DayForecast, HOURLY_VARIABLES,
-        HourlyBlock, forecast_request, hourly_samples,
+        BASE, CURRENT_VARIABLES, DAILY_VARIABLES, DailyBlock, DateWindow, DayForecast,
+        HOURLY_VARIABLES, HourlyBlock, PROVIDER, forecast_request, hourly_samples, window_request,
     };
     use crate::model::{Condition, DayPartKind, Location, LocationSource, resolve_local};
     use crate::provider::dayparts::HourSample;
@@ -637,6 +785,7 @@ mod tests {
         daily: &DailyBlock,
     ) -> super::Result<DayForecast> {
         super::daily_forecast(
+            PROVIDER,
             hours,
             daily,
             chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").expect("a date"),
@@ -731,6 +880,36 @@ mod tests {
                 "temperature_unit",
                 "wind_speed_unit",
                 "precipitation_unit",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_window_request_replaces_forecast_days_with_the_span_and_drops_current() {
+        let window = DateWindow {
+            start: chrono::NaiveDate::from_ymd_opt(2026, 9, 14).expect("a date"),
+            end: chrono::NaiveDate::from_ymd_opt(2026, 9, 20).expect("a date"),
+        };
+        let request = window_request(&location(), window);
+        assert_eq!(request.url(), BASE);
+        let pairs: Vec<(&str, &str)> = request
+            .query_pairs()
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("latitude", "52.5200"),
+                ("longitude", "13.4050"),
+                ("hourly", HOURLY_VARIABLES),
+                ("daily", DAILY_VARIABLES),
+                ("start_date", "2026-09-14"),
+                ("end_date", "2026-09-20"),
+                ("timezone", "auto"),
+                ("temperature_unit", "celsius"),
+                ("wind_speed_unit", "kmh"),
+                ("precipitation_unit", "mm"),
             ]
         );
     }
@@ -909,7 +1088,7 @@ mod tests {
         let mut block = hourly_block();
         block.temperature_2m = vec![None];
         assert_eq!(
-            hourly_samples(&block, berlin()).expect("decodes"),
+            hourly_samples(PROVIDER, &block, berlin()).expect("decodes"),
             Vec::<HourSample>::new()
         );
     }
@@ -918,7 +1097,7 @@ mod tests {
     fn hourly_arrays_of_different_lengths_are_upstream_errors() {
         let mut block = hourly_block();
         block.visibility = Vec::new();
-        let error = hourly_samples(&block, berlin()).expect_err("the arrays disagree");
+        let error = hourly_samples(PROVIDER, &block, berlin()).expect_err("the arrays disagree");
         assert!(error.to_string().contains("visibility"));
         assert_eq!(error.exit_code(), 3);
     }
@@ -938,8 +1117,8 @@ mod tests {
         block.relative_humidity_2m = vec![Some(50.0), Some(50.0)];
         block.visibility = vec![Some(10_000.0), Some(10_000.0)];
 
-        let samples =
-            hourly_samples(&block, berlin()).expect("a short probability array is not an error");
+        let samples = hourly_samples(PROVIDER, &block, berlin())
+            .expect("a short probability array is not an error");
         assert_eq!(samples.len(), 2);
         assert_eq!(samples[0].precip_prob_pct, Some(10));
         assert_eq!(samples[1].precip_prob_pct, None);
@@ -951,7 +1130,7 @@ mod tests {
         block.wind_direction_10m = vec![Some(365.0)];
         block.relative_humidity_2m = vec![Some(101.0)];
         block.precipitation_probability = vec![Some(-3.0)];
-        let samples = hourly_samples(&block, berlin()).expect("decodes");
+        let samples = hourly_samples(PROVIDER, &block, berlin()).expect("decodes");
         assert_eq!(samples[0].visibility_km, Some(10.0));
         assert_eq!(samples[0].wind_dir_deg, Some(5));
         assert_eq!(samples[0].humidity_pct, Some(100));

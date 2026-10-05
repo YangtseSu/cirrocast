@@ -682,13 +682,37 @@ is used for. The handful of recorded responses used as test fixtures keep their 
 | ID | Key | Coverage | Observation | Forecast | Max days |
 |---|---|---|---|---|---|
 | `open-meteo` | none | global | yes | yes | 16 |
+| `met-no` | none | global | yes | yes | 9 |
 | `smhi` | none | Nordics and adjacent seas | yes | yes | 10 |
+| `nws` | none | the US and its territories | no | yes | 7 |
+| `brightsky` | none | Germany (DWD open data) | yes | yes | 10 |
 | `metar` | none | worldwide stations | yes | no | — (observation) |
+| `open-meteo-archive` | none | global | no | archive | — (1940-01-01 onward, `--date`/`--history`) |
+| `open-meteo-marine` | none | coastal waters | supplement | supplement | 8 (waves and swell, `--marine`) |
 | `openweathermap` | `CIRROCAST_OPENWEATHERMAP_KEY` | global | yes | yes | 5 |
 | `weatherapi` | `CIRROCAST_WEATHERAPI_KEY` | global | yes | yes | 3 |
 | `worldweatheronline` | `CIRROCAST_WORLDWEATHERONLINE_KEY` | global | yes | yes | 5 |
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | global | yes | yes | 7 |
 | `qweather` | `CIRROCAST_QWEATHER_KEY` | global | yes | yes | 10 |
+| `visualcrossing` | `CIRROCAST_VISUALCROSSING_KEY` | global | yes | yes | 15 |
+
+`auto` is the keyless chain that answers for a resolved place, **ranked by coverage**: an exact
+country match first (`nws` for a US point, `brightsky` for a German one), then a containing bounding
+box (`smhi` in the Nordics), then the global entries (`open-meteo`, `met-no`), each tier in registry
+order — `-v` prints the chain that was chosen, and a multi-location run ranks each slot for its own
+place. `metar` is prepended for a `--station` run. `open-meteo-marine` is **supplementary** — it is never a chain entry, and
+`--marine` is what requests it; `open-meteo-archive` is archive-only and answers `--date`/
+`--history` instead of a forecast.
+
+A backend is admitted only when it publishes a documented, public API with a stated licence, an
+identity/attribution policy and a machine-readable payload that fills all four day parts. Two
+candidate classes are refused on that test: **scraped HTML sites** (gismeteo-class pages publish no
+data licence, forbid extraction, and an HTML parser breaks silently on a layout change — for a
+weather tool that means confidently wrong output), and **`wttr.in` used as a data source** (it is
+this project's *layout* reference, and it is itself an aggregator rather than a data origin). The
+same rule refuses credentials that would have to ship inside the binary and APIs reachable only
+through reverse-engineered private routes.
+
 
 Declared capabilities only, each row carrying the date it was last checked against the provider's live
 documentation (`provider info <ID>` prints it). The full record — endpoints, request parameters,

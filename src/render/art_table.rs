@@ -264,6 +264,16 @@ impl Renderer for ArtTable {
                 table.flush();
             }
         }
+        // The marine panel closes the readings: it is the other best-effort supplementary fetch,
+        // and like the air block its credit travels inside the panel.
+        let marine = super::marine::panel(report, &panels);
+        if !marine.is_empty() {
+            table.blank();
+            for line in marine {
+                table.line.push_str(&line);
+                table.flush();
+            }
+        }
         write_credits(&mut table, report, ctx);
 
         Ok(table.out)
@@ -549,6 +559,11 @@ fn write_header(out: &mut String, report: &Report, ctx: &RenderContext<'_>) {
     );
     if location.source != LocationSource::Coordinates {
         let _ = write!(out, " ({:.2}, {:.2})", location.lat, location.lon);
+    }
+    // A historical answer says so in the header, with the dates it covers: `--date` and
+    // `--history` produce blocks that look exactly like a forecast otherwise.
+    if let Some(span) = super::archive_span(report) {
+        let _ = write!(out, " · {span} · {}", ctx.i18n.text(&keys::MODE_ARCHIVE));
     }
 }
 
@@ -1440,6 +1455,8 @@ mod tests {
             alerts: Vec::new(),
             air: None,
             astro: None,
+            marine: None,
+            mode: crate::model::ReportMode::Forecast,
             attribution: attribution(),
         }
     }

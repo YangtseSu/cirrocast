@@ -361,6 +361,33 @@ pub mod keys {
     /// The pollen unit (`grains/m³`).
     pub const UNIT_GRAINS_M3: MessageKey = MessageKey::new("unit-grains-m3");
 
+    // --- Marine (step 23) -------------------------------------------------------------------
+
+    /// The marine panel's title (`Marine`); the renderers add the colon.
+    pub const MARINE_PANEL_TITLE: MessageKey = MessageKey::new("marine-panel-title");
+    /// `waves { $height } m`.
+    pub const MARINE_WAVES: MessageKey = MessageKey::new("marine-waves");
+    /// `period { $seconds } s`.
+    pub const MARINE_PERIOD: MessageKey = MessageKey::new("marine-period");
+    /// `from { $degrees }°` — where the waves travel from.
+    pub const MARINE_FROM: MessageKey = MessageKey::new("marine-from");
+    /// `swell { $height } m`.
+    pub const MARINE_SWELL: MessageKey = MessageKey::new("marine-swell");
+    /// `sea { $temp } °C`.
+    pub const MARINE_SEA: MessageKey = MessageKey::new("marine-sea");
+    /// `daily max { $date } { $height } m { $degrees }°`, the `plain` record per forecast day.
+    pub const MARINE_DAILY_MAX: MessageKey = MessageKey::new("marine-daily-max");
+    /// `sampled at { $lat }, { $lon } ({ $distance } km from the location)`: the sea cell the
+    /// answer came from, shown when it differs from the requested point.
+    pub const MARINE_SAMPLED: MessageKey = MessageKey::new("marine-sampled");
+    /// The credit line Open-Meteo's terms require beside its marine data.
+    pub const MARINE_CREDIT_OPEN_METEO: MessageKey = MessageKey::new("marine-credit-open-meteo");
+
+    // --- Archive labelling (step 23) ---------------------------------------------------------
+
+    /// The word that marks a historical answer (`archive`), beside the date it covers.
+    pub const MODE_ARCHIVE: MessageKey = MessageKey::new("mode-archive");
+
     // --- Moon and sun (step 17) -------------------------------------------------------------
 
     /// The Moon block's own label (`Moon`), also the `plain` record key.
@@ -493,6 +520,16 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::POLLEN_SPECIES[5],
     keys::UNIT_UG_M3,
     keys::UNIT_GRAINS_M3,
+    keys::MARINE_PANEL_TITLE,
+    keys::MARINE_WAVES,
+    keys::MARINE_PERIOD,
+    keys::MARINE_FROM,
+    keys::MARINE_SWELL,
+    keys::MARINE_SEA,
+    keys::MARINE_DAILY_MAX,
+    keys::MARINE_SAMPLED,
+    keys::MARINE_CREDIT_OPEN_METEO,
+    keys::MODE_ARCHIVE,
     keys::LABEL_MOON,
     keys::LABEL_SUN,
     keys::MOON_PHASES[0],

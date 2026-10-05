@@ -55,6 +55,15 @@ impl Renderer for Plain {
         out.push(' ');
         out.push_str(&location_line(&report.location));
 
+        // A historical answer gets its own record, right after the location: a pipe reader must be
+        // able to tell a dated archive from a forecast without parsing the dates.
+        if let Some(span) = super::archive_span(report) {
+            out.push('\n');
+            write_record_key(&mut out, &ctx.i18n.text(&keys::MODE_ARCHIVE));
+            out.push(' ');
+            out.push_str(&span);
+        }
+
         // The banner, degraded to the record shape: the warning sign and the colour are dropped
         // (a pipe gets no escapes), and the record key keeps the line greppable.
         for alert in &report.alerts {
@@ -79,6 +88,10 @@ impl Renderer for Plain {
             out.push_str(&line);
         }
         for line in super::moon::records(report, ctx) {
+            out.push('\n');
+            out.push_str(&line);
+        }
+        for line in super::marine::records(report, ctx) {
             out.push('\n');
             out.push_str(&line);
         }
@@ -374,6 +387,8 @@ mod tests {
             alerts: Vec::new(),
             air: None,
             astro: None,
+            marine: None,
+            mode: crate::model::ReportMode::Forecast,
             attribution: attribution(),
         }
     }

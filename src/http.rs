@@ -384,6 +384,28 @@ impl HttpResponse {
         })
     }
 
+    /// The `Last-Modified` header, when the upstream sent one.
+    ///
+    /// A provider echoes it back as `If-Modified-Since` on the next refresh, so an unchanged
+    /// answer costs headers instead of a body (MET Norway's terms require exactly that handshake).
+    #[must_use]
+    pub fn last_modified(&self) -> Option<String> {
+        self.header("last-modified").map(str::to_owned)
+    }
+
+    /// The `Expires` header as an instant: the upstream's own freshness deadline for this answer.
+    ///
+    /// The cache treats an entry as fresh while this instant is in the future even when the
+    /// configured TTL has passed, because the upstream said so; an absent or unparsable value
+    /// (`0`, `-1` and the like) is `None` and leaves the TTL in charge.
+    #[must_use]
+    pub fn expires_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let value = self.header("expires")?.trim();
+        chrono::DateTime::parse_from_rfc2822(value)
+            .ok()
+            .map(|at| at.with_timezone(&chrono::Utc))
+    }
+
     /// The `Retry-After` delay, when the header is present and usable: delta-seconds or an
     /// HTTP-date in the future. A negative, past or unparsable value is `None`, so the caller
     /// falls back to the exponential schedule.
@@ -760,7 +782,9 @@ impl HttpClient {
     /// Sends `request`, retrying transient failures.
     ///
     /// Retried: transport timeouts, refused/reset connections, DNS failures, plus the `408`, `429`
-    /// and `5xx` statuses. Everything else is returned at once. A `Retry-After` header on `429`
+    /// and `5xx` statuses. A `304` is a success (the answer to a conditional `GET`, which the
+    /// cache revalidates a stored body with) and is returned as-is. Everything else is returned at
+    /// once. A `Retry-After` header on `429`
     /// or `503` replaces the exponential wait, clamped to a minute; every other retried status
     /// uses the exponential schedule, so a `500` carrying `Retry-After: 120` does not sleep.
     pub fn send(&self, request: &HttpRequest) -> Result<HttpResponse> {
@@ -781,7 +805,7 @@ impl HttpClient {
                         );
                         self.clock.sleep(delay);
                         attempt += 1;
-                    } else if (200..300).contains(&response.status()) {
+                    } else if is_accepted(response.status()) {
                         if let Some(error) = undecodable_encoding(&response) {
                             return Err(error);
                         }
@@ -810,7 +834,7 @@ impl HttpClient {
     pub fn send_once(&self, request: &HttpRequest) -> Result<HttpResponse> {
         match self.transport.execute(request) {
             Ok(response) => {
-                if (200..300).contains(&response.status()) {
+                if is_accepted(response.status()) {
                     match undecodable_encoding(&response) {
                         Some(error) => Err(error),
                         None => Ok(response),
@@ -855,6 +879,14 @@ fn network_error(request: &HttpRequest, attempts: Option<u32>, error: &Transport
         )),
         _ => Error::Network(format!("{method} {url} failed: {error}")),
     }
+}
+
+/// Whether a status is a success this client hands to the caller.
+///
+/// A `304` is the successful answer to a conditional `GET`: the cache revalidates a stored body
+/// with it, so it travels back as a response instead of becoming an [`Error::Upstream`].
+fn is_accepted(status: u16) -> bool {
+    (200..300).contains(&status) || status == 304
 }
 
 /// Whether a status is worth another attempt.
@@ -1343,6 +1375,28 @@ mod tests {
         assert!(
             matches!(error, crate::error::Error::Upstream { .. }),
             "exit-3 upstream error, got {error:?}"
+        );
+    }
+
+    #[test]
+    fn a_not_modified_answer_is_a_success_not_an_error() {
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        let transport = StubTransport::new(vec![StubReply::status(
+            304,
+            vec![(
+                "Last-Modified".to_owned(),
+                "Mon, 05 Oct 2026 20:48:38 GMT".to_owned(),
+            )],
+            "",
+        )]);
+        let client = HttpClient::new(Box::new(transport), 0, clock, 0);
+        let response = client
+            .send(&HttpRequest::get("https://example.invalid/data"))
+            .expect("a 304 revalidates a stored body");
+        assert_eq!(response.status(), 304);
+        assert_eq!(
+            response.last_modified().as_deref(),
+            Some("Mon, 05 Oct 2026 20:48:38 GMT")
         );
     }
 }

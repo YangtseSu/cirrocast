@@ -88,8 +88,8 @@ cond-64 = Unknown
 cond-65 = Heavy rain
 cond-66 = Light freezing rain
 cond-67 = Heavy freezing rain
-cond-68 = Unknown
-cond-69 = Unknown
+cond-68 = Light rain and snow
+cond-69 = Heavy rain and snow
 cond-70 = Unknown
 cond-71 = Slight snow fall
 cond-72 = Unknown
@@ -327,6 +327,24 @@ pollen-ragweed = ragweed
 unit-ug-m3 = μg/m³
 unit-grains-m3 = grains/m³
 air-credit-open-meteo = Air quality data by Open-Meteo.com (CAMS ENSEMBLE)
+
+# --- Marine (step 23) ---------------------------------------------------------------------------
+# The wave block `--marine` appends: one current sea state, the sampled sea cell when it is far
+# from the requested point, and the credit. The values arrive already converted and formatted; a
+# message only places them.
+
+marine-panel-title = Marine
+marine-waves = waves { $height } m
+marine-period = period { $seconds } s
+marine-from = from { $degrees }°
+marine-swell = swell { $height } m
+marine-sea = sea { $temp } °C
+marine-daily-max = daily max { $date } { $height } m { $degrees }°
+marine-sampled = sampled at { $lat }, { $lon } ({ $distance } km from the location)
+marine-credit-open-meteo = Marine data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/ (Copernicus Marine Service, DWD ICON Wave)
+
+# `archive` marks a historical answer (`--date`, `--history`), beside the date it covers.
+mode-archive = archive
 
 # --- Moon and sun (step 17) --------------------------------------------------------------------
 # The phase names are keyed by `MoonPhase::index`; the rise/set labels head the values in every

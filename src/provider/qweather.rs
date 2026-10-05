@@ -47,7 +47,7 @@ use crate::cache::CacheKey;
 use crate::error::{Error, Result};
 use crate::geo::provisional_zone;
 use crate::http::HttpRequest;
-use crate::model::{Condition, Current, Location, Report};
+use crate::model::{Condition, Current, Location, Report, ReportMode};
 
 /// The provider id, as the registry and every error message spell it.
 const PROVIDER: &str = "qweather";
@@ -139,6 +139,8 @@ impl Provider for QWeather {
             alerts: Vec::new(),
             air: None,
             astro: None,
+            marine: None,
+            mode: ReportMode::Forecast,
             attribution: attribution(
                 ProviderId::QWeather,
                 url,

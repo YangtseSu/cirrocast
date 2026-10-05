@@ -20,6 +20,11 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 #
 # This list is deliberately explicit per directory: third-party data fixtures are annotated
 # separately below so that no recorded upstream payload is ever relicensed to GPL by a blanket rule.
+#
+# The `visualcrossing/` timeline fixture is hand-authored from the published schema, not recorded:
+# no API key for that service exists in this repository, so its payload is a documented-shape
+# stand-in (the same caveat is repeated in `tests/provider_visualcrossing.rs`).
+
 [[annotations]]
 path = [
     "tests/fixtures/config/**",
@@ -28,9 +33,11 @@ path = [
     "tests/fixtures/http/**",
     "tests/fixtures/report/**",
     "tests/fixtures/smhi/point_sentinel_2026-10-01.json",
+    "tests/fixtures/visualcrossing/**",
     "tests/fixtures/air/truncated.json",
     "tests/fixtures/air/no-current.json",
     "tests/fixtures/air/unit-mismatch.json",
+    "tests/fixtures/marine/no-current.json",
     "tests/fixtures/geo/cities-sample.txt",
     "tests/fixtures/geo/cities-sample.zip",
 ]
@@ -126,6 +133,30 @@ precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# Recorded Open-Meteo Marine Weather responses (wave and sea-surface model data, CC BY 4.0; the
+# marine product blends Copernicus Marine Service and DWD ICON Wave data). `sylt.json` is the
+# verbatim recording for Sylt, 54.54/10.23; `berlin-land.json` is the same payload trimmed to the
+# fields the marine decoder reads, for the land-point far-cell case. The synthetic `no-current.json`
+# stays first-party (listed above) because it is hand-authored to exercise the refusal path.
+[[annotations]]
+path = [
+    "tests/fixtures/marine/sylt.json",
+    "tests/fixtures/marine/berlin-land.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com (Copernicus Marine Service, DWD ICON Wave)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Recorded Open-Meteo archive (historical weather API) responses: the reanalysis is ERA5/
+# ERA5-Land/IFS, distributed by Open-Meteo under CC BY 4.0, so the fixture keeps the upstream
+# licence and the provider prints the matching credit line. The body is verbatim, requested with the
+# provider's own parameter list over the archive endpoint.
+[[annotations]]
+path = "tests/fixtures/archive/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com (ERA5/Copernicus reanalysis)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
 # The cache fixture step 22's `status` probe and `contrib/statusbar/verify.sh` read offline: a real
 # cache envelope (`CacheEntry`) around the recorded Beijing forecast body above, so it carries that
 # payload's upstream licence rather than the GPL rule for first-party fixtures. The `fetched_at`
@@ -169,6 +200,23 @@ precedence = "override"
 SPDX-FileCopyrightText = "OpenWeather Ltd."
 SPDX-License-Identifier = "ODbL-1.0"
 
+# Recorded Bright Sky `/weather` responses: Bright Sky resells DWD open data, and the DWD
+# publishes it under CC BY 4.0, so the recording keeps the upstream licence and the provider prints
+# `Bright Sky (DWD open data, CC BY 4.0)`. `edge-nulls.json` is hand-authored from the same schema
+# to exercise `null` readings and the unknown condition/icon fallback, so it stays first-party and
+# is carved out below (a later annotation wins for that exact path).
+[[annotations]]
+path = "tests/fixtures/brightsky/berlin-3day.json"
+precedence = "override"
+SPDX-FileCopyrightText = "Deutscher Wetterdienst (DWD open data, served by Bright Sky)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "tests/fixtures/brightsky/edge-nulls.json"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # Recorded SMHI SNOW1gv1 responses: SMHI's open data is CC BY 4.0 SE (SPDX has no port identifier,
 # and the port is CC BY 4.0 adapted to Swedish law), so the fixtures keep the upstream licence and
 # the provider prints `SMHI (CC BY 4.0 SE)`. `point_sentinel_2026-10-01.json` is hand-written from
@@ -181,6 +229,16 @@ path = [
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "SMHI (Swedish Meteorological and Hydrological Institute)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Recorded MET Norway `Locationforecast/2.0 compact` responses: MET's open data is CC BY 4.0, so
+# the recordings keep the upstream licence and the provider prints `Data from MET Norway (CC BY
+# 4.0)`. `polar-twilight.json` is hand-trimmed from the `oslo.json` recording (its `_provenance`
+# field says so) but remains MET data, so the whole directory carries the one licence.
+[[annotations]]
+path = "tests/fixtures/met-no/**"
+precedence = "override"
+SPDX-FileCopyrightText = "MET Norway (Norwegian Meteorological Institute)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 # The embedded GeoNames city table (step 18): the vendored `cities15000` snapshot
@@ -244,6 +302,22 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 # `tests/fixtures/alerts/README.md`.
 [[annotations]]
 path = "tests/fixtures/alerts/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+# Recorded NWS forecast API payloads (api.weather.gov, the `points` lookup, the hourly series, the
+# daily periods and the out-of-coverage 404 body). NOAA/NWS is US government material and therefore
+# public domain, so these carry the same `LicenseRef` as the aviationweather.gov recordings.
+# `edge_hourly.json` is hand-authored to the same schema for the Fahrenheit conversion, wind-range
+# and null-value traps, so it is carved out below as first-party.
+[[annotations]]
+path = "tests/fixtures/nws/**"
+precedence = "override"
+SPDX-FileCopyrightText = "NOAA/NWS (api.weather.gov)"
+SPDX-License-Identifier = "LicenseRef-US-Government-Public-Domain"
+
+[[annotations]]
+path = "tests/fixtures/nws/edge_hourly.json"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"

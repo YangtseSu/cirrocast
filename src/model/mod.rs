@@ -23,12 +23,14 @@ pub mod air;
 pub mod alert;
 pub mod astro;
 pub mod condition;
+pub mod marine;
 pub mod units;
 
 pub use air::{AirQuality, AirSource, Pollen};
 pub use alert::{Alert, AlertSource, Certainty, Severity, Urgency};
 pub use astro::{Astro, Moon, MoonPhase, Polar, Sun, SunSource};
 pub use condition::Condition;
+pub use marine::{FAR_CELL_KM, Marine, MarineDay, MarineSource};
 
 use chrono::{
     DateTime, FixedOffset, LocalResult, NaiveDate, NaiveDateTime, TimeDelta, TimeZone as _,
@@ -420,6 +422,16 @@ pub struct ReportCapabilities {
     pub alerts: bool,
     /// Longest forecast the backend serves, in days (`0` = observations only).
     pub max_days: u8,
+    /// How many days back the backend can answer for (`0` = forecast only).
+    ///
+    /// The machine-readable form of "this backend has an archive": `max_days: 0` with
+    /// `history_days > 0` is a history-only source, and a `--date`/`--history` request is refused
+    /// unless some chain entry declares a span that covers it.
+    #[serde(default)]
+    pub history_days: u16,
+    /// Whether the backend serves marine data (waves, swell, sea-surface temperature).
+    #[serde(default)]
+    pub marine: bool,
     /// Whether an API key is required.
     pub requires_key: bool,
     /// Environment variable that supplies the key, when there is one.
@@ -452,6 +464,8 @@ impl ReportCapabilities {
             daily: true,
             alerts: false,
             max_days: 16,
+            history_days: 92,
+            marine: false,
             requires_key: false,
             key_env: None,
             locations: ReportLocationKinds {
@@ -505,8 +519,39 @@ pub struct Report {
     /// because the field defaults.
     #[serde(default)]
     pub astro: Option<Astro>,
+    /// Marine conditions for the location, when the run asked for them (`--marine`) and the fetch
+    /// succeeded.
+    ///
+    /// Like the air reading this is a separate service (the marine API is not a weather backend
+    /// and answers for the nearest sea cell), attached after the forecast and best-effort: a
+    /// failed marine fetch degrades to no panel rather than failing the run. `None` also covers a
+    /// run that never asked, and a document written before the field existed parses because it
+    /// defaults.
+    #[serde(default)]
+    pub marine: Option<Marine>,
+    /// Whether this document is a forecast or a historical answer.
+    ///
+    /// The renderers label an archive (`--date`, `--history`) so a dated block is never mistaken
+    /// for a forecast; a document written before the field existed parses as a forecast.
+    #[serde(default)]
+    pub mode: ReportMode,
     /// Where the data came from.
     pub attribution: Attribution,
+}
+
+/// Whether a report is a forecast or a historical answer.
+///
+/// `--date` and `--history` can ask for a day (or a window) that has already happened; the data
+/// itself is the same shape, but "today at 15:00" and "14 September at 15:00" must not look
+/// alike, so the mode travels with the report and every renderer labels it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReportMode {
+    /// The default: a forecast anchored at the location's today.
+    #[default]
+    Forecast,
+    /// A historical window; the dates are the report's own `days`/`current` instants.
+    Archive,
 }
 
 /// Turns a location-local wall clock time into an instant in `tz`.

@@ -315,6 +315,22 @@ const ART: &[(&str, Block)] = &[
         },
     ),
     (
+        "sleet-heavy",
+        Block {
+            unicode: [" ╭───╮", "(     )", " ╰───╯", "  ///**"],
+            ascii: [" .---.", "(     )", " '---'", "  ///**"],
+            style: ArtStyle::Snow,
+        },
+    ),
+    (
+        "sleet-light",
+        Block {
+            unicode: [" ╭───╮", "(     )", " ╰───╯", "   /*"],
+            ascii: [" .---.", "(     )", " '---'", "   /*"],
+            style: ArtStyle::Snow,
+        },
+    ),
+    (
         "smoke",
         Block {
             // Three waves in every row, so the block fills all `ART_W` columns and its rows are
@@ -573,6 +589,8 @@ pub fn one_line_art(key: &str) -> &'static str {
         "showers-rain-violent" => "o||",
         "showers-snow-light" => "o+~",
         "showers-snow-heavy" => "o**",
+        "sleet-light" => "~/+",
+        "sleet-heavy" => "/+*",
         "thunderstorm" => "~!~",
         "thunderstorm-hail-light" => "~!o",
         "thunderstorm-heavy" => "!|!",

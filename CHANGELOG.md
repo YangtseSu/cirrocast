@@ -27,6 +27,48 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Added
 
+* **Two keyless national backends (step 24).** `nws` (`api.weather.gov`: the US and its
+  territories, hourly plus 7-day periods, its coordinate → grid mapping cached for 30 days in the
+  new `grid/` cache namespace) and `brightsky` (Bright Sky's DWD open data for Germany, hourly).
+  Both are keyless and both declare themselves `free` in the new network class.
+* **`--provider auto` is now coverage-ranked (step 24).** Instead of a fixed list it expands per
+  resolved location from the registry's machine-readable coverage: an exact country code first
+  (a US point starts at `nws`, a German one at `brightsky`), then a containing bounding box
+  (a Swedish one at `smhi`), then the global keyless entries (`open-meteo`, `met-no`) — registry
+  order within each tier, and `-v` prints the expansion. A multi-location run ranks every slot for
+  its own place. Station-only, archive-only and supplementary rows never enter it.
+* **Network class and a `NET` column (step 24).** Every registry row now declares whether it sits
+  on free infrastructure or a commercial service; `provider list` prints `free`/`nonfree` in a
+  `NET` column, `provider info` prints `network:`, `history days:` and `marine:` rows, and
+  `docs/providers.md` defines the classification.
+* **`grid/` cache namespace (step 24).** A provider's coordinate → grid-cell mapping is neither a
+  station nor a forecast, so it has its own directory (30-day TTL); `cache stat` reports it and
+  `cache clean` removes it like any other entry namespace.
+* **Four more backends (step 23).** `met-no` (MET Norway, keyless, global, 9 days; the first backend
+  that speaks `Expires`/`Last-Modified`, so a refresh costs headers instead of a body),
+  `visualcrossing` (BYOK `CIRROCAST_VISUALCROSSING_KEY`, 15 days, and the first backend whose own
+  payload carries severe-weather warnings), `open-meteo-archive` (keyless ERA5/ERA5-Land/IFS
+  reanalysis from 1940-01-01) and `open-meteo-marine` (keyless waves, swell and sea-surface
+  temperature for the nearest sea cell), and `--provider auto` gained `met-no` through the interim
+  chain step 24 then replaced with the coverage ranking described above.
+* **`--date <YYYY-MM-DD>` and `--history <N>d` (step 23)**: ask a history-capable backend for one
+  calendar date or the last `N` days (ending yesterday) instead of a forecast. Every format labels
+  the answer — the `art-table` header ends `· 2026-09-14 · archive`, `plain` writes an
+  `archive: <date>` record, `one-line` prefixes the line and `json` carries `"mode"`. A backend
+  without an archive span is a usage error (exit 2) naming the flags, and an archive-only backend
+  refuses `--days` rather than silently clamping it.
+* **`--marine` (step 23)**: appends the wave block (waves, period, direction, swell, sea-surface
+  temperature) to `art-table` and `plain`, and as a `marine` object to `json`, with the sampled sea
+  cell named when it lies more than 25 km from the requested point. The marine source is
+  supplementary: `--provider open-meteo-marine` alone is a usage error.
+* **WMO 4677 codes 68 and 69 (sleet)** join the canonical condition table, with their art blocks,
+  one-line glyphs and both catalogs.
+* **The JSON document gains four keys** (additive within `schema_version` 2): `mode`
+  (`forecast`|`archive`), `marine` (the wave block, `null` unless `--marine` asked), and
+  `capabilities.history_days` / `capabilities.marine`. `docs/schema.md` lists them.
+* **`--alerts-from visualcrossing`** is now accepted, and `visualcrossing` joins `[alerts] sources`
+  under `auto` when its provider is on the chain — its warnings are merged from the forecast
+  payload rather than fetched again, so naming it explicitly needs `--provider visualcrossing`.
 * **`cirrocast status`, the status-bar probe (step 22).** One line per run: `--format` (and its
   synonym `--template`) take a `%`-template, `%c %t` by default, and stdout is exactly one line —
   a template newline becomes a space and the line is trimmed. Colour is off unless

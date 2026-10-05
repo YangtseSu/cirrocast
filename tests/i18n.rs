@@ -126,6 +126,15 @@ fn arguments() -> Vec<(&'static str, fluent_bundle::FluentValue<'static>)> {
         ("host", "alerts.kde.org"),
         ("percent", "23"),
         ("days", "6.5"),
+        // The marine panel's arguments (step 23).
+        ("height", "1.4"),
+        ("seconds", "6.8"),
+        ("degrees", "280"),
+        ("temp", "14.2"),
+        ("lat", "54.542"),
+        ("lon", "10.208"),
+        ("distance", "1.7"),
+        ("date", "2026-10-06"),
     ]
     .into_iter()
     .map(|(name, value)| (name, fluent_bundle::FluentValue::from(value)))

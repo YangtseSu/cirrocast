@@ -87,8 +87,8 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 20 | D | [location-candidate-selection](20-location-candidate-selection.md) | ✅ done | 04, 05, 08, 18 |
 | 21 | E | [perf-and-resource-budget](21-perf-and-resource-budget.md) | ✅ done | 12, 18, 19 |
 | 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ✅ done | 13, 19 |
-| 23 | F | [more-providers](23-more-providers.md) | ⬜ not-started | 10, 15, 16 |
-| 24 | F | [keyless-national-providers](24-keyless-national-providers.md) | ⬜ not-started | 06, 10, 23 |
+| 23 | F | [more-providers](23-more-providers.md) | ✅ done | 10, 15, 16 |
+| 24 | F | [keyless-national-providers](24-keyless-national-providers.md) | ✅ done | 06, 10, 23 |
 | 25 | F | [location-sources-2](25-location-sources-2.md) | ⬜ not-started | 04, 05, 18, 20 |
 | 26 | F | [climate-normals](26-climate-normals.md) | ⬜ not-started | 03, 06, 08 |
 | 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ⬜ not-started | 02, 10, 15 |
@@ -282,21 +282,28 @@ pub trait Provider {
 * Adding a provider = one file + one `ProviderId` variant + one registry row + fixtures + a
   `provider list`/`provider info` update. No CLI flag is added per provider.
 * Selection: `--provider a,b,c` is an explicit ordered chain; bare default comes from config
-  (`defaults.provider`), whose built-in value is `open-meteo`. `auto` expands to the keyless chain
-  that answers for a resolved place, **ranked by registry coverage** (country match, then bounding
-  box, then the global entries; step 24) — until step 24 lands it is the fixed list
-  `open-meteo, smhi` (the implemented keyless backends that accept a resolved place; `metar` is
-  station-only and never enters it). A station is never part of it — `--station`
-  selects `metar` when no provider is given, and prepends it to `auto` when one is. A failure in a chain falls through
-  to the next entry only when the error is transport/upstream (`Error::Upstream`/`Network`), never
-  when it is a usage, key or location error.
+  (`defaults.provider`), whose built-in value is `open-meteo`. `auto` expands per **resolved
+  location** from the registry's machine-readable coverage (`ProviderMeta::covers`: an exact
+  country code first, then a containing bounding box, then the global entries, registry order
+  within each tier — step 24), so a US point starts at `nws`, a German one at `brightsky` and a
+  Swedish one at `smhi`, with `open-meteo` and `met-no` always behind them; `-v` prints the
+  expansion. Only rows that could answer a plain forecast enter it: `metar` is station-only, an
+  archive-only row answers `--date`/`--history`, and a supplementary row is `--marine`. A station
+  is never part of it — `--station` selects `metar` when no provider is given, and prepends it to
+  `auto` when one is. A failure in a chain falls through to the next entry only when the error is
+  transport/upstream (`Error::Upstream`/`Network`), never when it is a usage, key or location
+  error. Each registry row also carries a `NetworkClass` (`free` or `nonfree`) that `provider
+  list` prints in its `NET` column; the definition lives in `docs/providers.md`.
 * Alerts are a **separate source registry**, not a provider capability: step 15's sources declare
   their own coverage and are selected by it (`[alerts] sources = ["auto"]` selects the covering
-  set; an explicit list uses the wired ids `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic` and
-  `fpas`, and `--alerts-from` overrides with exactly those ids). `visualcrossing` is reserved for
-  step 23 and is rejected as an unknown/unavailable source until then; a provider's
-  `alerts: true` means its *own payload* carries warnings. The global aggregators (WMO SWIC, FPAS)
-  are what make `--alerts` meaningful outside the US, the EU and China.
+  set; an explicit list uses the wired ids `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`,
+  `fpas` and `visualcrossing`, and `--alerts-from` overrides with exactly those ids). A provider's
+  `alerts: true` means its *own payload* carries warnings, and the one source that works that way
+  (`visualcrossing`) is merged from the forecast payload rather than fetched again — naming it
+  explicitly therefore needs `--provider visualcrossing`, and selecting a chain without it is a
+  usage error. The global aggregators (WMO SWIC, FPAS)
+  are what make `--alerts` meaningful outside the US, the EU, China and the Visual Crossing
+  horizon.
 
 ### Rendering contract (binding)
 
@@ -468,11 +475,12 @@ schema_version = 2
   per identifier hashes the identifier instead of a place); writes are `tmp` + `rename`. Two small
   state files live beside them, deliberately not cached answers: `ratelimit/nominatim.json` (the OSM
   one-request-per-second stamp) and `geo/update-notice.json` (the 24-hour `[geo] update = "check"`
-  freshness note). Steps 24 and 26 add two namespaces with the
+  freshness note). Step 24 added one namespace and step 26 will add another, with the
   same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
   mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
-  reports the five entry namespaces (`weather`, `geocode`, `ip`, `station`, `alerts`) and then the
-  `ratelimit`/`geo` state namespaces, and ignores a crashed run's `.<name>.tmp.<pid>` staging files;
+  reports the six entry namespaces (`weather`, `geocode`, `ip`, `station`, `alerts`, `grid`) and
+  then the `ratelimit`/`geo` state namespaces, and ignores a crashed run's `.<name>.tmp.<pid>`
+  staging files;
   `cache clean` removes expired entries, and `cache clean --all` the whole tree including those
   staging files.
 * Data layout: `$XDG_DATA_HOME/cirrocast/geo/{cities.bin.gz,keys.bin.gz,SNAPSHOT}` is the
@@ -498,10 +506,10 @@ tests; `unsafe` is denied by lint.
 
 ```
 cirrocast [OPTIONS] [LOCATION]...
-  -p, --provider <ID[,ID...]>   open-meteo | openweathermap | weatherapi | worldweatheronline
-                                | pirateweather | qweather | smhi | metar | auto
-                                (+ met-no, visualcrossing, open-meteo-archive, open-meteo-marine in
-                                step 23; nws, brightsky in step 24)
+  -p, --provider <ID[,ID...]>   open-meteo | met-no | open-meteo-archive | open-meteo-marine
+                                | visualcrossing | openweathermap | weatherapi
+                                | worldweatheronline | pirateweather | qweather | smhi | metar
+                                | nws | brightsky | auto
   -f, --format <NAME>           art-table | dumb | plain | one-line | full | minimal | short
                                 | default | uv | sun | json | alerts | aqi | moon | normals
                                 (`full`/`minimal`/`short`/`default`/`uv`/`sun` are one-line presets,
@@ -514,10 +522,10 @@ cirrocast [OPTIONS] [LOCATION]...
       --station <ICAO>          METAR station; selects `metar` when no provider is given
       --alerts                  fetch severe-weather warnings (auto-on from `[alerts] enabled`)
       --no-alerts               do not fetch warnings in this run
-      --alerts-from <LIST>      explicit alert sources (the six wired ids, comma separated):
-                                nws, meteoalarm, qweather, hko, wmoswic, fpas; `auto` is the
+      --alerts-from <LIST>      explicit alert sources (the seven wired ids, comma separated):
+                                nws, meteoalarm, qweather, hko, wmoswic, fpas, visualcrossing
+                                (`visualcrossing` needs `--provider visualcrossing`); `auto` is the
                                 coverage selector for `[alerts] sources`, not a `--alerts-from` id
-                                (`visualcrossing` is reserved for step 23)
       --severity <LEVEL>        lowest alert severity to show (unknown..extreme)
       --aqi                     append the air-quality panel (step 16; also `--format aqi`)
       --aqi-index <SCALE>       us | european — the scale behind the panel colour and `%q`

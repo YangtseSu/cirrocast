@@ -37,7 +37,7 @@ use crate::model::Severity;
 use crate::model::alert::AlertSource;
 use crate::model::units::{ResolvedUnits, UnitSystem};
 use crate::paths::Paths;
-use crate::provider::{Env, fetch_chain, licence_line, select};
+use crate::provider::{Env, fetch_chain, licence_line, select, select_for};
 use crate::provider::{FetchRequest, HourlyResolution, ProviderId, ProviderMeta};
 use crate::render::{
     Charset, ColorMode, Format, RenderContext, TermCaps, effective_depth, renderer_for,
@@ -188,8 +188,8 @@ pub struct QueryArgs {
     #[arg(value_name = "LOCATION", env = "CIRROCAST_LOCATION")]
     pub location: Vec<String>,
 
-    /// Provider chain, comma separated; `auto` expands to the implemented keyless backends (plus
-    /// `metar` with `--station`).
+    /// Provider chain, comma separated; `auto` ranks the keyless backends by coverage for the
+    /// resolved place (plus `metar` with `--station`).
     #[arg(short = 'p', long, value_name = "LIST", env = "CIRROCAST_PROVIDER")]
     pub provider: Option<String>,
 
@@ -247,8 +247,9 @@ pub struct QueryArgs {
     pub no_alerts: bool,
 
     /// Alert sources to query instead of the coverage-selected set, comma separated: `nws`,
-    /// `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas`. A source that does not cover the
-    /// location is refused.
+    /// `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas`, `visualcrossing`. A source that does
+    /// not cover the location is refused, and `visualcrossing` needs `--provider visualcrossing`
+    /// because its warnings travel in that payload.
     #[arg(long, value_name = "LIST")]
     pub alerts_from: Option<String>,
 
@@ -273,6 +274,20 @@ pub struct QueryArgs {
     /// view, and `one-line` shows the moon through the `%m`/`%M` tokens.
     #[arg(long)]
     pub moon: bool,
+
+    /// Render the archive for one date (`YYYY-MM-DD`) instead of a forecast; needs a
+    /// history-capable backend.
+    #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_date, conflicts_with_all = ["history", "days"])]
+    pub date: Option<chrono::NaiveDate>,
+
+    /// Render the archive for the last `<N>d` days, ending yesterday; needs a history-capable
+    /// backend.
+    #[arg(long, value_name = "Nd", value_parser = parse_history, conflicts_with = "days")]
+    pub history: Option<u16>,
+
+    /// Append the marine block (waves, swell, sea-surface temperature).
+    #[arg(long)]
+    pub marine: bool,
 
     /// Template for a one-line output: a literal `%`-token string, or `@PRESET`. The presets are
     /// `@default`, `@short`, `@minimal`, `@full`, `@uv` and `@sun`, plus any `[templates]` key;
@@ -343,6 +358,38 @@ fn parse_station(value: &str) -> Result<String, Error> {
 /// `--severity`: one of the CAP levels, parsed by the model so flag and config share one message.
 fn parse_severity(value: &str) -> Result<Severity, Error> {
     value.parse()
+}
+
+/// `--date`: an absolute calendar date, in the one spelling the request and the archive header
+/// both use.
+fn parse_date(value: &str) -> Result<chrono::NaiveDate, Error> {
+    chrono::NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d").map_err(|_| {
+        Error::Usage(format!(
+            "--date takes a calendar date like `2026-09-14`, not `{value}`"
+        ))
+    })
+}
+
+/// `--history <N>d`: a whole number of days back, with the documented `d` suffix.
+///
+/// The upper bound is the archive backend's own span (`history_days = 30000`); the per-date limit
+/// is checked against the answering backend before the request is built.
+fn parse_history(value: &str) -> Result<u16, Error> {
+    let digits = value
+        .trim()
+        .strip_suffix(['d', 'D'])
+        .unwrap_or(value.trim());
+    let days: u16 = digits.parse().map_err(|_| {
+        Error::Usage(format!(
+            "--history takes a number of days like `7d`, not `{value}`"
+        ))
+    })?;
+    if days == 0 || days > 30000 {
+        return Err(Error::Usage(format!(
+            "--history must be between `1d` and `30000d`, not `{value}`"
+        )));
+    }
+    Ok(days)
 }
 
 /// `--aqi-index`: one of the two AQI scales, parsed by the air module so flag and config share one
@@ -1040,32 +1087,101 @@ pub(crate) fn configured_station(config: &Config, ids: &[ProviderId]) -> Option<
 /// CLI's own vocabulary, and the cache key is built for the horizon that is really fetched. The
 /// caller silences the warning with `-q`; an observations-only backend (`max_days == 0`) clamps
 /// everything to zero, which is what a station forecast is.
+///
+/// Two rows do not clamp but refuse: an **archive-only** backend (`max_days == 0` with
+/// `history_days > 0`) has no forecast to shorten, so asking it for days is a usage error naming
+/// the two flags that do work; and `window` says the run asked for an absolute date window
+/// instead, in which case `days` is the window's length and no forecast clamp applies.
 pub(crate) fn request_days(
     requested: u8,
     ids: &[ProviderId],
     days_explicit: bool,
-) -> (u8, Option<String>) {
+    window: bool,
+) -> Result<(u8, Option<String>)> {
     let Some(primary) = ids.first() else {
-        return (requested, None);
+        return Ok((requested, None));
     };
-    let max_days = primary.metadata().max_days;
+    let meta = primary.metadata();
+    if window {
+        // `--date`/`--history`: the window decides the span, per location (it needs the location's
+        // own calendar), and `validate_query` already checked that some chain entry has a history.
+        return Ok((requested, None));
+    }
+    if meta.max_days == 0 && meta.history_days > 0 {
+        return Err(Error::Usage(format!(
+            "provider {primary} is archive only; pass `--date <YYYY-MM-DD>` or `--history <N>d` instead of a forecast"
+        )));
+    }
+    let max_days = meta.max_days;
     if max_days == 0 && requested > 0 {
         // An observation-only backend has nothing to clamp *to*: the days value is dropped, and
         // only a `--days` the user actually typed is worth a warning about — the configured or
         // built-in default is not a request for a forecast.
         let warning = days_explicit
             .then(|| format!("warning: {primary} reports observations only; --days is ignored"));
-        return (0, warning);
+        return Ok((0, warning));
     }
     if requested > max_days {
-        return (
+        return Ok((
             max_days,
             Some(format!(
                 "warning: {primary} supports at most {max_days} days; --days {requested} clamped to {max_days}"
             )),
-        );
+        ));
     }
-    (requested, None)
+    Ok((requested, None))
+}
+
+/// The absolute window a `--date`/`--history` run asks for, in the location's own calendar.
+///
+/// `--date` is exactly that date; `--history <N>d` is the `N` days ending yesterday, because a
+/// "last 7 days" reading that included today's half-finished one would be neither a forecast nor a
+/// complete archive. The window is computed after the location is resolved (its time zone decides
+/// what "yesterday" means), so a multi-location run gets the right window per slot.
+fn request_window(
+    query: &QueryArgs,
+    location: &Location,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Option<crate::provider::DateWindow> {
+    if let Some(date) = query.date {
+        return Some(crate::provider::DateWindow::day(date));
+    }
+    let history = query.history?;
+    let today = now.with_timezone(&location.tz).date_naive();
+    let end = today - chrono::Days::new(u64::from(history));
+    Some(crate::provider::DateWindow {
+        start: end,
+        end: end + chrono::Days::new(u64::from(history - 1)),
+    })
+}
+
+/// Refuses a window that reaches further back than the answering backend can serve.
+///
+/// `open-meteo` carries 92 days and the archive carries everything since 1940-01-01, so the bound
+/// is per chain head and the error names the oldest date it can answer for rather than a bare
+/// refusal.
+fn check_window(
+    window: crate::provider::DateWindow,
+    ids: &[ProviderId],
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
+    let Some(primary) = ids.first() else {
+        return Ok(());
+    };
+    let history = primary.metadata().history_days;
+    if history == 0 {
+        return Err(Error::Usage(format!(
+            "provider {primary} has no archive; drop `--date`/`--history` or use a backend with a history span"
+        )));
+    }
+    let earliest = now.date_naive() - chrono::Days::new(u64::from(history));
+    if window.start < earliest {
+        return Err(Error::Usage(format!(
+            "provider {primary} can answer for {history} days back at most; the requested window starts {} (earliest {earliest})",
+            window.start
+        )));
+    }
+    Ok(())
 }
 
 /// Prints `cirrocast completion <shell>`.
@@ -1123,11 +1239,13 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
             .flatten()
     });
     let days_explicit = matches!(sources.days, Source::CommandLine | Source::Environment);
-    let (days, warning) = request_days(settings.days, &ids, days_explicit);
-    if let Some(warning) = warning
-        && !cli.quiet
-    {
-        eprintln!("{warning}");
+    let window_requested = query.date.is_some() || query.history.is_some();
+    // The chain built here answers "does *any* reachable backend support this flag"; the fetch
+    // itself re-ranks `auto` per location (step 24), so the days clamp and the chain warning moved
+    // into the slot.
+    validate_window(query, &ids)?;
+    if cli.verbose > 0 {
+        sources.note(&settings);
     }
     let setup = RenderSetup::resolve(query, &config, &settings, cli.verbose, cli.quiet)?;
     validate_surfaces(query, setup.format)?;
@@ -1180,8 +1298,12 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
     let context = SlotContext {
         query,
         config: &config,
-        ids: &ids,
-        days,
+        provider_spec: &settings.provider,
+        provider_source: sources.provider,
+        station: station.as_deref(),
+        days: settings.days,
+        days_explicit,
+        window: window_requested,
         format: setup.format,
         lang: setup.i18n.lang().tag(),
         env: &env,
@@ -1219,6 +1341,27 @@ fn validate_alert_sources(query: &QueryArgs) -> Result<()> {
     Ok(())
 }
 
+/// `--date`/`--history` need a chain entry that has an archive, checked before any request.
+///
+/// The concrete span (whether the *answering* backend covers the window) is checked per location,
+/// because "yesterday" is the location's own calendar; this pre-flight only refuses a chain that
+/// could never answer an archive request at all.
+fn validate_window(query: &QueryArgs, ids: &[ProviderId]) -> Result<()> {
+    if query.date.is_none() && query.history.is_none() {
+        return Ok(());
+    }
+    if ids
+        .iter()
+        .any(|id| id.metadata().history_days > 0 && id.metadata().implemented)
+    {
+        return Ok(());
+    }
+    Err(Error::Usage(
+        "`--date`/`--history` need a backend with a history span; add `open-meteo` or `open-meteo-archive` to `--provider`"
+            .to_owned(),
+    ))
+}
+
 /// Everything one location's fetch needs beyond the location itself, shared by every slot.
 ///
 /// Deliberately `Sync`: a multi-location run hands it to worker threads, so it holds no renderer
@@ -1229,10 +1372,18 @@ struct SlotContext<'a> {
     query: &'a QueryArgs,
     /// The validated configuration.
     config: &'a Config,
-    /// The provider chain.
-    ids: &'a [ProviderId],
-    /// Forecast days, already clamped to the chain's first provider.
+    /// The `--provider`/config spec, so each slot ranks its own `auto` for its own location.
+    provider_spec: &'a str,
+    /// Which tier named that spec, for the `--station` rule.
+    provider_source: Source,
+    /// The station the run answers for, when one was named or configured.
+    station: Option<&'a str>,
+    /// Forecast days as the run resolved them, before the per-provider clamp.
     days: u8,
+    /// Whether `--days` (or its environment variable) was given, for the clamp warning.
+    days_explicit: bool,
+    /// Whether the run asked for an absolute window (`--date`/`--history`).
+    window: bool,
     /// The selected format, for the format-driven fetches (`--format aqi`/`moon`).
     format: Format,
     /// The language tag the alert sources are fetched for.
@@ -1243,6 +1394,47 @@ struct SlotContext<'a> {
     cli: &'a Cli,
     /// The run's clock instant.
     now: chrono::DateTime<chrono::Utc>,
+}
+
+impl SlotContext<'_> {
+    /// The chain one location is fetched with.
+    ///
+    /// `auto` ranks by coverage for *this* location (step 24), so a US slot can start at `nws`
+    /// while a neighbouring country's starts at `open-meteo`; an explicit list is the same
+    /// everywhere. A named station prepends `metar` under the same rule as before: a station run
+    /// answers from the station's own observation, with the rest of the chain as fallback.
+    fn chain(&self, location: &Location) -> Result<Vec<ProviderId>> {
+        let spec = self.provider_spec.trim();
+        let prepend = self.provider_source == Source::Default || spec.eq_ignore_ascii_case("auto");
+        let ids = select_for(spec, Some(location))?;
+        let station_head =
+            self.station.is_some() && prepend && ids.first() != Some(&ProviderId::Metar);
+        let chain: Vec<ProviderId> = if station_head {
+            let mut chain = vec![ProviderId::Metar];
+            chain.extend(ids.into_iter().filter(|id| *id != ProviderId::Metar));
+            chain
+        } else {
+            ids
+        };
+        if self.cli.verbose > 0 && spec.eq_ignore_ascii_case("auto") {
+            eprintln!(
+                "provider: auto for {} ({:.2}, {:.2}{}): {}",
+                location.name,
+                location.lat,
+                location.lon,
+                location
+                    .country_code
+                    .as_deref()
+                    .map_or_else(String::new, |code| format!(", {code}")),
+                chain
+                    .iter()
+                    .map(ProviderId::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        Ok(chain)
+    }
 }
 
 /// Resolves every location of a multi-location run serially, then fetches them in parallel.
@@ -1307,25 +1499,46 @@ fn fetch_for_location(
     // The alert policy is resolved before the forecast is fetched: a coverage or source-list
     // mistake is a usage error that must not cost a request, and `--alerts-from nws` at a Beijing
     // point fails here, not after the weather round trip.
+    let ids = context.chain(location)?;
+    let (days, warning) = request_days(context.days, &ids, context.days_explicit, context.window)?;
+    if let Some(warning) = warning
+        && !context.cli.quiet
+    {
+        eprintln!("{warning}");
+    }
     let alert_request = alert_request(
         context.query,
         context.config,
         location,
-        context.ids,
+        &ids,
         context.format,
         context.cli.verbose,
     )?;
-    let request = FetchRequest::new(context.days, HourlyResolution::Hourly);
-    let mut report = fetch_chain(context.ids, location, &request, context.env)?;
+    let request = match request_window(context.query, location, context.now) {
+        Some(window) => {
+            check_window(window, &ids, context.now)?;
+            FetchRequest::for_window(window, HourlyResolution::Hourly)
+        }
+        None => FetchRequest::new(days, HourlyResolution::Hourly),
+    };
+    let mut report = fetch_chain(&ids, location, &request, context.env)?;
 
     if context.cli.verbose > 0 {
         verbose_report(&report);
     }
 
     // Alerts are a separate source registry, so they are fetched after the weather answer: a
-    // forecast failure is then reported without any alert traffic.
+    // forecast failure is then reported without any alert traffic. The alerts the *answering
+    // backend* carried in its own payload (`visualcrossing`) enter the same layer here, which is
+    // the only way they can be filtered, de-duplicated and ordered like every other source's.
     if let Some(alert_request) = alert_request {
-        report.alerts = alerts::fetch(location, context.env, &alert_request, context.lang)?;
+        report.alerts = alerts::fetch(
+            location,
+            context.env,
+            &alert_request,
+            context.lang,
+            std::mem::take(&mut report.alerts),
+        )?;
     }
 
     // Air quality is best-effort by contract: `--aqi` (or `--format aqi`) asks for it, and a
@@ -1333,6 +1546,12 @@ fn fetch_for_location(
     // code stays 0. The reading travels on the report, where the renderers find it.
     if context.query.aqi || context.format == Format::Aqi {
         attach_air(&mut report, context.env, context.cli.quiet);
+    }
+
+    // The marine block is best-effort in the same way, and the flag is the only way to ask for it:
+    // the marine API is a supplementary source, never a chain entry.
+    if context.query.marine {
+        attach_marine(&mut report, context.env, context.cli.quiet);
     }
 
     // The astro block is attached only when the run asks for it (see `attach_astro`).
@@ -1542,6 +1761,22 @@ fn attach_air(report: &mut crate::model::Report, env: &Env<'_>, quiet: bool) {
     }
 }
 
+/// Fetches the marine reading and attaches it to the report; a failure is a warning.
+///
+/// The marine API is a supplementary source (never a chain entry), and `--marine` promises a
+/// panel, not a successful second call: an inland point whose sea cell cannot be resolved still
+/// shows the forecast the user asked for, with exit code 0.
+fn attach_marine(report: &mut crate::model::Report, env: &Env<'_>, quiet: bool) {
+    match crate::provider::open_meteo_marine::fetch(&report.location, env) {
+        Ok(marine) => report.marine = Some(marine),
+        Err(error) => {
+            if !quiet {
+                eprintln!("warning: marine data unavailable: {error}");
+            }
+        }
+    }
+}
+
 /// The `--alerts-from` ids, split on commas and trimmed; `None` when the flag was not given.
 ///
 /// `Some(vec![])` means the flag was given with nothing usable in it, which the callers refuse: an
@@ -1622,6 +1857,17 @@ fn alert_request(
             );
         }
         return Ok(None);
+    }
+    // `visualcrossing` is the one source whose warnings travel in its *provider's* payload, so an
+    // explicit selection needs that provider on the chain — otherwise the promise "these sources
+    // answer" cannot be kept and saying nothing would look like "no warnings".
+    if sources.contains(&AlertSource::VisualCrossing)
+        && !ids.iter().any(|id| id.as_str() == "visualcrossing")
+    {
+        return Err(Error::Usage(
+            "alert source `visualcrossing` travels with its provider's payload; add `--provider visualcrossing`"
+                .to_owned(),
+        ));
     }
     let threshold = match query.severity {
         Some(severity) => severity,
@@ -3061,8 +3307,8 @@ fn run_provider(command: &ProviderCommand) -> Result<()> {
 /// The registry's alert sources are independent of the weather chain — the global aggregators
 /// apply everywhere — so this row names only what follows *this* provider: a backend whose own
 /// payload carries warnings, or an alert source bound to its credential and host (`qweather`,
-/// and `visualcrossing` once step 23 wires it). A provider with neither prints `none`, and the
-/// coverage-selected sources still apply at run time.
+/// `visualcrossing`). A provider with neither prints `none`, and the coverage-selected sources
+/// still apply at run time.
 fn provider_alerts(meta: &ProviderMeta) -> String {
     let mut names: Vec<&str> = Vec::new();
     if meta.alerts {
@@ -3160,19 +3406,20 @@ fn provider_table() -> Vec<String> {
     let name_width = column_width("NAME", metas.iter().map(|meta| meta.display_name));
     let key_width = column_width("KEY", metas.iter().map(key_label));
 
-    let row = |id: &str, name: &str, key: &str, obs: &str, fcst: &str, days: &str| {
+    let row = |id: &str, name: &str, key: &str, net: &str, obs: &str, fcst: &str, days: &str| {
         format!(
-            "{id:<id_width$}  {name:<name_width$}  {key:<key_width$}  {obs:<3}  {fcst:<3}  {days:>7}"
+            "{id:<id_width$}  {name:<name_width$}  {key:<key_width$}  {net:<7}  {obs:<3}  {fcst:<3}  {days:>7}"
         )
     };
 
-    let mut lines = vec![row("ID", "NAME", "KEY", "OBS", "FCST", "MAXDAYS")];
+    let mut lines = vec![row("ID", "NAME", "KEY", "NET", "OBS", "FCST", "MAXDAYS")];
     for meta in &metas {
         let max_days = meta.max_days.to_string();
         lines.push(row(
             meta.id.as_str(),
             meta.display_name,
             key_label(meta),
+            meta.network.as_str(),
             yes_no(meta.current),
             yes_no(meta.daily || meta.hourly),
             &max_days,
@@ -3212,6 +3459,9 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
         info_line("max days:", meta.max_days),
         info_line("locations:", locations),
         info_line("coverage:", meta.coverage),
+        info_line("network:", meta.network.as_str()),
+        info_line("history days:", meta.history_days),
+        info_line("marine:", yes_no(meta.marine)),
         info_line("granularity:", meta.granularity),
         info_line("limits:", meta.limits),
         info_line(
@@ -3316,13 +3566,15 @@ mod tests {
     #[test]
     fn the_days_clamp_is_reported_once_and_silenceable() {
         // Open-Meteo's 16 days are beyond the flag's own 0..=14, so the clamp cannot bite here.
-        let (days, warning) = request_days(14, &[ProviderId::OpenMeteo], true);
+        let (days, warning) = request_days(14, &[ProviderId::OpenMeteo], true, false)
+            .expect("open-meteo accepts days");
         assert_eq!(days, 14);
         assert_eq!(warning, None);
 
         // A station-only backend has no forecast at all: everything clamps to zero, with the
         // observation-specific wording rather than "supports at most 0 days".
-        let (days, warning) = request_days(14, &[ProviderId::Metar], true);
+        let (days, warning) = request_days(14, &[ProviderId::Metar], true, false)
+            .expect("metar clamps instead of refusing");
         assert_eq!(days, 0);
         assert_eq!(
             warning.expect("the clamp is reported"),
@@ -3331,17 +3583,23 @@ mod tests {
 
         // A days value that came from the configuration or the built-in default is not a request
         // for a forecast, so dropping it is not worth a warning.
-        let (days, warning) = request_days(3, &[ProviderId::Metar], false);
+        let (days, warning) =
+            request_days(3, &[ProviderId::Metar], false, false).expect("no refusal");
         assert_eq!(days, 0);
         assert_eq!(warning, None);
 
         // The clamp follows the *first* entry: a fallback cannot widen the request.
-        let (days, warning) = request_days(14, &[ProviderId::Metar, ProviderId::OpenMeteo], true);
+        let (days, warning) =
+            request_days(14, &[ProviderId::Metar, ProviderId::OpenMeteo], true, false)
+                .expect("no refusal");
         assert_eq!(days, 0);
         assert!(warning.is_some());
 
         // No chain at all is not a clamp case.
-        assert_eq!(request_days(3, &[], true), (3, None));
+        assert_eq!(
+            request_days(3, &[], true, false).expect("no chain"),
+            (3, None)
+        );
     }
 
     #[test]
@@ -3367,7 +3625,7 @@ mod tests {
         // Without a station, `auto` is the keyless place chain and nothing else.
         assert_eq!(
             provider_chain(&settings("auto"), None, Source::Default).expect("auto expands"),
-            vec![ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![ProviderId::OpenMeteo, ProviderId::MetNo]
         );
 
         // `--station` with the provider from the configuration or the built-in default prepends
@@ -3387,7 +3645,7 @@ mod tests {
         assert_eq!(
             provider_chain(&settings("auto"), Some("ZBAA"), Source::Default)
                 .expect("a configured auto gains metar"),
-            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::MetNo]
         );
 
         // An explicit `auto` gains `metar` in front, because `auto` never contains a
@@ -3395,7 +3653,7 @@ mod tests {
         assert_eq!(
             provider_chain(&settings("auto"), Some("ZBAA"), Source::CommandLine)
                 .expect("auto gains metar"),
-            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::MetNo]
         );
 
         // An explicit chain is used as written — the user asked for that order.

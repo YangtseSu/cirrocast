@@ -118,35 +118,40 @@ fn alerts_sources_still_accepts_auto_alone() {
 }
 
 #[test]
-fn alerts_sources_rejects_the_unwired_visualcrossing_id() {
-    // §3.4: `visualcrossing` is a legal shape that the runtime always rejects. A config error
-    // naming the key is the right class for a value that came from a file.
+fn alerts_sources_accepts_the_wired_visualcrossing_id() {
+    // §3.4 originally: `visualcrossing` was a legal shape the runtime always rejected. Step 23
+    // wired it with its provider, so a config list naming it now validates and must run.
     let sandbox = Sandbox::new();
     sandbox.write_config("[alerts]\nsources = [\"visualcrossing\"]\n");
     sandbox
         .cirrocast()
         .args(["config", "validate"])
         .assert()
-        .code(4)
-        .stderr(
-            predicate::str::contains("alerts.sources")
-                .and(predicate::str::contains("visualcrossing")),
-        );
+        .success()
+        .stdout(predicate::str::starts_with("ok: "));
 }
 
 #[test]
-fn alerts_from_visualcrossing_is_a_usage_error_before_any_request() {
-    // §3.4: the usage error must precede the location lookup. The sandbox forbids the network, so
-    // a run that had opened a socket would fail with the guard message instead of exit 2.
+fn alerts_from_visualcrossing_needs_its_provider() {
+    // Step 23 wired the `visualcrossing` alert source, and its warnings travel in the forecast
+    // payload, so naming the source without its provider is a usage error rather than a silent
+    // "no warnings" answer.
     let sandbox = Sandbox::new();
     sandbox
         .cirrocast()
-        .args(["--alerts-from", "visualcrossing", "Beijing"])
+        .args([
+            "--alerts-from",
+            "visualcrossing",
+            "--lat",
+            "38.97",
+            "--lon",
+            "-77.35",
+        ])
         .assert()
         .code(2)
         .stderr(
-            predicate::str::contains("visualcrossing")
-                .and(predicate::str::contains("CIRROCAST_FORBID_NETWORK").not()),
+            predicate::str::contains("--provider visualcrossing")
+                .and(predicate::str::contains("not wired up yet").not()),
         );
 }
 
