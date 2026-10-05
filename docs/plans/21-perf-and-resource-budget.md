@@ -29,16 +29,16 @@ evidence — keeping the decision, recording why.
       `--no-default-features` proof landing here, so `cargo build --release --no-default-features`
       yields the reduced build (same CLI, city search via the network geocoder only). Feature
       inventory documented in `docs/performance.md`.
-- ⬜ `scripts/bench/run.sh`: `cargo build --release --locked`, then hyperfine
+- ✅ `scripts/bench/run.sh`: `cargo build --release --locked`, then hyperfine
       (`hyperfine --warmup 5 --runs 30 -N`) over `--version`, `--help`,
       `--offline Beijing -f plain` and a warm-cache `Beijing -f plain`, with `XDG_CACHE_HOME`,
       `XDG_CONFIG_HOME` and `TZ` pinned to a temp tree seeded from `tests/fixtures/`; RSS via
       `/usr/bin/time -v` (`Maximum resident set size`), binary size via `stat -c %s`, `--help` lines
       via `wc -l`; everything written to `target/bench/raw.json`.
-- ⬜ `scripts/bench/cold.sh`: manual cold-run harness — empty cache dir, `--refresh`, three timed
+- ✅ `scripts/bench/cold.sh`: manual cold-run harness — empty cache dir, `--refresh`, three timed
       runs, prints median; run by hand on the documented reference machine and link, never in CI
       (a network number cannot be gated).
-- ⬜ `scripts/bench/compare.py`: Python 3 (stdlib only) reader of `perf/baseline.json` and
+- ✅ `scripts/bench/compare.py`: Python 3 (stdlib only) reader of `perf/baseline.json` and
       `target/bench/raw.json`; prints a metric-by-metric table with budget, baseline and delta; exits
       1 when a gated median exceeds `baseline × 1.20` or a hard budget.
 - ⬜ `perf/baseline.json`: `{"schema": 1, "recorded": "YYYY-MM-DD", "commit": …, "machine": {…},
@@ -214,3 +214,13 @@ into `docs/performance.md`.
   passes `cargo test --workspace --no-default-features`. `release-audit` added for `cargo bloat`.
   Feature inventory in `docs/performance.md`; the measured dependency switches there are
   `clap`'s `wrap_help` (−936 B, kept) and `ureq`'s default features (−12,496 B, kept).
+- 2026-10-05 — the harness landed: `scripts/bench/run.sh` (release build, pinned XDG sandbox with
+  a cache seeded from `tests/fixtures/open_meteo/forecast_beijing_2026-07-15.json`, alerts off,
+  `CIRROCAST_FORBID_NETWORK=1`, `taskset -c 0`, hyperfine `--warmup 5 --runs 30 -N`, RSS, binary
+  size and `--help` length into `target/bench/raw.json`), `cold.sh` (manual, three `--refresh` runs
+  on an empty cache) and `compare.py` (ratio gate at 1.20 plus the hard budgets, with the
+  "baseline already over budget" warning path). A fourth script, `record.py`, composes
+  `perf/baseline.json` from a fresh `raw.json` plus the machine spec, so the local and CI
+  re-recording paths cannot drift. `rss.py` was written, tried and deleted: reading
+  `getrusage(RUSAGE_CHILDREN)` from a forked parent counts the parent's pages and overstated
+  `--version` by ~6 MiB, so the fallback is hyperfine's per-child peak instead.
