@@ -315,6 +315,23 @@ unit-ug-m3 = 微克/立方米
 unit-grains-m3 = 粒/立方米
 air-credit-open-meteo = 空气质量数据由 Open-Meteo.com 提供（CAMS ENSEMBLE）
 
+# --- 海洋（步骤 23）-----------------------------------------------------------------------------
+# `--marine` 追加的海浪块：一条当前海况、采样海区离请求点较远时的说明，以及数据来源。
+# 数值已经换算并格式化，消息只负责摆放。
+
+marine-panel-title = 海洋
+marine-waves = 浪高 { $height } 米
+marine-period = 周期 { $seconds } 秒
+marine-from = 来自 { $degrees }°
+marine-swell = 涌浪 { $height } 米
+marine-sea = 海表温度 { $temp } °C
+marine-daily-max = 当日最大 { $date } { $height } 米 { $degrees }°
+marine-sampled = 采样于 { $lat }, { $lon }（距该地点 { $distance } 公里）
+marine-credit-open-meteo = 海洋数据：Open-Meteo.com（CC BY 4.0）— https://open-meteo.com/（Copernicus Marine Service、DWD ICON Wave）
+
+# `archive` 标记历史数据（`--date`、`--history`），与所覆盖的日期一同显示。
+mode-archive = 历史
+
 # --- 月亮与太阳（步骤 17）-----------------------------------------------------------------------
 # 月相名称按 `MoonPhase::index` 索引；月出/月落等标签用于各格式中的数值；`astro-no-rise`
 # 表示当天没有该事件（月亮的一个日历日可能缺其中一次）。极昼/极夜标签在极圈内替代整行太阳

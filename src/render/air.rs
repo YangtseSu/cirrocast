@@ -371,7 +371,7 @@ fn pollen_species(pollen: &crate::model::Pollen) -> [(MessageKey, Option<f64>); 
 ///
 /// The panel carries six values per line; `8.2`, `13.3`, `38`, `27.9`, `3`, `251` is what keeps the
 /// line a line. Anything smaller than 0.05 rounds to `0`.
-fn number(value: f64) -> String {
+pub(super) fn number(value: f64) -> String {
     let rounded = crate::model::units::normalise_zero_f64((value * 10.0).round() / 10.0);
     let integral = rounded.round();
     if (rounded - integral).abs() < 0.05 {
@@ -394,7 +394,7 @@ fn credit_key(source: AirSource) -> MessageKey {
 /// painted span closes the span at the end of the line and re-opens it at the start of the next,
 /// so no line is left with an unterminated SGR — which would paint the rest of the terminal — and
 /// a value split across two lines stays painted on both.
-fn wrap_all(lines: Vec<String>, width: usize, charset: Charset) -> Vec<String> {
+pub(super) fn wrap_all(lines: Vec<String>, width: usize, charset: Charset) -> Vec<String> {
     lines
         .into_iter()
         .flat_map(|line| wrap(&line, width, charset))
@@ -467,7 +467,7 @@ fn open_escape(text: &str) -> Option<&str> {
 }
 
 /// The ASCII spelling of one line when the charset asks for it.
-fn fold_line(line: &str, charset: Charset) -> String {
+pub(super) fn fold_line(line: &str, charset: Charset) -> String {
     match charset {
         Charset::Ascii => fold_ascii(line),
         Charset::Unicode => line.to_owned(),

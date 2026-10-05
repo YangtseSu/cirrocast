@@ -30,6 +30,7 @@ pub mod art;
 pub mod art_table;
 pub mod color;
 pub mod json;
+pub mod marine;
 pub mod moon;
 pub mod one_line;
 pub mod plain;

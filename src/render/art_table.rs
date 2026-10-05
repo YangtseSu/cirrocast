@@ -264,6 +264,16 @@ impl Renderer for ArtTable {
                 table.flush();
             }
         }
+        // The marine panel closes the readings: it is the other best-effort supplementary fetch,
+        // and like the air block its credit travels inside the panel.
+        let marine = super::marine::panel(report, &panels);
+        if !marine.is_empty() {
+            table.blank();
+            for line in marine {
+                table.line.push_str(&line);
+                table.flush();
+            }
+        }
         write_credits(&mut table, report, ctx);
 
         Ok(table.out)

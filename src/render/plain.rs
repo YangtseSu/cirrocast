@@ -82,6 +82,10 @@ impl Renderer for Plain {
             out.push('\n');
             out.push_str(&line);
         }
+        for line in super::marine::records(report, ctx) {
+            out.push('\n');
+            out.push_str(&line);
+        }
 
         if let Some(credit) = attribution_line(&report.location) {
             out.push('\n');
