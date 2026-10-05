@@ -315,6 +315,13 @@ fn probe(
         location_for_run(None, &target, &geo, cli)?
     };
 
+    // `auto` ranks by coverage, and the probe resolves its location only after the station
+    // fallback (which needs a chain), so the expansion happens here, once the place is known.
+    let ids = if settings.provider.trim().eq_ignore_ascii_case("auto") {
+        crate::provider::select_for(&settings.provider, Some(&location))?
+    } else {
+        ids
+    };
     let (days, warning) = request_days(settings.days, &ids, false, false)?;
     if let Some(warning) = warning
         && !cli.quiet

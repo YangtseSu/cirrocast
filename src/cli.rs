@@ -37,7 +37,7 @@ use crate::model::Severity;
 use crate::model::alert::AlertSource;
 use crate::model::units::{ResolvedUnits, UnitSystem};
 use crate::paths::Paths;
-use crate::provider::{Env, fetch_chain, licence_line, select};
+use crate::provider::{Env, fetch_chain, licence_line, select, select_for};
 use crate::provider::{FetchRequest, HourlyResolution, ProviderId, ProviderMeta};
 use crate::render::{
     Charset, ColorMode, Format, RenderContext, TermCaps, effective_depth, renderer_for,
@@ -1240,12 +1240,12 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
     });
     let days_explicit = matches!(sources.days, Source::CommandLine | Source::Environment);
     let window_requested = query.date.is_some() || query.history.is_some();
+    // The chain built here answers "does *any* reachable backend support this flag"; the fetch
+    // itself re-ranks `auto` per location (step 24), so the days clamp and the chain warning moved
+    // into the slot.
     validate_window(query, &ids)?;
-    let (days, warning) = request_days(settings.days, &ids, days_explicit, window_requested)?;
-    if let Some(warning) = warning
-        && !cli.quiet
-    {
-        eprintln!("{warning}");
+    if cli.verbose > 0 {
+        sources.note(&settings);
     }
     let setup = RenderSetup::resolve(query, &config, &settings, cli.verbose, cli.quiet)?;
     validate_surfaces(query, setup.format)?;
@@ -1298,8 +1298,12 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
     let context = SlotContext {
         query,
         config: &config,
-        ids: &ids,
-        days,
+        provider_spec: &settings.provider,
+        provider_source: sources.provider,
+        station: station.as_deref(),
+        days: settings.days,
+        days_explicit,
+        window: window_requested,
         format: setup.format,
         lang: setup.i18n.lang().tag(),
         env: &env,
@@ -1368,10 +1372,18 @@ struct SlotContext<'a> {
     query: &'a QueryArgs,
     /// The validated configuration.
     config: &'a Config,
-    /// The provider chain.
-    ids: &'a [ProviderId],
-    /// Forecast days, already clamped to the chain's first provider.
+    /// The `--provider`/config spec, so each slot ranks its own `auto` for its own location.
+    provider_spec: &'a str,
+    /// Which tier named that spec, for the `--station` rule.
+    provider_source: Source,
+    /// The station the run answers for, when one was named or configured.
+    station: Option<&'a str>,
+    /// Forecast days as the run resolved them, before the per-provider clamp.
     days: u8,
+    /// Whether `--days` (or its environment variable) was given, for the clamp warning.
+    days_explicit: bool,
+    /// Whether the run asked for an absolute window (`--date`/`--history`).
+    window: bool,
     /// The selected format, for the format-driven fetches (`--format aqi`/`moon`).
     format: Format,
     /// The language tag the alert sources are fetched for.
@@ -1382,6 +1394,47 @@ struct SlotContext<'a> {
     cli: &'a Cli,
     /// The run's clock instant.
     now: chrono::DateTime<chrono::Utc>,
+}
+
+impl SlotContext<'_> {
+    /// The chain one location is fetched with.
+    ///
+    /// `auto` ranks by coverage for *this* location (step 24), so a US slot can start at `nws`
+    /// while a neighbouring country's starts at `open-meteo`; an explicit list is the same
+    /// everywhere. A named station prepends `metar` under the same rule as before: a station run
+    /// answers from the station's own observation, with the rest of the chain as fallback.
+    fn chain(&self, location: &Location) -> Result<Vec<ProviderId>> {
+        let spec = self.provider_spec.trim();
+        let prepend = self.provider_source == Source::Default || spec.eq_ignore_ascii_case("auto");
+        let ids = select_for(spec, Some(location))?;
+        let station_head =
+            self.station.is_some() && prepend && ids.first() != Some(&ProviderId::Metar);
+        let chain: Vec<ProviderId> = if station_head {
+            let mut chain = vec![ProviderId::Metar];
+            chain.extend(ids.into_iter().filter(|id| *id != ProviderId::Metar));
+            chain
+        } else {
+            ids
+        };
+        if self.cli.verbose > 0 && spec.eq_ignore_ascii_case("auto") {
+            eprintln!(
+                "provider: auto for {} ({:.2}, {:.2}{}): {}",
+                location.name,
+                location.lat,
+                location.lon,
+                location
+                    .country_code
+                    .as_deref()
+                    .map_or_else(String::new, |code| format!(", {code}")),
+                chain
+                    .iter()
+                    .map(ProviderId::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        Ok(chain)
+    }
 }
 
 /// Resolves every location of a multi-location run serially, then fetches them in parallel.
@@ -1446,22 +1499,29 @@ fn fetch_for_location(
     // The alert policy is resolved before the forecast is fetched: a coverage or source-list
     // mistake is a usage error that must not cost a request, and `--alerts-from nws` at a Beijing
     // point fails here, not after the weather round trip.
+    let ids = context.chain(location)?;
+    let (days, warning) = request_days(context.days, &ids, context.days_explicit, context.window)?;
+    if let Some(warning) = warning
+        && !context.cli.quiet
+    {
+        eprintln!("{warning}");
+    }
     let alert_request = alert_request(
         context.query,
         context.config,
         location,
-        context.ids,
+        &ids,
         context.format,
         context.cli.verbose,
     )?;
     let request = match request_window(context.query, location, context.now) {
         Some(window) => {
-            check_window(window, context.ids, context.now)?;
+            check_window(window, &ids, context.now)?;
             FetchRequest::for_window(window, HourlyResolution::Hourly)
         }
-        None => FetchRequest::new(context.days, HourlyResolution::Hourly),
+        None => FetchRequest::new(days, HourlyResolution::Hourly),
     };
-    let mut report = fetch_chain(context.ids, location, &request, context.env)?;
+    let mut report = fetch_chain(&ids, location, &request, context.env)?;
 
     if context.cli.verbose > 0 {
         verbose_report(&report);
@@ -3346,19 +3406,20 @@ fn provider_table() -> Vec<String> {
     let name_width = column_width("NAME", metas.iter().map(|meta| meta.display_name));
     let key_width = column_width("KEY", metas.iter().map(key_label));
 
-    let row = |id: &str, name: &str, key: &str, obs: &str, fcst: &str, days: &str| {
+    let row = |id: &str, name: &str, key: &str, net: &str, obs: &str, fcst: &str, days: &str| {
         format!(
-            "{id:<id_width$}  {name:<name_width$}  {key:<key_width$}  {obs:<3}  {fcst:<3}  {days:>7}"
+            "{id:<id_width$}  {name:<name_width$}  {key:<key_width$}  {net:<7}  {obs:<3}  {fcst:<3}  {days:>7}"
         )
     };
 
-    let mut lines = vec![row("ID", "NAME", "KEY", "OBS", "FCST", "MAXDAYS")];
+    let mut lines = vec![row("ID", "NAME", "KEY", "NET", "OBS", "FCST", "MAXDAYS")];
     for meta in &metas {
         let max_days = meta.max_days.to_string();
         lines.push(row(
             meta.id.as_str(),
             meta.display_name,
             key_label(meta),
+            meta.network.as_str(),
             yes_no(meta.current),
             yes_no(meta.daily || meta.hourly),
             &max_days,
@@ -3398,6 +3459,9 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
         info_line("max days:", meta.max_days),
         info_line("locations:", locations),
         info_line("coverage:", meta.coverage),
+        info_line("network:", meta.network.as_str()),
+        info_line("history days:", meta.history_days),
+        info_line("marine:", yes_no(meta.marine)),
         info_line("granularity:", meta.granularity),
         info_line("limits:", meta.limits),
         info_line(
@@ -3561,7 +3625,7 @@ mod tests {
         // Without a station, `auto` is the keyless place chain and nothing else.
         assert_eq!(
             provider_chain(&settings("auto"), None, Source::Default).expect("auto expands"),
-            vec![ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
+            vec![ProviderId::OpenMeteo, ProviderId::MetNo]
         );
 
         // `--station` with the provider from the configuration or the built-in default prepends
@@ -3581,12 +3645,7 @@ mod tests {
         assert_eq!(
             provider_chain(&settings("auto"), Some("ZBAA"), Source::Default)
                 .expect("a configured auto gains metar"),
-            vec![
-                ProviderId::Metar,
-                ProviderId::OpenMeteo,
-                ProviderId::MetNo,
-                ProviderId::Smhi,
-            ]
+            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::MetNo]
         );
 
         // An explicit `auto` gains `metar` in front, because `auto` never contains a
@@ -3594,12 +3653,7 @@ mod tests {
         assert_eq!(
             provider_chain(&settings("auto"), Some("ZBAA"), Source::CommandLine)
                 .expect("auto gains metar"),
-            vec![
-                ProviderId::Metar,
-                ProviderId::OpenMeteo,
-                ProviderId::MetNo,
-                ProviderId::Smhi,
-            ]
+            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::MetNo]
         );
 
         // An explicit chain is used as written — the user asked for that order.

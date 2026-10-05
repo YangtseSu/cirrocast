@@ -63,7 +63,11 @@ use crate::paths::Paths;
 pub const CACHE_SCHEMA_VERSION: u32 = 1;
 
 /// The namespaces `cache stat` reports, always in this order.
-pub const NAMESPACES: [&str; 5] = ["weather", "geocode", "ip", "station", "alerts"];
+///
+/// `grid` joined them in step 24: a grid backend maps a coordinate to the provider's own grid cell
+/// or point before it can fetch anything, and that mapping is neither a station nor a forecast, so
+/// it has its own directory and its own long TTL.
+pub const NAMESPACES: [&str; 6] = ["weather", "geocode", "ip", "station", "alerts", "grid"];
 
 /// The state directories under the cache root that `cache stat` reports after [`NAMESPACES`].
 ///
@@ -383,6 +387,21 @@ impl CacheKey {
         Self {
             path: PathBuf::from("station").join(format!("{icao}.json")),
             normalised: format!("station|{icao}"),
+        }
+    }
+
+    /// A grid-mapping key: one file per provider and point under the `grid/` namespace.
+    ///
+    /// A backend that answers by grid cell (`nws` maps a coordinate to `office/x,y`) needs that
+    /// mapping before it can request a forecast, and the mapping changes far more slowly than a
+    /// forecast: three decimals pin roughly 100 m, which is inside one cell nearly everywhere, and
+    /// the entry keeps its own 30-day TTL.
+    #[must_use]
+    pub fn grid(provider: &str, lat: f64, lon: f64) -> Self {
+        let name = format!("{provider}-{lat:.3}-{lon:.3}.json");
+        Self {
+            path: PathBuf::from("grid").join(&name),
+            normalised: format!("grid|{provider}|{lat:.3}|{lon:.3}"),
         }
     }
 
@@ -1450,6 +1469,11 @@ mod tests {
         cache
             .write_state("ratelimit/nominatim.json", "{}")
             .expect("the throttle is written");
+        // A grid mapping (step 24) is a fifth entry namespace beside the four upstream-answer ones.
+        let grid = CacheKey::grid("nws", 39.7456, -97.0892);
+        cache
+            .write(&grid, 200, "{}", Duration::from_hours(720))
+            .expect("the grid mapping is written");
 
         let stat = cache.stat().expect("stat succeeds");
         assert_eq!(
@@ -1463,6 +1487,7 @@ mod tests {
                 "ip",
                 "station",
                 "alerts",
+                "grid",
                 "ratelimit",
                 "geo"
             ]
@@ -1471,12 +1496,23 @@ mod tests {
             stat.namespaces[0].entries, 1,
             "a crashed run's temporary file is not an entry"
         );
-        assert_eq!(stat.namespaces[5].entries, 1);
+        assert_eq!(
+            stat.namespaces[5].entries, 1,
+            "the grid mapping is an entry"
+        );
         assert_eq!(stat.namespaces[6].entries, 1);
+        assert_eq!(stat.namespaces[7].entries, 1);
 
-        // `clean --all` removes the temporary file and both state files.
+        // `clean --all` removes the temporary file, the grid mapping and both state files.
         cache.clean(true).expect("clean succeeds");
         assert!(!weather.join(".entry.json.tmp.999999").exists());
+        assert!(
+            !directory
+                .path()
+                .join("grid/nws-39.746--97.089.json")
+                .exists(),
+            "the grid namespace is cleaned like every other entry"
+        );
         assert!(!directory.path().join("geo/update-notice.json").exists());
         assert!(!directory.path().join("ratelimit/nominatim.json").exists());
     }

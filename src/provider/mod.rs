@@ -148,6 +148,8 @@ impl ProviderId {
                 notes: "keyless, global coverage; free tier 10 000 calls/day",
                 auth: "none (keyless; a commercial key exists for the `customer-` host)",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::Free,
                 granularity: "hourly; daily aggregates",
                 limits: "free tier 10 000 calls/day, 5 000/hour, 600/minute; non-commercial",
                 verified: "2026-09-30",
@@ -171,6 +173,8 @@ impl ProviderId {
                 notes: "keyless, global; hourly for the first ~52 h then 6-hourly; a descriptive User-Agent with contact information is mandatory (`403` otherwise)",
                 auth: "none (keyless); a descriptive User-Agent carrying contact information is required",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::Free,
                 granularity: "hourly for the first ~52 h, 6-hourly beyond; 9-day horizon",
                 limits: "20 requests/second per application; re-request only after `Expires`; coordinates at most 4 decimals; no `Yr` in the product name",
                 verified: "2026-10-06",
@@ -194,6 +198,8 @@ impl ProviderId {
                 notes: "keyless reanalysis (ERA5/ERA5-Land/IFS) from 1940-01-01; ~5-day latency, so a recent date is served by the forecast API instead; archive only — `--days` is a usage error",
                 auth: "none (keyless)",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::Free,
                 granularity: "hourly and daily reanalysis",
                 limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
                 verified: "2026-10-06",
@@ -219,6 +225,8 @@ impl ProviderId {
                 notes: "keyless; waves, swell and sea-surface temperature for the nearest sea cell; supplementary — requested with `--marine`, never a forecast chain entry",
                 auth: "none (keyless)",
                 coverage: "coastal waters of the global wave models",
+                covers: Coverage::Global,
+                network: NetworkClass::Free,
                 granularity: "hourly; 8 forecast days",
                 limits: "the Open-Meteo free tier (< 10 000 calls/day, non-commercial)",
                 verified: "2026-10-06",
@@ -242,6 +250,8 @@ impl ProviderId {
                 notes: "hourly timeline up to 15 days; the payload carries its own `alerts[]`, which the alert layer shows as source `visualcrossing`",
                 auth: "API key in the `key` query parameter",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::NonFree,
                 granularity: "hourly; 15-day horizon",
                 limits: "free plan 1 000 records/day (`queryCost` ≈ 1 + 24×hours + days; the default 3-day query ≈ 76 records); keyed to the account's terms, no redistribution of cached data",
                 verified: "2026-10-06",
@@ -265,6 +275,8 @@ impl ProviderId {
                 notes: "free tier 60 calls/min, 1 000 000 calls/month; 2 calls per fetch, 3-hour steps",
                 auth: "API key in the `appid` query parameter",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::NonFree,
                 granularity: "3-hourly (40 slots ≈ 5 days)",
                 limits: "free tier 60 calls/min, 1 000 000 calls/month; 2 calls per fetch",
                 verified: "2026-09-30",
@@ -288,6 +300,8 @@ impl ProviderId {
                 notes: "free tier: 100k calls/month, 3-day forecast (paid plans 14 days)",
                 auth: "API key in the `key` query parameter",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::NonFree,
                 granularity: "hourly (24 entries per day)",
                 limits: "free tier 100 000 calls/month, 3-day forecast",
                 verified: "2026-09-30",
@@ -313,6 +327,8 @@ impl ProviderId {
                 notes: "free tier 100 requests/day, 5 forecast days per FAQ; format=json is mandatory",
                 auth: "API key in the `key` query parameter",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::NonFree,
                 granularity: "3-hourly (`tp=3`)",
                 limits: "free tier 100 requests/day (the docs also print 500/month); 5 forecast days per FAQ",
                 verified: "2026-09-30",
@@ -338,6 +354,8 @@ impl ProviderId {
                 notes: "Dark Sky shaped responses; free tier 10 000 calls/month",
                 auth: "API key as a path segment (or the `apikey` header)",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::NonFree,
                 granularity: "hourly (168 with `extend=hourly`); 7 daily",
                 limits: "free tier 10 000 calls/month, 1–4 requests/second",
                 verified: "2026-09-30",
@@ -361,6 +379,8 @@ impl ProviderId {
                 notes: "global coverage; v1 endpoints, metric-only measures; API host from https://console.qweather.com/setting",
                 auth: "API key in the `X-QW-Api-Key` header (or `key=` query)",
                 coverage: "global",
+                covers: Coverage::Global,
+                network: NetworkClass::NonFree,
                 granularity: "hourly (up to 240 h) and daily (up to 10 days)",
                 limits: "first 50 000 requests/month at ¥0; QPM 3 000",
                 verified: "2026-10-01",
@@ -384,6 +404,8 @@ impl ProviderId {
                 notes: "keyless, Nordics and adjacent seas; SNOW1gv1 steps widen to 6 h/12 h beyond day 3",
                 auth: "none (keyless open data)",
                 coverage: "Nordics and adjacent seas",
+                covers: Coverage::Bbox([4.0, 54.0, 32.0, 72.0]),
+                network: NetworkClass::Free,
                 granularity: "1 h, widening to 6 h and 12 h with the horizon",
                 limits: "no published quota; SMHI's fair-use rules apply",
                 verified: "2026-09-30",
@@ -407,6 +429,8 @@ impl ProviderId {
                 notes: "keyless, station observations only; 100 requests/minute; `--station` selects it",
                 auth: "none (keyless)",
                 coverage: "worldwide stations",
+                covers: Coverage::Global,
+                network: NetworkClass::Free,
                 granularity: "per observation (≈hourly)",
                 limits: "100 requests/minute; 400 entries per response",
                 verified: "2026-10-01",
@@ -462,7 +486,7 @@ impl FromStr for ProviderId {
 /// The boolean fields are the capability flags of the provider contract; they are deliberately
 /// flat instead of being folded into enums, because each one is independent.
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProviderMeta {
     /// The provider this row describes.
     pub id: ProviderId,
@@ -501,6 +525,10 @@ pub struct ProviderMeta {
     pub auth: &'static str,
     /// The area the backend answers for, e.g. `global` or `Nordics and adjacent seas`.
     pub coverage: &'static str,
+    /// The same area in the machine-readable form [`auto_chain`] ranks by (step 24).
+    pub covers: Coverage,
+    /// Whether the backend sits on free infrastructure or a commercial service (step 24).
+    pub network: NetworkClass,
     /// The native time step, e.g. `3-hourly (40 slots ≈ 5 days)`.
     pub granularity: &'static str,
     /// The documented free-tier quotas and rate limits, in the provider's own words.
@@ -525,6 +553,68 @@ pub struct ProviderMeta {
     /// backend that never fetches. The licence *obligation* of every backend — implemented or not —
     /// is recorded in `docs/providers.md`; this field is only the line the renderers print.
     pub licence: Option<&'static str>,
+}
+
+/// The area a backend answers for, in the machine-readable form `auto` ranks by.
+///
+/// The free-text `coverage` string stays what `provider info` prints; this enum is what the
+/// selection logic reads, so a chain is a deterministic function of the location instead of a
+/// hardcoded list. Tiers are ordered: an exact country code wins over a containing bounding box,
+/// which wins over [`Coverage::Global`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Coverage {
+    /// The listed ISO 3166-1 alpha-2 country codes.
+    Countries(&'static [&'static str]),
+    /// A bounding box, `[west, south, east, north]` in degrees, corners inclusive.
+    Bbox([f64; 4]),
+    /// Everywhere.
+    Global,
+}
+
+impl Coverage {
+    /// The tier this coverage sits in for `loc`: `0` country, `1` bounding box, `2` global;
+    /// `None` when the point is outside the coverage altogether.
+    #[must_use]
+    pub fn tier(self, loc: &Location) -> Option<u8> {
+        match self {
+            Self::Countries(codes) => loc
+                .country_code
+                .as_deref()
+                .filter(|code| codes.iter().any(|known| known.eq_ignore_ascii_case(code)))
+                .map(|_| 0),
+            Self::Bbox([west, south, east, north]) => {
+                let inside =
+                    loc.lon >= west && loc.lon <= east && loc.lat >= south && loc.lat <= north;
+                inside.then_some(1)
+            }
+            Self::Global => Some(2),
+        }
+    }
+}
+
+/// Whether a backend's network path is free infrastructure or a commercial service.
+///
+/// Recorded as metadata, not as a filter: `provider list` prints it and `docs/providers.md`
+/// defines it, so a distribution can document what a default install talks to. **Free** means
+/// keyless or a self-hosted key, a documented public API, and no proprietary service in the path
+/// (a self-hosted Bright Sky instance qualifies); **non-free** means a commercial BYOK service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkClass {
+    /// Keyless or self-hosted, documented, no proprietary service behind it.
+    Free,
+    /// A commercial service reached with the user's own key.
+    NonFree,
+}
+
+impl NetworkClass {
+    /// The spelling `provider list` prints and the tests pin.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Free => "free",
+            Self::NonFree => "nonfree",
+        }
+    }
 }
 
 /// Which location forms a provider can answer for.
@@ -1005,16 +1095,58 @@ pub fn display_name_of(provider: &str) -> Option<&'static str> {
         .map(|id| id.metadata().display_name)
 }
 
-/// The chain a `--provider` value names.
+/// The chain a `--provider` value names, with no location known: `auto` answers with its global
+/// tier.
 ///
-/// * `auto` expands to every implemented keyless backend that answers for a resolved place, in
-///   registry order (the filter [`auto_chain`] applies), and never a station-only backend such as
-///   `metar` (a station has to be requested explicitly).
-/// * anything else is an explicit ordered chain: each entry must name a known, implemented
-///   provider, and duplicates collapse to their first position.
-/// * an unknown id is [`Error::Usage`] listing the known ids; a known but unimplemented one is the
-///   same variant with `not implemented yet`.
+/// [`select_for`] is the ranked form; this one exists for the callers that run before a location is
+/// resolved (the CLI's pre-flight) and for tests.
 pub fn select(spec: &str) -> Result<Vec<ProviderId>> {
+    select_for(spec, None)
+}
+
+/// The keyless backends `auto` expands to for `loc`, ranked by coverage (step 24).
+///
+/// Tiers, in order: an exact country-code match, then a containing bounding box, then the global
+/// entries; each tier keeps registry order, so the expansion is deterministic and can be printed
+/// under `-v`. `metar` never enters (station-only), and neither does an archive-only or a
+/// supplementary row: `auto` answers a plain forecast for a resolved place. `None` means the caller
+/// has no location yet (the CLI's pre-flight before resolution) and answers with the global tier.
+#[must_use]
+pub fn auto_chain(loc: Option<&Location>) -> Vec<ProviderId> {
+    let mut ranked: Vec<(u8, ProviderId)> = Vec::new();
+    for id in ProviderId::all() {
+        let meta = id.metadata();
+        // `max_days: 0` is an observation-only or archive-only row: neither answers a forecast.
+        if !meta.implemented
+            || meta.requires_key
+            || !meta.location_kinds.city
+            || meta.marine
+            || meta.max_days == 0
+        {
+            continue;
+        }
+        match loc {
+            Some(loc) => {
+                if let Some(tier) = meta.covers.tier(loc) {
+                    ranked.push((tier, id));
+                }
+            }
+            None => {
+                if meta.covers == Coverage::Global {
+                    ranked.push((2, id));
+                }
+            }
+        }
+    }
+    ranked.sort_by_key(|(tier, _)| *tier);
+    ranked.into_iter().map(|(_, id)| id).collect()
+}
+
+/// The chain a `--provider` value names, for a run whose location is already known.
+///
+/// `auto` expands by coverage ([`auto_chain`]); everything else ignores `loc`, because an explicit
+/// chain is what the user asked for whether or not it covers the place.
+pub fn select_for(spec: &str, loc: Option<&Location>) -> Result<Vec<ProviderId>> {
     let spec = spec.trim();
     if spec.is_empty() {
         return Err(Error::Usage(
@@ -1031,7 +1163,7 @@ pub fn select(spec: &str) -> Result<Vec<ProviderId>> {
             )));
         }
         if token.eq_ignore_ascii_case("auto") {
-            for id in auto_chain()? {
+            for id in auto_chain(loc) {
                 push_unique(&mut ids, id);
             }
             continue;
@@ -1053,27 +1185,6 @@ pub fn select(spec: &str) -> Result<Vec<ProviderId>> {
     if ids.is_empty() {
         return Err(Error::Config(
             "the provider chain is empty; pass `--provider <id>`".to_owned(),
-        ));
-    }
-    Ok(ids)
-}
-
-/// The keyless backends `auto` expands to, in order.
-///
-/// Step 23 ships the interim fixed list `open-meteo, met-no, smhi` (the implemented keyless
-/// backends that answer for a resolved place); step 24 replaces this with the coverage-ranked
-/// expansion over the registry's `covers` metadata, and `metar` never enters either shape (a
-/// station has to be requested explicitly). Rows whose `implemented` flag is still `false` are
-/// filtered out, so the list is always a set of backends that can actually answer.
-fn auto_chain() -> Result<Vec<ProviderId>> {
-    let ids: Vec<ProviderId> = [ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
-        .into_iter()
-        .filter(|id| id.metadata().implemented)
-        .collect();
-    if ids.is_empty() {
-        return Err(Error::Config(
-            "no provider is available without an API key; set one and use `--provider <id>`"
-                .to_owned(),
         ));
     }
     Ok(ids)
@@ -1260,7 +1371,7 @@ mod tests {
 
     use super::{
         Capabilities, DateWindow, Env, FetchRequest, HourlyResolution, LocationKinds, Provider,
-        ProviderId, fetch_chain_with, provider_for, select,
+        ProviderId, fetch_chain_with, provider_for, select, select_for,
     };
     use crate::cache::{Cache, CacheMode, SystemClock};
     use crate::config::Config;
@@ -1412,15 +1523,35 @@ mod tests {
     }
 
     #[test]
-    fn auto_expands_to_the_implemented_keyless_chain() {
+    fn auto_expands_by_coverage() {
+        // No location yet: the global tier, in registry order.
         assert_eq!(
             select("auto").expect("auto expands"),
-            vec![ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
+            vec![ProviderId::OpenMeteo, ProviderId::MetNo]
         );
         assert_eq!(
             select("AUTO").expect("the spelling is case insensitive"),
-            vec![ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
+            vec![ProviderId::OpenMeteo, ProviderId::MetNo]
         );
+
+        // A Nordic point matches SMHI's bounding box, which outranks the global entries.
+        let mut stockholm = test_location();
+        stockholm.lat = 59.33;
+        stockholm.lon = 18.07;
+        stockholm.country_code = Some("SE".to_owned());
+        assert_eq!(
+            select_for("auto", Some(&stockholm)).expect("auto expands"),
+            vec![ProviderId::Smhi, ProviderId::OpenMeteo, ProviderId::MetNo]
+        );
+
+        // Outside every box, the global tier answers alone, and `metar` never appears.
+        let mut lisbon = test_location();
+        lisbon.lat = 38.72;
+        lisbon.lon = -9.14;
+        lisbon.country_code = Some("PT".to_owned());
+        let chain = select_for("auto", Some(&lisbon)).expect("auto expands");
+        assert_eq!(chain, vec![ProviderId::OpenMeteo, ProviderId::MetNo]);
+        assert!(!chain.contains(&ProviderId::Metar));
     }
 
     #[test]
