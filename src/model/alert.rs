@@ -274,7 +274,8 @@ impl AlertSource {
     ///
     /// A location resolved from raw coordinates carries no country code, and then the two services
     /// whose territory is a compact, well-known rectangle fall back to a bounding box (`QWeather`
-    /// over mainland China, HKO over Hong Kong); every other national service answers `false` for a
+    /// over mainland China — two rectangles that follow the Himalayan frontier — and HKO over Hong
+    /// Kong, close enough to exclude Shenzhen); every other national service answers `false` for a
     /// coordinate — guessing a jurisdiction from a bounding box is how a reader ends up with a
     /// warning for the wrong country — and only the global aggregators cover it.
     #[must_use]
@@ -284,8 +285,8 @@ impl AlertSource {
         }
         let Some(code) = loc.country_code.as_deref() else {
             return match self {
-                Self::QWeather => in_box(loc, 73.0, 135.0, 18.0, 54.0),
-                Self::Hko => in_box(loc, 113.8, 114.5, 22.1, 22.7),
+                Self::QWeather => covers_mainland_china(loc),
+                Self::Hko => in_box(loc, 113.85, 114.45, 22.15, 22.50),
                 _ => false,
             };
         };
@@ -316,6 +317,16 @@ const METEOALARM_COUNTRIES: [&str; 38] = [
 /// Whether `loc` lies inside a lon/lat rectangle; the coordinate fallback of [`AlertSource::covers`].
 fn in_box(loc: &super::Location, min_lon: f64, max_lon: f64, min_lat: f64, max_lat: f64) -> bool {
     (min_lon..=max_lon).contains(&loc.lon) && (min_lat..=max_lat).contains(&loc.lat)
+}
+
+/// Whether a coordinate-only location lies over mainland China, for the `QWeather` fallback.
+///
+/// Two rectangles rather than one bounding box: a single box would sweep in the northern Indian
+/// plains (Delhi is at 77.21 °E, 28.61 °N), so the western band stops at the Himalayan frontier
+/// (32 °N) while the eastern band starts where that frontier has fallen south — at 80 °E —
+/// keeping Lhasa, Kunming, Guangzhou and the coast inside and Delhi and Amritsar outside.
+fn covers_mainland_china(loc: &super::Location) -> bool {
+    in_box(loc, 73.0, 80.0, 32.0, 54.0) || in_box(loc, 80.0, 135.0, 18.0, 54.0)
 }
 
 impl fmt::Display for AlertSource {
@@ -444,5 +455,49 @@ mod tests {
         );
         let error = "acme".parse::<AlertSource>().unwrap_err();
         assert!(error.to_string().contains("known sources"), "{error}");
+    }
+
+    #[test]
+    fn coordinate_only_coverage_boxes_exclude_the_neighbours() {
+        use chrono_tz::Tz;
+
+        use super::super::{Location, LocationSource};
+
+        let at = |lat: f64, lon: f64| Location {
+            name: String::new(),
+            admin1: None,
+            country: String::new(),
+            country_code: None,
+            lat,
+            lon,
+            tz: Tz::Asia__Shanghai,
+            elevation_m: None,
+            population: None,
+            source: LocationSource::Coordinates,
+            station: None,
+        };
+
+        // Delhi and Amritsar are south of the Himalayan frontier: `qweather` must not claim them.
+        for (lat, lon) in [(28.61, 77.21), (31.63, 74.87)] {
+            assert!(!AlertSource::QWeather.covers(&at(lat, lon)), "{lat},{lon}");
+        }
+        // Chinese cities, including the far west, are still covered.
+        for (lat, lon) in [
+            (39.90, 116.40),
+            (29.65, 91.12),
+            (25.04, 102.71),
+            (23.13, 113.26),
+            (39.47, 75.99),
+            (43.83, 87.62),
+        ] {
+            assert!(AlertSource::QWeather.covers(&at(lat, lon)), "{lat},{lon}");
+        }
+
+        // Shenzhen (22.54 °N) sits just north of Hong Kong: `hko` must not claim it.
+        assert!(!AlertSource::Hko.covers(&at(22.54, 114.06)));
+        // Hong Kong's own coordinates are still covered.
+        for (lat, lon) in [(22.30, 114.17), (22.32, 114.17), (22.20, 114.03)] {
+            assert!(AlertSource::Hko.covers(&at(lat, lon)), "{lat},{lon}");
+        }
     }
 }

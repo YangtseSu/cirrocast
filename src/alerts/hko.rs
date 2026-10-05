@@ -40,7 +40,7 @@ pub fn fetch(loc: &Location, env: &Env<'_>, language: &str) -> Result<Vec<Alert>
     let summary_request = HttpRequest::get(ENDPOINT)
         .query("dataType", "warnsum")
         .query("lang", lang);
-    let summary_key = super::key(env, "hko-warnsum", loc);
+    let summary_key = super::language_key(env, "hko-warnsum", loc, lang);
     let summary_body = super::cached_text(
         env,
         AlertSource::Hko,
@@ -62,7 +62,7 @@ pub fn fetch(loc: &Location, env: &Env<'_>, language: &str) -> Result<Vec<Alert>
     let info_request = HttpRequest::get(ENDPOINT)
         .query("dataType", "warningInfo")
         .query("lang", lang);
-    let info_key = super::key(env, "hko-warninginfo", loc);
+    let info_key = super::language_key(env, "hko-warninginfo", loc, lang);
     let info_body = match super::cached_text(
         env,
         AlertSource::Hko,

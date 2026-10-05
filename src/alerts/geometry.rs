@@ -29,60 +29,104 @@ pub fn geojson_contains(geometry: Option<&serde_json::Value>, lat: f64, lon: f64
     let kind = geometry.get("type")?.as_str()?;
     let coordinates = geometry.get("coordinates")?;
     match kind {
-        "Polygon" => Some(polygon_contains(coordinates, lat, lon)),
-        // A MultiPolygon is an array of Polygons; containing any one of them is enough.
-        "MultiPolygon" => Some(
-            coordinates
-                .as_array()?
-                .iter()
-                .any(|polygon| polygon_contains(polygon, lat, lon)),
-        ),
+        "Polygon" => polygon_contains(coordinates, lat, lon),
+        // A MultiPolygon is an array of Polygons; containing any one of them is enough, but an
+        // untestable member makes the whole answer untestable rather than a confident `false`.
+        "MultiPolygon" => {
+            let polygons = coordinates.as_array()?;
+            let mut result = Some(false);
+            for polygon in polygons {
+                match polygon_contains(polygon, lat, lon) {
+                    Some(true) => return Some(true),
+                    None => result = None,
+                    Some(false) => {}
+                }
+            }
+            result
+        }
         _ => None,
     }
 }
 
 /// Whether one `GeoJSON` polygon (`[[lon, lat], …]` rings; the first is the exterior, the rest are
 /// holes) contains the point.
+///
+/// `None` when the polygon is structurally broken or a ring holds a vertex this test cannot read:
+/// the tested shape must be the issued shape, so a partially parsable ring is untestable rather
+/// than silently tested without its bad vertices.
 #[must_use]
-fn polygon_contains(polygon: &serde_json::Value, lat: f64, lon: f64) -> bool {
-    let Some(rings) = polygon.as_array() else {
-        return false;
-    };
-    let Some((exterior, holes)) = rings.split_first() else {
-        return false;
-    };
-    if !ring_contains(exterior, lat, lon) {
-        return false;
+fn polygon_contains(polygon: &serde_json::Value, lat: f64, lon: f64) -> Option<bool> {
+    let rings = polygon.as_array()?;
+    let (exterior, holes) = rings.split_first()?;
+    if !ring_contains(exterior, lat, lon)? {
+        return Some(false);
     }
     // A point inside a hole is outside the polygon; a point on a hole's edge is ambiguous and
     // treated as outside.
-    !holes.iter().any(|hole| ring_contains(hole, lat, lon))
+    for hole in holes {
+        if ring_contains(hole, lat, lon)? {
+            return Some(false);
+        }
+    }
+    Some(true)
 }
 
 /// One ring of `[lon, lat]` pairs, closed or not (the ray cast treats it as closed).
-fn ring_contains(ring: &serde_json::Value, lat: f64, lon: f64) -> bool {
-    let Some(points) = ring.as_array() else {
-        return false;
-    };
-    let pairs: Vec<(f64, f64)> = points
-        .iter()
-        .filter_map(|point| {
-            let pair = point.as_array()?;
-            let x = pair.first()?.as_f64()?;
-            let y = pair.get(1)?.as_f64()?;
-            Some((x, y))
-        })
-        .collect();
-    if pairs.len() < 3 {
-        return false;
+///
+/// `None` when the ring is not an array of readable vertices or carries fewer than three of them.
+fn ring_contains(ring: &serde_json::Value, lat: f64, lon: f64) -> Option<bool> {
+    let points = ring.as_array()?;
+    let mut pairs = Vec::with_capacity(points.len());
+    for point in points {
+        let pair = point.as_array()?;
+        let x = pair.first()?.as_f64()?;
+        let y = pair.get(1)?.as_f64()?;
+        pairs.push((x, y));
     }
+    if pairs.len() < 3 {
+        return None;
+    }
+    Some(cast_contains(&pairs, lat, lon))
+}
+
+/// The even-odd ray cast, with the longitudes unwrapped across the antimeridian first.
+///
+/// A ring that crosses ±180° stores its straddling edges at +180 and −180, so the raw cast sees no
+/// crossing; the vertices are unwrapped into one continuous span and the point is tested in the
+/// ring's own frame (`lon`, `lon ± 360°`).
+fn cast_contains(pairs: &[(f64, f64)], lat: f64, lon: f64) -> bool {
+    let unwrapped = unwrap_longitudes(pairs);
+    [lon, lon + 360.0, lon - 360.0]
+        .into_iter()
+        .any(|x| even_odd(&unwrapped, lat, x))
+}
+
+/// A ring of `(lon, lat)` pairs with each longitude adjusted by ±360° to stay within 180° of its
+/// predecessor, so a ring crossing the antimeridian becomes one continuous coordinate span.
+fn unwrap_longitudes(pairs: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut out = Vec::with_capacity(pairs.len());
+    for &(mut lon, lat) in pairs {
+        if let Some(&(previous, _)) = out.last() {
+            while lon - previous > 180.0 {
+                lon -= 360.0;
+            }
+            while lon - previous < -180.0 {
+                lon += 360.0;
+            }
+        }
+        out.push((lon, lat));
+    }
+    out
+}
+
+/// The classic even-odd test on already unwrapped longitudes.
+fn even_odd(pairs: &[(f64, f64)], lat: f64, lon: f64) -> bool {
     let mut inside = false;
     let mut j = pairs.len() - 1;
     for i in 0..pairs.len() {
         let (xi, yi) = pairs[i];
         let (xj, yj) = pairs[j];
-        // The classic even-odd test, with the `>`/`<=` asymmetry that keeps a vertex on a
-        // horizontal scanline from being counted twice.
+        // The `>`/`<=` asymmetry keeps a vertex on a horizontal scanline from being counted twice.
         if (yi > lat) != (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi {
             inside = !inside;
         }
@@ -108,24 +152,21 @@ pub fn cap_circle_contains(circle: &str, lat: f64, lon: f64) -> Option<bool> {
 
 /// Whether the CAP `polygon` string (`lat,lon lat,lon …`) contains the point.
 ///
-/// `None` when fewer than three pairs parse; an unclosed ring is treated as closed.
+/// `None` when any vertex does not parse or fewer than three pairs are present: an unparsable
+/// vertex means the tested shape would differ from the issued one, so the geometry is untestable
+/// and the caller keeps the alert. An unclosed ring is treated as closed, and a ring crossing the
+/// antimeridian is unwrapped like a `GeoJSON` ring.
 #[must_use]
 pub fn cap_polygon_contains(polygon: &str, lat: f64, lon: f64) -> Option<bool> {
-    let pairs: Vec<(f64, f64)> = polygon.split_whitespace().filter_map(parse_pair).collect();
+    let mut pairs = Vec::new();
+    for token in polygon.split_whitespace() {
+        let (vertex_lat, vertex_lon) = parse_pair(token)?;
+        pairs.push((vertex_lon, vertex_lat));
+    }
     if pairs.len() < 3 {
         return None;
     }
-    let mut inside = false;
-    let mut j = pairs.len() - 1;
-    for i in 0..pairs.len() {
-        let (yi, xi) = pairs[i];
-        let (yj, xj) = pairs[j];
-        if (yi > lat) != (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi {
-            inside = !inside;
-        }
-        j = i;
-    }
-    Some(inside)
+    Some(cast_contains(&pairs, lat, lon))
 }
 
 /// One `lat,lon` pair from a CAP area string.
@@ -234,5 +275,69 @@ mod tests {
         assert_eq!(cap_circle_contains("nonsense", 0.0, 0.0), None);
         assert!(haversine_km(0.0, 0.0, 1.0, 0.0).abs() > 110.0);
         assert!(haversine_km(0.0, 0.0, 1.0, 0.0).abs() < 112.0);
+    }
+
+    #[test]
+    fn an_antimeridian_ring_contains_a_point_on_either_side() {
+        // A Fiji/Kiribati-style box straddling 180°: 177…179 and −179…−178.
+        let geometry = json!({
+            "type": "Polygon",
+            "coordinates": [[
+                [177.0, -17.0], [179.0, -17.0], [-179.0, -18.5], [177.0, -18.5], [177.0, -17.0]
+            ]]
+        });
+        // Inside near +180 (the raw cast would call this outside, since 178.45 < every edge).
+        assert_eq!(geojson_contains(Some(&geometry), -17.5, 178.45), Some(true));
+        // The same point spelled as a negative longitude is inside too.
+        assert_eq!(
+            geojson_contains(Some(&geometry), -17.5, -181.55),
+            Some(true)
+        );
+        // A point on the other side of the globe is outside.
+        assert_eq!(geojson_contains(Some(&geometry), 0.0, 0.0), Some(false));
+        assert_eq!(geojson_contains(Some(&geometry), -30.0, 90.0), Some(false));
+
+        // The CAP polygon spelling of the same ring.
+        let cap = "-17.0,177.0 -17.0,179.0 -18.5,-179.0 -18.5,177.0 -17.0,177.0";
+        assert_eq!(cap_polygon_contains(cap, -17.5, 178.45), Some(true));
+        assert_eq!(cap_polygon_contains(cap, -17.5, -181.55), Some(true));
+        assert_eq!(cap_polygon_contains(cap, 0.0, 0.0), Some(false));
+    }
+
+    #[test]
+    fn a_partially_parsable_ring_is_untestable_not_dropped() {
+        // One vertex is not a coordinate pair: the tested shape must equal the issued one.
+        let broken_json = json!({
+            "type": "Polygon",
+            "coordinates": [[
+                [116.0, 39.5], ["oops", 39.5], [116.9, 40.3], [116.0, 40.3], [116.0, 39.5]
+            ]]
+        });
+        assert_eq!(geojson_contains(Some(&broken_json), 39.9, 116.4), None);
+
+        // A structurally broken ring (too few vertices) is untestable, not a confident `false`.
+        let too_few = json!({
+            "type": "Polygon",
+            "coordinates": [[[116.0, 39.5], [116.9, 39.5]]]
+        });
+        assert_eq!(geojson_contains(Some(&too_few), 39.9, 116.4), None);
+
+        // A MultiPolygon with one good and one broken member is untestable where the good member
+        // does not answer.
+        let mixed = json!({
+            "type": "MultiPolygon",
+            "coordinates": [
+                [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+                [[[116.0, 39.5], ["oops", 39.5], [116.9, 40.3], [116.0, 40.3]]]
+            ]
+        });
+        assert_eq!(geojson_contains(Some(&mixed), 0.5, 0.5), Some(true));
+        assert_eq!(geojson_contains(Some(&mixed), 39.9, 116.4), None);
+
+        // A CAP polygon with an unparsable vertex is untestable too.
+        assert_eq!(
+            cap_polygon_contains("39.5,116.0 39.5,oops 40.3,116.9 40.3,116.0", 39.9, 116.4),
+            None
+        );
     }
 }

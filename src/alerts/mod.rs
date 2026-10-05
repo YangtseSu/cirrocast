@@ -100,8 +100,12 @@ pub fn sources_for(
     explicit_sources(loc, &config.sources)
 }
 
-/// [`sources_for`] for an explicit list (`--alerts-from` or `[alerts] sources`).
-pub fn explicit_sources(loc: &Location, specs: &[String]) -> Result<Vec<AlertSource>> {
+/// Parses an explicit source list into known, available sources, de-duplicated in input order.
+///
+/// This is the pre-flight the CLI runs *before* any location resolution: an unknown id or a source
+/// this build cannot fetch is a usage error that must not cost a request, and the error the runtime
+/// would raise is raised early instead of after the location lookup has opened a socket.
+pub fn parse_specs(specs: &[String]) -> Result<Vec<AlertSource>> {
     let mut sources = Vec::new();
     for spec in specs {
         let source: AlertSource = spec.trim().parse()?;
@@ -110,6 +114,17 @@ pub fn explicit_sources(loc: &Location, specs: &[String]) -> Result<Vec<AlertSou
                 "alert source `{source}` is not wired up yet"
             )));
         }
+        if !sources.contains(&source) {
+            sources.push(source);
+        }
+    }
+    Ok(sources)
+}
+
+/// [`sources_for`] for an explicit list (`--alerts-from` or `[alerts] sources`).
+pub fn explicit_sources(loc: &Location, specs: &[String]) -> Result<Vec<AlertSource>> {
+    let sources = parse_specs(specs)?;
+    for source in sources.iter().copied() {
         if !source.covers(loc) {
             let covered = covered_sources(loc);
             let covered = if covered.is_empty() {
@@ -125,9 +140,6 @@ pub fn explicit_sources(loc: &Location, specs: &[String]) -> Result<Vec<AlertSou
                 "alert source `{source}` does not cover {}; covered here: {covered}",
                 place(loc)
             )));
-        }
-        if !sources.contains(&source) {
-            sources.push(source);
         }
     }
     Ok(sources)
@@ -267,6 +279,58 @@ pub(crate) fn key(env: &Env<'_>, source: &str, loc: &Location) -> CacheKey {
 /// (the WMO and `FPAS` documents fetched once each per index entry).
 pub(crate) fn document_key(source: AlertSource, identifier: &str) -> CacheKey {
     CacheKey::hash("alerts", &format!("{}|cap|{identifier}", source.as_str()))
+}
+
+/// The cache key of an alert response whose *request* varies with the resolved output language.
+///
+/// Like [`key`], one entry per source, place and UTC hour, but the request's `?lang=` parameter is
+/// part of the request too: serving an English run the Traditional Chinese body (or the reverse)
+/// would be a wrong answer, so the language is part of the key. Hashed like [`document_key`],
+/// because the request is not a file name.
+pub(crate) fn language_key(
+    env: &Env<'_>,
+    source: &str,
+    loc: &Location,
+    language: &str,
+) -> CacheKey {
+    let hour: chrono::DateTime<chrono::Utc> = env.cache.clock().now().into();
+    let stamp = hour.format("%Y%m%dT%H");
+    CacheKey::hash(
+        "alerts",
+        &format!("{source}|{:.2}|{:.2}|{stamp}|{language}", loc.lat, loc.lon),
+    )
+}
+
+/// Resolves a document link advertised in an upstream payload against the host it came from.
+///
+/// A relative path is joined to `base`; an absolute URL is accepted only when it is `https` and its
+/// host is `base`'s host — the host the client is already talking to. Anything else is an upstream
+/// error, so an aggregator (or an on-path attacker on a cleartext hop) cannot point the fetch at an
+/// arbitrary host, the same way [`document_key`] refuses a traversing identifier.
+pub(crate) fn document_link(base: &str, link: &str, source: AlertSource) -> Result<String> {
+    let link = link.trim();
+    if link.is_empty() {
+        return Err(upstream(source, "a document link is empty".to_owned()));
+    }
+    let base_host = authority(base);
+    let Some((scheme, _)) = link.split_once("://") else {
+        let path = link.trim_start_matches('/');
+        return Ok(format!("{}/{}", base.trim_end_matches('/'), path));
+    };
+    if scheme.eq_ignore_ascii_case("https") && authority(link).eq_ignore_ascii_case(base_host) {
+        Ok(link.to_owned())
+    } else {
+        Err(upstream(
+            source,
+            format!("`{link}` is not an https link to {base_host}"),
+        ))
+    }
+}
+
+/// The authority part of a URL (`host[:port]`), the comparison key of [`document_link`].
+fn authority(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    rest.split(['/', '?', '#']).next().unwrap_or_default()
 }
 
 /// The configured alert cache TTL.
@@ -570,6 +634,66 @@ mod tests {
         let cross = prepare(vec![weaker, stronger], now, Severity::Unknown);
         assert_eq!(cross.len(), 1);
         assert_eq!(cross[0].severity, Severity::Extreme);
+    }
+
+    #[test]
+    fn the_language_is_part_of_the_alert_cache_key() {
+        use std::sync::Arc;
+
+        use crate::cache::{Cache, CacheMode, SystemClock};
+        use crate::config::Config;
+        use crate::config::keys::KeyStore;
+        use crate::http::{HttpClient, StubTransport};
+        use crate::paths::Paths;
+        use crate::provider::Env;
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let paths = Paths {
+            config_dir: directory.path().join("config"),
+            config_file: directory.path().join("config/config.toml"),
+            keys_file: directory.path().join("config/keys.toml"),
+            cache_dir: directory.path().join("cache"),
+            data_dir: directory.path().join("data"),
+        };
+        let http = HttpClient::new(
+            Box::new(StubTransport::new(Vec::new())),
+            0,
+            Arc::new(SystemClock),
+            0,
+        );
+        let cache = Cache::with_root(
+            directory.path().join("cache"),
+            CacheMode::Normal,
+            Arc::new(SystemClock),
+            0,
+        );
+        let config = Config::default();
+        let keys = KeyStore::new(&paths);
+        let env = Env {
+            http: &http,
+            cache: &cache,
+            config: &config,
+            keys: &keys,
+            quiet: true,
+            verbose: 0,
+        };
+
+        let loc = location("Hong Kong", Some("HK"), Tz::Asia__Hong_Kong);
+        let chinese = super::language_key(&env, "hko-warnsum", &loc, "tc");
+        let english = super::language_key(&env, "hko-warnsum", &loc, "en");
+        assert_ne!(
+            chinese, english,
+            "the resolved language must be part of the key"
+        );
+        assert!(chinese.normalised().contains("tc"));
+        assert!(english.normalised().contains("en"));
+        assert!(chinese.normalised().contains("hko-warnsum"));
+        assert!(chinese.normalised().contains("39.90"));
+        // The same language, place and hour still yields the same key.
+        assert_eq!(
+            chinese,
+            super::language_key(&env, "hko-warnsum", &loc, "tc")
+        );
     }
 
     #[test]

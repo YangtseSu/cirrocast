@@ -34,6 +34,9 @@ const TOKEN_ENV: &str = "CIRROCAST_METEOALARM_KEY";
 /// The EDR collection root; the country code is appended.
 const ENDPOINT: &str = "https://api.meteoalarm.org/edr/v1/collections/warnings/locations";
 
+/// The public API host, and the only host a `hubLink` document may live on.
+const API_ROOT: &str = "https://api.meteoalarm.org";
+
 /// The language every request asks for; CAP `info` blocks are picked by locale afterwards.
 const LANGUAGE: &str = "en-GB";
 
@@ -102,13 +105,7 @@ pub fn fetch(loc: &Location, env: &Env<'_>, language: &str) -> Result<Vec<Alert>
 
 /// The bearer token, trimmed; empty or unset means "source skipped".
 fn token() -> Option<String> {
-    let value = std::env::var(TOKEN_ENV).ok()?;
-    let value = value.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_owned())
-    }
+    crate::config::env_value(TOKEN_ENV)
 }
 
 /// A rejected token names the variable, not `cirrocast key set`: the token has no key-store entry
@@ -133,7 +130,7 @@ fn document(feature: &Feature, env: &Env<'_>, language: &str) -> Result<Vec<Aler
             "a feature carries no hubLink",
         ));
     };
-    let url = hub_url(link);
+    let url = hub_url(link)?;
     let identifier = feature
         .properties
         .alert_id
@@ -182,18 +179,13 @@ fn index(body: &str) -> Result<Vec<Feature>> {
     Ok(envelope.features)
 }
 
-/// A `hubLink` as an absolute URL: the service usually answers an absolute one, and a relative
-/// path is resolved against the public API host.
-fn hub_url(link: &str) -> String {
-    let link = link.trim();
-    if link.starts_with("http://") || link.starts_with("https://") {
-        link.to_owned()
-    } else {
-        format!(
-            "https://api.meteoalarm.org/{}",
-            link.trim_start_matches('/')
-        )
-    }
+/// A `hubLink` resolved against the public API host.
+///
+/// A relative path is joined, and an absolute link is accepted only on the API host itself; any
+/// other host or a non-https scheme is an upstream error (see `super::document_link`), so a
+/// compromised aggregator cannot redirect the fetch to an arbitrary — including link-local — host.
+fn hub_url(link: &str) -> Result<String> {
+    super::document_link(API_ROOT, link, AlertSource::MeteoAlarm)
 }
 
 #[cfg(test)]
@@ -237,15 +229,34 @@ mod tests {
     }
 
     #[test]
-    fn hub_links_are_made_absolute() {
+    fn hub_links_are_made_absolute_and_stay_on_the_api_host() {
         assert_eq!(
-            hub_url("https://api.meteoalarm.org/cap/x.xml"),
+            hub_url("https://api.meteoalarm.org/cap/x.xml").expect("an on-host link"),
             "https://api.meteoalarm.org/cap/x.xml"
         );
-        assert_eq!(hub_url("cap/x.xml"), "https://api.meteoalarm.org/cap/x.xml");
         assert_eq!(
-            hub_url("/cap/x.xml"),
+            hub_url("cap/x.xml").expect("a relative link"),
             "https://api.meteoalarm.org/cap/x.xml"
+        );
+        assert_eq!(
+            hub_url("/cap/x.xml").expect("a relative link"),
+            "https://api.meteoalarm.org/cap/x.xml"
+        );
+    }
+
+    #[test]
+    fn off_host_and_cleartext_hub_links_are_refused() {
+        let off_host = hub_url("https://elsewhere.example/cap/x.xml").unwrap_err();
+        assert!(
+            off_host.to_string().contains("elsewhere.example"),
+            "{off_host}"
+        );
+        let loopback = hub_url("http://127.0.0.1/cap/x.xml").unwrap_err();
+        assert!(loopback.to_string().contains("127.0.0.1"), "{loopback}");
+        let cleartext = hub_url("http://api.meteoalarm.org/cap/x.xml").unwrap_err();
+        assert!(
+            cleartext.to_string().contains("api.meteoalarm.org"),
+            "{cleartext}"
         );
     }
 

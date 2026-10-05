@@ -20,6 +20,7 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -35,6 +36,9 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 /// Mode of a freshly written `config.toml` (Unix only; the shim ignores it elsewhere).
 const CONFIG_FILE_MODE: u32 = 0o644;
+
+/// Process-wide counter that makes each [`atomic_write`] temporary name unique within the process.
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Values accepted by `defaults.format`.
 pub const FORMATS: &[&str] = &[
@@ -78,8 +82,8 @@ const TIMEOUT_RANGE: (u32, u32) = (1, 300);
 /// Range of `network.retries`.
 const RETRIES_RANGE: (u32, u32) = (0, 10);
 
-/// Allowed values of `render.width` besides `0` ("detect").
-const WIDTH_RANGE: (u32, u32) = (40, 500);
+/// Allowed values of `render.width` besides `0` ("detect"); mirrors `--width`.
+const WIDTH_RANGE: (u32, u32) = (1, 500);
 
 /// Allowed values of `[alerts] severity_threshold`; mirrors `model::alert::Severity::ALL`, and a
 /// unit test keeps the two in step.
@@ -708,6 +712,13 @@ impl Config {
     /// of the two policies.
     fn validate_location(&self) -> Result<()> {
         check_enum("location.pick", &self.location.pick, PICK_POLICIES)?;
+        self.validate_location_default()
+    }
+
+    /// `location.default` alone, for [`Config::set_key`]: the parser the command line uses, so a
+    /// value `config set` accepts is one a run accepts. `location.pick` and the `[locations]`
+    /// table are other keys and are not consulted here.
+    fn validate_location_default(&self) -> Result<()> {
         let text = self.location.default.trim();
         if text.is_empty() {
             return Ok(());
@@ -999,19 +1010,29 @@ fn check_provider_chain(key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-/// `auto` or a list of known alert source ids, for `alerts.sources`.
+/// `auto` or a list of known, available alert source ids, for `alerts.sources`.
+///
+/// `auto` is a selector, not a source: it expands by coverage at run time and cannot be mixed with
+/// explicit ids. Every explicit id must also be one this build can fetch — a configured source
+/// list that validates must run, so an unwired source (`visualcrossing`, pending its provider)
+/// is rejected here with the key named, rather than after the location lookup as a usage error.
 fn check_alert_sources(key: &str, sources: &[String]) -> Result<()> {
     if sources.is_empty() {
         return Err(Error::Config(format!(
             "{key}: name at least one source, or `auto`"
         )));
     }
+    if sources.len() == 1 && sources[0].trim().eq_ignore_ascii_case("auto") {
+        return Ok(());
+    }
     for source in sources {
         let token = source.trim();
         if token.eq_ignore_ascii_case("auto") {
-            continue;
+            return Err(Error::Config(format!(
+                "{key}: `auto` selects by coverage and cannot be combined with explicit sources"
+            )));
         }
-        token.parse::<crate::model::AlertSource>().map_err(|_| {
+        let id: crate::model::AlertSource = token.parse().map_err(|_| {
             Error::Config(format!(
                 "{key}: unknown alert source `{token}`; use `auto` or ids from: {}",
                 crate::model::AlertSource::ALL
@@ -1019,6 +1040,11 @@ fn check_alert_sources(key: &str, sources: &[String]) -> Result<()> {
                     .join(", ")
             ))
         })?;
+        if !id.available() {
+            return Err(Error::Config(format!(
+                "{key}: alert source `{id}` is not wired up yet"
+            )));
+        }
     }
     Ok(())
 }
@@ -1262,8 +1288,10 @@ impl Config {
 /// Writes `data` to `path` by creating a sibling temporary file, syncing it and renaming it over
 /// the target, so that a reader never observes a half-written document.
 ///
-/// The temporary file is `.<name>.tmp.<pid>` and is removed again when anything fails. Cache blobs
-/// (step 05) and `keys.toml` reuse this helper with their own mode.
+/// The temporary file is `.<name>.tmp.<pid>.<counter>`, the counter being process-wide and
+/// incremented per call, so two threads of one process writing the same path never share a name
+/// and cannot unlink each other's in-flight file. It is removed again when anything fails. Cache
+/// blobs (step 05) and `keys.toml` reuse this helper with their own mode.
 pub(crate) fn atomic_write(path: &Path, data: &[u8], mode: u32) -> Result<()> {
     let parent = path
         .parent()
@@ -1275,9 +1303,10 @@ pub(crate) fn atomic_write(path: &Path, data: &[u8], mode: u32) -> Result<()> {
         .map_err(|error| Error::Config(format!("{}: {error}", parent.display())))?;
 
     let temporary = parent.join(format!(
-        ".{}.tmp.{}",
+        ".{}.tmp.{}.{}",
         name.to_string_lossy(),
-        std::process::id()
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     let mut file = create_exclusive(&temporary, mode)
         .map_err(|error| Error::Config(format!("{}: {error}", temporary.display())))?;
@@ -1294,8 +1323,8 @@ pub(crate) fn atomic_write(path: &Path, data: &[u8], mode: u32) -> Result<()> {
 
 /// Creates `path` exclusively with `mode`.
 ///
-/// A stale `.<name>.tmp.<pid>` from a crashed run with a recycled pid is cleared once, so the write
-/// can always proceed.
+/// A stale `.<name>.tmp.<pid>.<counter>` from a crashed run with a recycled pid and counter is
+/// cleared once, so the write can always proceed.
 #[cfg(unix)]
 fn create_exclusive(path: &Path, mode: u32) -> std::io::Result<fs::File> {
     use std::os::unix::fs::OpenOptionsExt as _;
@@ -1395,7 +1424,7 @@ geocode_ttl_secs = 2592000   # 30 days
 
 [render]
 color = "auto"           # auto | always | never
-width = 0                # 0 = detect from the terminal, or 40..=500 columns
+width = 0                # 0 = detect from the terminal, or 1..=500 columns
 
 [alerts]
 enabled = true                # fetch warnings automatically when a source covers the location
@@ -1651,7 +1680,7 @@ pub const KEY_TABLE: &[KeySpec] = &[
     KeySpec {
         name: "render.width",
         kind: KeyKind::U32,
-        doc: "0 = detect, or 40..=500 columns",
+        doc: "0 = detect, or 1..=500 columns",
         env: None,
     },
     KeySpec {
@@ -1893,7 +1922,7 @@ impl Config {
             "defaults.units" => check_enum(key, &self.defaults.units, UNIT_SYSTEMS),
             "defaults.days" => check_range(key, u32::from(self.defaults.days), DAYS_RANGE),
             "defaults.language" => check_language(key, &self.defaults.language),
-            "location.default" => self.validate_location(),
+            "location.default" => self.validate_location_default(),
             "location.pick" => check_enum(key, &self.location.pick, PICK_POLICIES),
             "geo.strategy" => check_enum(key, &self.geo.strategy, GEO_STRATEGIES),
             "geo.data" => check_enum(key, &self.geo.data, GEO_DATA_SOURCES),
@@ -2343,8 +2372,8 @@ mod tests {
             ),
             (
                 "render.width",
-                |config| config.render.width = 12,
-                "render.width: 12 is not 0 or within 40..=500",
+                |config| config.render.width = 501,
+                "render.width: 501 is not 0 or within 1..=500",
             ),
             (
                 "render.color",
@@ -2458,6 +2487,95 @@ mod tests {
         config.alerts.severity_threshold = "catastrophic".to_owned();
         let error = config.validate().unwrap_err();
         assert!(error.to_string().contains("severity_threshold"), "{error}");
+    }
+
+    #[test]
+    fn alert_sources_reject_auto_mixed_and_unwired_ids() {
+        // Mixing the `auto` selector with an explicit id is refused, naming the key.
+        let mut config = Config::default();
+        config.alerts.sources = vec!["auto".to_owned(), "fpas".to_owned()];
+        let error = config.validate().unwrap_err();
+        assert!(error.to_string().contains("alerts.sources"), "{error}");
+        assert!(error.to_string().contains("auto"), "{error}");
+
+        // A lone `auto`, case- and whitespace-insensitively, stays valid.
+        for lone in [" Auto ", "AUTO", "auto"] {
+            let mut config = Config::default();
+            config.alerts.sources = vec![lone.to_owned()];
+            config.validate().expect("a lone auto validates");
+        }
+
+        // `visualcrossing` is documented but not wired up: a file that validates must run.
+        let mut config = Config::default();
+        config.alerts.sources = vec!["visualcrossing".to_owned()];
+        let error = config.validate().unwrap_err();
+        assert!(error.to_string().contains("alerts.sources"), "{error}");
+        assert!(error.to_string().contains("not wired up yet"), "{error}");
+
+        // The same through `config set`.
+        let mut config = Config::default();
+        let error = config.set_key("alerts.sources", "auto,fpas").unwrap_err();
+        assert!(error.to_string().contains("alerts.sources"), "{error}");
+        assert!(config.set_key("alerts.sources", "nws,fpas").is_ok());
+        let error = config
+            .set_key("alerts.sources", "visualcrossing")
+            .unwrap_err();
+        assert!(error.to_string().contains("not wired up yet"), "{error}");
+    }
+
+    #[test]
+    fn setting_location_default_ignores_the_rest_of_the_location_table() {
+        let mut config = Config::default();
+        config.location.pick = "sometimes".to_owned();
+        // The whole-document check refuses the invalid `location.pick`…
+        assert!(config.validate().is_err());
+        // …but setting `location.default` validates only that key and succeeds.
+        config
+            .set_key("location.default", "Beijing")
+            .expect("the key being set is valid");
+        assert_eq!(config.location.default, "Beijing");
+    }
+
+    #[test]
+    fn render_width_matches_the_flag_range() {
+        let mut config = Config::default();
+        config
+            .set_key("render.width", "39")
+            .expect("39 is a valid width");
+        assert_eq!(config.render.width, 39);
+        config.set_key("render.width", "0").expect("0 means detect");
+        let error = config.set_key("render.width", "501").unwrap_err();
+        assert!(error.to_string().contains("render.width"), "{error}");
+    }
+
+    #[test]
+    fn concurrent_writes_to_one_path_do_not_clobber_each_other() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("config.toml");
+        std::thread::scope(|scope| {
+            for index in 0..8 {
+                let path = path.clone();
+                scope.spawn(move || {
+                    let body = format!("body-{index}");
+                    for _ in 0..20 {
+                        super::atomic_write(&path, body.as_bytes(), 0o644)
+                            .expect("a concurrent write succeeds");
+                    }
+                });
+            }
+        });
+        let text = std::fs::read_to_string(&path).expect("the file exists");
+        assert!(text.starts_with("body-"), "{text}");
+        let leftovers: Vec<String> = std::fs::read_dir(directory.path())
+            .expect("the directory is readable")
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "config.toml")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temporary files left behind: {leftovers:?}"
+        );
     }
 
     #[test]

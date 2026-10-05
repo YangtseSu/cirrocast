@@ -79,6 +79,11 @@ pub struct CapInfo {
     /// CAP `onset`.
     pub onset: Option<DateTime<FixedOffset>>,
     /// CAP `expires`.
+    ///
+    /// An `<expires>` that does not parse is treated as absent: the alert is kept (a live warning
+    /// is never dropped over a malformed date) and reads as having no stated end. That is this
+    /// module's single behaviour for an unparsable expiry — it is not silently invented, and
+    /// [`Alert::effective_end`] documents the same "no reported end means live" rule.
     pub expires: Option<DateTime<FixedOffset>>,
     /// CAP `senderName`.
     pub sender_name: Option<String>,
@@ -446,16 +451,36 @@ fn non_empty(text: &str) -> Option<String> {
     }
 }
 
+/// Whether a CAP `status` describes a message that is not a live warning: `Test` (a drill),
+/// `Exercise` (a planned exercise) or `Draft` (an unpublished draft).
+fn is_not_actual(value: &str) -> bool {
+    let value = value.trim();
+    value.eq_ignore_ascii_case("test")
+        || value.eq_ignore_ascii_case("exercise")
+        || value.eq_ignore_ascii_case("draft")
+}
+
 /// The element's local name (namespace prefixes are dropped).
 fn local_name(event: &quick_xml::events::BytesStart<'_>) -> String {
     event.local_name().as_ref().to_owned()
 }
 
-/// A CAP `dateTime`: RFC 3339 with an offset, else a plain local timestamp read as UTC.
+/// A CAP `dateTime`: RFC 3339 (relaxed) with an offset, else a plain local timestamp read as UTC.
+///
+/// The relaxed form accepts the ISO-8601 spellings real agencies emit: `T` or a space between date
+/// and time, optional fractional seconds, `Z`/`UTC`, and an offset written with or without its
+/// colon (`+02:00` and `+0200`). Anything unparsable yields `None`; the caller decides what a
+/// missing instant means — see [`CapInfo::expires`].
 pub(crate) fn instant(text: &str) -> Option<DateTime<FixedOffset>> {
     let text = text.trim();
-    if let Ok(at) = DateTime::parse_from_rfc3339(text) {
+    if let Ok(at) = text.parse::<DateTime<FixedOffset>>() {
         return Some(at);
+    }
+    // The relaxed parser requires seconds; accept `06:00+0200` too.
+    for format in ["%Y-%m-%dT%H:%M%z", "%Y-%m-%d %H:%M%z"] {
+        if let Ok(at) = DateTime::parse_from_str(text, format) {
+            return Some(at);
+        }
     }
     for format in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"] {
         if let Ok(naive) = NaiveDateTime::parse_from_str(text, format) {
@@ -504,6 +529,9 @@ fn upstream(source: AlertSource, message: String) -> Error {
 /// Turns one parsed document into the model, choosing the `info` block by locale.
 ///
 /// * `msgType = Cancel` yields no alerts: a cancellation removes a warning, it does not add one.
+/// * a `status` of `Test`, `Exercise` or `Draft` yields no alerts either: those are drills and
+///   drafts, not live warnings, and rendering one as a warning would be a false alarm (the `NWS`
+///   `GeoJSON` path drops its `Test` status the same way).
 /// * the block whose `language` matches `language` wins (exact tag, then primary subtag); else the
 ///   first usable block.
 /// * areas are unioned across **every** block, de-duplicated in document order, because the area
@@ -519,6 +547,9 @@ pub fn alerts_from_cap(
         .as_deref()
         .is_some_and(|kind| kind.eq_ignore_ascii_case("Cancel"))
     {
+        return Ok(Vec::new());
+    }
+    if document.status.as_deref().is_some_and(is_not_actual) {
         return Ok(Vec::new());
     }
     if document.identifier.trim().is_empty() {
@@ -768,5 +799,59 @@ mod tests {
         .expect("the document parses");
         assert_eq!(document.identifier, "only");
         assert_eq!(document.infos.len(), 0);
+    }
+
+    #[test]
+    fn test_exercise_and_draft_statuses_yield_no_alerts() {
+        for status in ["Test", "Exercise", "Draft", "test"] {
+            let xml = format!(
+                r"<alert><identifier>drill-1</identifier><status>{status}</status>
+                   <msgType>Alert</msgType>
+                   <info><language>en</language><event>Severe Thunderstorm Warning</event>
+                   <severity>Extreme</severity></info></alert>"
+            );
+            let document = parse_cap(&xml, AlertSource::Fpas).expect("the document parses");
+            let alerts = alerts_from_cap(&document, AlertSource::Fpas, "en")
+                .expect("a drill is not an error");
+            assert_eq!(alerts.len(), 0, "status {status} is not a live warning");
+        }
+
+        // `Actual` still produces its alert.
+        let actual = r"<alert><identifier>x-3</identifier><status>Actual</status>
+            <msgType>Alert</msgType>
+            <info><language>en</language><event>Gale</event>
+            <severity>Severe</severity></info></alert>";
+        let document = parse_cap(actual, AlertSource::Fpas).expect("the document parses");
+        assert_eq!(
+            alerts_from_cap(&document, AlertSource::Fpas, "en")
+                .expect("a live warning")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_iso_basic_offset_expiry_parses_and_an_unparsable_one_keeps_the_alert() {
+        // `+0200` (no colon) is the ISO-8601 basic offset real CAP documents carry.
+        let basic = r"<alert><identifier>basic-1</identifier><status>Actual</status>
+            <msgType>Alert</msgType>
+            <info><language>en</language><event>Heat warning</event><severity>Severe</severity>
+            <expires>2026-10-04T18:00:00+0200</expires></info></alert>";
+        let document = parse_cap(basic, AlertSource::Fpas).expect("the document parses");
+        let alerts = alerts_from_cap(&document, AlertSource::Fpas, "en").expect("a usable block");
+        assert_eq!(
+            alerts[0].expires.map(|at| at.to_rfc3339()),
+            Some("2026-10-04T18:00:00+02:00".to_owned())
+        );
+
+        // An unparsable expiry is absent, not fatal: the alert is kept and reads as open-ended.
+        let broken = r"<alert><identifier>broken-1</identifier><status>Actual</status>
+            <msgType>Alert</msgType>
+            <info><language>en</language><event>Heat warning</event><severity>Severe</severity>
+            <expires>tomorrow-ish</expires></info></alert>";
+        let document = parse_cap(broken, AlertSource::Fpas).expect("the document parses");
+        let alerts = alerts_from_cap(&document, AlertSource::Fpas, "en").expect("a usable block");
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].expires, None);
     }
 }

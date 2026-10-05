@@ -184,16 +184,24 @@ impl KeyStore {
 
     /// Reads the key file, refusing one that group or other can read.
     ///
-    /// A missing file is an empty store, not an error.
+    /// A missing file is an empty store, not an error; a *dangling symlink* is not missing — the
+    /// path exists but points nowhere — so it is reported as the broken configuration it is
+    /// instead of being mistaken for an absent file.
     fn read(&self) -> Result<KeyFile> {
-        match fs::symlink_metadata(&self.path) {
+        match fs::metadata(&self.path) {
+            Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if fs::symlink_metadata(&self.path).is_ok() {
+                    return Err(Error::Config(format!(
+                        "{} is a dangling symbolic link; remove it or point it at a file",
+                        self.path.display()
+                    )));
+                }
                 return Ok(KeyFile::default());
             }
             Err(error) => {
                 return Err(Error::Config(format!("{}: {error}", self.path.display())));
             }
-            Ok(_) => {}
         }
         check_mode(&self.path)?;
         let text = fs::read_to_string(&self.path)
@@ -291,6 +299,23 @@ mod tests {
         let directory = tempfile::tempdir().expect("tempdir");
         let store = store_at(&directory.path().join("keys.toml"));
         assert_eq!(store.read().expect("a missing file is empty").keys.len(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_symlink_is_reported_as_such_not_as_missing() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("keys.toml");
+        std::os::unix::fs::symlink(directory.path().join("gone.toml"), &path)
+            .expect("the symlink is created");
+        let store = store_at(&path);
+        let error = store
+            .read()
+            .expect_err("a dangling symlink is not an empty store");
+        assert!(
+            error.to_string().contains("dangling symbolic link"),
+            "{error}"
+        );
     }
 
     #[test]

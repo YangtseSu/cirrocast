@@ -89,7 +89,7 @@ fn document(
     env: &Env<'_>,
     language: &str,
 ) -> Result<Vec<Alert>> {
-    let url = cap_url(link);
+    let url = cap_url(link)?;
     let key = super::document_key(AlertSource::WmoSwic, identifier.unwrap_or(link));
     let request = HttpRequest::get(url);
     let body = super::cached_text(env, AlertSource::WmoSwic, &request, &key, "CAP document")?;
@@ -97,14 +97,12 @@ fn document(
     super::cap::alerts_from_cap(&document, AlertSource::WmoSwic, language)
 }
 
-/// A `capurl` as an absolute URL.
-fn cap_url(link: &str) -> String {
-    let link = link.trim();
-    if link.starts_with("http://") || link.starts_with("https://") {
-        link.to_owned()
-    } else {
-        format!("{CAP_ROOT}/{}", link.trim_start_matches('/'))
-    }
+/// A `capurl` resolved against the WMO `CAP_ROOT`.
+///
+/// A relative path is joined, and an absolute link is accepted only on the WMO host itself; any
+/// other host or a non-https scheme is an upstream error (see `super::document_link`).
+fn cap_url(link: &str) -> Result<String> {
+    super::document_link(CAP_ROOT, link, AlertSource::WmoSwic)
 }
 
 /// The WFS feature collection.
@@ -197,15 +195,23 @@ mod tests {
     }
 
     #[test]
-    fn cap_urls_are_made_absolute() {
+    fn cap_urls_are_made_absolute_and_stay_on_the_wmo_host() {
         assert_eq!(
-            cap_url("20261003T120000Z_xx_1.xml"),
+            cap_url("20261003T120000Z_xx_1.xml").expect("a relative link"),
             "https://severeweather.wmo.int/v2/cap-alerts/20261003T120000Z_xx_1.xml"
         );
         assert_eq!(
-            cap_url("https://severeweather.wmo.int/v2/cap-alerts/x.xml"),
+            cap_url("https://severeweather.wmo.int/v2/cap-alerts/x.xml").expect("an on-host link"),
             "https://severeweather.wmo.int/v2/cap-alerts/x.xml"
         );
+    }
+
+    #[test]
+    fn off_host_and_cleartext_cap_urls_are_refused() {
+        let off_host = cap_url("https://elsewhere.example/x.xml").unwrap_err();
+        assert!(off_host.to_string().contains("wmoswic"), "{off_host}");
+        assert!(cap_url("http://127.0.0.1/x.xml").is_err());
+        assert!(cap_url("http://severeweather.wmo.int/x.xml").is_err());
     }
 
     #[test]
