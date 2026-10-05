@@ -21,6 +21,7 @@
 //! trait; the registry row's `implemented` flag is what [`select`] filters the chain by.
 
 pub mod dayparts;
+pub mod met_no;
 pub mod metar;
 pub mod open_meteo;
 pub mod open_meteo_marine;
@@ -171,9 +172,9 @@ impl ProviderId {
                 granularity: "hourly for the first ~52 h, 6-hourly beyond; 9-day horizon",
                 limits: "20 requests/second per application; re-request only after `Expires`; coordinates at most 4 decimals; no `Yr` in the product name",
                 verified: "2026-10-06",
-                implemented: false,
+                implemented: true,
                 alerts: false,
-                licence: None,
+                licence: Some("Data from MET Norway (CC BY 4.0) — https://www.met.no/"),
             },
             Self::OpenMeteoArchive => ProviderMeta {
                 id: *self,
@@ -899,9 +900,8 @@ pub fn provider_for(id: ProviderId) -> Result<Box<dyn Provider>> {
     match id {
         ProviderId::OpenMeteo => Ok(Box::new(open_meteo::OpenMeteo)),
         ProviderId::OpenMeteoMarine => Ok(Box::new(open_meteo_marine::OpenMeteoMarine)),
-        ProviderId::MetNo | ProviderId::OpenMeteoArchive | ProviderId::VisualCrossing => {
-            Err(not_implemented(id))
-        }
+        ProviderId::MetNo => Ok(Box::new(met_no::MetNo)),
+        ProviderId::OpenMeteoArchive | ProviderId::VisualCrossing => Err(not_implemented(id)),
         ProviderId::OpenWeatherMap => Ok(Box::new(openweathermap::OpenWeatherMap)),
         ProviderId::PirateWeather => Ok(Box::new(pirateweather::PirateWeather)),
         ProviderId::QWeather => Ok(Box::new(qweather::QWeather)),
@@ -1418,11 +1418,11 @@ mod tests {
     fn auto_expands_to_the_implemented_keyless_chain() {
         assert_eq!(
             select("auto").expect("auto expands"),
-            vec![ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
         );
         assert_eq!(
             select("AUTO").expect("the spelling is case insensitive"),
-            vec![ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
         );
     }
 

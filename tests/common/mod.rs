@@ -324,6 +324,7 @@ pub fn fixture_location(name: &str) -> Location {
         ),
         "berlin" => ("Berlin", 52.52, 13.405, Tz::Europe__Berlin, None),
         "lisbon" => ("Lisbon", 38.7223, -9.1393, Tz::Europe__Lisbon, None),
+        "oslo" => ("Oslo", 59.9139, 10.7522, Tz::Europe__Oslo, None),
         "stockholm" => ("Stockholm", 59.33, 18.06, Tz::Europe__Stockholm, None),
         other => panic!("no fixture for {other}"),
     };

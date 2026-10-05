@@ -3560,7 +3560,7 @@ mod tests {
         // Without a station, `auto` is the keyless place chain and nothing else.
         assert_eq!(
             provider_chain(&settings("auto"), None, Source::Default).expect("auto expands"),
-            vec![ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![ProviderId::OpenMeteo, ProviderId::MetNo, ProviderId::Smhi]
         );
 
         // `--station` with the provider from the configuration or the built-in default prepends
@@ -3580,7 +3580,12 @@ mod tests {
         assert_eq!(
             provider_chain(&settings("auto"), Some("ZBAA"), Source::Default)
                 .expect("a configured auto gains metar"),
-            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![
+                ProviderId::Metar,
+                ProviderId::OpenMeteo,
+                ProviderId::MetNo,
+                ProviderId::Smhi,
+            ]
         );
 
         // An explicit `auto` gains `metar` in front, because `auto` never contains a
@@ -3588,7 +3593,12 @@ mod tests {
         assert_eq!(
             provider_chain(&settings("auto"), Some("ZBAA"), Source::CommandLine)
                 .expect("auto gains metar"),
-            vec![ProviderId::Metar, ProviderId::OpenMeteo, ProviderId::Smhi]
+            vec![
+                ProviderId::Metar,
+                ProviderId::OpenMeteo,
+                ProviderId::MetNo,
+                ProviderId::Smhi,
+            ]
         );
 
         // An explicit chain is used as written — the user asked for that order.
