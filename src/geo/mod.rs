@@ -196,6 +196,15 @@ pub fn expand_aliases(
 /// message is deterministic. Without a candidate, the known names are listed, bounded so a huge
 /// table cannot flood the terminal.
 fn unknown_alias(name: &str, aliases: &std::collections::BTreeMap<String, String>) -> Error {
+    // A `@` name that parses as a coordinate pair but lies outside the world is almost always a
+    // typo for `@lat,lon` (the resolver only accepts a pair when both sides are in range), so the
+    // message names the rejected pair instead of leaving the user to guess.
+    let hint = match out_of_range_coordinates(name) {
+        Some((lat, lon)) => format!(
+            " (`{lat},{lon}` is not inside the world: latitude -90..=90, longitude -180..=180)"
+        ),
+        None => String::new(),
+    };
     let mut candidates: Vec<(usize, &str)> = aliases
         .keys()
         .map(|key| {
@@ -215,12 +224,12 @@ fn unknown_alias(name: &str, aliases: &std::collections::BTreeMap<String, String
             .collect::<Vec<_>>()
             .join(", ");
         return usage(format!(
-            "unknown location alias `@{name}`; did you mean {suggestions}?"
+            "unknown location alias `@{name}`{hint}; did you mean {suggestions}?"
         ));
     }
     if aliases.is_empty() {
         return usage(format!(
-            "unknown location alias `@{name}`; no `[locations]` aliases are configured"
+            "unknown location alias `@{name}`{hint}; no `[locations]` aliases are configured"
         ));
     }
     let known: Vec<&str> = aliases.keys().take(8).map(String::as_str).collect();
@@ -230,9 +239,25 @@ fn unknown_alias(name: &str, aliases: &std::collections::BTreeMap<String, String
         ""
     };
     usage(format!(
-        "unknown location alias `@{name}`; known aliases: {}{more}",
+        "unknown location alias `@{name}`{hint}; known aliases: {}{more}",
         known.join(", ")
     ))
+}
+
+/// The pair in a `@` name that parses as coordinates but lies outside the world, when it is one.
+///
+/// [`coordinates`] accepts a pair only inside the ranges, so `@91,0` falls through to the alias
+/// lookup; this recognises it again, so the rejection can say which check it failed.
+fn out_of_range_coordinates(name: &str) -> Option<(f64, f64)> {
+    let mut parts = name.split(',').map(str::trim);
+    let (Some(lat), Some(lon), None) = (parts.next(), parts.next(), parts.next()) else {
+        return None;
+    };
+    let (Ok(lat), Ok(lon)) = (lat.parse::<f64>(), lon.parse::<f64>()) else {
+        return None;
+    };
+    let inside = (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon);
+    (lat.is_finite() && lon.is_finite() && !inside).then_some((lat, lon))
 }
 
 /// The Levenshtein edit distance between two strings, for the alias suggestion list.
@@ -459,10 +484,7 @@ pub fn attribution_line(location: &Location) -> Option<&'static str> {
         // A station's coordinates are US-government public-domain metadata, which asks for no
         // credit line; the *weather* credit (`aviationweather.gov`) travels in the report's
         // attribution instead.
-        LocationSource::Coordinates
-        | LocationSource::Ip
-        | LocationSource::Config
-        | LocationSource::Station => None,
+        LocationSource::Coordinates | LocationSource::Ip | LocationSource::Station => None,
     }
 }
 
@@ -716,15 +738,6 @@ mod tests {
             location_line(&osm),
             "Beijing, Beijing Municipality, China (39.91, 116.40) Asia/Shanghai"
         );
-
-        let mut config = geocoded;
-        config.source = LocationSource::Config;
-        config.admin1 = None;
-        config.country = String::new();
-        assert_eq!(
-            location_line(&config),
-            "Beijing (39.91, 116.40) Asia/Shanghai"
-        );
     }
 
     #[test]
@@ -745,11 +758,7 @@ mod tests {
             super::attribution_line(&location),
             Some("Location data © OpenStreetMap contributors (ODbL)")
         );
-        for source in [
-            LocationSource::Coordinates,
-            LocationSource::Ip,
-            LocationSource::Config,
-        ] {
+        for source in [LocationSource::Coordinates, LocationSource::Ip] {
             location.source = source;
             assert!(
                 super::attribution_line(&location).is_none(),
@@ -858,6 +867,25 @@ mod tests {
             error.to_string().contains("no `[locations]` aliases"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn an_out_of_range_coordinate_spelling_is_explained() {
+        // `@91,0` is not a coordinate pair, so it falls through to the alias lookup; the
+        // rejection says which range check the pair failed.
+        let spec = LocationSpec::parse_arg(Some("@91.0,0")).expect("an alias name");
+        let error = super::expand_aliases(spec, &std::collections::BTreeMap::new())
+            .expect_err("nothing configured");
+        let message = error.to_string();
+        assert!(message.contains("not inside the world"), "{message}");
+
+        // A name that is not a pair at all keeps the plain message.
+        let error = super::expand_aliases(
+            LocationSpec::Alias("home".to_owned()),
+            &std::collections::BTreeMap::new(),
+        )
+        .expect_err("nothing configured");
+        assert!(!error.to_string().contains("inside the world"), "{error}");
     }
 
     #[test]

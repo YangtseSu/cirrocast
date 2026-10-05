@@ -18,6 +18,11 @@
 //! `--format alerts` prints the same list without the cap and with the fields a reader needs to
 //! judge one warning: source, areas, the since/until window, headline, description and the
 //! instruction, followed by the per-source credits.
+//!
+//! This format ignores the resolved width **by contract**: the CAP headline, description and
+//! instruction are the issuing agency's own wording, so they are printed verbatim (trimmed of
+//! surrounding whitespace, never re-wrapped), because folding a warning's prose to the terminal
+//! would edit what the issuer said. Every other format wraps the text it lays out.
 
 use std::fmt::Write as _;
 

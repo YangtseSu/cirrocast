@@ -16,10 +16,11 @@
 //!   alone (documented in the units table of step 03).
 //! * **Indices stay raw.** `aqi_us` and `aqi_european` are the source's own numbers; the category
 //!   is derived for display by [`crate::air::aqi::AqiCategory`], never stored.
-//! * **`None` means "the source does not cover this point".** The only pollen forecast is the CAMS
-//!   European domain: a covered point with no pollen in the air carries `Some(Pollen)` with zeros,
-//!   a point outside the domain carries `pollen: None`. The two must not collapse into one
-//!   representation, because "0 grains" and "not measured" are different answers.
+//! * **`None` means "not reported", never zero.** The only pollen forecast is the CAMS European
+//!   domain: a point outside it carries `pollen: None`, a covered point with no pollen in the air
+//!   carries `Some(Pollen)` with measured zeros, and a species the source did not report inside a
+//!   covered block keeps that member `None` in turn. The representations must not collapse into
+//!   one, because "0 grains" and "not measured" are different answers.
 
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
@@ -32,23 +33,25 @@ pub const POLLEN_UNIT: &str = "grains/m³";
 
 /// A pollen forecast in grains/m³, one field per species the source models.
 ///
-/// All six fields are required: a block the source reports half of is normalised by the fetcher
-/// (a missing species reads as `0.0` with a `--verbose` note), so a `Pollen` value is always a
-/// complete forecast.
+/// A member is `Some(0.0)` when the source measured no pollen of that species and `None` when it
+/// did not report the species at all: `0 grains` and `not measured` are different answers, so a
+/// partial block keeps its missing members `None` and the renderers omit them rather than
+/// inventing a zero. A block the source does not cover at all stays [`AirQuality::pollen`]'s
+/// `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Pollen {
-    /// Alder pollen.
-    pub alder: f64,
-    /// Birch pollen.
-    pub birch: f64,
-    /// Grass pollen.
-    pub grass: f64,
-    /// Mugwort pollen.
-    pub mugwort: f64,
-    /// Olive pollen.
-    pub olive: f64,
-    /// Ragweed pollen.
-    pub ragweed: f64,
+    /// Alder pollen; `None` when the source did not report it.
+    pub alder: Option<f64>,
+    /// Birch pollen; `None` when the source did not report it.
+    pub birch: Option<f64>,
+    /// Grass pollen; `None` when the source did not report it.
+    pub grass: Option<f64>,
+    /// Mugwort pollen; `None` when the source did not report it.
+    pub mugwort: Option<f64>,
+    /// Olive pollen; `None` when the source did not report it.
+    pub olive: Option<f64>,
+    /// Ragweed pollen; `None` when the source did not report it.
+    pub ragweed: Option<f64>,
 }
 
 impl Pollen {
@@ -57,9 +60,9 @@ impl Pollen {
     pub const SPECIES: [&'static str; 6] =
         ["alder", "birch", "grass", "mugwort", "olive", "ragweed"];
 
-    /// The six readings, in [`Self::SPECIES`] order.
+    /// The six readings, in [`Self::SPECIES`] order; a `None` member was not measured.
     #[must_use]
-    pub fn values(&self) -> [f64; 6] {
+    pub fn values(&self) -> [Option<f64>; 6] {
         [
             self.alder,
             self.birch,
@@ -99,17 +102,6 @@ impl AirSource {
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::OpenMeteo => "Open-Meteo",
-        }
-    }
-
-    /// The credit line the source's terms require next to its data.
-    ///
-    /// Open-Meteo's data is CC BY 4.0, which asks for attribution; the `CAMS ENSEMBLE` suffix
-    /// names the model run behind the numbers, so a reader can see what was sampled.
-    #[must_use]
-    pub const fn credit(self) -> &'static str {
-        match self {
-            Self::OpenMeteo => "Air quality data by Open-Meteo.com (CAMS ENSEMBLE)",
         }
     }
 }
@@ -157,12 +149,11 @@ mod tests {
     use super::{AirQuality, AirSource, POLLEN_UNIT, POLLUTANT_UNIT};
 
     #[test]
-    fn every_source_spells_its_own_id_and_credit() {
+    fn every_source_spells_its_own_id_and_display_name() {
         for source in AirSource::ALL {
             assert_eq!(source.as_str(), "open-meteo");
             assert_eq!(source.to_string(), source.as_str());
             assert_ne!(source.display_name(), "");
-            assert!(source.credit().contains(source.display_name()));
         }
         assert_eq!(POLLUTANT_UNIT, "μg/m³");
         assert_eq!(POLLEN_UNIT, "grains/m³");

@@ -459,14 +459,10 @@ pub fn mm_to_in(mm: f32) -> f32 {
 
 /// Rounds to the nearest integer, ties away from zero.
 ///
-/// Weather values are `f32`, so a decimal literal such as `9.95` is stored as `9.949_999_8` — just
-/// *below* the tie its decimal reading implies, and scaling it (`9.95 * 10` for a one-decimal
-/// form) can leave the result half an ulp short of a tie the same way. A value within half an ulp
-/// of a tie is therefore treated as the tie it means to be and rounded away from zero.
-///
-/// The adjustment is capped at the precision of the value itself: at `|value| >= 2^22` one ulp is
-/// already `>= 0.5`, so no fractional resolution is left to break a tie and the value is rounded
-/// directly — `fmt_int(4_194_303.0)` stays `4194303` and a value at `2^23` cannot gain a unit.
+/// This is exactly [`f32::round`]. The scaled ties the formatters care about — `9.95 * 10` for a
+/// one-decimal form, say — already land on an exact half in `f32`, so no ulp-scale correction is
+/// needed. Callers pass the result through [`normalise_zero`], which maps the `-0.0` that the
+/// `(-0.5, 0)` interval produces to `0.0`.
 ///
 /// ```
 /// # use cirrocast::model::units::round_half_away_from_zero;
@@ -478,39 +474,7 @@ pub fn mm_to_in(mm: f32) -> f32 {
 /// ```
 #[must_use]
 pub fn round_half_away_from_zero(value: f32) -> f32 {
-    let rounded = value.round();
-    let delta = value - rounded;
-    let ulp = ulp(value);
-    // Only a value sitting just *below* a tie needs the nudge: `rounded` is then the integer the
-    // binary representation accident pulled the value towards, and the tie it means to be is one
-    // step further from zero. A value just *above* a tie has already rounded away correctly, and
-    // nudging it again would overshoot by one.
-    if delta.abs() < 0.5
-        && ulp < 0.5
-        && delta.abs() >= 0.5 - ulp * 0.5
-        && delta.signum() == value.signum()
-    {
-        rounded + value.signum()
-    } else {
-        rounded
-    }
-}
-
-/// The spacing of `f32` near `value` (the unit in the last place), or `0` where there is none.
-///
-/// `value * f32::EPSILON` is not that spacing: it is one ulp only for a mantissa in `[1, 2)` and
-/// grows with the exponent, which is why the old nudge overshot by a whole unit above `2^22`.
-fn ulp(value: f32) -> f32 {
-    let bits = value.abs().to_bits();
-    // Subnormals (and zero) are spaced by the smallest subnormal. `f32::MAX` has no next value, so
-    // it reports no spacing and is never nudged.
-    if bits < 0x0080_0000 {
-        return f32::from_bits(1);
-    }
-    if bits >= 0x7F7F_FFFF {
-        return 0.0;
-    }
-    f32::from_bits(bits + 1) - value.abs()
+    value.round()
 }
 
 /// Formats a value as an integer, mapping a rounded `-0` to `0`.

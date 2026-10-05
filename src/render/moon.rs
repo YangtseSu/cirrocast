@@ -29,6 +29,7 @@
 
 use std::fmt::Write as _;
 
+use fluent_bundle::FluentValue;
 use unicode_width::UnicodeWidthStr as _;
 
 use super::art::ART_W;
@@ -60,14 +61,16 @@ impl Renderer for MoonView {
         lines.extend(panel_lines(astro, ctx));
         lines.extend(next_lines(astro, ctx));
         let charset = ctx.term.charset();
+        // Fold to ASCII before fitting: folding can widen a line (`—` becomes `--`), so clipping
+        // first would let the fold push the line past `--width`.
         Ok(lines
             .into_iter()
             .map(|line| {
-                let fitted = super::art_table::fit(&line, ctx.width, charset);
-                match charset {
-                    super::Charset::Ascii => super::art_table::fold_ascii(&fitted),
-                    super::Charset::Unicode => fitted.into_owned(),
-                }
+                let folded = match charset {
+                    super::Charset::Ascii => super::art_table::fold_ascii(&line),
+                    super::Charset::Unicode => line,
+                };
+                super::art_table::fit(&folded, ctx.width, charset).into_owned()
             })
             .collect::<Vec<_>>()
             .join("\n"))
@@ -129,14 +132,13 @@ fn panel_lines(astro: &Astro, ctx: &RenderContext<'_>) -> Vec<String> {
 
 /// The provenance line of the standalone view, and the label for `--format moon`.
 fn computed_line(astro: &Astro, ctx: &RenderContext<'_>) -> String {
-    format!(
-        "{} at {}",
-        ctx.i18n.text(&keys::ASTRO_COMPUTED),
-        astro
-            .computed_at
-            .with_timezone(&ctx.times.tz)
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
-    )
+    let at = astro
+        .computed_at
+        .with_timezone(&ctx.times.tz)
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+    ctx.i18n
+        .format(&keys::ASTRO_COMPUTED, &[("time", FluentValue::from(at))])
+        .into_owned()
 }
 
 /// The `Next phases:` heading and one indented line per instant, so a long list is never
@@ -532,6 +534,33 @@ mod tests {
             assert!(
                 super::super::art_table::display_width(line) <= ctx.width,
                 "{line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_ascii_fold_happens_before_the_width_is_applied() {
+        let i18n = english();
+        let mut astro = fixture_astro();
+        // A day without a moonrise prints the `—` placeholder, which the ASCII fold widens to
+        // `--`; folding after clipping would emit a line one column over `--width`.
+        astro.moon.moonrise = None;
+        let mut ctx = context(&i18n);
+        ctx.term = TermCaps::read(|name| (name == "TERM").then(|| "dumb".to_owned()), false);
+        ctx.width = 30;
+        let text = MoonView
+            .render(&report(Some(astro)), &ctx)
+            .expect("the view renders");
+        assert!(
+            text.contains("Moonrise --"),
+            "the fold ran on the clipped text: {text}"
+        );
+        assert!(!text.contains('\u{2014}'), "no em dash survives: {text}");
+        for line in text.lines() {
+            assert!(
+                super::super::art_table::display_width(line) <= ctx.width,
+                "{line:?} exceeds {}",
+                ctx.width
             );
         }
     }

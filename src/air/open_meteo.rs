@@ -19,9 +19,9 @@
 //!   two time fields disagree does not produce a plausible-looking wrong instant. The check is
 //!   done on the absolute instant, which keeps it valid across a daylight-saving fold.
 //! * Pollen degrades in two steps, both `--verbose` notes: all six fields `null` means the point
-//!   is outside the CAMS European domain and yields `pollen: None`; a partially `null` block is
-//!   completed with `0.0` (the measured zero the API cannot distinguish from "no data for this
-//!   species"). Nothing is invented silently.
+//!   is outside the CAMS European domain and yields `pollen: None`; in a partially `null` block
+//!   the missing species stay `None` (not measured), because the API's `null` and a measured `0.0`
+//!   are different answers. Nothing is invented silently.
 //! * A response without a `current` block is [`Error::Upstream`]: there is no reading to show.
 
 use std::time::Duration;
@@ -210,6 +210,11 @@ fn decode(response: &AirResponse, verbose: u8) -> Result<AirQuality> {
         }
     }
 
+    // Validate the reading before any `-v` note: the instant is the only thing that can refuse a
+    // payload, and a note about a panel the run then does not produce would be a lie.
+    let time = instant(&block.time, response)?;
+    let pollen = pollen_of(block, verbose);
+
     if verbose > 0
         && let Some(index) = block.us_aqi
         && us_beyond_index(index)
@@ -218,7 +223,7 @@ fn decode(response: &AirResponse, verbose: u8) -> Result<AirQuality> {
     }
 
     Ok(AirQuality {
-        time: instant(&block.time, response)?,
+        time,
         aqi_us: block.us_aqi,
         aqi_european: block.european_aqi,
         pm2_5: block.pm2_5,
@@ -227,7 +232,7 @@ fn decode(response: &AirResponse, verbose: u8) -> Result<AirQuality> {
         no2: block.nitrogen_dioxide,
         so2: block.sulphur_dioxide,
         co: block.carbon_monoxide,
-        pollen: pollen_of(block, verbose),
+        pollen,
         source: AirSource::OpenMeteo,
     })
 }
@@ -285,18 +290,18 @@ fn pollen_of(block: &CurrentBlock, verbose: u8) -> Option<Pollen> {
     }
     if missing > 0 && verbose > 0 {
         eprintln!(
-            "air: {missing} of {} pollen fields are not covered here; the missing ones read as 0.0",
+            "air: {missing} of {} pollen fields are not covered here; those species read as not measured",
             values.len()
         );
     }
     let [alder, birch, grass, mugwort, olive, ragweed] = values;
     Some(Pollen {
-        alder: alder.unwrap_or(0.0),
-        birch: birch.unwrap_or(0.0),
-        grass: grass.unwrap_or(0.0),
-        mugwort: mugwort.unwrap_or(0.0),
-        olive: olive.unwrap_or(0.0),
-        ragweed: ragweed.unwrap_or(0.0),
+        alder,
+        birch,
+        grass,
+        mugwort,
+        olive,
+        ragweed,
     })
 }
 
@@ -331,19 +336,19 @@ mod tests {
     }
 
     #[test]
-    fn a_partially_null_pollen_block_reads_the_missing_species_as_zero() {
+    fn a_partially_null_pollen_block_keeps_the_missing_species_unmeasured() {
         let block = block(
             r#"{"time":"2026-10-03T20:00","alder_pollen":1.5,"birch_pollen":null,
                 "grass_pollen":2.0,"mugwort_pollen":null,"olive_pollen":0.0,
                 "ragweed_pollen":3.5}"#,
         );
         let pollen = pollen_of(&block, 0).expect("a partial block is a forecast");
-        assert_eq!(pollen.alder, 1.5);
-        assert_eq!(pollen.birch, 0.0, "null reads as the measured zero");
-        assert_eq!(pollen.grass, 2.0);
-        assert_eq!(pollen.mugwort, 0.0);
-        assert_eq!(pollen.olive, 0.0);
-        assert_eq!(pollen.ragweed, 3.5);
+        assert_eq!(pollen.alder, Some(1.5));
+        assert_eq!(pollen.birch, None, "not measured, never a measured zero");
+        assert_eq!(pollen.grass, Some(2.0));
+        assert_eq!(pollen.mugwort, None);
+        assert_eq!(pollen.olive, Some(0.0), "a reported zero stays a zero");
+        assert_eq!(pollen.ragweed, Some(3.5));
     }
 
     #[test]

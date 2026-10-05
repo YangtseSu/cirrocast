@@ -699,11 +699,18 @@ mod tests {
                 art(key).is_some(),
                 "code {code} maps to art key `{key}`, which has no block"
             );
-            assert_ne!(
-                one_line_art(key),
-                "",
-                "code {code} maps to art key `{key}`, which has no one-line glyph"
-            );
+            // `one_line_art` ends in a `???` catch-all, so comparing against `""` could never
+            // fail. A code with a described art key must get a real glyph; the undescribed codes
+            // share the `unknown` key and keep the placeholder.
+            let glyph = one_line_art(key);
+            if key == "unknown" {
+                assert_eq!(glyph, "???", "the undescribed code keeps the placeholder");
+            } else {
+                assert_ne!(
+                    glyph, "???",
+                    "code {code} maps to art key `{key}`, which has no one-line glyph"
+                );
+            }
         }
     }
 

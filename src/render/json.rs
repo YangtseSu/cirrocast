@@ -5,7 +5,7 @@
 //!
 //! # The stability promise
 //!
-//! The document carries `"schema_version": 1`, and within one schema version the changes are
+//! The document carries `"schema_version": 2`, and within one schema version the changes are
 //! **additive only**: new keys may appear, and an existing key keeps its name, its type and its
 //! unit. A consumer must ignore keys it does not know — that is what makes adding one a
 //! non-breaking change. Removing a key, renaming one, changing a unit or a nullability is a
@@ -59,8 +59,7 @@ pub struct Json;
 impl Renderer for Json {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
         let document = Document::of(report, ctx);
-        serde_json::to_string_pretty(&document)
-            .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")))
+        pretty(&document)
     }
 
     /// One location stays the plain document object; two or more become an array in argument order.
@@ -70,35 +69,40 @@ impl Renderer for Json {
     /// walking `.[]` both see a consistent shape. A single failed location is that error document
     /// on its own, because the top-level type depends on the number of locations, not on how they
     /// turned out.
+    ///
+    /// The array is assembled from the per-slot documents' own text, so each element keeps the key
+    /// order its struct declares: re-serialising through `serde_json::Value` would put the object
+    /// keys in alphabetical order, unlike the single-location form.
     fn render_slots(&self, slots: &[Slot<'_>]) -> Result<String> {
         let mut documents = Vec::with_capacity(slots.len());
         for slot in slots {
             documents.push(slot_document(slot)?);
         }
         if let [only] = documents.as_slice() {
-            return pretty(only);
+            return Ok(only.clone());
         }
-        let array = serde_json::Value::Array(documents);
-        pretty(&array)
+        if documents.is_empty() {
+            return Ok("[]".to_owned());
+        }
+        Ok(array(&documents))
     }
 }
 
 /// Serialises one JSON document with the renderer's pretty-printing.
-fn pretty(value: &serde_json::Value) -> Result<String> {
+fn pretty<T: serde::Serialize + ?Sized>(value: &T) -> Result<String> {
     serde_json::to_string_pretty(value)
         .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")))
 }
 
-/// The document for one slot: the report, or the error that replaced it.
-fn slot_document(slot: &Slot<'_>) -> Result<serde_json::Value> {
+/// The pretty-printed document for one slot: the report, or the error that replaced it.
+fn slot_document(slot: &Slot<'_>) -> Result<String> {
     if let (Some(report), Some(ctx)) = (slot.report, slot.ctx.as_ref()) {
-        return serde_json::to_value(Document::of(report, ctx))
-            .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")));
+        return pretty(&Document::of(report, ctx));
     }
     let error = slot.error.ok_or_else(|| {
         Error::Other("a JSON slot carries neither a report nor an error".to_owned())
     })?;
-    serde_json::to_value(ErrorDocument {
+    pretty(&ErrorDocument {
         schema_version: SCHEMA_VERSION,
         query: slot.query,
         error: SlotError {
@@ -106,7 +110,26 @@ fn slot_document(slot: &Slot<'_>) -> Result<serde_json::Value> {
             message: error.to_string(),
         },
     })
-    .map_err(|error| Error::Other(format!("cannot render the report as JSON: {error}")))
+}
+
+/// Joins the per-slot documents into the pretty-printed array form, indenting each nested document
+/// by one level without touching its own key order.
+fn array(documents: &[String]) -> String {
+    let mut out = String::from("[\n");
+    for (index, document) in documents.iter().enumerate() {
+        if index > 0 {
+            out.push_str(",\n");
+        }
+        for (line_index, line) in document.lines().enumerate() {
+            if line_index > 0 {
+                out.push('\n');
+            }
+            out.push_str("  ");
+            out.push_str(line);
+        }
+    }
+    out.push_str("\n]");
+    out
 }
 
 /// The document a failed slot renders: stable keys, the query as typed and the mapped exit code.
@@ -200,7 +223,7 @@ struct LocationJson<'a> {
     timezone: String,
     /// Elevation above sea level in metres, when known.
     elevation_m: Option<f64>,
-    /// Which resolver produced the location: `geocoder`, `osm`, `coordinates`, `ip`, `config` or
+    /// Which resolver produced the location: `geocoder`, `offline`, `osm`, `coordinates`, `ip` or
     /// `station`.
     source: &'static str,
     /// The METAR station identifier, `null` for every non-station location.
@@ -215,10 +238,10 @@ impl<'a> LocationJson<'a> {
             admin1: location.admin1.as_deref(),
             country: &location.country,
             country_code: location.country_code.as_deref(),
-            lat: location.lat,
-            lon: location.lon,
+            lat: normalise_zero_f64(location.lat),
+            lon: normalise_zero_f64(location.lon),
             timezone: location.tz.name().to_owned(),
-            elevation_m: location.elevation_m,
+            elevation_m: location.elevation_m.map(normalise_zero_f64),
             source: source_name(location.source),
             station: location.station.as_deref(),
         }
@@ -237,7 +260,6 @@ const fn source_name(source: crate::model::LocationSource) -> &'static str {
         LocationSource::Osm => "osm",
         LocationSource::Coordinates => "coordinates",
         LocationSource::Ip => "ip",
-        LocationSource::Config => "config",
         LocationSource::Station => "station",
     }
 }
@@ -253,8 +275,8 @@ struct CurrentJson<'a> {
     temp_c: f32,
     /// Apparent temperature in °C; `null` when the provider does not report one.
     feels_like_c: Option<f32>,
-    /// Relative humidity in percent (0–100).
-    humidity_pct: u8,
+    /// Relative humidity in percent (0–100); `null` when the provider does not report one.
+    humidity_pct: Option<u8>,
     /// Precipitation in the last hour, in mm.
     precip_mm: f32,
     /// Sea level pressure in hPa.
@@ -263,12 +285,13 @@ struct CurrentJson<'a> {
     visibility_km: Option<f32>,
     /// Wind speed in km/h.
     wind_kmh: f32,
-    /// Direction the wind blows *from*, in degrees clockwise from north.
-    wind_dir_deg: u16,
+    /// Direction the wind blows *from*, in degrees clockwise from north; `null` for a variable or
+    /// calm wind.
+    wind_dir_deg: Option<u16>,
     /// Gust speed in km/h.
     wind_gust_kmh: Option<f32>,
-    /// Total cloud cover in percent (0–100).
-    cloud_cover_pct: u8,
+    /// Total cloud cover in percent (0–100); `null` when the provider does not report one.
+    cloud_cover_pct: Option<u8>,
     /// UV index; `null` when the provider does not report one.
     uv_index: Option<f32>,
     /// Whether the location is in daylight now.
@@ -372,32 +395,35 @@ struct AirCategoryJson {
 }
 
 /// The pollen forecast, in grains/m³.
+///
+/// A member is `null` when the source did not report that species: a measured zero stays `0.0`,
+/// because "0 grains" and "not measured" are different answers.
 #[derive(Debug, Serialize)]
 struct PollenJson {
-    /// Alder pollen.
-    alder: f64,
-    /// Birch pollen.
-    birch: f64,
-    /// Grass pollen.
-    grass: f64,
-    /// Mugwort pollen.
-    mugwort: f64,
-    /// Olive pollen.
-    olive: f64,
-    /// Ragweed pollen.
-    ragweed: f64,
+    /// Alder pollen; `null` when the source did not report it.
+    alder: Option<f64>,
+    /// Birch pollen; `null` when the source did not report it.
+    birch: Option<f64>,
+    /// Grass pollen; `null` when the source did not report it.
+    grass: Option<f64>,
+    /// Mugwort pollen; `null` when the source did not report it.
+    mugwort: Option<f64>,
+    /// Olive pollen; `null` when the source did not report it.
+    olive: Option<f64>,
+    /// Ragweed pollen; `null` when the source did not report it.
+    ragweed: Option<f64>,
 }
 
 impl PollenJson {
     /// Projects a pollen forecast.
     fn of(pollen: &Pollen) -> Self {
         Self {
-            alder: normalise_zero_f64(pollen.alder),
-            birch: normalise_zero_f64(pollen.birch),
-            grass: normalise_zero_f64(pollen.grass),
-            mugwort: normalise_zero_f64(pollen.mugwort),
-            olive: normalise_zero_f64(pollen.olive),
-            ragweed: normalise_zero_f64(pollen.ragweed),
+            alder: pollen.alder.map(normalise_zero_f64),
+            birch: pollen.birch.map(normalise_zero_f64),
+            grass: pollen.grass.map(normalise_zero_f64),
+            mugwort: pollen.mugwort.map(normalise_zero_f64),
+            olive: pollen.olive.map(normalise_zero_f64),
+            ragweed: pollen.ragweed.map(normalise_zero_f64),
         }
     }
 }
@@ -764,7 +790,7 @@ mod tests {
         Attribution, Condition, Current, DayForecast, DayPart, DayPartKind, LocalTimes, Location,
         LocationSource, Report,
     };
-    use crate::render::{ColorMode, RenderContext, Renderer, TermCaps};
+    use crate::render::{ColorMode, RenderContext, Renderer, Slot, TermCaps};
 
     /// The English catalog, loaded the way the CLI loads an unconfigured run.
     fn english() -> I18n {
@@ -844,13 +870,13 @@ mod tests {
             observed_at: moment(12, 15),
             temp_c: 21.5,
             feels_like_c: Some(22.0),
-            humidity_pct: 52,
+            humidity_pct: Some(52),
             precip_mm: 0.0,
             weather: Condition::from_u8(1),
-            cloud_cover_pct: 25,
+            cloud_cover_pct: Some(25),
             pressure_hpa: 1015.0,
             wind_kmh: 10.0,
-            wind_dir_deg: 30,
+            wind_dir_deg: Some(30),
             wind_gust_kmh: None,
             visibility_km: Some(14.0),
             uv_index: Some(5.0),
@@ -860,7 +886,16 @@ mod tests {
 
     fn document(report: &Report) -> Value {
         let i18n = english();
-        let ctx = RenderContext {
+        let ctx = context(&i18n);
+        let text = Json
+            .render(report, &ctx)
+            .expect("the report renders as JSON");
+        serde_json::from_str(&text).expect("the output is valid JSON")
+    }
+
+    /// The render context the tests drive the renderer with.
+    fn context(i18n: &I18n) -> RenderContext<'_> {
+        RenderContext {
             units: UnitSystem::Metric
                 .resolve(&UnitOverrides::default())
                 .expect("the default overrides resolve"),
@@ -869,14 +904,10 @@ mod tests {
             term: TermCaps::default(),
             times: TIMES.clone(),
             lang: LanguageId::EN_US,
-            i18n: &i18n,
+            i18n,
             alert_credits: &[],
             aqi_index: crate::air::aqi::AqiIndex::Us,
-        };
-        let text = Json
-            .render(report, &ctx)
-            .expect("the report renders as JSON");
-        serde_json::from_str(&text).expect("the output is valid JSON")
+        }
     }
 
     #[test]
@@ -958,6 +989,23 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_humidity_and_cloud_cover_are_null_not_zero() {
+        let mut current = current();
+        current.humidity_pct = None;
+        current.cloud_cover_pct = None;
+        let document = document(&report(Some(current), Vec::new()));
+        let current = &document["current"];
+        assert!(
+            current["humidity_pct"].is_null(),
+            "a missing humidity is null, not 0%"
+        );
+        assert!(
+            current["cloud_cover_pct"].is_null(),
+            "a missing cloud cover is null, not 0%"
+        );
+    }
+
+    #[test]
     fn a_day_lists_its_four_parts_in_order_and_its_sun_times_as_clock_times() {
         let day = DayForecast {
             date: chrono::NaiveDate::from_ymd_opt(2026, 9, 30).expect("a date"),
@@ -1002,6 +1050,92 @@ mod tests {
         assert_eq!(
             endpoint("https://api.open-meteo.com/v1/forecast"),
             "https://api.open-meteo.com/v1/forecast"
+        );
+    }
+
+    /// The first object key in a pretty-printed document, to check key order — which parsing into
+    /// a `serde_json::Value` (a `BTreeMap` without `preserve_order`) would lose.
+    fn first_key(document: &str) -> &str {
+        let start = document.find('"').expect("a key") + 1;
+        let end = document[start..].find('"').expect("a key end") + start;
+        &document[start..end]
+    }
+
+    #[test]
+    fn the_array_form_keeps_each_documents_key_order() {
+        let i18n = english();
+        let ctx = context(&i18n);
+        let first = report(Some(current()), Vec::new());
+        let second = report(None, Vec::new());
+        let single = Json.render(&first, &ctx).expect("the single form renders");
+        assert_eq!(first_key(&single), "schema_version");
+
+        let slots = [
+            Slot {
+                query: "Beijing",
+                report: Some(&first),
+                error: None,
+                ctx: Some(ctx.clone()),
+            },
+            Slot {
+                query: "Shanghai",
+                report: Some(&second),
+                error: None,
+                ctx: Some(ctx.clone()),
+            },
+        ];
+        let text = Json.render_slots(&slots).expect("the array form renders");
+        // Each element is the single document indented one level, so its key order is the struct's
+        // declaration order and not the alphabetical order a `Value` round-trip would impose.
+        let indented: String = single
+            .lines()
+            .map(|line| format!("  {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            text.starts_with(&format!("[\n{indented},")),
+            "the first element is the single document verbatim: {text}"
+        );
+        assert_eq!(
+            text.matches("\"schema_version\": 2").count(),
+            2,
+            "both elements open with the schema version: {text}"
+        );
+        let array: Value = serde_json::from_str(&text).expect("the array is valid JSON");
+        assert_eq!(array.as_array().expect("an array").len(), 2);
+        assert_eq!(array[0]["schema_version"], SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn a_negative_zero_coordinate_is_normalised_like_every_other_float() {
+        let i18n = english();
+        let ctx = context(&i18n);
+        let mut report = report(None, Vec::new());
+        report.location.lat = -0.0;
+        report.location.lon = -0.0;
+        report.location.elevation_m = Some(-0.0);
+        let text = Json.render(&report, &ctx).expect("the report renders");
+        assert!(
+            !text.contains("-0.0"),
+            "no negative zero reaches the document: {text}"
+        );
+        assert!(text.contains("\"lat\": 0.0"), "{text}");
+        assert!(text.contains("\"lon\": 0.0"), "{text}");
+        assert!(text.contains("\"elevation_m\": 0.0"), "{text}");
+    }
+
+    #[test]
+    fn a_variable_wind_direction_is_null_not_north() {
+        let mut current = current();
+        current.wind_dir_deg = None;
+        let document = document(&report(Some(current), Vec::new()));
+        assert!(
+            document["current"]["wind_dir_deg"].is_null(),
+            "a variable wind has no direction"
+        );
+        assert_eq!(
+            document["current"]["wind_kmh"], 10.0,
+            "the speed is still printed"
         );
     }
 }

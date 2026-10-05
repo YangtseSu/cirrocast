@@ -28,7 +28,6 @@
 //!   line like the other licences.
 
 use std::borrow::Cow;
-use std::fmt::Write as _;
 
 use chrono::SecondsFormat;
 
@@ -40,7 +39,7 @@ use crate::error::Result;
 use crate::geo::location_line;
 use crate::i18n::{MessageKey, keys};
 use crate::model::units::fmt_int;
-use crate::model::{AirQuality, Report};
+use crate::model::{AirQuality, AirSource, Report};
 
 /// Below this width the panel is one key per line instead of a wrapped compact form.
 const STACKED_BELOW: usize = 60;
@@ -54,18 +53,19 @@ pub struct Air;
 
 impl Renderer for Air {
     fn render(&self, report: &Report, ctx: &RenderContext<'_>) -> Result<String> {
+        let charset = ctx.term.charset();
         let Some(air) = report.air.as_ref() else {
-            return Ok(fold_lines(
-                vec![ctx.i18n.text(&keys::AQI_UNAVAILABLE).into_owned()],
-                ctx.term.charset(),
-            ));
+            return Ok(fold_line(&ctx.i18n.text(&keys::AQI_UNAVAILABLE), charset));
         };
         let mut lines = vec![location_line(&report.location), observed_line(air, ctx)];
-        lines.extend(panel(report, ctx, ctx.depth()));
-        Ok(fold_lines(
-            wrap_all(lines, ctx.width, ctx.term.charset()),
-            ctx.term.charset(),
-        ))
+        lines.extend(panel_lines(report, ctx, ctx.depth()));
+        // Fold to ASCII first: folding can widen a line (`—` becomes `--`), so wrapping afterwards
+        // is what keeps the width invariant for the header and the body alike.
+        let folded = lines
+            .into_iter()
+            .map(|line| fold_line(&line, charset))
+            .collect();
+        Ok(wrap_all(folded, ctx.width, charset).join("\n"))
     }
 }
 
@@ -75,15 +75,24 @@ impl Renderer for Air {
 /// `--color always` is set).
 #[must_use]
 pub fn panel(report: &Report, ctx: &RenderContext<'_>, depth: ColorDepth) -> Vec<String> {
+    let charset = ctx.term.charset();
+    let lines = panel_lines(report, ctx, depth)
+        .into_iter()
+        .map(|line| fold_line(&line, charset))
+        .collect();
+    wrap_all(lines, ctx.width, charset)
+}
+
+/// The panel block before folding and wrapping; empty when the report carries no reading.
+fn panel_lines(report: &Report, ctx: &RenderContext<'_>, depth: ColorDepth) -> Vec<String> {
     let Some(air) = report.air.as_ref() else {
         return Vec::new();
     };
-    let lines = if ctx.width < STACKED_BELOW {
+    if ctx.width < STACKED_BELOW {
         stacked(report, air, ctx, depth)
     } else {
         compact(report, air, ctx, depth)
-    };
-    wrap_all(lines, ctx.width, ctx.term.charset())
+    }
 }
 
 /// The `plain` format's records: one greppable line per value group, the source credit last.
@@ -127,7 +136,7 @@ pub fn records(report: &Report, ctx: &RenderContext<'_>) -> Vec<String> {
             super::plain::record_key(&ctx.i18n.text(&keys::AQI_UV_LABEL))
         ));
     }
-    lines.push(air.source.credit().to_owned());
+    lines.push(ctx.i18n.text(&credit_key(air.source)).into_owned());
     lines
 }
 
@@ -154,7 +163,7 @@ fn compact(
     if let Some(line) = uv_line(report, ctx) {
         lines.push(line);
     }
-    lines.push(air.source.credit().to_owned());
+    lines.push(ctx.i18n.text(&credit_key(air.source)).into_owned());
     lines
 }
 
@@ -184,13 +193,20 @@ fn stacked(
     lines.push(ctx.i18n.text(&keys::AQI_POLLEN_TITLE).into_owned());
     match &air.pollen {
         Some(pollen) => {
+            let mut any = false;
             for (key, value) in pollen_species(pollen) {
-                lines.push(format!(
-                    "{}: {} {}",
-                    ctx.i18n.text(&key),
-                    number(value),
-                    ctx.i18n.text(&keys::UNIT_GRAINS_M3)
-                ));
+                if let Some(value) = value {
+                    any = true;
+                    lines.push(format!(
+                        "{}: {} {}",
+                        ctx.i18n.text(&key),
+                        number(value),
+                        ctx.i18n.text(&keys::UNIT_GRAINS_M3)
+                    ));
+                }
+            }
+            if !any {
+                lines.push(ctx.i18n.text(&keys::AQI_NO_COVERAGE).into_owned());
             }
         }
         None => lines.push(ctx.i18n.text(&keys::AQI_NO_COVERAGE).into_owned()),
@@ -198,7 +214,7 @@ fn stacked(
     if let Some(line) = uv_line(report, ctx) {
         lines.push(line);
     }
-    lines.push(air.source.credit().to_owned());
+    lines.push(ctx.i18n.text(&credit_key(air.source)).into_owned());
     lines
 }
 
@@ -269,15 +285,21 @@ fn pollutant_line(air: &AirQuality, ctx: &RenderContext<'_>) -> Option<String> {
 }
 
 /// The pollen half of a `Pollen`-carrying reading: `alder 0 · … · ragweed 0 grains/m³`; the
-/// no-coverage answer otherwise.
+/// no-coverage answer otherwise. A species the source did not report is omitted, never shown as
+/// `0`.
 fn pollen_body(air: &AirQuality, ctx: &RenderContext<'_>) -> String {
     let Some(pollen) = &air.pollen else {
         return ctx.i18n.text(&keys::AQI_NO_COVERAGE).into_owned();
     };
     let entries: Vec<String> = pollen_species(pollen)
         .into_iter()
-        .map(|(key, value)| format!("{} {}", ctx.i18n.text(&key), number(value)))
+        .filter_map(|(key, value)| {
+            value.map(|value| format!("{} {}", ctx.i18n.text(&key), number(value)))
+        })
         .collect();
+    if entries.is_empty() {
+        return ctx.i18n.text(&keys::AQI_NO_COVERAGE).into_owned();
+    }
     format!(
         "{} {}",
         entries.join(" · "),
@@ -328,8 +350,9 @@ fn pollutants(air: &AirQuality) -> [(MessageKey, Option<f64>); 6] {
     ]
 }
 
-/// The six pollen species with their catalog labels, in `Pollen::SPECIES` order.
-fn pollen_species(pollen: &crate::model::Pollen) -> [(MessageKey, f64); 6] {
+/// The six pollen species with their catalog labels, in `Pollen::SPECIES` order; a `None` member
+/// was not measured and the callers omit it.
+fn pollen_species(pollen: &crate::model::Pollen) -> [(MessageKey, Option<f64>); 6] {
     [
         (keys::POLLEN_SPECIES[0], pollen.alder),
         (keys::POLLEN_SPECIES[1], pollen.birch),
@@ -358,10 +381,19 @@ fn number(value: f64) -> String {
     }
 }
 
+/// The catalog key for one air source's credit line.
+fn credit_key(source: AirSource) -> MessageKey {
+    match source {
+        AirSource::OpenMeteo => keys::AIR_CREDIT_OPEN_METEO,
+    }
+}
+
 /// Wraps each line to `width` display columns at spaces, clipping a single word that cannot fit.
 ///
-/// Escape sequences take no columns (the shared [`display_width`]) and contain no spaces, so a
-/// painted value survives a wrap at a separator intact.
+/// Escape sequences take no display columns (the shared [`display_width`]). A break inside a
+/// painted span closes the span at the end of the line and re-opens it at the start of the next,
+/// so no line is left with an unterminated SGR — which would paint the rest of the terminal — and
+/// a value split across two lines stays painted on both.
 fn wrap_all(lines: Vec<String>, width: usize, charset: Charset) -> Vec<String> {
     lines
         .into_iter()
@@ -376,24 +408,36 @@ fn wrap(line: &str, width: usize, charset: Charset) -> Vec<String> {
     }
     let mut lines = Vec::new();
     let mut current = String::new();
-    let push_word = |word: &str, current: &mut String, lines: &mut Vec<String>| {
-        if display_width(word) > width {
-            if !current.is_empty() {
-                lines.push(std::mem::take(current));
+    for word in line.split(' ') {
+        let word_width = display_width(word);
+        let separator = usize::from(!current.is_empty());
+        if word_width <= width && display_width(&current) + separator + word_width <= width {
+            if separator == 1 {
+                current.push(' ');
             }
+            current.push_str(word);
+            continue;
+        }
+        // The word does not fit: end the line, closing any paint it left open and re-opening it on
+        // the next line.
+        if !current.is_empty() {
+            let reopen = open_escape(&current).map(str::to_owned);
+            if reopen.is_some() {
+                current.push_str("\u{1b}[0m");
+            }
+            lines.push(std::mem::take(&mut current));
+            if let Some(sequence) = &reopen {
+                current.push_str(sequence);
+            }
+        }
+        if word_width > width {
+            // A single word wider than the whole width is clipped on a line of its own; `fit`
+            // balances that word's own escapes.
+            current.clear();
             lines.push(fit(word, width, charset).into_owned());
-        } else if current.is_empty() {
-            current.push_str(word);
-        } else if display_width(current) + 1 + display_width(word) <= width {
-            current.push(' ');
-            current.push_str(word);
         } else {
-            lines.push(std::mem::take(current));
             current.push_str(word);
         }
-    };
-    for word in line.split(' ') {
-        push_word(word, &mut current, &mut lines);
     }
     if !current.is_empty() {
         lines.push(current);
@@ -401,27 +445,79 @@ fn wrap(line: &str, width: usize, charset: Charset) -> Vec<String> {
     lines
 }
 
-/// The ASCII spelling of a whole document when the charset asks for it.
-fn fold_lines(lines: Vec<String>, charset: Charset) -> String {
-    let mut text = String::new();
-    for (index, line) in lines.into_iter().enumerate() {
-        if index > 0 {
-            text.push('\n');
-        }
-        match charset {
-            Charset::Ascii => {
-                let _ = write!(text, "{}", fold_ascii(&line));
-            }
-            Charset::Unicode => text.push_str(&line),
-        }
+/// The SGR sequence left open at the end of `text`, if any: the last `\u{1b}[…m` sequence that is
+/// not a reset.
+fn open_escape(text: &str) -> Option<&str> {
+    let mut open = None;
+    let mut rest = text;
+    while let Some(start) = rest.find('\u{1b}') {
+        let tail = &rest[start..];
+        let Some(end) = tail.find('m') else {
+            break;
+        };
+        let sequence = &tail[..=end];
+        open = if sequence == "\u{1b}[0m" || sequence == "\u{1b}[m" {
+            None
+        } else {
+            Some(sequence)
+        };
+        rest = &tail[end + 1..];
     }
-    text
+    open
+}
+
+/// The ASCII spelling of one line when the charset asks for it.
+fn fold_line(line: &str, charset: Charset) -> String {
+    match charset {
+        Charset::Ascii => fold_ascii(line),
+        Charset::Unicode => line.to_owned(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{display_width, number, wrap};
+    use super::{
+        display_width, fold_ascii, fold_line, number, open_escape, pollen_body, wrap, wrap_all,
+    };
     use crate::render::Charset;
+
+    #[test]
+    fn folding_before_wrapping_keeps_a_line_within_the_width() {
+        // `fold_ascii` widens `—` to `--`, so wrapping first and folding afterwards can push a
+        // line past the width; the standalone view and the panel fold first.
+        let line = "Location data based on GeoNames — https://www.geonames.org/".to_owned();
+        let width = 33;
+        let folded = fold_line(&line, Charset::Ascii);
+        for part in wrap_all(vec![folded], width, Charset::Ascii) {
+            assert!(display_width(&part) <= width, "{part:?} exceeds {width}");
+        }
+        // The inverse order (which the view used before the fix) widens a clipped line.
+        let overflow = wrap_all(vec![line], width, Charset::Unicode)
+            .into_iter()
+            .any(|part| display_width(&fold_ascii(&part)) > width);
+        assert!(
+            overflow,
+            "the fixture exposes the old order's overflow at {width}"
+        );
+    }
+
+    /// Drops every SGR sequence, so the visible text of two spellings can be compared.
+    fn strip_escapes(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(start) = rest.find('\u{1b}') {
+            out.push_str(&rest[..start]);
+            let tail = &rest[start..];
+            if let Some(end) = tail.find('m') {
+                rest = &tail[end + 1..];
+            } else {
+                rest = "";
+                break;
+            }
+        }
+        out.push_str(rest);
+        out
+    }
 
     #[test]
     fn numbers_keep_one_decimal_at_most_and_never_a_negative_zero() {
@@ -457,6 +553,93 @@ mod tests {
             for part in wrap(long, width, Charset::Unicode) {
                 assert!(display_width(&part) <= width, "{part:?} exceeds {width}");
             }
+        }
+    }
+
+    #[test]
+    fn a_wrap_inside_a_painted_value_leaves_every_line_balanced() {
+        // `index_entry` paints `43 (Good)`, a value that contains the space the wrap splits on, so
+        // a naive wrap can push the closing `\x1b[0m` onto the next line and leave the SGR open.
+        let line =
+            "Air quality: US AQI \u{1b}[38;5;226m43 (Good)\u{1b}[0m · European AQI 42 (Good)";
+        assert!(
+            display_width(line) > 28,
+            "the fixture must wrap at these widths"
+        );
+        for width in 22..=28 {
+            let parts = wrap(line, width, Charset::Unicode);
+            for part in &parts {
+                assert!(display_width(part) <= width, "{part:?} exceeds {width}");
+                assert_eq!(
+                    open_escape(part),
+                    None,
+                    "{part:?} leaves an SGR open at {width}"
+                );
+            }
+            let visible: Vec<String> = parts.iter().map(|part| strip_escapes(part)).collect();
+            assert_eq!(
+                visible.join(" "),
+                strip_escapes(line),
+                "the visible text survives the wrap at {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unmeasured_pollen_species_is_omitted_not_zeroed() {
+        use crate::i18n::{I18n, LanguageRequest};
+        use crate::model::units::UnitSystem;
+        use crate::model::{AirQuality, AirSource, LocalTimes, Pollen};
+        use crate::render::{ColorMode, RenderContext, TermCaps};
+
+        let i18n = I18n::load(&LanguageRequest::Tag("en-US".to_owned()), |_| None);
+        let times = LocalTimes::new(
+            chrono::DateTime::parse_from_rfc3339("2026-10-03T18:00:00Z").expect("an instant"),
+            chrono_tz::Tz::Europe__Berlin,
+        );
+        let ctx = RenderContext {
+            units: UnitSystem::Metric
+                .resolve(&crate::config::UnitOverrides::default())
+                .expect("the default overrides resolve"),
+            color: ColorMode::Never,
+            width: 80,
+            term: TermCaps::default(),
+            times,
+            lang: i18n.lang(),
+            i18n: &i18n,
+            alert_credits: &[],
+            aqi_index: crate::air::aqi::AqiIndex::Us,
+        };
+        let air = AirQuality {
+            time: chrono::DateTime::parse_from_rfc3339("2026-10-03T20:00:00+02:00")
+                .expect("a valid instant"),
+            aqi_us: Some(43),
+            aqi_european: Some(42),
+            pm2_5: None,
+            pm10: None,
+            o3: None,
+            no2: None,
+            so2: None,
+            co: None,
+            pollen: Some(Pollen {
+                alder: Some(1.2),
+                birch: None,
+                grass: Some(4.5),
+                mugwort: None,
+                olive: None,
+                ragweed: Some(0.0),
+            }),
+            source: AirSource::OpenMeteo,
+        };
+        let body = pollen_body(&air, &ctx);
+        assert!(body.contains("alder 1.2"), "{body}");
+        assert!(body.contains("grass 4.5"), "{body}");
+        assert!(body.contains("ragweed 0"), "a measured zero prints: {body}");
+        for unmeasured in ["birch", "mugwort", "olive"] {
+            assert!(
+                !body.contains(unmeasured),
+                "`{unmeasured}` was not measured and must be omitted: {body}"
+            );
         }
     }
 }

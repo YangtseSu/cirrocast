@@ -34,7 +34,7 @@ use std::fmt;
 
 use chrono::{Datelike as _, NaiveDate};
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
-use unic_langid::LanguageIdentifier;
+use unic_langid::{LanguageIdentifier, langid};
 
 use crate::model::DayPartKind;
 use crate::model::alert::{AlertSource, Certainty, Severity, Urgency};
@@ -52,9 +52,6 @@ pub const CATALOGS: &[(&str, &str)] = &[
 
 /// The language every other language falls back to; its catalog must be complete.
 pub const DEFAULT_TAG: &str = "en-US";
-
-/// Where a region-less `zh` region falls back to; see [`language_chain`].
-const CHINESE_FALLBACK: &str = "zh-CN";
 
 // ---------------------------------------------------------------------------------------------
 // Message keys
@@ -326,6 +323,8 @@ pub mod keys {
     pub const AQI_UV_LABEL: MessageKey = MessageKey::new("aqi-uv-label");
     /// Where the panel's UV reading comes from (`weather data`), since it is not an air field.
     pub const AQI_UV_SOURCE: MessageKey = MessageKey::new("aqi-uv-source");
+    /// The credit line Open-Meteo's terms require beside its air data.
+    pub const AIR_CREDIT_OPEN_METEO: MessageKey = MessageKey::new("air-credit-open-meteo");
     /// The ten category names, indexed by `AqiCategory::index`.
     pub const AQI_CATEGORIES: [MessageKey; 10] = [
         MessageKey::new("aqi-category-good"),
@@ -401,7 +400,7 @@ pub mod keys {
     pub const ASTRO_AGE_DAYS: MessageKey = MessageKey::new("astro-age-days");
     /// The heading of the next-phase list in the standalone view.
     pub const ASTRO_NEXT: MessageKey = MessageKey::new("astro-next");
-    /// The provenance line of the standalone view (`computed locally (no network)`).
+    /// The provenance line of the standalone view (`computed locally (no network) at { $time }`).
     pub const ASTRO_COMPUTED: MessageKey = MessageKey::new("astro-computed");
 }
 
@@ -469,6 +468,7 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::AQI_UNAVAILABLE,
     keys::AQI_UV_LABEL,
     keys::AQI_UV_SOURCE,
+    keys::AIR_CREDIT_OPEN_METEO,
     keys::AQI_CATEGORIES[0],
     keys::AQI_CATEGORIES[1],
     keys::AQI_CATEGORIES[2],
@@ -618,7 +618,10 @@ impl LanguageId {
     /// The parsed identifier, for chain building.
     #[must_use]
     pub fn identifier(self) -> LanguageIdentifier {
-        self.tag().parse().expect("catalog tags are valid BCP-47")
+        match self {
+            Self::EnUs => langid!("en-US"),
+            Self::ZhCn => langid!("zh-CN"),
+        }
     }
 
     /// The catalog language for `tag`, when the build ships one.
@@ -726,12 +729,10 @@ fn normalize_locale(value: &str) -> Option<String> {
 /// skipped rather than silently shortening.
 #[must_use]
 pub fn language_chain(requested: &LanguageIdentifier) -> Vec<LanguageIdentifier> {
-    let default: LanguageIdentifier = DEFAULT_TAG.parse().expect("en-US is a valid BCP-47 tag");
+    let default: LanguageIdentifier = langid!("en-US");
     let mut chain = vec![requested.clone()];
     if requested.language.as_str() == "zh" {
-        let chinese: LanguageIdentifier = CHINESE_FALLBACK
-            .parse()
-            .expect("zh-CN is a valid BCP-47 tag");
+        let chinese: LanguageIdentifier = langid!("zh-CN");
         if *requested != chinese {
             chain.push(chinese);
         }
@@ -1101,7 +1102,7 @@ impl I18n {
         .into_owned()
     }
 
-    /// The heading of a forecast day: `Today, Sep 30` for the location's own today, `Wed, Sep 30`
+    /// The heading of a forecast day: `Today, Sep 30` for the location's own today, `Wed 30 Sep`
     /// for every other date.
     #[must_use]
     pub fn format_day_heading(&self, date: NaiveDate, today: NaiveDate) -> String {
@@ -1144,7 +1145,7 @@ impl I18n {
 pub enum DateStyle {
     /// The ISO order (`2026-09-30`), which stays language-independent in every catalog.
     Iso,
-    /// A short date, `Wed, Sep 30` / `9月30日 周三`.
+    /// A short date, `Wed 30 Sep` / `9月30日 周三`.
     Short,
     /// The short date with today in front, for the table's first column.
     Today,

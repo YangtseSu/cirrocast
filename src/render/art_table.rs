@@ -474,12 +474,13 @@ fn panel_context<'a>(ctx: &RenderContext<'a>, charset: Charset) -> RenderContext
     panels
 }
 
-/// `observed 23:51Z · 12 min ago`: when the observation was taken and how old it is.
+/// `observed 23:51+0800 · 12 min ago`: when the observation was taken and how old it is.
 ///
-/// The clock is UTC — that is how the aviation world reads a METAR — while the age comes from the
-/// injected `ctx.times.now`, so the line is deterministic in tests. A report dated in the future
-/// (a clock skew, or a station's own clock) clamps to "0 min ago" rather than printing a negative
-/// age.
+/// The clock and its offset are the observation's own (the location's) offset, formatted once, per
+/// the contract's `times` clause — the line never converts to UTC and never prints a bare `Z`. The
+/// age comes from the injected `ctx.times.now`, so the line is deterministic in tests. A report
+/// dated in the future (a clock skew, or a station's own clock) clamps to "0 min ago" rather than
+/// printing a negative age.
 fn write_observed_line(
     out: &mut String,
     current: &Current,
@@ -512,12 +513,9 @@ fn write_observed_line(
     };
     let _ = write!(
         out,
-        "{} {}Z {separator} {age}",
+        "{} {} {separator} {age}",
         ctx.i18n.text(&keys::LABEL_OBSERVED),
-        current
-            .observed_at
-            .with_timezone(&chrono::Utc)
-            .format("%H:%M")
+        current.observed_at.format("%H:%M%z"),
     );
 }
 
@@ -600,7 +598,7 @@ fn current_block(
     write_wind_metric(
         &mut metric,
         current.wind_kmh,
-        Some(current.wind_dir_deg),
+        current.wind_dir_deg,
         ctx,
         charset,
         METRICS_W,
@@ -638,9 +636,11 @@ fn write_measurements(
 ) {
     let units = ctx.units;
     let mut value = String::with_capacity(24);
-    let _ = write!(value, "{}%", current.humidity_pct);
-    color::write_paint(out, &value, color::humidity_fg(current.humidity_pct), depth);
-    out.push(' ');
+    if let Some(humidity) = current.humidity_pct {
+        let _ = write!(value, "{humidity}%");
+        color::write_paint(out, &value, color::humidity_fg(humidity), depth);
+        out.push(' ');
+    }
     color::write_paint(
         out,
         &format_pressure(current.pressure_hpa, units.pressure, UnitStyle::Compact),
@@ -1370,13 +1370,13 @@ mod tests {
             observed_at: moment(12, 15),
             temp_c: 22.4,
             feels_like_c: Some(23.6),
-            humidity_pct: 56,
+            humidity_pct: Some(56),
             precip_mm: 0.0,
             weather: Condition::from_u8(code),
-            cloud_cover_pct: 40,
+            cloud_cover_pct: Some(40),
             pressure_hpa: 1013.0,
             wind_kmh: 12.0,
-            wind_dir_deg: 45,
+            wind_dir_deg: Some(45),
             wind_gust_kmh: None,
             visibility_km: Some(10.0),
             uv_index: Some(5.0),
@@ -1494,6 +1494,21 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_humidity_is_omitted_from_the_measurements_line() {
+        let mut current = current(true, 2);
+        current.humidity_pct = None;
+        let text = render(&report(Some(current), Vec::new()), 80, Charset::Unicode);
+        assert!(
+            !text.contains('%'),
+            "no humidity percent is invented: {text}"
+        );
+        assert!(
+            text.lines().any(|line| line.contains("1013hPa 10km 0.0mm")),
+            "the other measurements stay: {text}"
+        );
+    }
+
+    #[test]
     fn a_night_observation_draws_the_night_block() {
         let text = render(
             &report(Some(current(false, 0)), Vec::new()),
@@ -1502,6 +1517,25 @@ mod tests {
         );
         assert!(text.contains(" · * · "), "{text}");
         assert!(!text.contains('\\'), "no daytime sun at night: {text}");
+    }
+
+    #[test]
+    fn the_observed_line_prints_the_location_offset_not_utc() {
+        let mut report = report(Some(current(true, 2)), Vec::new());
+        let mut capabilities = crate::model::ReportCapabilities::open_meteo_test();
+        capabilities.daily = false;
+        report.attribution.capabilities = Some(capabilities);
+
+        let text = render(&report, 80, Charset::Unicode);
+        let observed = text
+            .lines()
+            .find(|line| line.starts_with("observed "))
+            .expect("the observation line");
+        assert!(observed.contains("12:15+0800"), "{observed}");
+        assert!(
+            !observed.contains('Z'),
+            "the location offset, not a bare `Z`: {observed}"
+        );
     }
 
     #[test]

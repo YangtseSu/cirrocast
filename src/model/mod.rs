@@ -57,8 +57,6 @@ pub enum LocationSource {
     Coordinates,
     /// Derived from the public IP address.
     Ip,
-    /// Taken from the configured default location.
-    Config,
     /// A METAR station identifier (`--station`, `[providers.metar] station`), resolved by the
     /// station table or the `stationinfo` endpoint.
     Station,
@@ -91,7 +89,9 @@ pub struct Location {
     ///
     /// A station has no other way to carry its identity: the display name is the site name and the
     /// coordinates are the airport's, so a backend that needs the identifier (`metar`, for its
-    /// cache key and its request) reads it here. `None` for every non-station location.
+    /// cache key and its request) reads it here. `None` for every non-station location; documents
+    /// written before the field existed still parse.
+    #[serde(default)]
     pub station: Option<String>,
 }
 
@@ -108,20 +108,32 @@ pub struct Current {
     /// (SMHI publishes none) leaves it `None` and the renderers omit it rather than inventing a
     /// number by copying the air temperature.
     pub feels_like_c: Option<f32>,
-    /// Relative humidity in percent.
-    pub humidity_pct: u8,
+    /// Relative humidity in percent, when the observation has a reading.
+    ///
+    /// `None` when the backend does not report one (or reports a sentinel for "not measured"): a
+    /// missing humidity is not `0%`, so the renderers omit it and the JSON document writes `null`,
+    /// exactly as they do for a day part.
+    pub humidity_pct: Option<u8>,
     /// Precipitation in the last hour, in mm.
     pub precip_mm: f32,
     /// The condition now.
     pub weather: Condition,
-    /// Total cloud cover in percent.
-    pub cloud_cover_pct: u8,
+    /// Total cloud cover in percent, when the observation has a reading.
+    ///
+    /// Optional for the same reason humidity is: `None` means the provider did not report one, and
+    /// the renderers and `null` in JSON say so rather than inventing a clear or an overcast sky.
+    pub cloud_cover_pct: Option<u8>,
     /// Sea level pressure in hPa.
     pub pressure_hpa: f32,
     /// Wind speed in km/h.
     pub wind_kmh: f32,
-    /// Direction the wind blows *from*, in degrees clockwise from north.
-    pub wind_dir_deg: u16,
+    /// Direction the wind blows *from*, in degrees clockwise from north, when the observation has
+    /// a definite direction.
+    ///
+    /// `None` for a variable or calm wind (the METAR `VRB` report, an OWM observation with no
+    /// `wind.deg`): the renderers omit the direction and still print the speed, exactly as they do
+    /// for a day part, rather than reporting a definite north wind.
+    pub wind_dir_deg: Option<u16>,
     /// Gust speed in km/h.
     pub wind_gust_kmh: Option<f32>,
     /// Horizontal visibility in km.
@@ -458,7 +470,13 @@ pub struct Report {
     pub location: Location,
     /// Current conditions, when the provider offers them.
     pub current: Option<Current>,
-    /// Forecast days, oldest first, starting at the location-local today.
+    /// Forecast days, oldest first.
+    ///
+    /// `days[0]` is the first location-local date whose four parts all have a sample. That is the
+    /// location-local today whenever the series covers it, and the next date when it does not: a
+    /// backend whose series starts at the current hour has no sample in today's earlier parts, and
+    /// such a partial day is skipped rather than filled with invented values. A backend that serves
+    /// observations only answers with an empty `days`.
     pub days: Vec<DayForecast>,
     /// Severe-weather warnings in force for the location, strongest first.
     ///

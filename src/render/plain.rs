@@ -162,18 +162,30 @@ fn write_current_line(out: &mut String, current: &Current, ctx: &RenderContext<'
     }
     let _ = write!(
         out,
-        " {} {} {} {} {} {} {} {} {}",
+        " {} {}",
         ctx.i18n.text(&keys::LABEL_WIND),
         format_wind(current.wind_kmh, units.wind, UnitStyle::Compact),
-        ctx.i18n.direction(current.wind_dir_deg),
-        ctx.i18n.text(&keys::LABEL_HUMIDITY),
-        ctx.i18n.format(
-            &keys::FORMAT_HUMIDITY,
-            &[(
-                "value",
-                fluent_bundle::FluentValue::from(current.humidity_pct.to_string())
-            )]
-        ),
+    );
+    if let Some(direction) = current.wind_dir_deg {
+        let _ = write!(out, " {}", ctx.i18n.direction(direction));
+    }
+    if let Some(humidity) = current.humidity_pct {
+        let _ = write!(
+            out,
+            " {} {}",
+            ctx.i18n.text(&keys::LABEL_HUMIDITY),
+            ctx.i18n.format(
+                &keys::FORMAT_HUMIDITY,
+                &[(
+                    "value",
+                    fluent_bundle::FluentValue::from(humidity.to_string())
+                )]
+            ),
+        );
+    }
+    let _ = write!(
+        out,
+        " {} {} {} {}",
         ctx.i18n.text(&keys::LABEL_PRECIP),
         format_precip(current.precip_mm, units.precip, UnitStyle::Compact),
         ctx.i18n.text(&keys::LABEL_PRESSURE),
@@ -283,13 +295,13 @@ mod tests {
             observed_at: moment(12, 15),
             temp_c: 31.0,
             feels_like_c: Some(36.0),
-            humidity_pct: 66,
+            humidity_pct: Some(66),
             precip_mm: 0.0,
             weather: Condition::from_u8(2),
-            cloud_cover_pct: 40,
+            cloud_cover_pct: Some(40),
             pressure_hpa: 1004.0,
             wind_kmh: 12.0,
-            wind_dir_deg: 135,
+            wind_dir_deg: Some(135),
             wind_gust_kmh: None,
             visibility_km: Some(10.0),
             uv_index: Some(5.0),
@@ -507,12 +519,19 @@ attribution: open-meteo https://api.open-meteo.com/v1/forecast"
         let mut report = report();
         let current = report.current.as_mut().expect("a current block");
         current.visibility_km = None;
+        current.humidity_pct = None;
+        current.wind_dir_deg = None;
         let day = report.days.first_mut().expect("a day");
         day.parts[0].precip_prob_pct = None;
         day.parts[0].wind_dir_deg = None;
 
         let text = render(&report, UnitSystem::Metric, 200);
         assert!(!text.contains("visibility"), "{text}");
+        assert!(!text.contains("humidity"), "{text}");
+        assert!(
+            text.contains("wind 12km/h precip 0.0mm pressure 1004hPa"),
+            "the wind speed, precipitation and pressure stay: {text}"
+        );
         assert!(
             text.contains("Morning Partly cloudy 29°C 0.0mm wind 8.0km/h |"),
             "{text}"

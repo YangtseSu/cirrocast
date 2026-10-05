@@ -468,13 +468,9 @@ enum Piece {
         kind: TokenKind,
         spec: Spec,
     },
-    /// An unknown `%X`, emitted verbatim; the fields are the letter, its 1-based character
-    /// position and the raw spelling (specifier included) for the literal output.
-    Unknown {
-        letter: char,
-        position: usize,
-        raw: String,
-    },
+    /// An unknown `%X`, emitted verbatim; the fields are its 1-based character position and the
+    /// raw spelling (specifier included) for the literal output.
+    Unknown { position: usize, raw: String },
 }
 
 /// Parses `template` into literal text and tokens.
@@ -485,6 +481,11 @@ fn parse(template: &str) -> Vec<Piece> {
     let mut pieces: Vec<Piece> = Vec::new();
     let mut text = String::new();
     let mut chars = template.char_indices().peekable();
+    let mut counter = CharCount {
+        template,
+        counted_bytes: 0,
+        counted_chars: 0,
+    };
 
     // The literal text collected so far is flushed as one piece, so `%%`, `\n` and the tokens
     // around them do not fragment a run of plain text.
@@ -530,7 +531,8 @@ fn parse(template: &str) -> Vec<Piece> {
                     let (spec, raw) = read_spec(&mut chars);
                     if let Some((_, letter)) = chars.next() {
                         flush(&mut pieces, &mut text);
-                        push_letter(&mut pieces, letter, offset, spec, &raw, template);
+                        let position = counter.up_to(offset) + 1;
+                        push_letter(&mut pieces, letter, position, spec, &raw);
                     } else {
                         // `%12` with nothing after it is literal text.
                         text.push('%');
@@ -540,7 +542,8 @@ fn parse(template: &str) -> Vec<Piece> {
                 Some(letter) => {
                     chars.next();
                     flush(&mut pieces, &mut text);
-                    push_letter(&mut pieces, letter, offset, Spec::default(), "", template);
+                    let position = counter.up_to(offset) + 1;
+                    push_letter(&mut pieces, letter, position, Spec::default(), "");
                 }
                 // A trailing `%` is a literal one.
                 None => text.push('%'),
@@ -612,14 +615,7 @@ fn read_spec(chars: &mut std::iter::Peekable<std::str::CharIndices<'_>>) -> (Spe
 }
 
 /// Appends the piece for the letter after a `%` (or a specifier).
-fn push_letter(
-    pieces: &mut Vec<Piece>,
-    letter: char,
-    offset: usize,
-    spec: Spec,
-    raw: &str,
-    template: &str,
-) {
+fn push_letter(pieces: &mut Vec<Piece>, letter: char, position: usize, spec: Spec, raw: &str) {
     match token_spec(letter) {
         Some(row) => pieces.push(Piece::Token {
             token: row.token,
@@ -627,10 +623,32 @@ fn push_letter(
             spec,
         }),
         None => pieces.push(Piece::Unknown {
-            letter,
-            position: template[..offset].chars().count() + 1,
+            position,
             raw: format!("%{raw}{letter}"),
         }),
+    }
+}
+
+/// Counts the characters before a byte offset, moving only forward.
+///
+/// `parse` visits its `%` offsets in increasing order, so the scan never revisits text it has
+/// already counted: positioning every unknown token is one pass over the template, not one pass
+/// per token (which made validating a large template quadratic).
+struct CharCount<'a> {
+    template: &'a str,
+    counted_bytes: usize,
+    counted_chars: usize,
+}
+
+impl CharCount<'_> {
+    /// The number of characters in `template[..offset]`; `offset` is never smaller than the last
+    /// offset asked for.
+    fn up_to(&mut self, offset: usize) -> usize {
+        if offset > self.counted_bytes {
+            self.counted_chars += self.template[self.counted_bytes..offset].chars().count();
+            self.counted_bytes = offset;
+        }
+        self.counted_chars
     }
 }
 
@@ -709,10 +727,8 @@ pub fn warnings(template: &str) -> Vec<String> {
     parse(template)
         .into_iter()
         .filter_map(|piece| match piece {
-            Piece::Unknown {
-                letter, position, ..
-            } => Some(format!(
-                "unknown template token `%{letter}` at position {position}"
+            Piece::Unknown { raw, position, .. } => Some(format!(
+                "unknown template token `{raw}` at position {position}"
             )),
             Piece::Text(_) | Piece::Token { .. } => None,
         })
@@ -833,8 +849,8 @@ impl Snapshot {
             snapshot.temp_c = Some(current.temp_c);
             snapshot.feels_like_c = current.feels_like_c;
             snapshot.wind_kmh = Some(current.wind_kmh);
-            snapshot.wind_dir_deg = Some(current.wind_dir_deg);
-            snapshot.humidity_pct = Some(current.humidity_pct);
+            snapshot.wind_dir_deg = current.wind_dir_deg;
+            snapshot.humidity_pct = current.humidity_pct;
             snapshot.precip_mm = Some(current.precip_mm);
             snapshot.pressure_hpa = Some(current.pressure_hpa);
             snapshot.visibility_km = current.visibility_km;
@@ -1229,6 +1245,39 @@ mod tests {
         assert_eq!(raw, "%12y");
         assert_eq!(*position, 1);
         assert_eq!(warnings("%12y").len(), 1);
+    }
+
+    #[test]
+    fn an_unknown_token_is_reported_with_the_spelling_the_user_typed() {
+        // The message names `%12y`, not the bare `y` the old report printed.
+        assert_eq!(
+            warnings("%12y and %Y"),
+            vec![
+                "unknown template token `%12y` at position 1".to_owned(),
+                "unknown template token `%Y` at position 10".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_large_template_is_validated_in_one_pass() {
+        // 1 MB of `x%y`, a typo on every second token: counting the position from the running
+        // offset makes the scan linear, where recomputing `template[..offset].chars().count()` per
+        // token is quadratic and never finishes promptly.
+        let template = "x%y".repeat(340_000);
+        let started = std::time::Instant::now();
+        let found = warnings(&template);
+        let elapsed = started.elapsed();
+        assert_eq!(found.len(), 340_000);
+        assert_eq!(found[0], "unknown template token `%y` at position 2");
+        assert_eq!(
+            found.last().map(String::as_str),
+            Some("unknown template token `%y` at position 1019999")
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "validating 1 MB took {elapsed:?}"
+        );
     }
 
     #[test]

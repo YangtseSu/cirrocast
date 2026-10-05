@@ -326,13 +326,14 @@ pollen-ragweed = ragweed
 
 unit-ug-m3 = μg/m³
 unit-grains-m3 = grains/m³
+air-credit-open-meteo = Air quality data by Open-Meteo.com (CAMS ENSEMBLE)
 
 # --- Moon and sun (step 17) --------------------------------------------------------------------
 # The phase names are keyed by `MoonPhase::index`; the rise/set labels head the values in every
 # format, and `astro-no-rise` is the placeholder for an event that does not happen on the day
 # (the Moon's calendar day can miss one). The polar labels replace the whole sun line inside the
 # circles, so no clock time is invented. `astro-computed` is the standalone view's provenance
-# line, spoken only there.
+# line, spoken only there, and it carries the instant the block was computed for.
 
 label-moon = Moon
 label-sun = Sun
@@ -357,4 +358,4 @@ astro-no-rise = —
 astro-illumination = { $percent }% illuminated (geocentric)
 astro-age-days = age { $days } d
 astro-next = Next phases
-astro-computed = computed locally (no network)
+astro-computed = computed locally (no network) at { $time }

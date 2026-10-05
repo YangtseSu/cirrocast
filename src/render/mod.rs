@@ -247,20 +247,23 @@ pub fn resolve_color(mode: ColorMode, caps: &TermCaps) -> ColorMode {
 
 /// The palette a run may emit.
 ///
-/// A resolved [`ColorMode::Never`] is [`ColorDepth::Mono`]. A request for colour on a terminal that
-/// advertises none — `--color always` in a bare pipe, `CLICOLOR_FORCE=1` under `TERM=dumb` — gets
-/// the deepest palette this build implements, because the request was "emit escapes", not "tell me
-/// whether I meant it". An unresolved [`ColorMode::Auto`] counts as a request for colour;
-/// [`resolve_color`] is what turns `auto` into a decision, and every context carries the resolved
-/// mode.
+/// A resolved [`ColorMode::Never`] is [`ColorDepth::Mono`]. Otherwise the depth is what the
+/// terminal advertised, folded down to the sixteen ANSI colours when it advertised no more: a
+/// terminal that names no colour at all (`TERM` unset or `dumb`) is served the ANSI palette rather
+/// than the 256-colour one, because an explicit `--color always` asks for escapes and the
+/// contract's fold-down must produce some. A terminal that advertises sixteen colours still gets
+/// them folded onto the ANSI palette by [`color::ansi16_from_256`]. An unresolved
+/// [`ColorMode::Auto`] counts as a request for colour; [`resolve_color`] is what turns `auto` into
+/// a decision, and every context carries the resolved mode.
 #[must_use]
 pub fn effective_depth(mode: ColorMode, caps: &TermCaps) -> ColorDepth {
     if mode == ColorMode::Never {
-        ColorDepth::Mono
-    } else if caps.depth == ColorDepth::Mono {
-        ColorDepth::Ansi256
-    } else {
-        caps.depth
+        return ColorDepth::Mono;
+    }
+    match caps.depth {
+        // Nothing advertised: an explicit request folds to the sixteen ANSI colours, never 256.
+        ColorDepth::Mono => ColorDepth::Ansi16,
+        depth => depth,
     }
 }
 
@@ -811,15 +814,47 @@ mod tests {
             ColorDepth::Ansi256
         );
 
+        // The terminal advertises only the ANSI palette, so `--color always` uses it rather than
+        // the 256-colour palette.
+        let ansi16 = TermCaps::read(
+            |name| match name {
+                "TERM" => Some("linux".to_owned()),
+                "LANG" => Some("en_US.UTF-8".to_owned()),
+                _ => None,
+            },
+            true,
+        );
+        assert_eq!(ansi16.depth, ColorDepth::Ansi16);
+        assert_eq!(
+            effective_depth(ColorMode::Always, &ansi16),
+            ColorDepth::Ansi16
+        );
+
+        // A terminal that advertises no colour at all is never upgraded to 256: `--color always`
+        // under `TERM=dumb` (and `TermCaps::default()`, whose `TERM` is unset) folds down to the
+        // sixteen ANSI colours, because an explicit request for escapes must produce some.
+        let dumb = TermCaps::read(|name| (name == "TERM").then(|| "dumb".to_owned()), true);
+        assert_eq!(dumb.depth, ColorDepth::Mono);
+        assert_eq!(
+            effective_depth(ColorMode::Always, &dumb),
+            ColorDepth::Ansi16,
+            "an explicit request folds down to sixteen, never up to 256"
+        );
+        assert_eq!(
+            effective_depth(ColorMode::Auto, &dumb),
+            ColorDepth::Ansi16,
+            "`auto` counts as a request for colour until `resolve_color` says otherwise"
+        );
+
         let bare = TermCaps::default();
         assert_eq!(
             effective_depth(ColorMode::Always, &bare),
-            ColorDepth::Ansi256,
-            "an explicit request for colour still emits escapes"
+            ColorDepth::Ansi16,
+            "an explicit request folds down to sixteen, never up to 256"
         );
         assert_eq!(
             effective_depth(ColorMode::Auto, &bare),
-            ColorDepth::Ansi256,
+            ColorDepth::Ansi16,
             "an unresolved `auto` is a request for colour; resolve_color decides first"
         );
     }
