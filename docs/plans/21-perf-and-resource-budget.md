@@ -48,7 +48,7 @@ evidence — keeping the decision, recording why.
       `cargo llvm-lines --release | head -n 20` uploaded as artifacts). Runner pinned to the same
       image class as the baseline was recorded on; the job is allowed to re-record only via an explicit
       `workflow_dispatch` input.
-- ⬜ `docs/performance.md`: machine specification (`lscpu` summary, kernel, rustc/cargo/hyperfine
+- ✅ `docs/performance.md`: machine specification (`lscpu` summary, kernel, rustc/cargo/hyperfine
       versions, commit), methodology (commands, cache priming, RSS and size measurement, why the cold
       run is not gated), the budget table with the measured numbers, the dependency-weight audit, and
       the async/TUI re-evaluation with evidence.
@@ -59,11 +59,11 @@ evidence — keeping the decision, recording why.
 - ✅ `src/model/mod.rs` + `src/cli.rs`: `LocalTimes` computed once per report (`chrono_tz` lookup,
       day-part `DateTime<FixedOffset>`, preformatted clock strings), carried in `RenderContext`;
       renderers and the template engine stop converting per field.
-- ⬜ `src/geo/offline.rs`: lazy table decode (header first, `OnceLock` per shard) when step 18
+- ✅ `src/geo/offline.rs`: lazy table decode (header first, `OnceLock` per shard) when step 18
       measured an eager startup decode; `--version`/`--help` and any run that never performs a city
       lookup must not touch the table at all (asserted by a test that removes the data file and runs
       `--version`).
-- ⬜ Dependency-weight audit in `docs/performance.md`: the top contributors from `cargo bloat
+- ✅ Dependency-weight audit in `docs/performance.md`: the top contributors from `cargo bloat
       --crates` with sizes, and a decision per heavy crate — `chrono-tz` (accepted: timezone-correct
       day parts are a contract requirement), `rustls`/`ring` or `aws-lc-rs` (accepted: TLS is not
       optional), `clap_builder` (accepted; `wrap_help` reviewed), `serde_json` (accepted),
@@ -236,3 +236,12 @@ into `docs/performance.md`.
   design). `upload-artifact` is pinned to `330a01c4…` (v5.0.0, resolved with `git ls-remote`);
   the three measurement tools are installed with `cargo install --locked`, so no new third-party
   action enters the workflow.
+- 2026-10-05 — `docs/performance.md` completed: reference machine, methodology (why the cold run
+  is not gated, why alerts are off in the harness, how RSS is measured and which two fallbacks were
+  rejected), the budget table with the re-derived binary/RSS numbers, the dependency-weight audit
+  (`cargo bloat --crates` and `cargo llvm-lines --lib`) and the async/TUI re-evaluation. The
+  lazy-decode deliverable is re-measured, not re-implemented: step 18's `OnceLock` decode plus
+  `tests/offline_lazy.rs` already keep `--version` away from the table (6.4 MiB RSS, 2.10 ms), so
+  the entry records the measurement and changes nothing. The gate's artificial-regression proof
+  (a 300 ms sleep on the `--offline` path → exit 1 naming `offline_plain_ms`, then reverted) is
+  transcribed in the doc.
