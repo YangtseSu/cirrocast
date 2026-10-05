@@ -70,7 +70,7 @@ evidence — keeping the decision, recording why.
       `flate2` (accepted, feature-reviewed), `idna`/`url` (accepted via `ureq`), plus the gate list
       (`keyring`, `offline-geo`, `ureq` compression features, `clap` `wrap_help`) and the measured
       delta of turning each off.
-- ⬜ `tests/cli.rs`: `--help` line count < 200 and `--help` exit 0 asserted deterministically.
+- ✅ `tests/cli.rs`: `--help` line count < 200 and `--help` exit 0 asserted deterministically.
 
 ## Design notes
 
@@ -245,3 +245,8 @@ into `docs/performance.md`.
   the entry records the measurement and changes nothing. The gate's artificial-regression proof
   (a 300 ms sleep on the `--offline` path → exit 1 naming `offline_plain_ms`, then reverted) is
   transcribed in the doc.
+- 2026-10-05 — `--help` was 200 lines, exactly the budget's edge, so the epilogue was compacted
+  (the syntax paragraph to two lines, the six preset rows to four, both with the same content) to
+  198, and `tests/cli.rs` now asserts the count with `COLUMNS=100` pinned — clap wraps the epilogue
+  to the terminal width, so an inherited `COLUMNS` would make the test depend on the developer's
+  shell.

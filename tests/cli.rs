@@ -54,6 +54,24 @@ fn help_exits_successfully() {
 }
 
 #[test]
+fn help_stays_inside_the_line_budget() {
+    // Step 21's budget is "`--help` under 200 lines". The count depends on how clap wraps the
+    // epilogue, and clap reads `COLUMNS` even when stdout is a pipe, so the width is pinned here
+    // rather than inherited from whoever runs the tests.
+    let assert = cirrocast()
+        .env("COLUMNS", "100")
+        .arg("--help")
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
+    let lines = stdout.lines().count();
+    assert!(
+        lines < 200,
+        "--help is {lines} lines (the budget is under 200)"
+    );
+}
+
+#[test]
 fn provider_list_shows_every_provider_and_its_key_requirement() {
     let assert = cirrocast().args(["provider", "list"]).assert().success();
     let stdout =

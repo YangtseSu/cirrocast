@@ -156,15 +156,12 @@ ONE-LINE TOKENS (--format one-line, full, minimal, or a [templates] key)
   %D Wed 30 Sep       %T 15:04            %Z zone name       %z +0800
   %S sunrise          %s sunset           %q air-quality index
   %A strongest alert event, empty when no alerts are in force
-  %[-][0][width][.prec]X pads (right with -, zero for numbers), .prec truncates text and rounds
-  numbers; %% is a literal %, %{...} is verbatim unless it is exactly one token letter, \\n \\t
-  \\\\ are escapes; an unknown %X is a usage error (exit 2).
+  %[-][0][width][.prec]X pads (right with -, zero for numbers); .prec truncates text and rounds
+  numbers; %% prints one %; %{...} verbatim unless one token letter; \\n \\t \\\\ escapes; bad %X is exit 2.
   Presets (@NAME, and --format NAME), listed with their templates:
-    @default  %l: %c %C %t (%f), %w, %h, %p, %P, %v
-    @short    %c %t
-    @minimal  %c%t
+    @default  %l: %c %C %t (%f), %w, %h, %p, %P, %v   @short  %c %t
+    @minimal  %c%t                                    @uv     %l: UV %U
     @full     %l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z
-    @uv       %l: UV %U
     @sun      %l: sunrise %S sunset %s (%z %Z)
 
 MULTI-LOCATION RUNS
