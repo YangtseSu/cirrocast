@@ -104,6 +104,12 @@ pub const GEO_DATA_SOURCES: &[&str] = &["auto", "bundled", "user"];
 /// Allowed values of `[geo] update` (step 18b): no freshness note, or the throttled note.
 pub const GEO_UPDATES: &[&str] = &["off", "check"];
 
+/// Allowed values of `[geo] search` (step 25): the geocoding sources behind a plain name query.
+///
+/// An alias, not a copy: the chain itself owns the list, so the configuration, the environment
+/// override and the `-v` narration cannot disagree about what `auto` or `geonames` means.
+pub const GEO_SEARCHES: &[&str] = crate::geo::chain::SEARCH_SETTINGS;
+
 /// Allowed values of `[location] pick` (step 20): ask which candidate to use when a name resolves
 /// to several places, or always take the ranked winner.
 pub const PICK_POLICIES: &[&str] = &["auto", "never"];
@@ -239,6 +245,10 @@ pub struct GeoConfig {
     /// `auto` (bundled table first, network geocoder on a miss), `bundled` (the table only) or
     /// `network` (the geocoder only).
     pub strategy: String,
+    /// Which geocoding sources a plain name query asks, and in what order: `auto` (Open-Meteo,
+    /// then `GeoNames` when an account name is configured, then Nominatim as the last resort) or one
+    /// of the three ids (step 25).
+    pub search: String,
     /// Which city table answers: `auto` (a user-installed table when present and valid, else the
     /// bundled one), `bundled` (the bundled one only) or `user` (the user-installed one only).
     pub data: String,
@@ -391,6 +401,7 @@ impl Default for GeoConfig {
     fn default() -> Self {
         Self {
             strategy: "auto".to_owned(),
+            search: "auto".to_owned(),
             data: "auto".to_owned(),
             update: "off".to_owned(),
             update_interval_days: 90,
@@ -1165,6 +1176,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
         "location" => &["default", "pick"],
         "geo" => &[
             "strategy",
+            "search",
             "data",
             "update",
             "update_interval_days",
@@ -1417,6 +1429,7 @@ pick = "auto"            # auto (ask on a terminal when a name has several candi
 
 [geo]
 strategy = "auto"        # auto (bundled GeoNames table first, network on a miss) | bundled | network
+search = "auto"          # name-search sources: auto (open-meteo, geonames when an account name is set, then nominatim) | open-meteo | geonames | nominatim
 data = "auto"            # which city table answers: auto (user table when present) | bundled | user
 update = "off"           # off | check: a once-a-day note when the table is older than the interval
 update_interval_days = 90
@@ -1587,6 +1600,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         kind: KeyKind::Enum(GEO_STRATEGIES),
         doc: "bundled table, network geocoder or auto",
         env: None,
+    },
+    KeySpec {
+        name: "geo.search",
+        kind: KeyKind::Enum(GEO_SEARCHES),
+        doc: "name-search sources: auto, open-meteo, geonames or nominatim",
+        env: Some("CIRROCAST_GEO_SEARCH"),
     },
     KeySpec {
         name: "geo.data",
@@ -1805,6 +1824,7 @@ impl Config {
             "location.default" => self.location.default.clone(),
             "location.pick" => self.location.pick.clone(),
             "geo.strategy" => self.geo.strategy.clone(),
+            "geo.search" => self.geo.search.clone(),
             "geo.data" => self.geo.data.clone(),
             "geo.update" => self.geo.update.clone(),
             "geo.update_interval_days" => self.geo.update_interval_days.to_string(),
@@ -1840,7 +1860,10 @@ impl Config {
 
     /// Writes one key from text and validates the result.
     ///
-    /// The caller persists the change with [`Config::save`]; nothing is written here.
+    /// The caller persists the change with [`Config::save`]; nothing is written here. This function
+    /// *is* the writable key table — one arm per key, kept together so that adding a key means
+    /// editing exactly one place — so it exceeds clippy's default length on purpose.
+    #[allow(clippy::too_many_lines)]
     pub fn set_key(&mut self, key: &str, value: &str) -> Result<()> {
         let spec = key_spec(key)?;
         let value = spec.kind.parse(spec.name, value)?;
@@ -1871,6 +1894,10 @@ impl Config {
             "geo.strategy" => {
                 check_enum(spec.name, &value, GEO_STRATEGIES)?;
                 self.geo.strategy = value;
+            }
+            "geo.search" => {
+                check_enum(spec.name, &value, GEO_SEARCHES)?;
+                self.geo.search = value;
             }
             "geo.data" => {
                 check_enum(spec.name, &value, GEO_DATA_SOURCES)?;
@@ -1958,6 +1985,7 @@ impl Config {
             "location.default" => self.validate_location_default(),
             "location.pick" => check_enum(key, &self.location.pick, PICK_POLICIES),
             "geo.strategy" => check_enum(key, &self.geo.strategy, GEO_STRATEGIES),
+            "geo.search" => check_enum(key, &self.geo.search, GEO_SEARCHES),
             "geo.data" => check_enum(key, &self.geo.data, GEO_DATA_SOURCES),
             "geo.update" => check_enum(key, &self.geo.update, GEO_UPDATES),
             "geo.update_interval_days" => {
@@ -2217,6 +2245,7 @@ mod tests {
         assert_eq!(config.defaults.language, "auto");
         assert_eq!(config.location.default, "");
         assert_eq!(config.geo.strategy, "auto");
+        assert_eq!(config.geo.search, "auto");
         assert_eq!(config.geo.data, "auto");
         assert_eq!(config.geo.update, "off");
         assert_eq!(config.geo.update_interval_days, 90);
@@ -2796,6 +2825,7 @@ mod tests {
 
         for (key, value, fragment) in [
             ("geo.data", "sometimes", "geo.data"),
+            ("geo.search", "openmeteo", "geo.search"),
             ("geo.update", "auto", "geo.update"),
             ("geo.update_interval_days", "0", "geo.update_interval_days"),
             (
@@ -2816,6 +2846,7 @@ mod tests {
         let mut config = Config::default();
         for (key, value) in [
             ("geo.data", "user"),
+            ("geo.search", "geonames"),
             ("geo.update", "check"),
             ("geo.update_interval_days", "30"),
             (

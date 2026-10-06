@@ -203,3 +203,61 @@ fn secrets_cannot_be_smuggled_through_config_set() {
         .stderr(predicate::str::contains("unknown config key"));
     assert!(!sandbox.config_file().exists());
 }
+
+/// The `GeoNames` account name is a *named credential*: the same stdin-only `key set` path stores
+/// it, `key list` shows it masked, and `key rm` removes it — so the documented
+/// `keys.toml [keys] geonames` entry never has to be hand-edited (step 25).
+#[test]
+fn a_named_credential_round_trips_through_the_key_store() {
+    let sandbox = Sandbox::new();
+
+    sandbox
+        .cirrocast()
+        .args(["key", "set", "geonames"])
+        .write_stdin("my-geonames-user\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("stored geonames credential"));
+
+    let stored = std::fs::read_to_string(sandbox.keys_file()).expect("keys.toml is written");
+    assert!(
+        stored.contains("geonames = \"my-geonames-user\""),
+        "{stored}"
+    );
+
+    let assert = sandbox.cirrocast().args(["key", "list"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
+    assert!(stdout.contains("geonames"), "{stdout}");
+    assert!(stdout.contains("(file)"), "{stdout}");
+    assert!(
+        !stdout.contains("my-geonames-user"),
+        "the credential is masked: {stdout}"
+    );
+
+    sandbox
+        .cirrocast()
+        .args(["key", "rm", "geonames"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("removed geonames credential"));
+    assert_eq!(
+        sandbox
+            .cirrocast()
+            .args(["key", "list"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout,
+        Vec::<u8>::new(),
+        "nothing is configured any more"
+    );
+
+    // An unknown name is still the provider registry's usage error.
+    sandbox
+        .cirrocast()
+        .args(["key", "set", "geonames2"])
+        .write_stdin("x\n")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("unknown provider `geonames2`"));
+}

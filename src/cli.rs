@@ -22,9 +22,9 @@ use crate::cache::{Cache, CacheMode, CacheStat, Clock, OfflineMode, Scope, Syste
 use crate::config::keys::{KeySource, KeyStore};
 use crate::config::{Config, Settings};
 use crate::error::{Error, Result};
+use crate::geo::chain::{SearchChain, SearchInputs};
 use crate::geo::ip::{IpLocatorChain, IpService};
 use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
-use crate::geo::open_meteo::OpenMeteoGeocoder;
 use crate::geo::{
     Geocoder, LocationSpec, Resolution, Resolved, ambiguity_note, attribution_line, location_line,
     offline_not_found, osm_ambiguity_note, place, resolve_candidates,
@@ -136,6 +136,7 @@ CONFIG PRECEDENCE (highest first)
   --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
   --lang      CIRROCAST_LANG
   env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
+              CIRROCAST_GEO_SEARCH  CIRROCAST_GEONAMES_USER
   The configuration file is consulted only when neither the flag nor the variable is set, so an
   environment value is never overridden by config.toml. `config get <key>` prints the variable's
   value when one is set, and `config validate` checks the file without touching the network.
@@ -785,7 +786,7 @@ pub enum KeyCommand {
 /// Arguments of `cirrocast key set`.
 #[derive(Debug, Args)]
 pub struct KeySetArgs {
-    /// Provider id, e.g. `openweathermap`.
+    /// Provider id (e.g. `openweathermap`) or credential name (`geonames`).
     pub provider: String,
 
     /// Read the key from stdin even when stdin is a terminal.
@@ -2775,28 +2776,59 @@ fn name_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Result
     }
 
     if geocoder {
-        let geocoder = OpenMeteoGeocoder::new(
-            geo.http,
-            geo.cache,
-            Duration::from_secs(u64::from(geo.config.cache.geocode_ttl_secs)),
-        );
-        if cli.verbose > 0 && bundled {
-            eprintln!("location: {query} not in the bundled city database; asking the geocoder");
-        }
-        let hits = match geocoder.search(query, geo.limit) {
-            Ok(hits) => hits,
-            // Offline, the only failure a search can meet is a cache miss: the transport is never
-            // reached, so "nothing on disk" means this name cannot be resolved at all and is the
-            // same not-found answer as a table miss.
-            Err(Error::Network(_)) if geo.offline.silences(Scope::Geo) => Vec::new(),
-            Err(error) => return Err(error),
+        let setting = geo_search_setting(geo.config);
+        let inputs = SearchInputs {
+            http: geo.http,
+            cache: geo.cache,
+            ttl: Duration::from_secs(u64::from(geo.config.cache.geocode_ttl_secs)),
+            limit: geo.limit,
+            geonames_user: geonames_user(geo)?,
+            nominatim_url: nominatim_url(geo.config),
+            offline: geo.offline.silences(Scope::Geo),
         };
-        if !hits.is_empty() {
-            return resolve_candidates(hits, spec, geo.limit);
+        let chain = SearchChain::new(&setting, inputs)?;
+        if cli.verbose > 0 && bundled {
+            let sources: Vec<&str> = chain.sources().iter().map(|source| source.slug()).collect();
+            eprintln!(
+                "location: {query} not in the bundled city database; asking {}",
+                sources.join(", ")
+            );
+        }
+        let report = chain.search(query)?;
+        if cli.verbose > 0 {
+            for note in &report.notes {
+                eprintln!("location: {note}");
+            }
+        }
+        if !report.is_empty() {
+            let merged = crate::geo::merge::merge(&report.answered);
+            return resolve_candidates(merged, spec, geo.limit);
         }
     }
 
     Err(offline_not_found(query))
+}
+
+/// `[geo] search` with the `CIRROCAST_GEO_SEARCH` override resolved like every other key.
+///
+/// [`Config::validate`] rejects an invalid value in the document; the chain parses the result, so
+/// the environment tier and a hand-built document share the one message.
+fn geo_search_setting(config: &Config) -> String {
+    std::env::var("CIRROCAST_GEO_SEARCH")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| config.geo.search.trim().to_owned())
+}
+
+/// The `GeoNames` account name for this run: the environment variable first, then `keys.toml`
+/// (step 25's named credential), or `None` when neither has one.
+///
+/// Reading the store can fail on its own terms — a group-readable `keys.toml` is refused, not
+/// silently skipped — and that failure stops the run, exactly as it does for a provider key.
+fn geonames_user(geo: &GeoRequest<'_>) -> Result<Option<String>> {
+    let store = crate::config::keys::KeyStore::new(geo.paths);
+    store.get(crate::geo::geonames::CREDENTIAL)
 }
 
 /// What the local city table answered, when it did.
@@ -3246,21 +3278,23 @@ fn run_key(command: &KeyCommand) -> Result<()> {
     let store = KeyStore::new(&paths);
     match command {
         KeyCommand::Set(args) => {
-            let id: ProviderId = args.provider.parse()?;
-            let secret = read_secret(id.as_str(), args.stdin)?;
-            store.set(id.as_str(), &secret)?;
+            let name = KeyStore::canonical(&args.provider)?;
+            let noun = credential_noun(&name);
+            let secret = read_secret(&prompt_for(&name), args.stdin)?;
+            store.set(&name, &secret)?;
             print_line(format_args!(
-                "stored {id} API key in {}",
+                "stored {name} {noun} in {}",
                 store.path().display()
             ))?;
             Ok(())
         }
         KeyCommand::Rm { provider } => {
-            let id: ProviderId = provider.parse()?;
-            if store.remove(id.as_str())? {
-                print_line(format_args!("removed {id} API key"))?;
+            let name = KeyStore::canonical(provider)?;
+            let noun = credential_noun(&name);
+            if store.remove(&name)? {
+                print_line(format_args!("removed {name} {noun}"))?;
             } else {
-                print_line(format_args!("no {id} API key stored"))?;
+                print_line(format_args!("no {name} {noun} stored"))?;
             }
             Ok(())
         }
@@ -3280,6 +3314,24 @@ fn run_key(command: &KeyCommand) -> Result<()> {
             }
             Ok(())
         }
+    }
+}
+
+/// The `key set` prompt: a provider gets the API-key wording, a named credential its own.
+fn prompt_for(name: &str) -> String {
+    match KeyStore::named(name) {
+        Some(credential) => format!("{} for {name}: ", credential.what),
+        None => format!("API key for {name}: "),
+    }
+}
+
+/// What the `key` subcommands call the thing they store: a provider's API key, or a service's
+/// named credential.
+fn credential_noun(name: &str) -> &'static str {
+    if KeyStore::named(name).is_some() {
+        "credential"
+    } else {
+        "API key"
     }
 }
 
@@ -3359,22 +3411,22 @@ fn edit_config(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
-/// Reads an API key from stdin — piped input, or the terminal with echo disabled. Never from argv.
-fn read_secret(provider: &str, force_stdin: bool) -> Result<String> {
+/// Reads a secret from the terminal (with echo off) or from stdin.
+///
+/// `prompt` is the full question, e.g. `API key for qweather: ` or `GeoNames user name for
+/// geonames: `; the secret itself is never echoed, never taken from argv and never logged.
+fn read_secret(prompt: &str, force_stdin: bool) -> Result<String> {
     if !force_stdin && std::io::stdin().is_terminal() {
-        let secret =
-            rpassword::prompt_password(format!("API key for {provider}: ")).map_err(|error| {
-                Error::Other(format!(
-                    "cannot read the API key from the terminal: {error}"
-                ))
-            })?;
+        let secret = rpassword::prompt_password(prompt).map_err(|error| {
+            Error::Other(format!("cannot read the secret from the terminal: {error}"))
+        })?;
         return checked_secret(&secret);
     }
 
     let mut input = String::new();
     std::io::stdin()
         .read_to_string(&mut input)
-        .map_err(|error| Error::Other(format!("cannot read the API key from stdin: {error}")))?;
+        .map_err(|error| Error::Other(format!("cannot read the secret from stdin: {error}")))?;
     checked_secret(input.lines().next().unwrap_or_default())
 }
 

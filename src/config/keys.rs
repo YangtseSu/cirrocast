@@ -17,6 +17,11 @@
 //! tier: OS keyring storage is out of scope for v1 (step 10's `## Out of scope` lists it), so a
 //! key that is in neither place is reported as missing. Any key file that group or other can read
 //! is refused rather than used, so a stray `chmod 644` is loud instead of silent.
+//!
+//! Step 25's `GeoNames` geocoder has an account *name* rather than a provider key, so the same two
+//! tiers serve it through [`NAMED_CREDENTIALS`]: `CIRROCAST_GEONAMES_USER` first, then a
+//! `[keys] geonames` entry, written by the same `key set` path (stdin only) and shown masked by
+//! the same `key list`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -48,6 +53,29 @@ pub enum KeySource {
     /// `keys.toml`.
     File,
 }
+
+/// A credential that belongs to a *service* rather than to a forecast provider.
+///
+/// Step 25's `GeoNames` geocoder is BYOK: the search endpoint refuses to answer without an account
+/// name, and that name is stored exactly like a provider key — `CIRROCAST_GEONAMES_USER` first,
+/// then the `[keys]` table of the `0600` file — so `key set geonames` (read from stdin, never
+/// argv) writes it and `key list` shows it masked. Nothing else about the store changes: a name
+/// that is neither a provider id nor one of these is still a usage error.
+pub struct NamedCredential {
+    /// The canonical name, which is also the `[keys]` entry and the `key set` argument.
+    pub name: &'static str,
+    /// The environment variable that can supply the value instead.
+    pub env: &'static str,
+    /// What the value is, for the `key set` prompt.
+    pub what: &'static str,
+}
+
+/// The non-provider credentials this build knows, in listing order.
+pub const NAMED_CREDENTIALS: &[NamedCredential] = &[NamedCredential {
+    name: "geonames",
+    env: "CIRROCAST_GEONAMES_USER",
+    what: "GeoNames user name",
+}];
 
 /// One row of `cirrocast key list`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,9 +116,40 @@ impl KeyStore {
         Ok(id.metadata().key_env)
     }
 
-    /// Looks a key up: environment first, then the key file.
-    pub fn get(&self, provider: &str) -> Result<Option<String>> {
-        let id: ProviderId = provider.parse()?;
+    /// The named credential `name` refers to, case-insensitively; `None` when there is no such
+    /// credential.
+    #[must_use]
+    pub fn named(name: &str) -> Option<&'static NamedCredential> {
+        let name = name.trim();
+        NAMED_CREDENTIALS
+            .iter()
+            .find(|credential| credential.name.eq_ignore_ascii_case(name))
+    }
+
+    /// The canonical spelling of `name`, whether it is a provider id or a named credential.
+    ///
+    /// This is what `key set`/`key rm` accept, so the two spellings of one provider (`open-weather-map`,
+    /// `openweathermap`) cannot create two entries and a credential name is stored under its
+    /// canonical form.
+    pub fn canonical(name: &str) -> Result<String> {
+        if let Some(credential) = Self::named(name) {
+            return Ok(credential.name.to_owned());
+        }
+        let id: ProviderId = name.parse()?;
+        Ok(id.as_str().to_owned())
+    }
+
+    /// Looks a credential up: environment first, then the key file.
+    ///
+    /// `name` is a provider id or one of [`NAMED_CREDENTIALS`].
+    pub fn get(&self, name: &str) -> Result<Option<String>> {
+        if let Some(credential) = Self::named(name) {
+            if let Some(value) = super::env_value(credential.env) {
+                return Ok(Some(value));
+            }
+            return Ok(named_entry(&self.read()?.keys, credential).cloned());
+        }
+        let id: ProviderId = name.parse()?;
         if let Some(env) = id.metadata().key_env
             && let Some(value) = super::env_value(env)
         {
@@ -99,18 +158,20 @@ impl KeyStore {
         Ok(entry(&self.read()?.keys, id).cloned())
     }
 
-    /// Stores (or replaces) `provider`'s key in the key file.
-    pub fn set(&self, provider: &str, value: &str) -> Result<()> {
-        let id: ProviderId = provider.parse()?;
+    /// Stores (or replaces) `name`'s credential in the key file.
+    ///
+    /// `name` is a provider id or one of [`NAMED_CREDENTIALS`]; a keyless provider is refused.
+    pub fn set(&self, name: &str, value: &str) -> Result<()> {
+        if let Some(credential) = Self::named(name) {
+            return self.set_named(credential, value);
+        }
+        let id: ProviderId = name.parse()?;
         if id.metadata().key_env.is_none() {
             return Err(Error::Usage(format!(
                 "provider `{id}` does not use an API key"
             )));
         }
-        let value = value.trim();
-        if value.is_empty() {
-            return Err(Error::Usage("the API key is empty".to_owned()));
-        }
+        let value = checked_value(value)?;
 
         let mut file = self.read()?;
         // Replace any spelling of the same provider so the file cannot hold two keys for one id.
@@ -120,9 +181,12 @@ impl KeyStore {
         self.write(&file)
     }
 
-    /// Removes `provider`'s stored key, reporting whether the file changed.
-    pub fn remove(&self, provider: &str) -> Result<bool> {
-        let id: ProviderId = provider.parse()?;
+    /// Removes `name`'s stored credential, reporting whether the file changed.
+    pub fn remove(&self, name: &str) -> Result<bool> {
+        if let Some(credential) = Self::named(name) {
+            return self.remove_named(credential);
+        }
+        let id: ProviderId = name.parse()?;
         let mut file = self.read()?;
         let before = file.keys.len();
         file.keys
@@ -134,7 +198,32 @@ impl KeyStore {
         Ok(true)
     }
 
-    /// Every configured key, masked, in registry order with hand-written entries last.
+    /// The named-credential arm of [`KeyStore::set`].
+    fn set_named(&self, credential: &NamedCredential, value: &str) -> Result<()> {
+        let value = checked_value(value)?;
+        let mut file = self.read()?;
+        // Any casing of the same credential is one entry, exactly as provider spellings are.
+        file.keys
+            .retain(|name, _| !name.trim().eq_ignore_ascii_case(credential.name));
+        file.keys
+            .insert(credential.name.to_owned(), value.to_owned());
+        self.write(&file)
+    }
+
+    /// The named-credential arm of [`KeyStore::remove`].
+    fn remove_named(&self, credential: &NamedCredential) -> Result<bool> {
+        let mut file = self.read()?;
+        let before = file.keys.len();
+        file.keys
+            .retain(|name, _| !name.trim().eq_ignore_ascii_case(credential.name));
+        if file.keys.len() == before {
+            return Ok(false);
+        }
+        self.write(&file)?;
+        Ok(true)
+    }
+
+    /// Every configured credential, masked, in registry order with hand-written entries last.
     pub fn list(&self) -> Result<Vec<KeySummary>> {
         let file = self.read()?;
         let mut summaries = Vec::new();
@@ -157,8 +246,25 @@ impl KeyStore {
                 });
             }
         }
+        for credential in NAMED_CREDENTIALS {
+            if let Some(value) = super::env_value(credential.env) {
+                summaries.push(KeySummary {
+                    provider: credential.name.to_owned(),
+                    masked: Self::mask(&value),
+                    source: KeySource::Env,
+                });
+                continue;
+            }
+            if let Some(value) = named_entry(&file.keys, credential) {
+                summaries.push(KeySummary {
+                    provider: credential.name.to_owned(),
+                    masked: Self::mask(value),
+                    source: KeySource::File,
+                });
+            }
+        }
         for (name, value) in &file.keys {
-            if name.parse::<ProviderId>().is_err() {
+            if name.parse::<ProviderId>().is_err() && Self::named(name).is_none() {
                 summaries.push(KeySummary {
                     provider: name.clone(),
                     masked: Self::mask(value),
@@ -224,6 +330,25 @@ fn entry(keys: &BTreeMap<String, String>, id: ProviderId) -> Option<&String> {
     keys.iter()
         .find(|(name, _)| name.parse::<ProviderId>().ok() == Some(id))
         .map(|(_, value)| value)
+}
+
+/// The entry for a named credential, accepting any casing the user may have written.
+fn named_entry<'a>(
+    keys: &'a BTreeMap<String, String>,
+    credential: &NamedCredential,
+) -> Option<&'a String> {
+    keys.iter()
+        .find(|(name, _)| name.trim().eq_ignore_ascii_case(credential.name))
+        .map(|(_, value)| value)
+}
+
+/// Rejects an empty value, so a stray newline cannot store an unusable credential.
+fn checked_value(value: &str) -> Result<&str> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(Error::Usage("the API key is empty".to_owned()));
+    }
+    Ok(value)
 }
 
 /// Refuses a key file that group or other can read.

@@ -33,7 +33,7 @@ bundled credential: GeoNames is BYOK.
   "latitude":35.1874,"longitude":113.8025,"timezone":"Asia/Shanghai",…}` — city-level, keyless, and
   reachable from a mainland-China network without a proxy, which is exactly the gap the two shipped
   services leave.
-- ⬜ `src/geo/geonames.rs`: `GET https://secure.geonames.org/searchJSON` with
+- ✅ `src/geo/geonames.rs`: `GET https://secure.geonames.org/searchJSON` with
   `q`, `fuzzy=0.8`, `maxRows=<limit>`, `style=FULL`, `username=<key>`; BYOK through
   `CIRROCAST_GEONAMES_USER` → `keys.toml [keys].geonames` (free registration, no card); response
   `geonames[].{name, lat, lng, countryCode, countryName, adminName1, population, geonameId,
@@ -46,7 +46,7 @@ bundled credential: GeoNames is BYOK.
   otherwise call it an invalid key. Cached under `geocode/<sha256>.json` (the query, limit and
   source in the hash) with `cache.geocode_ttl_secs`; credit
   `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` through `geo::attribution_line`.
-- ⬜ `src/geo/chain.rs`: `pub enum GeoSource { OpenMeteo, GeoNames, Nominatim }` and a search chain
+- ✅ `src/geo/chain.rs`: `pub enum GeoSource { OpenMeteo, GeoNames, Nominatim }` and a search chain
   mirroring the provider chain: explicit selection `[geo] search = "auto" | "open-meteo" | "geonames"
   | "nominatim"` (+ `CIRROCAST_GEO_SEARCH`), `auto` = Open-Meteo, then GeoNames when a username is
   configured, then Nominatim `/search` as the last resort (still 1 req/s and cached, still not
@@ -54,7 +54,7 @@ bundled credential: GeoNames is BYOK.
   GeoNames credential is not an error under `auto`. `~query` remains Nominatim-only, `:query` keeps
   its exact-name filter, and the winner's credit is the source's own (the existing three
   attribution strings, plus GeoNames and ODbL for Nominatim search).
-- ⬜ `src/geo/merge.rs`: `pub fn merge(sources: &[(GeoSource, Vec<Location>)]) -> Vec<Location>` —
+- ✅ `src/geo/merge.rs`: `pub fn merge(sources: &[(GeoSource, Vec<Location>)]) -> Vec<Location>` —
   order-preserving de-duplication: candidates with the same folded name, the same country code and
   within 5 km of each other collapse to one (the earlier source's record wins, its population and
   zone retained), invalid country codes (not two ASCII letters) are dropped, and the merged list is
@@ -246,3 +246,20 @@ for the same place and keeps step 04's order.
   `[[annotations]]` entry and `LICENSES/CC0-1.0.txt`) or a separate builder. The 1:50m extract must
   stay under the 1 MiB compressed fallback budget named in the step, and the four `ISO_A2 = -99`
   shapes (Taiwan, Northern Cyprus, Kosovo, Somaliland) map through the explicit name table.
+
+- 2026-10-06 — the second-generation search path landed as one change: `src/geo/geonames.rs` (the
+  BYOK `searchJSON` geocoder), `src/geo/chain.rs` (the `[geo] search` chain) and `src/geo/merge.rs`
+  (the cross-source de-duplication), wired into `name_location`. `[geo] search` +
+  `CIRROCAST_GEO_SEARCH` are in `GeoConfig`, `allowed_keys`, `KEY_TABLE`, `validate_geo` and the
+  contract block. The GeoNames account name is a *named credential* in `keys.toml`
+  (`KeyStore::canonical`/`get`/`set`/`remove`/`list` learned non-provider names, so `key set
+  geonames` writes it from stdin and `key list` shows it masked) with `CIRROCAST_GEONAMES_USER` as
+  the environment tier. Measured live (2026-10-06): with no account, `auto` answers from Open-Meteo
+  and narrates `geonames: skipped (no account name; …)` and `nominatim: not asked (an earlier source
+  answered)` under `-v`; `CIRROCAST_GEO_SEARCH=geonames` without an account exits 6 with
+  `missing API key for geonames: run \`cirrocast key set geonames\` or set CIRROCAST_GEONAMES_USER`.
+  Two environment facts recorded for later sessions: `api.geonames.org` fails TLS certificate
+  validation (`no alternative certificate subject name matches target hostname`), which is why the
+  endpoint is `secure.geonames.org`; and `nominatim.openstreetmap.org` is unreachable from this
+  network (connect timeout, measured 2026-10-06), so the Nominatim path is verified through its
+  recorded fixture (`tests/geo_nominatim.rs`, `tests/geo_merge.rs`) rather than live.

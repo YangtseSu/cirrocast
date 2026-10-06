@@ -15,8 +15,11 @@
 //! constructors receive the shared HTTP client and cache of steps 05/06. It performs no I/O of its
 //! own, which is what makes the parse table and the ranking rules testable without a network.
 
+pub mod chain;
 pub mod fold;
+pub mod geonames;
 pub mod ip;
+pub mod merge;
 pub mod nominatim;
 #[cfg(feature = "offline-geo")]
 pub mod offline;
@@ -477,7 +480,7 @@ pub fn attribution_line(location: &Location) -> Option<&'static str> {
         LocationSource::Geocoder => Some(
             "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
         ),
-        LocationSource::Offline => {
+        LocationSource::Offline | LocationSource::Geonames => {
             Some("Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/")
         }
         LocationSource::Osm => Some("Location data © OpenStreetMap contributors (ODbL)"),
@@ -504,6 +507,31 @@ pub fn place(location: &Location) -> String {
         parts.push(location.country.clone());
     }
     parts.join(", ")
+}
+
+/// Whether a country code is the two ASCII letters every consumer assumes.
+///
+/// `auto` provider selection and alert coverage read `country_code`, so a value that is not an ISO
+/// 3166-1 alpha-2 code (`GeoNames` reports `-99` for the shapes without one, and a three-letter
+/// code is an IOC or `GeoNames`-internal spelling) could only mislead. Shared by the `GeoNames`
+/// decoder and the candidate merge (step 25).
+pub(crate) fn is_country_code(code: &str) -> bool {
+    code.len() == 2 && code.bytes().all(|byte| byte.is_ascii_alphabetic())
+}
+
+/// The great-circle distance between two coordinates, in kilometres (haversine).
+///
+/// The location layer keeps its own copy instead of reaching into the provider side
+/// (`metar::station_table::distance_km`, `open_meteo_marine`'s private twin): `geo` never depends
+/// on `provider`. Used by the candidate merge's "the same place within 5 km" rule (step 25).
+pub(crate) fn distance_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    const EARTH_RADIUS_KM: f64 = 6_371.008_8;
+    let (lat1, lat2) = (lat1.to_radians(), lat2.to_radians());
+    let delta_lat = lat2 - lat1;
+    let delta_lon = (lon2 - lon1).to_radians();
+    let a =
+        (delta_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (delta_lon / 2.0).sin().powi(2);
+    2.0 * EARTH_RADIUS_KM * a.sqrt().asin()
 }
 
 /// The error a name lookup the bundled table could not answer reports (step 18).
@@ -895,5 +923,29 @@ mod tests {
         assert_eq!(super::edit_distance("hom", "home"), 1);
         assert_eq!(super::edit_distance("home", "work"), 3);
         assert_eq!(super::edit_distance("", "abc"), 3);
+    }
+
+    /// The one country-code rule the `GeoNames` decoder and the merge share.
+    #[test]
+    fn a_country_code_is_two_ascii_letters() {
+        for good in ["CN", "us", "XK"] {
+            assert!(super::is_country_code(good), "{good}");
+        }
+        for bad in ["", "-99", "C", "CHN", "中国", "C1"] {
+            assert!(!super::is_country_code(bad), "{bad}");
+        }
+    }
+
+    /// The haversine the merge's 5 km rule uses: one degree of latitude is ~111 km.
+    #[test]
+    fn distance_km_matches_the_degree_scale() {
+        let one_degree = super::distance_km(0.0, 0.0, 1.0, 0.0);
+        assert!((one_degree - 111.2).abs() < 0.5, "{one_degree}");
+        assert_eq!(super::distance_km(39.9, 116.4, 39.9, 116.4), 0.0);
+        // Symmetric, and the same at the poles as at the equator for a pure longitude step.
+        assert!(
+            (super::distance_km(1.0, 2.0, 3.0, 4.0) - super::distance_km(3.0, 4.0, 1.0, 2.0)).abs()
+                < 1e-9
+        );
     }
 }

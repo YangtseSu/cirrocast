@@ -635,6 +635,7 @@
             "geocoder",
             "offline",
             "osm",
+            "geonames",
             "coordinates",
             "ip",
             "station"

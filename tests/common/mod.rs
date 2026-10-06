@@ -27,7 +27,7 @@ use cirrocast::provider::{Env, FetchRequest, HourlyResolution, Provider};
 
 /// Every `CIRROCAST_*` override variable, cleared for the child process so that the developer's
 /// shell cannot influence a test.
-const OVERRIDE_VARS: [&str; 10] = [
+const OVERRIDE_VARS: [&str; 12] = [
     "CIRROCAST_PROVIDER",
     "CIRROCAST_FORMAT",
     "CIRROCAST_UNITS",
@@ -38,6 +38,8 @@ const OVERRIDE_VARS: [&str; 10] = [
     "CIRROCAST_TIMEOUT",
     "CIRROCAST_NOMINATIM_URL",
     "CIRROCAST_IP_SERVICE",
+    "CIRROCAST_GEO_SEARCH",
+    "CIRROCAST_GEONAMES_USER",
 ];
 
 /// A throwaway XDG environment: config, cache and data all point into a temporary directory, the

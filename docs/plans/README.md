@@ -424,6 +424,7 @@ schema_version = 2
 [locations] home = "@39.9042,116.4074"   # @NAME aliases; values are location arguments, chains allowed (step 19)
 [templates] compact = "%c%t"             # named one-line templates for --format/--template @name (step 19)
 [geo]       strategy = "auto"       # bundled table first, network fallback (step 18)
+            search = "auto"         # name-search sources: auto (open-meteo, geonames when an account name is set, then nominatim) | open-meteo | geonames | nominatim (step 25)
             data = "auto"           # auto | bundled | user — which city table answers (step 18b)
             update = "off"          # off | check — a freshness note only, never a fetch (step 18b)
             update_interval_days = 90   # the `check` note's threshold (step 18b)
@@ -442,16 +443,18 @@ schema_version = 2
 [providers.qweather] host = ""
 ```
 
-* The `[geo] search`/`[geo] reverse` keys and the `[normals]` table are **not** in this block yet:
-  they arrive with steps 25 and 26, and this build's `check_known_keys` rejects them (a file copied
-  from an earlier draft of the block would fail `config validate`).
+* The `[geo] reverse` key and the `[normals]` table are **not** in this block yet: they arrive with
+  steps 25 and 26, and this build's `check_known_keys` rejects them (a file copied from an earlier
+  draft of the block would fail `config validate`).
 
 * These keys are addressed as dotted paths (`cirrocast config get defaults.days`). The ones that
   also exist as command line flags carry a `CIRROCAST_*` override — `PROVIDER`, `FORMAT`, `UNITS`,
   `DAYS`, `LANG`, `LOCATION`, `TIMEOUT`, `LOCATION_PICK` (`location.pick`), `NOMINATIM_URL`
-  (`network.nominatim_url`) and `IP_SERVICE` (the `--ip` service order) — and `config get` prints
-  the environment value when set. (`CIRROCAST_IP_SERVICE` has no config key: it selects the IP
-  services directly.)
+  (`network.nominatim_url`), `GEO_SEARCH` (`geo.search`) and `IP_SERVICE` (the `--ip` service order)
+  — and `config get` prints the environment value when set. (`CIRROCAST_IP_SERVICE` has no config
+  key: it selects the IP services directly. `CIRROCAST_GEONAMES_USER` is the GeoNames account name
+  — a *named credential* in `keys.toml`, stored by `cirrocast key set geonames`, not a config key,
+  step 25.)
 * API keys are **never** written to `config.toml`. Precedence (first hit wins):
   `CIRROCAST_<PROVIDER>_KEY` env var → `keys.toml` in the config dir with mode `0600`
   (`cirrocast key set/rm/list`). There is no third tier: OS keyring storage is explicitly out of
@@ -554,7 +557,9 @@ cirrocast completion <shell>    cirrocast man
 ```
 
 Location argument syntax: bare `Beijing` = fuzzy search (the bundled city table first under
-`[geo] strategy = "auto"`, the network geocoder on a miss); `:Beijing` = exact name match (folded,
+`[geo] strategy = "auto"`, the network sources `[geo] search` selects on a miss — Open-Meteo, then
+GeoNames when an account name is configured, then Nominatim as the last resort, merged and
+de-duplicated, step 25); `:Beijing` = exact name match (folded,
 so `:Sao Paulo` matches `São Paulo`); `~Tsinghua` = OpenStreetMap/Nominatim; `@39.9,116.4` =
 coordinates when the text after `@` is exactly `lat,lon` with both sides in range, otherwise
 `@name` = a `[locations]` alias (chains expand with a visited set and depth cap 8; a cycle or an

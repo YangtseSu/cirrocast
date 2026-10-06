@@ -55,6 +55,9 @@ pub enum LocationSource {
     Offline,
     /// Resolved through OpenStreetMap/Nominatim (`~query`).
     Osm,
+    /// Resolved through the `GeoNames` `searchJSON` endpoint under the user's own account
+    /// (step 25). Its credit is `GeoNames`' own, not Open-Meteo's redistribution of the data.
+    Geonames,
     /// Given by the user as `@lat,lon`.
     Coordinates,
     /// Derived from the public IP address.

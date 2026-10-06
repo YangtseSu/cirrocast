@@ -1,0 +1,120 @@
+{
+    "totalResultsCount": 6,
+    "geonames": [
+        {
+            "adminCode1": "22",
+            "lng": "116.39723",
+            "geonameId": 1816670,
+            "toponymName": "Beijing",
+            "countryId": "1814991",
+            "fcl": "P",
+            "population": 18960744,
+            "countryCode": "CN",
+            "name": "Beijing",
+            "fclName": "city, village,...",
+            "adminCodes1": {
+                "ISO3166_2": "BJ"
+            },
+            "countryName": "China",
+            "fcodeName": "capital of a political entity",
+            "adminName1": "Beijing",
+            "lat": "39.9075",
+            "fcode": "PPLC",
+            "timezone": {
+                "gmtOffset": 8.0,
+                "dstOffset": 8.0,
+                "timeZoneId": "Asia/Shanghai"
+            }
+        },
+        {
+            "adminCode1": "24",
+            "lng": "110.73278",
+            "geonameId": 1816671,
+            "toponymName": "Beijing",
+            "countryId": "1814991",
+            "fcl": "P",
+            "population": 0,
+            "countryCode": "CN",
+            "name": "Beijing",
+            "fclName": "city, village,...",
+            "adminCodes1": {
+                "ISO3166_2": "SX"
+            },
+            "countryName": "China",
+            "fcodeName": "populated place",
+            "adminName1": "Shanxi",
+            "lat": "35.20917",
+            "fcode": "PPL",
+            "timezone": {
+                "gmtOffset": 8.0,
+                "dstOffset": 8.0,
+                "timeZoneId": "Asia/Shanghai"
+            }
+        },
+        {
+            "adminCode1": "30",
+            "lng": "113.0",
+            "geonameId": 1816793,
+            "toponymName": "Beixiang",
+            "countryId": "1814991",
+            "fcl": "P",
+            "population": 0,
+            "countryCode": "CN",
+            "name": "Beixiang",
+            "fclName": "city, village,...",
+            "adminCodes1": {
+                "ISO3166_2": "GD"
+            },
+            "countryName": "China",
+            "fcodeName": "populated place",
+            "adminName1": "Guangdong",
+            "lat": "24.9",
+            "fcode": "PPL",
+            "timezone": {
+                "gmtOffset": 8.0,
+                "dstOffset": 8.0,
+                "timeZoneId": "Asia/Shanghai"
+            }
+        },
+        {
+            "lng": "0",
+            "geonameId": 6295630,
+            "toponymName": "Null Island",
+            "countryCode": "CN",
+            "name": "Null Island",
+            "countryName": "China",
+            "lat": "0",
+            "timezone": {
+                "gmtOffset": 0.0,
+                "dstOffset": 0.0,
+                "timeZoneId": "UTC"
+            }
+        },
+        {
+            "lng": "2.0",
+            "geonameId": 6295631,
+            "toponymName": "Nowhere",
+            "name": "Nowhere",
+            "lat": "1.0",
+            "timezone": {
+                "gmtOffset": 0.0,
+                "dstOffset": 0.0,
+                "timeZoneId": "UTC"
+            }
+        },
+        {
+            "lng": "2.0",
+            "geonameId": 6295632,
+            "toponymName": "Disputed",
+            "countryCode": "-99",
+            "name": "Disputed",
+            "countryName": "Disputed",
+            "lat": "1.0",
+            "timezone": {
+                "gmtOffset": 0.0,
+                "dstOffset": 0.0,
+                "timeZoneId": "UTC"
+            }
+        }
+    ]
+}

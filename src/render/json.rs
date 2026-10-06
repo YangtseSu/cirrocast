@@ -234,8 +234,8 @@ struct LocationJson<'a> {
     timezone: String,
     /// Elevation above sea level in metres, when known.
     elevation_m: Option<f64>,
-    /// Which resolver produced the location: `geocoder`, `offline`, `osm`, `coordinates`, `ip` or
-    /// `station`.
+    /// Which resolver produced the location: `geocoder`, `offline`, `osm`, `geonames`,
+    /// `coordinates`, `ip` or `station`.
     source: &'static str,
     /// The METAR station identifier, `null` for every non-station location.
     station: Option<&'a str>,
@@ -269,6 +269,7 @@ const fn source_name(source: crate::model::LocationSource) -> &'static str {
         LocationSource::Geocoder => "geocoder",
         LocationSource::Offline => "offline",
         LocationSource::Osm => "osm",
+        LocationSource::Geonames => "geonames",
         LocationSource::Coordinates => "coordinates",
         LocationSource::Ip => "ip",
         LocationSource::Station => "station",

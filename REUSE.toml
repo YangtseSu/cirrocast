@@ -105,8 +105,12 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# Recorded Open-Meteo geocoding responses. The place data behind the service comes from GeoNames,
-# which is published under CC BY 4.0; the fixtures are trimmed to the hits the tests exercise.
+# Recorded Open-Meteo geocoding responses, plus the direct GeoNames endpoint's fixtures. The place
+# data behind both services comes from GeoNames, which is published under CC BY 4.0; the Open-Meteo
+# fixtures are trimmed to the hits the tests exercise, `geonames_search_beijing.json` is
+# hand-authored from the documented `searchJSON` `style=FULL` shape (the free `demo` account was
+# out of quota when step 25 was written, so no live body could be recorded) and
+# `geonames_quota.json` is a verbatim recording of the service's own refusal.
 [[annotations]]
 path = [
     "tests/fixtures/geo/open_meteo_geocode_beijing.json",
@@ -115,9 +119,11 @@ path = [
     "tests/fixtures/geo/open_meteo_geocode_bad_timezone.json",
     "tests/fixtures/geo/open_meteo_geocode_xinxiang_zh.json",
     "tests/fixtures/geo/open_meteo_geocode_vienna.json",
+    "tests/fixtures/geo/geonames_search_beijing.json",
+    "tests/fixtures/geo/geonames_quota.json",
 ]
 precedence = "override"
-SPDX-FileCopyrightText = "GeoNames (geocoding data served by Open-Meteo)"
+SPDX-FileCopyrightText = "GeoNames (geocoding data served by Open-Meteo, and the GeoNames search endpoint)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 # Recorded Open-Meteo forecast responses (weather model data, CC BY 4.0). They are kept verbatim
