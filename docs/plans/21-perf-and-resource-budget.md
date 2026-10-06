@@ -110,27 +110,28 @@ evidence — keeping the decision, recording why.
   budgets that are actually promised; hyperfine covers the CLI-level claim), `cargo-benchcmp`
   (unmaintained), wall-clock asserts inside `cargo test` (flaky and load-dependent).
 
-### Measured inputs from step 18 (2026-10-04)
+### Measured inputs from step 18 (2026-10-04, re-recorded 2026-10-06)
 
 The offline city database is the largest single asset the binary carries, so its numbers are recorded
 here as the budget's input rather than discovered later. Machine: the maintainer's CachyOS box,
 `x86_64`, release profile as shipped in `Cargo.toml` (`lto = "thin"`, `strip = true`), rustc stable.
-Re-recorded on 2026-10-04 after the snapshot was refreshed to the official 2026-10-04 dump (see
-step 18's progress log).
+Re-recorded on 2026-10-06 after the snapshot was refreshed to the official 2026-10-05 dump for the
+`1.3.0` release (see step 13's progress log); rows that name a step keep that step's measurement.
 
 | Measurement | Value |
 |---|---|
-| `src/geo/data/cities.bin.gz` | 878 055 B |
-| `src/geo/data/keys.bin.gz` | 2 558 155 B |
-| embedded total | 3 436 210 B ≈ **3.28 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-10-04 dump: 34 152 rows, 310 502 keys) |
+| `src/geo/data/cities.bin.gz` | 878 049 B |
+| `src/geo/data/keys.bin.gz` | 2 558 455 B |
+| embedded total | 3 436 504 B ≈ **3.28 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-10-05 dump: 34 153 rows, 310 536 keys) |
 | release binary before step 18 | 12 270 752 B |
 | release binary after step 18 | 15 928 616 B (+3 657 864 B ≈ +3.49 MiB: the data plus ≈220 KB of decoder/`unicode-normalization` code) |
 | release binary after step 18b | 16 047 296 B (+118 KB over step 18 for the shared table codec, the update command and its ZIP reader; the members are embedded once — a `const` holding `include_bytes!` was duplicated across codegen units and cost 3.4 MB until it became a `static`) |
-| `--version`, median of 5 | **1.6 ms** (budget: 20 ms) |
-| `--help`, median of 3 | 2.0 ms |
+| release binary at `v1.3.0` | 16 191 744 B (the 2026-10-05 refresh plus steps 19–28: the template engine, the extra backends, alerts, normals and the panel renderers on top of the 18b build) |
+| `--version`, median of 5 | **1.5 ms** (budget: 20 ms) |
+| `--help`, median of 3 | 1.8 ms |
 | `location search --offline Beijing`, median of 5 | **52 ms** (index + row decode, ranking; the step-18 contract is "well under a second") |
-| `location search --offline --all Springfield`, median of 5 | 51 ms |
-| RSS, `--version` / an offline search | ≈14 MB / ≈25 MB (`ru_maxrss` of the child, coarse; the step-18 decode holds the decompressed members transiently) |
+| `location search --offline --all Springfield`, median of 5 | 60 ms |
+| RSS, `--version` / an offline search | ≈12 MB / ≈25 MB (`ru_maxrss` of the child, coarse; the step-18 decode holds the decompressed members transiently) |
 
 Two consequences for this step: the 5 MB default-binary budget is already exceeded by the pre-step-18
 build (12.3 MB) and is not reachable by turning the table off (that saves 3.6 MB of 15.9 MB), so the

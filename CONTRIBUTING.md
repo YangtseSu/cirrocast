@@ -30,7 +30,7 @@ channel = "stable"
 components = ["rustfmt", "clippy"]
 ```
 
-`rust-version` in `Cargo.toml` names the stable the crate is built with (`1.99` at `v1.2.x`) and is
+`rust-version` in `Cargo.toml` names the stable the crate is built with (`1.99` at `v1.3.x`) and is
 bumped together with the toolchain; there is no separate MSRV job. You also need `git`, and for the
 gates that no compiler enforces:
 

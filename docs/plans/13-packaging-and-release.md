@@ -25,8 +25,9 @@ and the licence; and documented install paths for source, `cargo install` and AU
 ## Deliverables
 
 - ✅ Versioning policy in `README.md#versioning`: `Cargo.toml` stays `0.x` while phases A–C land, `1.0.0` is
-  cut in step 14, phase D releases are `1.1.0`–`1.2.0` (steps 15–20), phase E is `1.3.0` (steps 21–22) and
-  phases F and G are `1.4.0` (steps 23–28), with the backlog (B01–B02) unscheduled, matching
+  cut in step 14, phase D releases are `1.1.0`–`1.2.0` (steps 15–20) and phases E–G landed together as
+  `1.3.0` (steps 21–28) — no tag was cut at the phase E boundary, so the planned `1.4.0` was folded into
+  that release — with the backlog (B01–B02) unscheduled, matching
   `docs/plans/README.md`; the crate version, the JSON schema version and the config schema version move
   independently.
 - ✅ `docs/schema.md` (new): the JSON output schema v1 (every field, its type, its canonical unit, optionality,
@@ -338,3 +339,14 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   action's post step `Token revoked successfully`. The next tag therefore publishes without a stored secret; the
   only way it can fail is a change to the repository name, the workflow file name or the `crates-io` environment
   without updating the crate's trusted-publisher record.
+- 2026-10-06 — `1.3.0` cut at the branch head: phases E–G shipped in one release because no tag was cut
+  at the phase E boundary, so the planned `1.4.0` is folded in here and the versioning-policy bullet
+  above was corrected in the same commit. The bundled `GeoNames` snapshot was refreshed first: the
+  2026-10-04 dump was one row and 34 keys stale (34 153 rows / 310 536 keys now, `cities.bin.gz`
+  878 049 B, `keys.bin.gz` 2 558 455 B), the Natural Earth country layer was re-checked unchanged
+  against its tagged release, and step 21's measured inputs were re-recorded. The commit to be tagged
+  was gated with `cargo fmt --check`, clippy (`--workspace --all-targets -D warnings`), the full and
+  the reduced-build test suites under `CIRROCAST_FORBID_NETWORK=1`, `reuse lint`, `cargo deny check`,
+  `cargo audit`, the render-import script, the `LICENSE` copy check and `man --warn`; `man/cirrocast.1`
+  and the version strings in the README, `CONTRIBUTING.md`, `docs/getting-started.md`,
+  `docs/troubleshooting.md` and the issue form moved to `1.3.0`.

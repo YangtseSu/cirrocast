@@ -4,7 +4,7 @@
 #   cargo run -p geo-table -- <path to cities15000.txt> src/geo/data
 dump = cities15000
 source = https://download.geonames.org/export/dump/cities15000.zip
-dump-date = 2026-10-04
-input-sha256 = d4822b90563e8a26bbc179185a1859688d3de04a3fc63ca470a739ce7707531e
-rows = 34152
-keys = 310502
+dump-date = 2026-10-05
+input-sha256 = e853d716cfff151a22cc0e55f7240d062416a33352c2d443ba29b2d88ba613e6
+rows = 34153
+keys = 310536

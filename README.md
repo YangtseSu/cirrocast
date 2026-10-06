@@ -48,23 +48,24 @@ stderr, so stdout stays pipeable — `:Beijing` demands an exact match and `--pi
 
 Every scheduled step of the build plan is implemented: `v1.0.0` (2026-10-02) froze the v1 surface;
 `v1.1.0` and `v1.2.0` completed phase D (alerts, air quality and moon/astro, then the offline city
-database, multi-location output and the picker); phases E–G added the enforced performance budget,
-the `status` probe, the additional and keyless national backends, the second-generation location
-sources, climate normals and QWeather's Ed25519 JWT, and step 28 added this documentation set. The
-build record is [`docs/plans/`](docs/plans/README.md), the release-by-release history is
-[`CHANGELOG.md`](CHANGELOG.md), and what is left unscheduled is the backlog there (B01/B02).
+database, multi-location output and the picker); `v1.3.0` (2026-10-06) landed phases E–G together —
+the enforced performance budget and the `status` probe, the additional and keyless national
+backends, the second-generation location sources, climate normals, QWeather's Ed25519 JWT and this
+documentation set. The build record is [`docs/plans/`](docs/plans/README.md), the
+release-by-release history is [`CHANGELOG.md`](CHANGELOG.md), and what is left unscheduled is the
+backlog there (B01/B02).
 
 ## Install
 
 ```bash
-cargo install --locked cirrocast            # from crates.io (1.2.0 is published; see Publishing)
+cargo install --locked cirrocast            # from crates.io (1.3.0 is published; see Publishing)
 cargo install --locked --path .             # from this checkout
 
 paru -S cirrocast                           # Arch: the AUR package (yay, or a manual git clone +
                                             # makepkg); https://aur.archlinux.org/packages/cirrocast
 
 # Prebuilt archives for Linux (x86_64, aarch64) and macOS (Apple silicon), one per release:
-version=v1.2.0 target=x86_64-unknown-linux-gnu
+version=v1.3.0 target=x86_64-unknown-linux-gnu
 curl -LO "https://github.com/YangtseSu/cirrocast/releases/download/$version/cirrocast-$version-$target.tar.gz"
 sha256sum -c "cirrocast-$version-$target.tar.gz.sha256"
 tar xzf "cirrocast-$version-$target.tar.gz"
@@ -306,7 +307,7 @@ Four version numbers move independently; only the first three are visible to a c
 
 | Number | Where it appears | Now | Changes when |
 |---|---|---|---|
-| crate version | `Cargo.toml`, `--version`, release tags | `1.2.0` | any release, following SemVer |
+| crate version | `Cargo.toml`, `--version`, release tags | `1.3.0` | any release, following SemVer |
 | JSON schema version | `"schema_version"` in every `-f json` document | `2` | a key is removed, renamed, retyped, changes unit, or changes between always-present and nullable |
 | config schema version | `schema_version` in `config.toml` | `2` | an existing key's meaning, type or validity changes (a new key with a default is additive and does not) |
 | cache envelope version | `cache_schema_version` in cache files | `1` | internal only: a mismatch is a cache miss, never an error |
@@ -321,12 +322,12 @@ The release schedule, matching [`docs/plans/README.md`](docs/plans/README.md):
 * **`1.2.0`** (2026-10-05) completes phase D — the offline city database and user-installed table
   updates (steps 18/18b), multi-location output with the shared template engine (19) and the
   interactive location picker (20), with the configuration document at `schema_version` 2;
-* **`1.3.0`** for phase E (steps 21–22: performance and resource budgets, the `status` probe and the
-  ecosystem recipes);
-* **`1.4.0`** for phases F and G (steps 23–28: additional backends, coverage-aware `auto`,
-  second-generation location sources, climate normals, QWeather JWT, the documentation set). The
-  backlog (B01–B02: the wttr-compatible local service, the multi-platform packaging matrix) is not
-  scheduled.
+* **`1.3.0`** (2026-10-06) lands phases E–G together — performance and resource budgets with the
+  `status` probe and the ecosystem recipes (steps 21–22), additional backends with coverage-aware
+  `auto`, second-generation location sources, climate normals and QWeather JWT (23–27), and the
+  documentation set with the frozen JSON schemas (28). The release was cut after step 28 instead of
+  at the phase E boundary, so the planned `1.4.0` is folded into it. The backlog (B01–B02: the
+  wttr-compatible local service, the multi-platform packaging matrix) is not scheduled.
 
 Within a major version, adding a key to the JSON document or adding a config key with a built-in
 default is a **minor** change: a consumer keeps working if it ignores what it does not know.
@@ -349,7 +350,7 @@ covers it, and further ecosystem packages are deferred to the backlog (B02). Eve
 next to the `.sha256` the workflow computed:
 
 ```bash
-sha256sum -c cirrocast-v1.2.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c
+sha256sum -c cirrocast-v1.3.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c
 ```
 
 `cargo package --list --locked` and `cargo publish --dry-run --locked` run on every pull request
@@ -395,7 +396,7 @@ git commit -am "upgpkg: cirrocast X.Y.Z-1" && git push
 ```bash
 # what a bump is verified with, on a clean machine or in a chroot
 pkgctl build                         # devtools clean chroot; makechrootpkg -c does the same
-sudo pacman -U cirrocast-1.2.0-1-x86_64.pkg.tar.zst
+sudo pacman -U cirrocast-1.3.0-1-x86_64.pkg.tar.zst
 cirrocast --version && man -w cirrocast
 pacman -Ql cirrocast | grep -E 'completions/cirrocast$|site-functions/_cirrocast$|vendor_completions\.d/cirrocast\.fish$' | wc -l   # 3
 ```
@@ -463,7 +464,7 @@ add-a-provider and add-a-language recipes, the test policy and the release point
 | `gates` | `scripts/check-render-imports.py` and the `LICENSE` copy check |
 | `reuse` / `deny` / `audit` | `reuse lint`, `cargo deny check`, `cargo audit` |
 
-The toolchain is the stable named by `rust-version` (1.99 at `v1.2.x`); the project tracks stable
+The toolchain is the stable named by `rust-version` (1.99 at `v1.3.x`); the project tracks stable
 and holds no floor below it. No test may open a network connection: `CIRROCAST_FORBID_NETWORK=1`
 makes the HTTP layer refuse a non-loopback request before DNS, and CI exports it for the whole
 suite; the live smoke tests are `#[ignore]`d. The performance budget lives in the dispatch-only

@@ -25,6 +25,20 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.3.0] - 2026-10-06
+
+Phases E–G landed together — the enforced performance and resource budget and the `status` probe
+with the ecosystem recipes and the frozen output contracts (steps 21–22), the additional backends
+with the coverage-aware `auto` chain, the second-generation location sources, climate normals and
+QWeather's Ed25519 JWT (23–27), and the documentation set with the frozen JSON Schemas (28). No
+release was cut at the phase E boundary, so the planned `1.4.0` is folded into this one. The v1 CLI
+contract is unchanged, and the JSON and configuration documents stay at `schema_version` 2. The
+bundled `GeoNames` snapshot is refreshed to the official 2026-10-05 `cities15000` dump (the first
+refresh since 1.2.0), and the Natural Earth country layer is unchanged against its tagged release
+(both re-checked 2026-10-06).
+
 ### Added
 
 * **QWeather JWT authentication (step 27).** The second authentication mode the vendor recommends is
@@ -537,7 +551,8 @@ landed. `1.0.0` freezes it.
 * Exit codes `0`–`6` documented in `--help` and the README, with `error: …` on stderr and the
   cause chain under `-v`.
 
-[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.3.0
 [1.2.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.2.0
 [1.1.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.1.0
 [1.0.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.0.0
