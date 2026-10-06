@@ -1061,6 +1061,17 @@ data must not be bulk-cached or indexed — this backend does not call GeoAPI.
 a bad key is `401` (`#unauthorized`), a bad parameter or location `400`
 (`#invalid-parameter`). `403` covers no-credit, overdue, invalid host and permission refusals.
 
+**The v1 host compresses every response.** `Content-Encoding: gzip` on both endpoints, probed
+2026-10-06 over HTTP/1.1 and HTTP/2 and with `Accept-Encoding: identity` sent explicitly — the
+header is ignored, so a client must decode gzip or misread every body (a stale cache hides it until
+the entry expires). `src/http.rs` decodes after its capped read, under the same size ceiling.
+
+**The Weather Alert service is a separate subscription.** On the account host used 2026-10-06,
+`/weatheralert/v7/alert/now` answers `404` with an **empty** body (no RFC 7807 envelope) while the
+forecast endpoints work, and the retired `/v7/warning/now` answers `403 Deprecated` with the
+documented envelope. The alert source reports that 404 as a missing-subscription note naming
+`[alerts] sources` rather than as a bare status; the forecast is unaffected.
+
 **Implemented 2026-10-01** (`src/provider/qweather.rs`, `max_days: 10`). Two calls per fetch
 (current + hourly), each cached under `weather/qweather-{current,hourly}-…`; every measure's unit is
 checked against the canonical one (`°C`, `m/s`, `mm`, `hPa`, `m`) and a mismatch is an upstream error

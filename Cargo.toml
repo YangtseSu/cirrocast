@@ -49,9 +49,11 @@ clap = { version = "4.6", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.6"
 clap_mangen = "0.3"
 etcetera = "0.11"
-# gzip for the embedded city table (step 18): the offline decoder uses the pure-Rust miniz_oxide
-# backend without a C toolchain. `ureq` runs without its own transparent gzip decoder (see the
-# `ureq` line below), so this is the crate's only inflate dependency.
+# gzip for the embedded city table (step 18) and for `gzip`-encoded HTTP bodies (`src/http.rs`
+# decodes after the capped read, so the wire cap cannot be bypassed by an expansion bomb). The
+# offline decoder uses the pure-Rust miniz_oxide backend without a C toolchain. `ureq` runs without
+# its own transparent gzip decoder (see the `ureq` line below), so this is the crate's only inflate
+# dependency.
 flate2 = "1"
 fluent-bundle = "0.16"
 percent-encoding = "2.3.2"

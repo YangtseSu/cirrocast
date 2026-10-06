@@ -65,8 +65,31 @@ pub fn fetch(loc: &Location, env: &Env<'_>, _language: &str) -> Result<Vec<Alert
         &request,
         &cache_key,
         "active alerts",
-    )?;
+    )
+    .map_err(not_served)?;
     decode(&body)
+}
+
+/// Names the product when the account host does not serve the warning endpoint at all.
+///
+/// `QWeather`'s Weather Alert service is a separate subscription (and the older `/v7/warning/now`
+/// path is retired, answering `403 Deprecated`): an account with weather data but no alert product
+/// answers `404` with an empty body here — observed 2026-10-06 — which would otherwise read as a
+/// bare status with nothing after it. Every other error keeps its taxonomy.
+fn not_served(error: Error) -> Error {
+    match error {
+        Error::Upstream {
+            status: Some(404), ..
+        } => Error::Upstream {
+            provider: PROVIDER.to_owned(),
+            status: Some(404),
+            message: "the account host does not serve `/weatheralert/v7/alert/now`; the Weather \
+                      Alert service is a separate subscription (check the console), or drop \
+                      `qweather` from `[alerts] sources`"
+                .to_owned(),
+        },
+        other => other,
+    }
 }
 
 /// The response envelope.
@@ -261,6 +284,7 @@ fn strip_html(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::decode;
+    use crate::error::Error;
     use crate::model::{AlertSource, Severity, Urgency};
 
     /// Hand-written fixtures for the two documented revisions plus a cancellation.
@@ -346,5 +370,28 @@ mod tests {
         assert!(error.to_string().contains("401"), "{error}");
         let error = decode(r#"{"code":"402"}"#).unwrap_err();
         assert!(error.to_string().contains("402"), "{error}");
+    }
+
+    #[test]
+    fn a_404_names_the_alert_product_instead_of_a_bare_status() {
+        // The account host used on 2026-10-06 answers the warning endpoint with `404` and an empty
+        // body when the Weather Alert service is not part of the subscription.
+        let error = super::not_served(Error::Upstream {
+            provider: "kn76xbc7j5.re.qweatherapi.com".to_owned(),
+            status: Some(404),
+            message: String::new(),
+        });
+        assert_eq!(error.exit_code(), 3, "the alert panel is best-effort");
+        let text = error.to_string();
+        assert!(text.contains("Weather Alert service"), "{text}");
+        assert!(text.contains("[alerts] sources"), "{text}");
+
+        // Every other error keeps its taxonomy.
+        let other = super::not_served(Error::Upstream {
+            provider: "host".to_owned(),
+            status: Some(500),
+            message: "boom".to_owned(),
+        });
+        assert!(other.to_string().contains("boom"), "{other}");
     }
 }

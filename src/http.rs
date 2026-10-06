@@ -25,15 +25,19 @@
 //! * [`UreqTransport`] is built without `ureq`'s transparent content decoders and with redirects
 //!   allowed only for a request that carries no header, so [`MAX_BODY_BYTES`] bounds what is read
 //!   off the socket, a canonical `3xx` (the FPAS server's `/alert/<id>` → `/cap/alerts/…`) still
-//!   resolves, and a credential header can never survive a hop to another authority; a
-//!   non-identity `Content-Encoding` on a `2xx` is refused as an [`Error::Upstream`] naming the
-//!   cap.
+//!   resolves, and a credential header can never survive a hop to another authority;
+//! * a `gzip` body is decoded here, *after* the capped read, under the same [`MAX_BODY_BYTES`]
+//!   ceiling for the decoded size — so the cap still bounds memory while an upstream that
+//!   compresses unconditionally (`QWeather`'s v1 host ignores `Accept-Encoding: identity`) stays
+//!   readable. Any other coding on a `2xx` is refused as an [`Error::Upstream`] naming the cap.
 
 use std::collections::VecDeque;
+use std::io::Read as _;
 use std::path::Path;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
+use flate2::read::MultiGzDecoder;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::de::DeserializeOwned;
 use ureq::Agent;
@@ -658,7 +662,7 @@ impl Transport for UreqTransport {
 pub struct StubReply {
     status: u16,
     headers: Vec<(String, String)>,
-    body: std::result::Result<String, TransportError>,
+    body: std::result::Result<Vec<u8>, TransportError>,
 }
 
 impl StubReply {
@@ -672,7 +676,17 @@ impl StubReply {
         Self {
             status,
             headers,
-            body: Ok(body.into()),
+            body: Ok(body.into().into_bytes()),
+        }
+    }
+
+    /// A reply whose body is bytes rather than text: a gzip member (so a test can exercise the
+    /// decoding) or an archive (the city-dump download, which no text reply can stand in for).
+    pub fn bytes(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> Self {
+        Self {
+            status,
+            headers,
+            body: Ok(body),
         }
     }
 
@@ -746,7 +760,7 @@ impl Transport for StubTransport {
             Ok(body) => Ok(HttpResponse {
                 status: reply.status,
                 headers: reply.headers,
-                body: body.into_bytes(),
+                body,
                 url,
             }),
             Err(error) => Err(error),
@@ -806,11 +820,15 @@ impl HttpClient {
                         self.clock.sleep(delay);
                         attempt += 1;
                     } else if is_accepted(response.status()) {
-                        if let Some(error) = undecodable_encoding(&response) {
-                            return Err(error);
-                        }
+                        let mut response = response;
+                        decode_body(&mut response)?;
                         return Ok(response);
                     } else {
+                        // An error body that declares a coding is decoded on a best-effort basis so
+                        // the upstream's own `detail` survives into the message; a failure here must
+                        // not replace the status error, which is the real failure.
+                        let mut response = response;
+                        let _ = decode_body(&mut response);
                         return Err(upstream_error(&response));
                     }
                 }
@@ -833,13 +851,13 @@ impl HttpClient {
     /// same as `send`'s last attempt.
     pub fn send_once(&self, request: &HttpRequest) -> Result<HttpResponse> {
         match self.transport.execute(request) {
-            Ok(response) => {
+            Ok(mut response) => {
                 if is_accepted(response.status()) {
-                    match undecodable_encoding(&response) {
-                        Some(error) => Err(error),
-                        None => Ok(response),
-                    }
+                    decode_body(&mut response)?;
+                    Ok(response)
                 } else {
+                    // Best effort, exactly as in `send`: the status is the real failure.
+                    let _ = decode_body(&mut response);
                     Err(upstream_error(&response))
                 }
             }
@@ -914,25 +932,62 @@ fn retry_delay(response: &HttpResponse, now: SystemTime, attempt: u32) -> Durati
     }
 }
 
-/// The error for a `2xx` response whose `Content-Encoding` this build cannot decode, or `None`
-/// when the coding is absent or `identity`.
+/// Decodes the response body when it declares a coding this build handles, replacing it in place.
 ///
-/// `ureq` is built without its transparent content decoders (see `Cargo.toml`), so a body that
-/// still declares a coding arrives as its still-compressed wire bytes. Refusing it names the cap
-/// that request was read under instead of handing the parsers something they would misread.
-fn undecodable_encoding(response: &HttpResponse) -> Option<Error> {
-    let encoding = response.header("content-encoding")?.trim();
+/// `gzip` (and its `x-gzip` alias) is decoded here rather than by `ureq`, because `ureq`'s own
+/// decoder sits *inside* the [`MAX_BODY_BYTES`] reader: it would let a small compressed body inflate
+/// without bound (the 2026-10-05 review, §3.9). Decoding after the capped read keeps the wire bound
+/// and adds a decoded-size bound of the same size ([`gunzip`]); the alternative — refusing every
+/// coding, which shipped first — stopped working when `QWeather`'s v1 host began compressing every
+/// response unconditionally on 2026-10-06, `Accept-Encoding: identity` included.
+///
+/// A coding this build does not handle is refused: handing the parsers still-compressed bytes would
+/// make them misread the payload, and the message names the cap the request was read under.
+fn decode_body(response: &mut HttpResponse) -> Result<()> {
+    let Some(encoding) = response.header("content-encoding") else {
+        return Ok(());
+    };
+    let encoding = encoding.trim();
     if encoding.is_empty() || encoding.eq_ignore_ascii_case("identity") {
-        return None;
+        return Ok(());
     }
-    Some(Error::Upstream {
+    if encoding.eq_ignore_ascii_case("gzip") || encoding.eq_ignore_ascii_case("x-gzip") {
+        let decoded = gunzip(&response.body).map_err(|message| Error::Upstream {
+            provider: host_of(&response.url),
+            status: Some(response.status()),
+            message,
+        })?;
+        response.body = decoded;
+        return Ok(());
+    }
+    Err(Error::Upstream {
         provider: host_of(&response.url),
         status: Some(response.status()),
         message: format!(
-            "the response is `{encoding}`-encoded and this build does not decode content codings; \
+            "the response is `{encoding}`-encoded and this build does not decode that coding; \
              the {MAX_BODY_BYTES}-byte body cap bounds the wire bytes, not a decoded expansion"
         ),
     })
+}
+
+/// The gzip member(s) in `body`, with the decoded size held under [`MAX_BODY_BYTES`].
+///
+/// The wire cap cannot bound the decoded size — a few kilobytes of zeros expand without limit — so
+/// the decoder is read through a `take` of the cap plus one byte: a body that would grow past the
+/// ceiling is refused instead of allocated.
+fn gunzip(body: &[u8]) -> std::result::Result<Vec<u8>, String> {
+    let mut decoder = MultiGzDecoder::new(body);
+    let mut inflated = Vec::new();
+    (&mut decoder)
+        .take(MAX_BODY_BYTES + 1)
+        .read_to_end(&mut inflated)
+        .map_err(|error| format!("the `gzip` body does not decode: {error}"))?;
+    if inflated.len() as u64 > MAX_BODY_BYTES {
+        return Err(format!(
+            "the decoded `gzip` body exceeds the {MAX_BODY_BYTES}-byte body cap"
+        ));
+    }
+    Ok(inflated)
 }
 
 /// The upstream's own words when it sends an error envelope, the body's first 200 characters
@@ -1030,7 +1085,7 @@ mod tests {
 
     use super::{
         HttpClient, HttpRequest, HttpResponse, Method, StubReply, StubTransport, TransportError,
-        error_message, follows_redirects, host_of, retry_delay, undecodable_encoding,
+        decode_body, error_message, follows_redirects, host_of, retry_delay,
     };
     use crate::cache::{Clock, FakeClock};
 
@@ -1318,23 +1373,51 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_non_identity_content_encoding_is_refused_as_an_upstream_error() {
-        // The stub transport is what lets this be tested without a server: it answers with a
-        // `Content-Encoding` header the real transport would have handed back undecoded.
-        let gzip = HttpResponse {
+    /// The gzip member of `text`, as an upstream that compresses would send it.
+    fn gzip_bytes(text: &str) -> Vec<u8> {
+        use std::io::Write as _;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder
+            .write_all(text.as_bytes())
+            .expect("the encoder writes");
+        encoder.finish().expect("the encoder finishes")
+    }
+
+    /// A `200` with a `Content-Encoding` header and `body`.
+    fn encoded(encoding: &str, body: Vec<u8>) -> HttpResponse {
+        HttpResponse {
             status: 200,
-            headers: vec![("Content-Encoding".to_owned(), "gzip".to_owned())],
-            body: b"not really gzip".to_vec(),
+            headers: vec![("Content-Encoding".to_owned(), encoding.to_owned())],
+            body,
             url: "https://example.invalid/data".to_owned(),
-        };
-        let error = undecodable_encoding(&gzip).expect("a gzip response is refused");
+        }
+    }
+
+    #[test]
+    fn a_gzip_body_is_decoded_in_place() {
+        // QWeather's v1 host compresses unconditionally (it ignores `Accept-Encoding: identity`),
+        // so a gzip member is a payload this client must read, not refuse.
+        let payload = r#"{"metadata":{"tag":"abc"},"temperature":{"value":11.78,"unit":"°C"}}"#;
+        let mut response = encoded("gzip", gzip_bytes(payload));
+        decode_body(&mut response).expect("a gzip body decodes");
+        assert_eq!(response.body(), payload);
+
+        // The `x-gzip` spelling is the same coding, and concatenated members decode as one body.
+        let mut response = encoded("x-gzip", gzip_bytes("one"));
+        decode_body(&mut response).expect("x-gzip decodes");
+        assert_eq!(response.body(), "one");
+    }
+
+    #[test]
+    fn a_coding_this_build_does_not_decode_is_refused() {
+        let mut response = encoded("br", b"not brotli".to_vec());
+        let error = decode_body(&mut response).expect_err("brotli is refused");
         match error {
             crate::error::Error::Upstream {
                 provider, message, ..
             } => {
                 assert_eq!(provider, "example.invalid");
-                assert!(message.contains("gzip"), "{message}");
+                assert!(message.contains("br"), "{message}");
                 assert!(
                     message.contains(&super::MAX_BODY_BYTES.to_string()),
                     "the message must name the cap: {message}"
@@ -1342,12 +1425,42 @@ mod tests {
             }
             other => panic!("expected an upstream error, got {other:?}"),
         }
-        // `identity` and an absent header are both fine.
-        let identity = HttpResponse {
-            headers: vec![("Content-Encoding".to_owned(), "identity".to_owned())],
-            ..gzip
+    }
+
+    #[test]
+    fn a_body_that_does_not_decode_is_refused_rather_than_passed_on() {
+        let mut response = encoded("gzip", b"not really gzip".to_vec());
+        let error = decode_body(&mut response).expect_err("a broken gzip body is refused");
+        assert!(error.to_string().contains("does not decode"), "{error}");
+    }
+
+    #[test]
+    fn a_gzip_body_that_would_expand_past_the_cap_is_refused() {
+        // Nine megabytes of zeros compress to a few kilobytes, so the wire cap cannot see this:
+        // the decoded size is bounded separately.
+        let bomb = "\0".repeat(9 * 1024 * 1024);
+        let compressed = gzip_bytes(&bomb);
+        assert!(
+            compressed.len() < 64 * 1024,
+            "the bomb is small on the wire"
+        );
+        let mut response = encoded("gzip", compressed);
+        let error = decode_body(&mut response).expect_err("the decoded size is capped");
+        assert!(error.to_string().contains("exceeds"), "{error}");
+    }
+
+    #[test]
+    fn identity_and_an_absent_coding_are_left_alone() {
+        let mut response = encoded("identity", b"plain".to_vec());
+        decode_body(&mut response).expect("identity needs no work");
+        assert_eq!(response.body(), "plain");
+
+        let mut response = HttpResponse {
+            headers: Vec::new(),
+            ..response
         };
-        assert!(undecodable_encoding(&identity).is_none());
+        decode_body(&mut response).expect("no header needs no work");
+        assert_eq!(response.body(), "plain");
     }
 
     #[test]
@@ -1376,6 +1489,56 @@ mod tests {
             matches!(error, crate::error::Error::Upstream { .. }),
             "exit-3 upstream error, got {error:?}"
         );
+    }
+
+    #[test]
+    fn the_client_hands_the_decoded_gzip_body_to_the_caller() {
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        let payload = r#"{"code":"200","temperature":{"value":11.78}}"#;
+        let transport = StubTransport::new(vec![StubReply::bytes(
+            200,
+            vec![("Content-Encoding".to_owned(), "gzip".to_owned())],
+            gzip_bytes(payload),
+        )]);
+        let client = HttpClient::new(Box::new(transport), 0, clock, 0);
+        let response = client
+            .send(&HttpRequest::get("https://example.invalid/data"))
+            .expect("a gzip body is decoded, not refused");
+        assert_eq!(response.body(), payload);
+        assert_eq!(
+            response.header("content-encoding"),
+            Some("gzip"),
+            "the header stays as received; only the body is decoded"
+        );
+    }
+
+    #[test]
+    fn an_error_body_is_decoded_too_but_never_replaces_the_status() {
+        let clock: Arc<dyn Clock> = Arc::new(FakeClock::new(SystemTime::UNIX_EPOCH));
+        // A gzipped RFC 7807 body keeps its `detail` in the message.
+        let transport = StubTransport::new(vec![StubReply::bytes(
+            401,
+            vec![("Content-Encoding".to_owned(), "gzip".to_owned())],
+            gzip_bytes(r#"{"title":"Unauthorized","detail":"invalid token"}"#),
+        )]);
+        let client = HttpClient::new(Box::new(transport), 0, clock.clone(), 0);
+        let error = client
+            .send(&HttpRequest::get("https://example.invalid/data"))
+            .expect_err("a 401 is an upstream error");
+        assert!(error.to_string().contains("invalid token"), "{error}");
+
+        // A body that cannot be decoded leaves the status as the error: no decode complaint.
+        let transport = StubTransport::new(vec![StubReply::status(
+            500,
+            vec![("Content-Encoding".to_owned(), "br".to_owned())],
+            "compressed",
+        )]);
+        let client = HttpClient::new(Box::new(transport), 0, clock, 0);
+        let error = client
+            .send(&HttpRequest::get("https://example.invalid/data"))
+            .expect_err("a 500 is an upstream error");
+        assert!(error.to_string().contains("500"), "{error}");
+        assert!(!error.to_string().contains("does not decode"), "{error}");
     }
 
     #[test]

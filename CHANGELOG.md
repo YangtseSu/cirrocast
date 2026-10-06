@@ -177,6 +177,22 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Fixed
 
+* **`gzip`-encoded responses are decoded instead of refused.** QWeather's v1 host began compressing
+  every weather response unconditionally (observed 2026-10-06; it ignores `Accept-Encoding:
+  identity`), and the shared HTTP client refused any non-identity `Content-Encoding` to keep the
+  body cap meaningful — so a `-p qweather` run failed with `upstream: the response is
+  `gzip`-encoded…` (exit 3) as soon as its cache went stale. `src/http.rs` now decodes `gzip` (and
+  `x-gzip`, concatenated members included) **after** the capped read, with the same
+  `MAX_BODY_BYTES` ceiling applied to the decoded size, so a hostile or broken upstream still
+  cannot make the process allocate without bound (the concern of the 2026-10-05 review, §3.9);
+  every other coding is still refused with the cap named. An error response's body is decoded
+  best-effort so the upstream's own `detail` survives into the message, and a decode failure there
+  never replaces the status error. `StubReply::bytes` scripts a binary body for tests.
+* **The QWeather alert panel says why it is empty on an account without the product.** A host that
+  does not serve `/weatheralert/v7/alert/now` answers `404` with an empty body, which read as
+  `answered HTTP 404: ` with nothing after it; the note now names the Weather Alert subscription and
+  the `[alerts] sources` escape. Best-effort as before: it never changes the exit code.
+
 * **QWeather conditions reported the wrong weather**: `309` (drizzle) is drizzle rather than heavy
   rain, and `515` (extra heavy fog) is fog rather than light freezing drizzle; a drizzle no longer
   outranks the day's real weather in the day-part summary.
