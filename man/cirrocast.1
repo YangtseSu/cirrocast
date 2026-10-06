@@ -1,0 +1,248 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH cirrocast 1  "cirrocast 1.2.0" 
+.SH NAME
+cirrocast \- Terminal weather client with pluggable backends and wttr.in\-style output
+.SH SYNOPSIS
+\fBcirrocast\fR [\fB\-v\fR|\fB\-\-verbose\fR]... [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-p\fR|\fB\-\-provider\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-d\fR|\fB\-\-days\fR] [\fB\-u\fR|\fB\-\-units\fR] [\fB\-\-lang\fR] [\fB\-\-lat\fR] [\fB\-\-lon\fR] [\fB\-\-ip\fR] [\fB\-\-station\fR] [\fB\-\-alerts\fR] [\fB\-\-no\-alerts\fR] [\fB\-\-alerts\-from\fR] [\fB\-\-severity\fR] [\fB\-\-aqi\fR] [\fB\-\-aqi\-index\fR] [\fB\-\-moon\fR] [\fB\-\-date\fR] [\fB\-\-history\fR] [\fB\-\-marine\fR] [\fB\-\-normals\fR] [\fB\-\-template\fR] [\fB\-\-template\-file\fR] [\fB\-\-color\fR] [\fB\-\-width\fR] [\fB\-\-timeout\fR] [\fB\-\-no\-cache\fR] [\fB\-\-refresh\fR] [\fB\-\-offline\fR] [\fB\-\-pick\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fILOCATION\fR] [\fIsubcommands\fR]
+.SH DESCRIPTION
+Terminal weather client with pluggable backends and wttr.in\-style output
+.SH OPTIONS
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Print more detail: settings, resolution notes, the upstream request behind the answer (secrets redacted) and the error cause chain. Repeat (`\-vv`) for every HTTP attempt, its status, and the cache decisions as well
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+Suppress non\-essential output
+.TP
+\fB\-p\fR, \fB\-\-provider\fR \fI<LIST>\fR
+Provider chain, comma separated; `auto` ranks the keyless backends by coverage for the resolved place (plus `metar` with `\-\-station`)
+.TP
+\fB\-f\fR, \fB\-\-format\fR \fI<NAME>\fR
+Output format: a built\-in name (`art\-table`, `one\-line`, `plain`, `json`, `dumb`, `alerts`, `aqi`, `moon`, `normals`), a one\-line preset (`default`, `short`, `minimal`, `full`, `uv`, `sun`) or a `[templates]` key
+.TP
+\fB\-d\fR, \fB\-\-days\fR \fI<N>\fR
+Forecast days, `0` = current conditions only (clamped to what the provider serves)
+.TP
+\fB\-u\fR, \fB\-\-units\fR \fI<SYSTEM>\fR
+Unit system for the rendered values: `metric`, `us` or `uk`. The JSON format always emits canonical metric, whatever this says
+.TP
+\fB\-\-lang\fR \fI<TAG>\fR
+Output language as a BCP\-47 tag, or `auto`
+.TP
+\fB\-\-lat\fR \fI<DEG>\fR
+Latitude in degrees, north positive; needs `\-\-lon`, and replaces the location argument
+.TP
+\fB\-\-lon\fR \fI<DEG>\fR
+Longitude in degrees, east positive; needs `\-\-lat`
+.TP
+\fB\-\-ip\fR
+Locate from the public IP address. This sends the address to ipwho.is (falling back to ipapi.co and IP.SB); the answer is cached for 24 hours. It never happens without `\-\-ip` or an empty location everywhere
+.TP
+\fB\-\-station\fR \fI<ICAO>\fR
+METAR station identifier (ICAO, four characters); `metar` heads the provider chain
+.TP
+\fB\-\-alerts\fR
+Fetch severe\-weather warnings: the sources covering the location are selected automatically (national services first, the global aggregators after). Also on by default unless `[alerts] enabled = false`; `\-\-no\-alerts` turns it off for one run
+.TP
+\fB\-\-no\-alerts\fR
+Do not fetch severe\-weather warnings in this run
+.TP
+\fB\-\-alerts\-from\fR \fI<LIST>\fR
+Alert sources to query instead of the coverage\-selected set, comma separated: `nws`, `meteoalarm`, `qweather`, `hko`, `wmoswic`, `fpas`, `visualcrossing`. A source that does not cover the location is refused, and `visualcrossing` needs `\-\-provider visualcrossing` because its warnings travel in that payload
+.TP
+\fB\-\-severity\fR \fI<LEVEL>\fR
+Lowest alert severity to show (`unknown`, `minor`, `moderate`, `severe`, `extreme`); overrides `[alerts] severity_threshold`
+.TP
+\fB\-\-aqi\fR
+Append the air\-quality panel (US and European AQI, the six pollutants, pollen where the source covers it and the report\*(Aqs UV reading) to the table and plain output, and carry it as a typed object in `json`. `\-\-format aqi` prints the panel standalone
+.TP
+\fB\-\-aqi\-index\fR \fI<SCALE>\fR
+Which AQI scale drives the panel\*(Aqs colour and the one\-line `%q` token: `us` or `european`; overrides `[air] index`. Needs `\-\-aqi` or `\-\-format aqi`
+.TP
+\fB\-\-moon\fR
+Compute the moon and sun block locally (no request) and append it to the table and `plain` output; `json` then carries it as the `astro` object. `\-\-format moon` prints the standalone view, and `one\-line` shows the moon through the `%m`/`%M` tokens
+.TP
+\fB\-\-date\fR \fI<YYYY\-MM\-DD>\fR
+Render the archive for one date (`YYYY\-MM\-DD`) instead of a forecast; needs a history\-capable backend
+.TP
+\fB\-\-history\fR \fI<Nd>\fR
+Render the archive for the last `<N>d` days, ending yesterday; needs a history\-capable backend
+.TP
+\fB\-\-marine\fR
+Append the marine block (waves, swell, sea\-surface temperature)
+.TP
+\fB\-\-normals\fR
+Compare the forecast with the climate: fetch the month\*(Aqs normal for the station nearest the location from NOAA NCEI\*(Aqs Global Summary of the Month (two extra requests, cached for 30 days) and append the comparison to the table and `plain` output, or carry it as the typed `normals` object in `json`. `\-\-format normals` prints it standalone. Off unless asked for, or unless `[defaults] normals = true`
+.TP
+\fB\-\-template\fR \fI<TEMPLATE>\fR
+Template for a one\-line output: a literal `%`\-token string, or `@PRESET`. The presets are `@default`, `@short`, `@minimal`, `@full`, `@uv` and `@sun`, plus any `[templates]` key; `\-\-help` lists every token and the width/precision syntax. An unknown token is a usage error. Needs `\-\-format one\-line` (or a format name that selects no template itself)
+.TP
+\fB\-\-template\-file\fR \fI<PATH>\fR
+Read the one\-line template from a file; `\-` reads standard input. Same restrictions as `\-\-template`
+.TP
+\fB\-\-color\fR \fI<WHEN>\fR
+When to colour the output
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+auto: Colour when stdout is a terminal that supports it
+.IP \(bu 2
+always: Colour even when piping
+.IP \(bu 2
+never: Never colour
+.RE
+.TP
+\fB\-\-width\fR \fI<COLS>\fR
+Layout width in columns for the table formats (1..=500; below 20 is raised to it)
+.TP
+\fB\-\-timeout\fR \fI<SECS>\fR
+Per\-request timeout in seconds; overrides `network.timeout_secs`
+.TP
+\fB\-\-no\-cache\fR
+Ignore the cache for this run and store nothing
+.TP
+\fB\-\-refresh\fR
+Ignore cached answers and replace them with fresh ones
+.TP
+\fB\-\-offline\fR[=\fI<MODE>\fR]
+Run offline: `=weather` serves the weather from the cache only, `=geo` resolves names from the bundled city table only, and bare `\-\-offline` (same as `=all`) never opens a socket. Overrides `[network] offline`
+.TP
+\fB\-\-pick\fR
+Ask which candidate to use when a location name matches several places, instead of taking the ranked winner. The ranked list goes to stderr and one line is read from stdin
+.TP
+\fB\-\-yes\fR
+Take the ranked winner when a location name matches several places, without asking. This is the default on a non\-terminal run; the flag makes that explicit and keeps a prompt from ever appearing
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+[\fILOCATION\fR]
+Location arguments (`Beijing`, `:Beijing`, `~Tsinghua`, `@39.9,116.4`, `@home`); several arguments are fetched at most four at a time and printed in argument order. Omitted = the configured default location, else the public IP
+.SH SUBCOMMANDS
+.TP
+cirrocast\-config(1)
+Inspect and edit the configuration file
+.TP
+cirrocast\-key(1)
+Manage API keys for the key\-requiring providers
+.TP
+cirrocast\-provider(1)
+Inspect the supported weather providers
+.TP
+cirrocast\-location(1)
+Resolve a location argument without fetching weather
+.TP
+cirrocast\-cache(1)
+Inspect and maintain the on\-disk cache
+.TP
+cirrocast\-status(1)
+Print one line for a status bar: never aborts on a network failure
+.TP
+cirrocast\-completion(1)
+Print a shell completion script
+.TP
+cirrocast\-man(1)
+Print the manual page as roff
+.TP
+cirrocast\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH EXTRA
+CONFIG PRECEDENCE (highest first)
+  command line flag > CIRROCAST_* environment variable > config.toml > built\-in default
+  \-\-provider  CIRROCAST_PROVIDER   \-\-days    CIRROCAST_DAYS     \-\-timeout CIRROCAST_TIMEOUT
+  \-\-format    CIRROCAST_FORMAT     \-\-units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
+  \-\-lang      CIRROCAST_LANG
+  env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
+              CIRROCAST_GEO_SEARCH  CIRROCAST_GEO_REVERSE  CIRROCAST_GEONAMES_USER
+              CIRROCAST_NORMALS_PERIOD  CIRROCAST_NORMALS_MAX_DISTANCE_KM
+  The configuration file is consulted only when neither the flag nor the variable is set, so an
+  environment value is never overridden by config.toml. `config get <key>` prints the variable\*(Aqs
+  value when one is set, and `config validate` checks the file without touching the network.
+
+ONE\-LINE TOKENS (\-\-format one\-line, full, minimal, or a [templates] key)
+  %c condition art    %C condition text   %x condition, plain text
+  %t temp             %f feels\-like       %H today\*(Aqs high    %L today\*(Aqs low
+  %w wind             %h humidity         %p precip          %P pressure
+  %e dew point        %u UV index         %U UV + band       %m moon glyph
+  %M moon phase       %v visibility       %l name            %d ISO date
+  %D Wed 30 Sep       %T 15:04            %Z zone name       %z +0800
+  %S sunrise          %s sunset           %q air\-quality index
+  %A strongest alert event, empty when no alerts are in force
+  %[\-][0][width][.prec]X pads (right with \-, zero for numbers); .prec truncates text and rounds
+  numbers; %% prints one %; %{...} verbatim unless one token letter; \\n \\t \\\\ escapes; bad %X is exit 2.
+  Presets (@NAME, and \-\-format NAME), listed with their templates:
+    @default  %l: %c %C %t (%f), %w, %h, %p, %P, %v   @short  %c %t
+    @minimal  %c%t   @uv  %l: UV %U   @sun  %l: sunrise %S sunset %s (%z %Z)
+    @full     %l: %c %C %t (%f) %w %h %p %P %m %v %u %S %s %Z
+
+MULTI\-LOCATION RUNS
+  Several LOCATION arguments are fetched at most four at a time and printed in argument order.
+  A failed location keeps its slot on stdout (`error: <query>: <message>`) and the run exits with
+  the largest mapped code among the failures; `json` becomes an array, and `art\-table` draws a
+  combined summary for up to four locations.
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success
+.TP
+\fB1\fR
+generic failure: an unexpected error outside the classes below
+.TP
+\fB2\fR
+usage: a flag or value the command line rejects, or mutually exclusive flags
+.TP
+\fB3\fR
+network or upstream failure: no connection, a retryable status, an unusable body
+.TP
+\fB4\fR
+configuration or state on disk: config.toml, keys.toml, the cache
+.TP
+\fB5\fR
+location not found: an unresolvable name or station
+.TP
+\fB6\fR
+missing or invalid API key: `cirrocast key set <id>` (or CIRROCAST_<ID>_KEY) fixes it
+.SH ENVIRONMENT
+.TP
+\fBFlag overrides\fR
+CIRROCAST_PROVIDER, CIRROCAST_FORMAT, CIRROCAST_UNITS, CIRROCAST_DAYS, CIRROCAST_LANG, CIRROCAST_LOCATION and CIRROCAST_TIMEOUT override the matching flag; a flag wins over the variable, and the variable over the configuration file.
+.TP
+\fBVariable\-only settings\fR
+CIRROCAST_LOCATION_PICK, CIRROCAST_NOMINATIM_URL, CIRROCAST_IP_SERVICE, CIRROCAST_GEO_SEARCH, CIRROCAST_GEO_REVERSE, CIRROCAST_GEONAMES_USER, CIRROCAST_NORMALS_PERIOD and CIRROCAST_NORMALS_MAX_DISTANCE_KM have no flag; the configuration reference names the key each one overrides.
+.TP
+\fBProvider credentials\fR
+CIRROCAST_<ID>_KEY holds a provider\*(Aqs API key, as an alternative to `key set <id>` and keys.toml.
+.TP
+\fBColour and terminal\fR
+NO_COLOR, CLICOLOR_FORCE, TERM and COLORTERM drive colour and terminal\-capability detection; NO_COLOR is honoured unless CLICOLOR_FORCE asks for colour.
+.TP
+\fBDirectories\fR
+XDG_CONFIG_HOME, XDG_CONFIG_DIRS, XDG_CACHE_HOME and XDG_DATA_HOME name the directory roots; HOME is the base when an XDG variable is unset.
+.TP
+\fBProxy\fR
+HTTPS_PROXY, HTTP_PROXY, ALL_PROXY and NO_PROXY (and the lower\-case spellings) name the proxy, unless [network] proxy is set; a SOCKS URL is refused.
+.TP
+\fBEditor\fR
+VISUAL, then EDITOR, is the editor `config edit` starts.
+.SH "SEE ALSO"
+.TP
+\fBcirrocast(1)\fR
+This manual page, generated from the same definitions as `cirrocast \-\-help`, which stays the canonical flag reference.
+.TP
+\fBhttps://github.com/YangtseSu/cirrocast\fR
+Home page, release archives and the issue tracker.
+.TP
+\fBdocs/ in the source tree\fR
+getting\-started, configuration, providers, formats, location, i18n, troubleshooting, architecture, performance, ecosystem and schema: one document per audience.
+.TP
+\fBwttr.in\fR
+The output\-layout reference, not a data source.
+.SH VERSION
+v1.2.0

@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{IsTerminal as _, Read as _};
+use std::io::{IsTerminal as _, Read as _, Write as _};
 use std::process::Command as StdCommand;
 use std::str::FromStr as _;
 use std::sync::Arc;
@@ -101,7 +101,7 @@ impl std::io::Write for StdoutSink {
     version,
     about,
     long_about = None,
-    after_long_help = HELP_EPILOG,
+    after_long_help = HELP_EPILOG.as_str(),
     propagate_version = true,
     allow_negative_numbers = true
 )]
@@ -124,13 +124,9 @@ pub struct Cli {
     pub query: QueryArgs,
 }
 
-/// The tables `--help` ends with.
-///
-/// They are part of the CLI's contract, not decoration: the precedence ladder, the exit codes and
-/// the token vocabulary are what a script or a user reads before writing anything against the
-/// tool. The token and preset rows are duplicated from [`crate::render::one_line`] because clap
-/// takes a `&'static str` here; a unit test compares the two so they cannot drift.
-const HELP_EPILOG: &str = "\
+/// The precedence ladder: the first block of the `--help` epilog and of the man page's EXTRA
+/// section.
+const HELP_PRECEDENCE: &str = "\
 CONFIG PRECEDENCE (highest first)
   command line flag > CIRROCAST_* environment variable > config.toml > built-in default
   --provider  CIRROCAST_PROVIDER   --days    CIRROCAST_DAYS     --timeout CIRROCAST_TIMEOUT
@@ -141,17 +137,21 @@ CONFIG PRECEDENCE (highest first)
               CIRROCAST_NORMALS_PERIOD  CIRROCAST_NORMALS_MAX_DISTANCE_KM
   The configuration file is consulted only when neither the flag nor the variable is set, so an
   environment value is never overridden by config.toml. `config get <key>` prints the variable's
-  value when one is set, and `config validate` checks the file without touching the network.
+  value when one is set, and `config validate` checks the file without touching the network.";
 
-EXIT CODES
-  0  success
+/// The exit-code table: `--help` prints it under its EXIT CODES heading and the man page under EXIT
+/// STATUS, from this one literal.
+const EXIT_CODES: &str = "  0  success
   1  generic failure: an unexpected error outside the classes below
   2  usage: a flag or value the command line rejects, or mutually exclusive flags
   3  network or upstream failure: no connection, a retryable status, an unusable body
   4  configuration or state on disk: config.toml, keys.toml, the cache
   5  location not found: an unresolvable name or station
-  6  missing or invalid API key: `cirrocast key set <id>` (or CIRROCAST_<ID>_KEY) fixes it
+  6  missing or invalid API key: `cirrocast key set <id>` (or CIRROCAST_<ID>_KEY) fixes it";
 
+/// The token vocabulary and the multi-location note: the last block of the `--help` epilog and of
+/// the man page's EXTRA section.
+const HELP_TOKENS: &str = "\
 ONE-LINE TOKENS (--format one-line, full, minimal, or a [templates] key)
   %c condition art    %C condition text   %x condition, plain text
   %t temp             %f feels-like       %H today's high    %L today's low
@@ -173,6 +173,19 @@ MULTI-LOCATION RUNS
   A failed location keeps its slot on stdout (`error: <query>: <message>`) and the run exits with
   the largest mapped code among the failures; `json` becomes an array, and `art-table` draws a
   combined summary for up to four locations.";
+
+/// The tables the long `--help` ends with.
+///
+/// They are part of the CLI's contract, not decoration: the precedence ladder, the exit codes and
+/// the token vocabulary are what a script or a user reads before writing anything against the
+/// tool. The token and preset rows are duplicated from [`crate::render::one_line`] because clap
+/// takes a compile-time value here; a unit test compares the two so they cannot drift. The man
+/// page prints the same three blocks — its EXTRA section is the epilog without the exit-code table,
+/// which it carries under EXIT STATUS of its own — so the blocks are three constants assembled
+/// here rather than one literal.
+static HELP_EPILOG: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!("{HELP_PRECEDENCE}\n\nEXIT CODES\n{EXIT_CODES}\n\n{HELP_TOKENS}")
+});
 
 /// The weather query: the whole flag matrix of `cirrocast <LOCATION>`.
 ///
@@ -1228,15 +1241,153 @@ fn run_completion(args: &CompletionArgs) {
 }
 
 /// Prints `cirrocast man`.
+///
+/// The page is assembled one section at a time rather than through a single
+/// [`clap_mangen::Man::render`] call, so the man page's own sections (EXIT STATUS, ENVIRONMENT,
+/// SEE ALSO) can sit between EXTRA and VERSION where a `man(1)` reader looks for them. Every
+/// section call repeats `clap_mangen`'s two-line roff preamble, and [`man_section`] drops all but
+/// the first, so the page carries it exactly once.
 fn run_man(args: &ManArgs) -> Result<()> {
     use clap::CommandFactory as _;
 
-    let command = Cli::command().bin_name(args.bin_name.clone());
-    clap_mangen::Man::new(command)
-        .title(args.bin_name.clone())
-        .render(&mut StdoutSink)
-        .map_err(|error| Error::Other(format!("cannot render the man page: {error}")))
+    let command = Cli::command()
+        .bin_name(args.bin_name.clone())
+        .after_long_help(man_extra_help());
+    let man = clap_mangen::Man::new(command).title(args.bin_name.clone());
+    let mut sink = StdoutSink;
+    sink.write_all(MAN_PREAMBLE)
+        .map_err(|error| man_error(&error))?;
+    man_section(&mut sink, |buffer| man.render_title(buffer))?;
+    man_section(&mut sink, |buffer| man.render_name_section(buffer))?;
+    man_section(&mut sink, |buffer| man.render_synopsis_section(buffer))?;
+    man_section(&mut sink, |buffer| man.render_description_section(buffer))?;
+    man_section(&mut sink, |buffer| man.render_options_section(buffer))?;
+    man_section(&mut sink, |buffer| man.render_subcommands_section(buffer))?;
+    man_section(&mut sink, |buffer| man.render_extra_section(buffer))?;
+    man_section(&mut sink, man_extras)?;
+    man_section(&mut sink, |buffer| man.render_version_section(buffer))?;
+    Ok(())
 }
+
+/// The roff preamble `clap_mangen` writes before every section it renders; the page carries the
+/// first copy and [`man_section`] drops the rest.
+const MAN_PREAMBLE: &[u8] = b".ie \\n(.g .ds Aq \\(aq\n.el .ds Aq '\n";
+
+/// Renders one man page section, stripping the repeated roff preamble.
+fn man_section(
+    sink: &mut StdoutSink,
+    render: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>,
+) -> Result<()> {
+    let mut buffer = Vec::new();
+    render(&mut buffer).map_err(|error| man_error(&error))?;
+    let section = buffer.strip_prefix(MAN_PREAMBLE).unwrap_or(&buffer);
+    sink.write_all(section).map_err(|error| man_error(&error))
+}
+
+/// The one error rendering the man page can produce.
+fn man_error(error: &std::io::Error) -> Error {
+    Error::Other(format!("cannot render the man page: {error}"))
+}
+
+/// The man page's EXTRA section: the `--help` epilog without its exit-code table, which the page
+/// prints as its own EXIT STATUS section.
+fn man_extra_help() -> String {
+    format!("{HELP_PRECEDENCE}\n\n{HELP_TOKENS}")
+}
+
+/// The man page's own sections: EXIT STATUS, ENVIRONMENT and SEE ALSO.
+fn man_extras(buffer: &mut Vec<u8>) -> std::io::Result<()> {
+    use clap_mangen::roff::Roff;
+
+    let mut roff = Roff::default();
+    roff.control("SH", ["EXIT STATUS"]);
+    for line in EXIT_CODES.lines() {
+        let line = line.trim_start();
+        let (code, description) = match line.split_once(' ') {
+            Some((code, rest)) => (code, rest.trim_start()),
+            None => (line, ""),
+        };
+        man_entry(&mut roff, code, description);
+    }
+    roff.control("SH", ["ENVIRONMENT"]);
+    for (name, description) in MAN_ENVIRONMENT {
+        man_entry(&mut roff, name, description);
+    }
+    roff.control("SH", ["SEE ALSO"]);
+    for (name, description) in MAN_SEE_ALSO {
+        man_entry(&mut roff, name, description);
+    }
+    roff.to_writer(buffer)
+}
+
+/// One `.TP` entry: a bold term and the filled description under it.
+fn man_entry(roff: &mut clap_mangen::roff::Roff, term: &str, description: &str) {
+    use clap_mangen::roff::{bold, roman};
+
+    roff.control("TP", []);
+    roff.text([bold(term)]);
+    roff.text([roman(description)]);
+}
+
+/// The man page's ENVIRONMENT entries, `(term, description)`.
+const MAN_ENVIRONMENT: [(&str, &str); 7] = [
+    (
+        "Flag overrides",
+        "CIRROCAST_PROVIDER, CIRROCAST_FORMAT, CIRROCAST_UNITS, CIRROCAST_DAYS, CIRROCAST_LANG, \
+         CIRROCAST_LOCATION and CIRROCAST_TIMEOUT override the matching flag; a flag wins over the \
+         variable, and the variable over the configuration file.",
+    ),
+    (
+        "Variable-only settings",
+        "CIRROCAST_LOCATION_PICK, CIRROCAST_NOMINATIM_URL, CIRROCAST_IP_SERVICE, \
+         CIRROCAST_GEO_SEARCH, CIRROCAST_GEO_REVERSE, CIRROCAST_GEONAMES_USER, \
+         CIRROCAST_NORMALS_PERIOD and CIRROCAST_NORMALS_MAX_DISTANCE_KM have no flag; the \
+         configuration reference names the key each one overrides.",
+    ),
+    (
+        "Provider credentials",
+        "CIRROCAST_<ID>_KEY holds a provider's API key, as an alternative to `key set <id>` and \
+         keys.toml.",
+    ),
+    (
+        "Colour and terminal",
+        "NO_COLOR, CLICOLOR_FORCE, TERM and COLORTERM drive colour and terminal-capability \
+         detection; NO_COLOR is honoured unless CLICOLOR_FORCE asks for colour.",
+    ),
+    (
+        "Directories",
+        "XDG_CONFIG_HOME, XDG_CONFIG_DIRS, XDG_CACHE_HOME and XDG_DATA_HOME name the directory \
+         roots; HOME is the base when an XDG variable is unset.",
+    ),
+    (
+        "Proxy",
+        "HTTPS_PROXY, HTTP_PROXY, ALL_PROXY and NO_PROXY (and the lower-case spellings) name the \
+         proxy, unless [network] proxy is set; a SOCKS URL is refused.",
+    ),
+    (
+        "Editor",
+        "VISUAL, then EDITOR, is the editor `config edit` starts.",
+    ),
+];
+
+/// The man page's SEE ALSO entries, `(term, description)`.
+const MAN_SEE_ALSO: [(&str, &str); 4] = [
+    (
+        "cirrocast(1)",
+        "This manual page, generated from the same definitions as `cirrocast --help`, which stays \
+         the canonical flag reference.",
+    ),
+    (
+        "https://github.com/YangtseSu/cirrocast",
+        "Home page, release archives and the issue tracker.",
+    ),
+    (
+        "docs/ in the source tree",
+        "getting-started, configuration, providers, formats, location, i18n, troubleshooting, \
+         architecture, performance, ecosystem and schema: one document per audience.",
+    ),
+    ("wttr.in", "The output-layout reference, not a data source."),
+];
 
 /// Runs the weather query: resolve a location, fetch a report, render it.
 ///

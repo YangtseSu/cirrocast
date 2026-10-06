@@ -711,11 +711,16 @@ fn help_and_version_read_no_state_and_the_man_page_reuses_the_help_text() {
         "a help screen must not create the cache"
     );
 
-    // The man page is rendered from the same clap command, so it carries the same two tables.
+    // The man page is rendered from the same clap command, so it carries the same tables: the
+    // precedence ladder and the token vocabulary in EXTRA, the exit-code table under its own EXIT
+    // STATUS heading, plus the ENVIRONMENT and SEE ALSO sections clap_mangen does not know about.
     sandbox.cirrocast().arg("man").assert().success().stdout(
         predicate::str::contains("CONFIG PRECEDENCE (highest first)")
-            .and(predicate::str::contains("EXIT CODES"))
-            .and(predicate::str::contains("missing or invalid API key")),
+            .and(predicate::str::contains("ONE\\-LINE TOKENS"))
+            .and(predicate::str::contains("EXIT STATUS"))
+            .and(predicate::str::contains("missing or invalid API key"))
+            .and(predicate::str::contains("ENVIRONMENT"))
+            .and(predicate::str::contains("SEE ALSO")),
     );
 }
 
