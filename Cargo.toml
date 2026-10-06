@@ -112,6 +112,15 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 
+# The dev/test profile keeps line tables and drops the rest of DWARF. At the cargo default
+# (`debug = 2`) one integration test binary of this workspace is 85.8 MiB, and `cargo test` leaves a
+# new generation of every test target behind on each run, so `target/debug` grew by ~5.7 GiB per
+# iteration. Line tables alone still resolve panic backtraces to `file:line` and gdb line
+# breakpoints, at 24.4 MiB per binary. Variable inspection needs full DWARF:
+# `cargo test --config 'profile.dev.debug=2'`. Measurements: docs/performance.md.
+[profile.dev]
+debug = "line-tables-only"
+
 # The shipped profile: the smallest, fastest binary the toolchain can produce without a C
 # toolchain or nightly flags. `lto = "thin"` plus `codegen-units = 1` gives the whole-program
 # optimiser one unit to work with; `strip = "symbols"` drops the symbol table the release

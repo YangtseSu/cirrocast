@@ -32,6 +32,41 @@ never measured by the harness; it exists for the audit below.
 typed errors, `unwrap`/`expect`/`panic!` are banned outside tests, and the profile applies to
 `--release` only, so the test suite still unwinds.
 
+## Dev and test profile
+
+`[profile.dev]` in `Cargo.toml` sets `debug = "line-tables-only"`: it keeps the DWARF this
+workspace reads and drops the rest. Cargo's default (`debug = 2`) writes full debug information into
+every binary — 67 MB of `.debug_*` sections inside the 105 MB unit-test binary of `src/main.rs`
+(`.debug_str` 27.6 MB, `.debug_info` 25.8 MB, `.debug_line` 6.7 MB, `.debug_ranges` 4.4 MB) — and the
+workspace has 66 integration test targets, each one statically linking the whole crate and its
+dependencies. Measured on one machine, same source, separate target directories:
+
+| `profile.dev.debug` | `tests/cli.rs` binary | `libcirrocast` rlib |
+|---|---|---|
+| `2` (cargo default) | 85.8 MB | 93.4 MB |
+| `1` | 49.3 MB | 65.2 MB |
+| `"line-tables-only"` | 24.4 MB | 55.7 MB |
+
+The line tables are what the workspace actually uses: `RUST_BACKTRACE=1` still prints
+`at src/<file>.rs:<line>` and gdb/lldb still take line breakpoints and step by line. What is gone is
+variable and type inspection: the payload that remains (`.debug_str` 4.7 MB, `.debug_info` 3.5 MB
+beside `.debug_line`'s 7.8 MB in that same `tests/cli.rs` binary) describes the line program, not the
+type graph a full-DWARF build carries — the unit-test binary of `src/main.rs` at `debug = 2` spends
+27.6 MB on `.debug_str` and 25.8 MB on `.debug_info` alone. A debugging session that needs them asks
+for full DWARF per invocation, with the committed profile untouched:
+
+```bash
+cargo test --config 'profile.dev.debug=2'
+```
+
+`debug = 0` is not an option: without `.debug_line` every panic message loses its `file:line`, which
+is the one piece of debug information a test failure is read for.
+
+This matters because a `cargo test` after an edit leaves a new generation of every test target in
+`target/debug/deps` and cargo does not reclaim the previous ones: at the cargo default that is
+~5.7 GiB per iteration (a development tree reached 59 GiB in `deps`), against ~1.6 GiB with line
+tables only. A full rebuild after `cargo clean` measures 32 s (`cargo test --workspace --no-run`).
+
 ## Feature inventory
 
 The crate has one feature:
