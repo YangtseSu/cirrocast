@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "location": {
+    "name": "Detroit",
+    "admin1": "Michigan",
+    "country": "United States",
+    "country_code": "US",
+    "lat": 42.33143,
+    "lon": -83.04575,
+    "timezone": "America/Detroit",
+    "elevation_m": 183.0,
+    "source": "geocoder",
+    "station": null
+  },
+  "current": {
+    "time": "2026-10-06T09:45:00-04:00",
+    "condition": {
+      "code": 0,
+      "text": "Clear sky"
+    },
+    "temp_c": 11.4,
+    "feels_like_c": 9.3,
+    "humidity_pct": 67,
+    "precip_mm": 0.0,
+    "pressure_hpa": 1022.7,
+    "visibility_km": 28.4,
+    "wind_kmh": 6.9,
+    "wind_dir_deg": 146,
+    "wind_gust_kmh": 10.8,
+    "cloud_cover_pct": 0,
+    "uv_index": 1.65,
+    "is_day": true
+  },
+  "days": [
+    {
+      "date": "2026-10-06",
+      "sunrise": "07:34",
+      "sunset": "19:04",
+      "min_c": 4.6,
+      "max_c": 19.1,
+      "parts": {
+        "morning": {
+          "condition": {
+            "code": 0,
+            "text": "Clear sky"
+          },
+          "temp_c": 7.7,
+          "feels_like_c": 6.0,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 1,
+          "humidity_pct": 82,
+          "visibility_km": 20.7,
+          "wind_kmh": 3.0,
+          "wind_dir_deg": 113
+        },
+        "noon": {
+          "condition": {
+            "code": 0,
+            "text": "Clear sky"
+          },
+          "temp_c": 18.9,
+          "feels_like_c": 15.7,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 2,
+          "humidity_pct": 36,
+          "visibility_km": 49.1,
+          "wind_kmh": 14.6,
+          "wind_dir_deg": 205
+        },
+        "evening": {
+          "condition": {
+            "code": 2,
+            "text": "Partly cloudy"
+          },
+          "temp_c": 13.1,
+          "feels_like_c": 10.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 1,
+          "humidity_pct": 59,
+          "visibility_km": 26.1,
+          "wind_kmh": 9.8,
+          "wind_dir_deg": 195
+        },
+        "night": {
+          "condition": {
+            "code": 0,
+            "text": "Clear sky"
+          },
+          "temp_c": 5.6,
+          "feels_like_c": 3.9,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 0,
+          "humidity_pct": 82,
+          "visibility_km": 16.2,
+          "wind_kmh": 0.0,
+          "wind_dir_deg": 279
+        }
+      }
+    },
+    {
+      "date": "2026-10-07",
+      "sunrise": "07:35",
+      "sunset": "19:03",
+      "min_c": 11.0,
+      "max_c": 23.3,
+      "parts": {
+        "morning": {
+          "condition": {
+            "code": 3,
+            "text": "Overcast"
+          },
+          "temp_c": 13.0,
+          "feels_like_c": 9.6,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 5,
+          "humidity_pct": 65,
+          "visibility_km": 25.9,
+          "wind_kmh": 17.5,
+          "wind_dir_deg": 242
+        },
+        "noon": {
+          "condition": {
+            "code": 3,
+            "text": "Overcast"
+          },
+          "temp_c": 23.1,
+          "feels_like_c": 20.3,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 2,
+          "humidity_pct": 40,
+          "visibility_km": 47.4,
+          "wind_kmh": 20.3,
+          "wind_dir_deg": 292
+        },
+        "evening": {
+          "condition": {
+            "code": 3,
+            "text": "Overcast"
+          },
+          "temp_c": 14.2,
+          "feels_like_c": 11.5,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 1,
+          "humidity_pct": 49,
+          "visibility_km": 38.8,
+          "wind_kmh": 8.4,
+          "wind_dir_deg": 272
+        },
+        "night": {
+          "condition": {
+            "code": 3,
+            "text": "Overcast"
+          },
+          "temp_c": 11.0,
+          "feels_like_c": 7.4,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 4,
+          "humidity_pct": 60,
+          "visibility_km": 29.3,
+          "wind_kmh": 14.5,
+          "wind_dir_deg": 219
+        }
+      }
+    },
+    {
+      "date": "2026-10-08",
+      "sunrise": "07:37",
+      "sunset": "19:01",
+      "min_c": 13.4,
+      "max_c": 21.0,
+      "parts": {
+        "morning": {
+          "condition": {
+            "code": 3,
+            "text": "Overcast"
+          },
+          "temp_c": 15.3,
+          "feels_like_c": 12.7,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 0,
+          "humidity_pct": 56,
+          "visibility_km": 24.14,
+          "wind_kmh": 11.4,
+          "wind_dir_deg": 305
+        },
+        "noon": {
+          "condition": {
+            "code": 3,
+            "text": "Overcast"
+          },
+          "temp_c": 20.9,
+          "feels_like_c": 16.8,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 0,
+          "humidity_pct": 27,
+          "visibility_km": 24.14,
+          "wind_kmh": 17.7,
+          "wind_dir_deg": 290
+        },
+        "evening": {
+          "condition": {
+            "code": 2,
+            "text": "Partly cloudy"
+          },
+          "temp_c": 17.4,
+          "feels_like_c": 13.2,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 0,
+          "humidity_pct": 34,
+          "visibility_km": 24.14,
+          "wind_kmh": 15.6,
+          "wind_dir_deg": 310
+        },
+        "night": {
+          "condition": {
+            "code": 0,
+            "text": "Clear sky"
+          },
+          "temp_c": 16.2,
+          "feels_like_c": 13.6,
+          "precip_mm": 0.0,
+          "precip_prob_pct": 1,
+          "humidity_pct": 50,
+          "visibility_km": 24.14,
+          "wind_kmh": 10.8,
+          "wind_dir_deg": 300
+        }
+      }
+    }
+  ],
+  "capabilities": {
+    "current": true,
+    "hourly": true,
+    "daily": true,
+    "alerts": false,
+    "max_days": 16,
+    "requires_key": false,
+    "key_env": null,
+    "locations": {
+      "city": true,
+      "station": false,
+      "lat_lon": true
+    }
+  },
+  "attribution": {
+    "provider": "open-meteo",
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "notice": "Open-Meteo.com (CC BY 4.0)",
+    "location_notice": "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
+    "retrieved_at": "2026-10-06T13:48:05Z"
+  }
+}

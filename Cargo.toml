@@ -88,6 +88,12 @@ assert_cmd = "2"
 # minting code uses (a normal dependency is not visible to them).
 base64 = "0.23.1"
 insta = "1.48.0"
+# The committed JSON Schemas are the contract tests/json_schema.rs validates live output against
+# (step 28). Draft 2020-12 with a conformance suite; `default-features = false` keeps
+# `resolve-http` out, which would pull `reqwest` → `tokio` into the build graph for a test that
+# never fetches a remote `$ref` (the schemas use only internal `$defs`). Development-only: it never
+# enters the shipped binary or the step 21 size budget.
+jsonschema = { version = "0.58", default-features = false }
 predicates = "3"
 serde_json = "1"
 tempfile = "3"

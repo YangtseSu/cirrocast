@@ -335,6 +335,8 @@
         "daily",
         "alerts",
         "max_days",
+        "history_days",
+        "marine",
         "requires_key",
         "key_env",
         "locations"
@@ -354,6 +356,12 @@
         },
         "max_days": {
           "type": "integer"
+        },
+        "history_days": {
+          "type": "integer"
+        },
+        "marine": {
+          "type": "boolean"
         },
         "requires_key": {
           "type": "boolean"
@@ -649,6 +657,120 @@
         }
       }
     },
+    "marine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "source",
+        "wave_height_m",
+        "wave_direction_deg",
+        "wave_period_s",
+        "swell_wave_height_m",
+        "sea_surface_temp_c",
+        "sampled",
+        "days"
+      ],
+      "properties": {
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string"
+        },
+        "wave_height_m": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wave_direction_deg": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "wave_period_s": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "swell_wave_height_m": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sea_surface_temp_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "sampled": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lat",
+            "lon",
+            "distance_km",
+            "far"
+          ],
+          "properties": {
+            "lat": {
+              "type": "number"
+            },
+            "lon": {
+              "type": "number"
+            },
+            "distance_km": {
+              "type": "number"
+            },
+            "far": {
+              "type": "boolean"
+            }
+          }
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "date",
+              "wave_height_max_m",
+              "wave_period_max_s",
+              "wave_direction_dominant_deg"
+            ],
+            "properties": {
+              "date": {
+                "type": "string"
+              },
+              "wave_height_max_m": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "wave_period_max_s": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "wave_direction_dominant_deg": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "moon": {
       "type": "object",
       "additionalProperties": false,
@@ -729,6 +851,54 @@
               }
             }
           }
+        }
+      }
+    },
+    "normals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "station",
+        "station_name",
+        "distance_km",
+        "period",
+        "month",
+        "temp_mean_c",
+        "temp_max_c",
+        "temp_min_c",
+        "precip_mm",
+        "years"
+      ],
+      "properties": {
+        "station": {
+          "type": "string"
+        },
+        "station_name": {
+          "type": "string"
+        },
+        "distance_km": {
+          "type": "number"
+        },
+        "period": {
+          "type": "string"
+        },
+        "month": {
+          "type": "integer"
+        },
+        "temp_mean_c": {
+          "type": "number"
+        },
+        "temp_max_c": {
+          "type": "number"
+        },
+        "temp_min_c": {
+          "type": "number"
+        },
+        "precip_mm": {
+          "type": "number"
+        },
+        "years": {
+          "type": "integer"
         }
       }
     },
@@ -849,8 +1019,11 @@
         "location",
         "current",
         "days",
+        "mode",
+        "marine",
         "air",
         "astro",
+        "normals",
         "alerts",
         "capabilities",
         "attribution",
@@ -879,6 +1052,22 @@
             "$ref": "#/$defs/day"
           }
         },
+        "mode": {
+          "enum": [
+            "forecast",
+            "archive"
+          ]
+        },
+        "marine": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/marine"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "air": {
           "oneOf": [
             {
@@ -893,6 +1082,16 @@
           "oneOf": [
             {
               "$ref": "#/$defs/astro"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "normals": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/normals"
             },
             {
               "type": "null"

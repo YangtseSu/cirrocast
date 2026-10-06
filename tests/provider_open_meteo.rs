@@ -330,6 +330,13 @@ fn a_geocoded_location_keeps_the_zone_it_was_resolved_with() {
 fn a_non_finite_reading_is_an_upstream_error() {
     // `1e39` overflows `f32` to `inf`; it must be refused at the provider boundary and never
     // reach the model, the cache or a renderer as if it were a measurement.
+    //
+    // Two layers can refuse it, and which one does depends on `serde_json`'s `float_roundtrip`
+    // feature: the `jsonschema` dev-dependency enables it for the whole test graph (its conformance
+    // suite needs it), and then the parse itself reports `number out of range`; without it — the
+    // shipped binary, where the feature is off — the value parses to `inf` and the non-finite guard
+    // in `Provider::fetch` names the canonical field. Both are `Error::Upstream` with exit 3, which
+    // is the contract this test pins; only the guard's message names `current.temp_c`.
     let body = fixture("open_meteo/forecast_beijing_2026-07-15.json")
         .replace("\"temperature_2m\":18.1", "\"temperature_2m\":1e39");
     assert!(body.contains("1e39"), "the payload carries the sentinel");
@@ -348,8 +355,10 @@ fn a_non_finite_reading_is_an_upstream_error() {
             provider, message, ..
         } => {
             assert_eq!(provider, "open-meteo");
-            // The guard sees canonical readings, so it names the canonical field.
-            assert!(message.contains("current.temp_c"), "{message}");
+            assert!(
+                message.contains("current.temp_c") || message.contains("number out of range"),
+                "{message}"
+            );
         }
         other => panic!("expected an upstream error, got {other:?}"),
     }
