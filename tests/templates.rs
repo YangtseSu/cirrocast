@@ -14,7 +14,7 @@
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cirrocast::config::UnitOverrides;
 use cirrocast::i18n::{I18n, LanguageRequest};
@@ -149,6 +149,34 @@ fn the_token_kinds_match_the_value_the_token_renders() {
     assert_eq!(
         numbers,
         vec!['t', 'f', 'H', 'L', 'h', 'p', 'P', 'e', 'u', 'v']
+    );
+}
+
+/// The `%`-token table in `docs/formats.md` is the engine's table: every token the engine has is
+/// written down, and every letter the prose names is one the engine binds (step 28's documentation
+/// contract; the table exists twice — in code and in prose — so a test keeps them together).
+#[test]
+fn the_documented_token_table_lists_exactly_the_engine_tokens() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/formats.md");
+    let text = std::fs::read_to_string(&path).expect("docs/formats.md is readable");
+    let table = text
+        .split_once("## The `%`-token template")
+        .and_then(|(_, rest)| rest.split_once("### Width and precision"))
+        .map(|(table, _)| table)
+        .expect("docs/formats.md carries the token table section");
+
+    let mut documented = BTreeSet::new();
+    for (index, _) in table.match_indices("`%") {
+        if let Some(letter) = table[index + 2..].chars().next()
+            && letter.is_ascii_alphabetic()
+        {
+            documented.insert(letter);
+        }
+    }
+    let engine: BTreeSet<char> = TOKENS.iter().map(|spec| spec.letter).collect();
+    assert_eq!(
+        documented, engine,
+        "docs/formats.md's token table and src/template.rs's TOKENS disagree"
     );
 }
 
