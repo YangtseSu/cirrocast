@@ -77,6 +77,7 @@ impl Provider for OpenMeteoMarine {
             air: None,
             astro: None,
             marine: Some(outcome.marine),
+            normals: None,
             mode: ReportMode::Forecast,
             attribution: attribution(
                 ProviderId::OpenMeteoMarine,

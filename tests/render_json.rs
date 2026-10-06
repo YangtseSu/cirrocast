@@ -239,14 +239,15 @@ fn the_schema_version_leads_the_document_and_is_the_documented_one() {
 fn the_rendered_keys_are_the_documented_ones_with_the_documented_types() {
     let documented = documented_keys();
     // The documented set is the union of the documents this build emits: the alert-carrying one,
-    // the air-carrying one, the astro-carrying one and the marine-carrying one (the last also
-    // carries `mode: "archive"`). `air`, `astro` and `marine` are `null` and `alerts` is `[]` in
-    // the other fixtures, so the union is exactly what a run can render.
+    // the air-carrying one, the astro-carrying one, the marine-carrying one (the last also carries
+    // `mode: "archive"`) and the normals-carrying one. The other optional blocks are `null` and
+    // `alerts` is `[]` in the other fixtures, so the union is exactly what a run can render.
     let documents: Vec<Value> = [
         "beijing-alerts.json",
         "beijing-air.json",
         "beijing-astro.json",
         "beijing-marine.json",
+        "beijing-normals.json",
     ]
     .into_iter()
     .map(|file| document(file, UnitSystem::Metric))

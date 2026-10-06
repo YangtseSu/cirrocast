@@ -207,6 +207,17 @@ is an object with an `error` key rather than a report).
 | `astro.sun.daylight_secs` | integer | seconds | yes | daylight span; `86400` on a polar day, `0` on a polar night, `null` when unknown |
 | `astro.sun.polar` | string | — | yes | `day` or `night` inside the polar circles, else `null` |
 | `astro.sun.source` | string | — | no | `provider` when the backend sent the times, `local` when they were computed here |
+| `normals` | object | — | yes | the month's climate normal from the station nearest the location; `null` unless the run asked (`--normals` or `--format normals`) and the best-effort fetch succeeded |
+| `normals.station` | string | — | no | the station's identifier, e.g. `CHM00054511` |
+| `normals.station_name` | string | — | no | the station's name as the upstream catalog spells it, e.g. `BEIJING, CH` |
+| `normals.distance_km` | number | km | no | great-circle distance from the requested point to the station |
+| `normals.period` | string | — | no | the reference period the values are averaged over, as configured, e.g. `1991-2020` |
+| `normals.month` | integer | — | no | the calendar month the values are for, `1`–`12` |
+| `normals.temp_mean_c` | number | °C | no | mean of the month's mean daily temperatures over the period |
+| `normals.temp_max_c` | number | °C | no | mean of the month's mean daily maxima |
+| `normals.temp_min_c` | number | °C | no | mean of the month's mean daily minima |
+| `normals.precip_mm` | number | mm | no | mean of the month's precipitation totals |
+| `normals.years` | integer | years | no | how many years of the period contributed; never below 20, because a thinner record yields no block |
 | `capabilities` | object | — | yes | what the answering backend offers; `null` for an unknown backend |
 | `capabilities.current` | boolean | — | no | current conditions available |
 | `capabilities.hourly` | boolean | — | no | hourly data available |

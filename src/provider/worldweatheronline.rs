@@ -352,6 +352,7 @@ fn report(data: &Data, loc: &Location, url: String, days: u8, env: &Env<'_>) -> 
         air: None,
         astro: None,
         marine: None,
+        normals: None,
         mode: ReportMode::Forecast,
         attribution: attribution(
             ProviderId::WorldWeatherOnline,

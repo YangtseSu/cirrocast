@@ -145,6 +145,7 @@ expression: "render(&report, UnitSystem::Metric)"
       "source": "provider"
     }
   },
+  "normals": null,
   "alerts": [],
   "capabilities": {
     "current": true,

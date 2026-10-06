@@ -173,6 +173,9 @@ struct Document<'a> {
     air: Option<AirJson>,
     /// Moon phase, sun times and the next phase instants, `null` unless the run asked (`--moon`).
     astro: Option<AstroJson<'a>>,
+    /// Climate normals for the location's month, `null` when the run did not ask (`--normals`,
+    /// `--format normals`) or the best-effort fetch degraded.
+    normals: Option<NormalsJson<'a>>,
     /// Severe-weather warnings in force, strongest first.
     alerts: Vec<AlertJson<'a>>,
     /// What the backend offers, so a consumer can tell "no days because it is an observation"
@@ -207,6 +210,7 @@ impl<'a> Document<'a> {
             marine: report.marine.as_ref().map(MarineJson::of),
             air: report.air.as_ref().map(AirJson::of),
             astro: report.astro.as_ref().map(|astro| AstroJson::of(astro, ctx)),
+            normals: report.normals.as_ref().map(NormalsJson::of),
             alerts: report.alerts.iter().map(AlertJson::of).collect(),
             capabilities: report.attribution.capabilities.as_ref(),
             attribution: AttributionJson::of(&report.attribution, &report.location),
@@ -555,6 +559,54 @@ impl<'a> AstroJson<'a> {
                 .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             moon: MoonJson::of(&astro.moon, ctx),
             sun: SunJson::of(&astro.sun),
+        }
+    }
+}
+
+/// The climate-normals block: one calendar month averaged over the configured reference period,
+/// with the station the values were computed from.
+///
+/// Present only when the run asked for it (`--normals` or `--format normals`) and the best-effort
+/// fetch succeeded, like the air object; `period` is the configured window as written, and `years`
+/// is the number of annual summaries that went into the means.
+#[derive(Debug, Serialize)]
+struct NormalsJson<'a> {
+    /// The station's identifier, e.g. `USW00014837`.
+    station: &'a str,
+    /// The station's name as the upstream catalog spells it.
+    station_name: &'a str,
+    /// Great-circle distance from the requested point, kilometres.
+    distance_km: f64,
+    /// The reference period, e.g. `1991-2020`.
+    period: &'a str,
+    /// The calendar month, `1`–`12`.
+    month: u8,
+    /// Mean of the month's mean daily temperatures, °C.
+    temp_mean_c: f64,
+    /// Mean of the month's mean daily maxima, °C.
+    temp_max_c: f64,
+    /// Mean of the month's mean daily minima, °C.
+    temp_min_c: f64,
+    /// Mean of the month's precipitation totals, mm.
+    precip_mm: f64,
+    /// Number of contributing years; the fetcher refuses fewer than 20.
+    years: u16,
+}
+
+impl<'a> NormalsJson<'a> {
+    /// Projects a normal.
+    fn of(normals: &'a crate::model::Normals) -> Self {
+        Self {
+            station: &normals.station,
+            station_name: &normals.station_name,
+            distance_km: normalise_zero_f64(normals.distance_km),
+            period: &normals.period,
+            month: normals.month,
+            temp_mean_c: normalise_zero_f64(f64::from(normals.temp_mean_c)),
+            temp_max_c: normalise_zero_f64(f64::from(normals.temp_max_c)),
+            temp_min_c: normalise_zero_f64(f64::from(normals.temp_min_c)),
+            precip_mm: normalise_zero_f64(f64::from(normals.precip_mm)),
+            years: normals.years,
         }
     }
 }
@@ -956,6 +1008,7 @@ mod tests {
             air: None,
             astro: None,
             marine: None,
+            normals: None,
             mode: crate::model::ReportMode::Forecast,
             attribution: attribution(),
         }

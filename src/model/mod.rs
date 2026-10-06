@@ -24,6 +24,7 @@ pub mod alert;
 pub mod astro;
 pub mod condition;
 pub mod marine;
+pub mod normals;
 pub mod units;
 
 pub use air::{AirQuality, AirSource, Pollen};
@@ -31,6 +32,7 @@ pub use alert::{Alert, AlertSource, Certainty, Severity, Urgency};
 pub use astro::{Astro, Moon, MoonPhase, Polar, Sun, SunSource};
 pub use condition::Condition;
 pub use marine::{FAR_CELL_KM, Marine, MarineDay, MarineSource};
+pub use normals::Normals;
 
 use chrono::{
     DateTime, FixedOffset, LocalResult, NaiveDate, NaiveDateTime, TimeDelta, TimeZone as _,
@@ -544,6 +546,16 @@ pub struct Report {
     /// defaults.
     #[serde(default)]
     pub marine: Option<Marine>,
+    /// Climate normals for the location's calendar month, when the run asked for the comparison
+    /// (`--normals` or `--format normals`) and the fetch succeeded.
+    ///
+    /// Like the air reading this is a separate service — NOAA NCEI's station summaries are neither
+    /// a weather backend nor keyed by the run's day count — attached after the forecast and
+    /// best-effort: no station inside the configured radius, a thin record or a failed fetch
+    /// degrades to no panel rather than failing the run. `None` also covers a run that never asked,
+    /// and a document written before the field existed parses because it defaults.
+    #[serde(default)]
+    pub normals: Option<Normals>,
     /// Whether this document is a forecast or a historical answer.
     ///
     /// The renderers label an archive (`--date`, `--history`) so a dated block is never mistaken

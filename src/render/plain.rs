@@ -389,6 +389,7 @@ mod tests {
             air: None,
             astro: None,
             marine: None,
+            normals: None,
             mode: crate::model::ReportMode::Forecast,
             attribution: attribution(),
         }

@@ -1858,6 +1858,7 @@ mod tests {
             air: None,
             astro: None,
             marine: None,
+            normals: None,
             mode: crate::model::ReportMode::Forecast,
             attribution: Attribution::unregistered(
                 id.to_string(),

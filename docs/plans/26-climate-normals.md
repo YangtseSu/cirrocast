@@ -49,7 +49,8 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
   (default `"1991-2020"`, the WMO normal period; any two four-digit years are accepted) and
   `[normals] max_distance_km` (default 60) are config keys with `CIRROCAST_NORMALS_PERIOD` /
   `CIRROCAST_NORMALS_MAX_DISTANCE_KM`.
-- ⬜ `src/model/mod.rs`: `pub struct Normals { pub station: String, pub station_name: String,
+- ✅ `src/model/normals.rs` (re-exported from `src/model/mod.rs` as `model::Normals`, like every
+  other panel type): `pub struct Normals { pub station: String, pub station_name: String,
   pub distance_km: f64, pub period: String, pub month: u8, pub temp_mean_c: f32,
   pub temp_max_c: f32, pub temp_min_c: f32, pub precip_mm: f32, pub years: u16 }` and
   `Report.normals: Option<Normals>` (additive in `json`, `schema_version` unchanged by the contract's
@@ -155,3 +156,12 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   — `2020-10` carries only `PRCP`) and the complete 30-year Madison record, so the averaging and the
   completeness rule have a gappy and a full case; the gate payloads are trimmed from the recordings
   inside the tests rather than stored as extra fixtures.
+- 2026-10-06 — deliverable 3 closed. The type lives in its own file (`src/model/normals.rs`),
+  re-exported from the model root, exactly like the air, astro and marine panel types, so
+  `model::Normals` is the interface the step names. The `json` object landed with it, because a
+  model field with no producer is invisible: the machine-checked key index in `docs/schema.md`
+  gained the ten `normals.*` rows, `tests/fixtures/report/beijing-normals.json` (the recorded
+  `CHM00054511` September mean, self-consistent with the fixture's 2026-09-30 day) joined the
+  fixture union the key-index test walks, and the four inline JSON snapshots moved with the added
+  `"normals": null` key. Every `Report` literal in `src/` gained `normals: None`; the tests build
+  reports from fixtures, so none needed it.

@@ -352,6 +352,7 @@ fn report(
         air: None,
         astro: None,
         marine: None,
+        normals: None,
         mode: ReportMode::Forecast,
         attribution: attribution(
             ProviderId::MetNo,

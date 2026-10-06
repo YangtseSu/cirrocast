@@ -106,6 +106,7 @@ expression: "render(&report(), UnitSystem::Metric)"
   "marine": null,
   "air": null,
   "astro": null,
+  "normals": null,
   "alerts": [],
   "capabilities": {
     "current": true,

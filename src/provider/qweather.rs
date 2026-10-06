@@ -140,6 +140,7 @@ impl Provider for QWeather {
             air: None,
             astro: None,
             marine: None,
+            normals: None,
             mode: ReportMode::Forecast,
             attribution: attribution(
                 ProviderId::QWeather,
