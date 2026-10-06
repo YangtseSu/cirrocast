@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Issue-template chooser. Blank issues stay enabled: the forms cover the common cases, but a report
+# that fits none of them should not be forced into one. Contact links are all real repository paths,
+# never an address or forum this project does not own.
+
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/YangtseSu/cirrocast/blob/main/README.md
+    about: Install, usage, formats, configuration, the provider matrix and troubleshooting.
+  - name: Report a security vulnerability
+    url: https://github.com/YangtseSu/cirrocast/security/advisories/new
+    about: Private GitHub security advisory form. Never report a vulnerability in a public issue.

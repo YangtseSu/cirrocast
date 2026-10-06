@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Feature request form. The project is plan-driven (`docs/plans/README.md`): a request is weighed
+# against the frozen output/CLI contracts and the "no new dependency without a reason" rule, so the
+# problem statement matters more than the proposed flag name.
+
+name: Feature request
+description: Propose a new capability, flag, format or configuration option for cirrocast.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, check the plan set ([docs/plans/README.md](https://github.com/YangtseSu/cirrocast/blob/main/docs/plans/README.md)):
+        the roadmap and the deferred backlog are both there, and a request that is already
+        scheduled does not need a new issue.
+
+        For a new *weather backend*, use the
+        [provider request](https://github.com/YangtseSu/cirrocast/issues/new?template=provider-request.yml)
+        form instead — it asks for exactly what is needed to judge one.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that cirrocast does not let you do today?
+      placeholder: I want to see the forecast for my commute at a fixed time of day without editing the template by hand.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: |
+        The surface you would expect: a flag, subcommand, config key or `%` token, and what it should
+        print. If it changes an existing output, say which format and what the new bytes look like.
+      placeholder: A `--at 08:00` option that picks the hour from the hourly forecast, applied before rendering.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing flags, templates, aliases or external tools that nearly do it, and why they fall short.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Related issues, whether you would be willing to work on it, upstream constraints.
+    validations:
+      required: false

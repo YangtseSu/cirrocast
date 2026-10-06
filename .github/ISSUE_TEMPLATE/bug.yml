@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Bug report form. Everything asked for here is something the maintainer would otherwise have to ask
+# for in the first reply; a report that fills it in can be reproduced on the first try.
+# Secrets are never wanted: `config.toml` is safe to paste (redacted), `keys.toml` never is.
+
+name: Bug report
+description: Report a reproducible defect in the cirrocast binary, its packaging or its config/cache handling.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please search the existing issues first, and read
+        [docs/troubleshooting.md](https://github.com/YangtseSu/cirrocast/blob/main/docs/troubleshooting.md)
+        before filing — network, key, cache and "wrong city" problems usually have a documented cause.
+
+        **Do not paste API keys or the contents of `keys.toml`.** `cirrocast config show` output is
+        safe (redact anything personal), and `-vv` output is redacted by the binary, but read it once
+        before pasting.
+
+        A suspected security vulnerability belongs in the
+        [private advisory form](https://github.com/YangtseSu/cirrocast/security/advisories/new), not here.
+
+  - type: input
+    id: version
+    attributes:
+      label: cirrocast version
+      description: The exact output of `cirrocast --version`.
+      placeholder: cirrocast 1.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and install source
+      description: OS, architecture and how you installed it (AUR package, release archive, `cargo install`).
+      placeholder: Arch Linux x86_64, AUR package cirrocast 1.2.0-1
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: The backend behind the wrong output (`cirrocast provider list`); `auto` if you did not pass `--provider`.
+      placeholder: open-meteo
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact command line, with any secret omitted.
+      placeholder: cirrocast --provider open-meteo -f one-line Beijing
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration (redacted)
+      description: The relevant part of `cirrocast config show`, or the config file with anything personal removed.
+      render: toml
+    validations:
+      required: false
+
+  - type: textarea
+    id: verbose
+    attributes:
+      label: "-vv output"
+      description: Rerun the same command with `-vv`. The binary redacts secrets, but check the text before pasting.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should have happened, and where you saw it documented.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead. Include the exit code if it failed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Workarounds, whether `--offline` or another provider changes it, related issues.
+    validations:
+      required: false

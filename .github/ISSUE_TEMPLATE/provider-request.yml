@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Provider request form. `cirrocast` selects backends with `--provider` and adds them one step at a
+# time; a backend can be judged from this form alone only if auth, coverage, licence and data are all
+# answerable, so every one of those fields is required.
+
+name: Provider request
+description: Propose a new weather backend for cirrocast, keyless-first.
+title: "provider: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `cirrocast` prefers keyless backends and treats BYOK as the second tier. Read the provider
+        notes in [docs/providers.md](https://github.com/YangtseSu/cirrocast/blob/main/docs/providers.md)
+        and the provider recipe in
+        [CONTRIBUTING.md](https://github.com/YangtseSu/cirrocast/blob/main/CONTRIBUTING.md) first: the
+        endpoint, licence and attribution questions below are the ones that decide whether a backend
+        can ship.
+
+  - type: input
+    id: service
+    attributes:
+      label: Service name
+      description: The provider's own name, as it should appear in `cirrocast provider list`.
+      placeholder: Meteo-France
+    validations:
+      required: true
+
+  - type: input
+    id: docs
+    attributes:
+      label: Documentation and terms URL
+      description: A link to the provider's API documentation (and its terms/licence page), from the provider itself.
+      placeholder: https://example.org/api/docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: auth
+    attributes:
+      label: Authentication model
+      description: |
+        How the API is authenticated: none, a free key after registration, a paid/credit key, JWT or
+        OAuth, a client certificate, an account name. Say where the credential comes from, how it is
+        sent (header, query parameter) and whether a free tier exists.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: access
+    attributes:
+      label: Keyless or keyed
+      description: The tier this backend would ship as.
+      options:
+        - "Keyless (no account, no key)"
+        - "Free key (registration required)"
+        - "Paid or credit-based key"
+        - "Other (explain under authentication)"
+    validations:
+      required: true
+
+  - type: input
+    id: coverage
+    attributes:
+      label: Coverage and region
+      description: Which countries or regions are served, the forecast horizon (`max_days`), and how often the data updates.
+      placeholder: France and overseas territories, 14 days, hourly refresh
+    validations:
+      required: true
+
+  - type: textarea
+    id: licence
+    attributes:
+      label: Licence and attribution duty
+      description: |
+        The terms that apply to the data: the licence name, mandatory attribution or backlink text,
+        whether and how long responses may be cached, and any redistribution or non-commercial limit.
+        This decides whether the backend is compatible with GPL-3.0-or-later and with the bundled cache.
+    validations:
+      required: true
+
+  - type: textarea
+    id: fields
+    attributes:
+      label: Data fields
+      description: |
+        Which canonical metrics it provides — current conditions, daily/hourly forecast, alerts, air
+        quality, marine, climate normals — and the native condition codes and units it returns
+        (they must be mapped to WMO 4677 and metric/SI).
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Rate limits, known traps, existing implementations, whether you would work on the backend.
+    validations:
+      required: false
