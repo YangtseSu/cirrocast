@@ -29,6 +29,11 @@ registry re-verification of that step needs a written record of what was checked
   a number.
 * **Client notes** at the end of each section state what our implementation must do about the facts
   above; they are the seed of the corresponding `src/provider/<id>.rs`.
+* **Config keys and location rules live elsewhere.** This document names a config key only where a
+  provider's behaviour depends on it (`providers.qweather.host`, `providers.metar.station`,
+  `defaults.provider`); [`docs/configuration.md`](configuration.md) owns every key, its type and its
+  default, and [`docs/location.md`](location.md) owns the user-facing location syntax and the
+  service ranking. The service endpoints and their terms below are the provider half of the latter.
 * **Network class** (step 24) is a separate axis from the licence: `free` means the backend is
   keyless or needs a key the user can self-host, its endpoint is documented and public, and no
   proprietary service sits in the request path (a self-hosted Bright Sky instance reading DWD open
@@ -60,15 +65,20 @@ registry re-verification of that step needs a written record of what was checked
 | `pirateweather` | `CIRROCAST_PIRATEWEATHER_KEY` | 10 000 calls/month (≈$2/month → 20 000) | global | hourly + 7 daily | 48 h hourly (`extend` 168 h), 7 days daily | implemented |
 | `qweather` | `CIRROCAST_QWEATHER_KEY` | first 50 000 requests/month at ¥0; QPM 3 000 | global | hourly (up to 240 h) | 10 days (v1) | implemented |
 
-`--provider auto` (the default) expands by coverage rather than from a fixed list: entries whose
-`covers` names the location's `country_code` come first, then entries whose bounding box contains
-the point, then every global keyless forecast entry — each tier in registry order. A US point starts
-at `nws` (`nws, open-meteo, met-no`), a German point at `brightsky`, a Swedish point at `smhi` (its
-bounding box) and a Norwegian point at `met-no` (national) with `smhi` behind it; a point with no
-country code falls back to the global tier alone (`open-meteo, met-no`). `metar` never enters (a
-station has to be named), and neither does `open-meteo-archive` (history only) or
-`open-meteo-marine` (supplementary, `--marine`, never a chain entry). `tests/provider_auto.rs` pins
-each tier.
+`--provider auto` expands by coverage rather than from a fixed list: entries whose `covers` names
+the location's `country_code` come first, then entries whose bounding box contains the point, then
+every global keyless forecast entry — each tier in registry order. A US point starts at `nws`
+(`nws, open-meteo, met-no`), a German point at `brightsky`, a Swedish point at `smhi` (its bounding
+box) and a Norwegian point at `met-no` (national) with `smhi` behind it; a point with no country code
+falls back to the global tier alone (`open-meteo, met-no`); `-v` prints the chain it chose.
+
+The built-in default is **not** `auto`: it is the single keyless backend `open-meteo`, the chain
+`defaults.provider` names ([`docs/configuration.md`](configuration.md)), so a bare run talks to one
+provider and `auto` is opt-in. The `auto` expansion never selects `metar` — it is observation-only
+(`max_days: 0`) and serves a station, not a forecast — and neither does it select
+`open-meteo-archive` (history only) or `open-meteo-marine` (supplementary, `--marine`, never a chain
+entry). A station run is the exception: `--station <ICAO>` against the configured chain (or `auto`)
+prepends `metar`, so the configured fallbacks still apply. `tests/provider_auto.rs` pins each tier.
 
 ### Obligations that reach the rendered output
 
@@ -277,10 +287,14 @@ rate limit (none found); the multipoint grid endpoint (every probe returned 406)
 
 ### `metar` (aviationweather.gov)
 
-Keyless, station-based observations (step 11), and `auto` never selects it because a station has to
-be named. The decoder reads the raw report rather than the JSON fields, the embedded station table
-answers the common identifiers without a request, and `stationinfo` extends that to any station at
-one cached request per 30 days.
+Keyless, station-based observations (step 11), and the `auto` coverage expansion never selects it
+because it serves a station, not a forecast (`max_days: 0`). A station run reaches its station two
+ways: `--station <ICAO>` (or the `providers.metar.station` config key) names the identifier
+directly, and `@lat,lon` maps to the nearest row of the embedded station table — the chosen station
+and its distance are printed under `-v`. The
+decoder reads the raw report rather than the JSON fields, the embedded station table answers the
+common identifiers without a request, and `stationinfo` extends that to any station at one cached
+request per 30 days.
 
 **Endpoints** (verified 2026-10-01, all GET, no key)
 
@@ -994,10 +1008,11 @@ host the console issues.
 | Daily | `https://<host>/weather/v1/daily/<lat>/<lon>` | `days` (1–10; probed: `11` → `400`), `lang` |
 
 The host is **per account** (`<account-id>.re.qweatherapi.com` in the verified account; the console
-shows it at <https://console.qweather.com/setting>) and is part of the authentication ("even if a developer's credentials are leaked, an attacker cannot request data
+shows it at <https://console.qweather.com/>) and is part of the authentication ("even if a developer's credentials are leaked, an attacker cannot request data
 without knowing the API Host"). The legacy shared domains (`api.qweather.com`, `devapi.qweather.com`,
 `geoapi.qweather.com`) answer `403` with `"title": "Invalid Host"` — probed with a valid key on
-2026-10-01 — so `<host>` has no default and comes from `[providers.qweather].host`.
+2026-10-01 — so `<host>` has no default and comes from `providers.qweather.host` (the
+`[providers.qweather]` table of `config.toml`).
 
 **Response shape.** Every value is a **measure object** (`{"value": 10.96, "unit": "°C"}`), the
 timestamps are **UTC instants** (`2026-10-01T00:00Z`, minutes form — valid ISO 8601, not strict
@@ -1040,7 +1055,7 @@ table of `keys.toml` → `CIRROCAST_QWEATHER_KEY` → the `[keys] qweather` entr
 naming the missing items — never a silent fall-back to the API key. `key list` shows the identifiers
 (`qweather  jwt (kid …, iss …, sub …)`) and the masked API key beside them when both are stored,
 never the PEM; `key rm qweather` removes both forms. The API host requirement is unchanged: it is
-part of the authentication, and a JWT-configured run without `[providers.qweather].host` fails the
+part of the authentication, and a JWT-configured run without `providers.qweather.host` fails the
 same way an API-key one does.
 
 **Limits.** Pay-as-you-go with the **first 50 000 requests/month at ¥0** (no "Standard" free plan);
@@ -1089,7 +1104,7 @@ rather than a silent conversion; the day extremes come from the samples. Finding
 
 Credit line: `QWeather — https://www.qweather.com/`. A missing host with a key present is
 `Error::Config` (exit 4) with `set providers.qweather.host (see
-https://console.qweather.com/setting, or cirrocast provider info qweather)`; with no credential
+https://console.qweather.com/, or cirrocast provider info qweather)`; with no credential
 either, the chain reports the missing credential first (exit 6), naming both `key set` forms.
 
 **JWT mode implemented 2026-10-06** (step 27). The token shape, the claim set, the 24 h ceiling and
@@ -1153,6 +1168,11 @@ are for: a run without `--normals` makes no NCEI request at all. Recorded fixtur
 request text are in `tests/fixtures/normals/`.
 
 ## Location and IP services
+
+The user-facing half of these services — which one a query reaches, how candidates are ranked and
+how `--ip` picks a locator — is in [`docs/location.md`](location.md); this section records the
+upstream endpoints, their terms and their measured behaviour. Their selection keys and environment
+variables are in [`docs/configuration.md`](configuration.md).
 
 ### At a glance
 
@@ -1235,7 +1255,7 @@ the service's sentence, never a silently empty result. `lat` and `lng` arrive as
 country code that is not two ASCII letters, no usable zone — is dropped rather than failing the
 query, because this source is one of several a name query merges. Credit: `Location data by
 GeoNames (CC BY 4.0) — https://www.geonames.org/`
-(<https://www.geonames.org/export/web-services.html>, <https://www.geonames.org/terms>).
+(<https://www.geonames.org/export/web-services.html>, <https://www.geonames.org/about.html>).
 
 ### IP.SB (keyless, last-resort IP locator)
 
@@ -1275,6 +1295,27 @@ the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
 
 ## Re-verification log
 
+* **2026-10-06** — the whole document re-checked against the shipped binary (step 28), no upstream
+  fetch needed. **Registry**: `provider list` and `provider info <id>` for all fourteen ids agree
+  with the at-a-glance table and the sections — the six `CIRROCAST_*_KEY` names, the `NET` classes,
+  every `max_days`, and the alert attribution (`nws` prints `its own payload` because its row is
+  `alerts: true`; `visualcrossing` prints `its own payload, visualcrossing`; `qweather` prints
+  `qweather`). **Correction**: the built-in default chain is the single backend `open-meteo`
+  (`-v` prints `provider: open-meteo (from the config or the built-in default)`; `config show` has
+  `[defaults] provider = "open-meteo"`), not `auto` as the document claimed — `auto` is opt-in, and
+  with no explicit `--provider`, `--station <ICAO>` prepends `metar` to the configured chain.
+  **Selection**: `--provider` accepts the fourteen ids plus `auto` (case-insensitive, `-`/`_`
+  tolerated) and refuses `open-meteo-marine` with the `--marine` hint (exit 2); `--alerts-from`
+  accepts `nws, meteoalarm, qweather, hko, wmoswic, fpas, visualcrossing` and refuses
+  `visualcrossing` without `--provider visualcrossing` (exit 2). **Flags**: every flag the document
+  names (`--provider`, `--alerts-from`, `--station`, `--marine`, `--date`, `--history`, `--days`,
+  `--normals`) exists as described, and `--provider open-meteo-archive` with `--days` (or with no
+  window) is the promised usage error (exit 2). **QWeather JWT**: `key set qweather --jwt
+  --key-file … --credential-id … --developer-id … --project-id …` stores it, `key list` prints
+  `qweather  jwt (kid …, iss …, sub …)` beside the masked API key, and `key rm qweather` removes both
+  forms. **metar**: `--station KJFK` and `--provider metar @40.64,-73.78` both resolve through the
+  embedded station table. **Normals**: the 20-year minimum and the two 30-day cache TTLs match
+  `src/normals/ncei.rs`.
 * **2026-10-06** — the step-26 NCEI access services checked directly against the live endpoints.
   **Search**: the `bbox` corner order is `maxLat,minLon,minLat,maxLon` (an `SW,NE` attempt answered
   `HTTP 500`); a two-degree Beijing box returned three station files in an order that is **not**
