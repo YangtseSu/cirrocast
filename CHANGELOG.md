@@ -27,6 +27,22 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Added
 
+* **Climate normals (step 26).** `--normals` compares the forecast with the climate: the month's
+  normal (mean of the calendar month's mean daily temperature, mean high, mean low and monthly
+  precipitation) is **computed here** from NOAA NCEI's Global Summary of the Month — the mean over
+  `[normals] period`, default the WMO `1991-2020` window — for the station nearest the location
+  (`[normals] max_distance_km`, default 60 km; the station, its distance and the contributing years
+  are printed, and a month with fewer than 20 usable years yields no comparison). The line lands in
+  the `art-table` footer and `plain` (`high 26.4°C (-2.4°C) · low 16.1°C (-2.1°C) · precip
+  48.9 mm/mo (-100%)`, signs as text so a colourless terminal keeps them), the typed `normals`
+  object in `json` (additive, `schema_version` 2), and `--format normals` prints it standalone;
+  `one-line` is unchanged. Two keyless requests, both cached for 30 days under
+  `$XDG_CACHE_HOME/cirrocast/normals/`, and **zero** requests without the flag; `[defaults] normals`
+  turns it on for every run, `CIRROCAST_NORMALS_PERIOD` and `CIRROCAST_NORMALS_MAX_DISTANCE_KM`
+  override the two keys, and a failed fetch is a warning (or a `-v` note for the "no normal exists"
+  outcomes) that never changes the exit code. Public-domain NOAA data, credited as `Climate normals
+  computed from NOAA NCEI Global Summary of the Month (public domain)`.
+
 * **Second-generation location sources (step 25).** A plain name now runs through `[geo] search`
   (`CIRROCAST_GEO_SEARCH`): `auto` queries Open-Meteo, then **GeoNames `searchJSON`** (BYOK —
   `CIRROCAST_GEONAMES_USER` or `key set geonames`; a free account with fuzzy matching), then

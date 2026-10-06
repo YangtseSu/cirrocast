@@ -72,10 +72,15 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
   carries the typed object; `one_line` gets no token (the
   wttr.in token table stays untouched). Every number goes through the single conversion point, so
   `--units us` shows °F/inches.
-- ⬜ Credit: the footer line includes `Climate normals computed from NOAA NCEI Global Summary of the
-  Month (public domain)`, and `docs/providers.md` gains a normals row (endpoint, no auth, licence
-  `LicenseRef-PublicDomain-USGov` or `CC0-1.0` as the page states, cache ceiling, `verified` date);
-  README's sources section lists it beside Open-Meteo.
+- ✅ Credit: the container line includes `Climate normals computed from NOAA NCEI Global Summary of
+  the Month (public domain)` — one catalog string, printed inside the block by `art-table`,
+  `plain` and the standalone view, with `json` left as the raw document — and `docs/providers.md`
+  gained a `## Climate normals` section (the at-a-glance row, the measured two-step flow, the
+  licence and cache ceilings, `verified: 2026-10-06`) instead of a row in the location table, which
+  resolves places and does not; the licence is the `LicenseRef-US-Government-Public-Domain` id
+  `LICENSES/` already ships for the NOAA recordings, not a new spelling. README's sources section
+  lists NCEI beside Open-Meteo, and a `### Climate normals` usage section plus a `CHANGELOG.md`
+  entry land with it.
 - ⬜ Tests (`tests/normals.rs`, offline): a station fixture (search + data) for a full 30-year month
   → the exact means and `years = 30`; a 12-year station → `Ok(None)` with the verbose reason; a
   point with no station in range; a month present in the data but not in the window; the second run
@@ -220,3 +225,16 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   215 — so the budget went 215 → 225 everywhere it is written down (`tests/cli.rs`,
   `scripts/bench/compare.py`, `docs/performance.md` and step 21's own file, the last with a
   progress-log entry, the same rationale as step 23's raise from 200).
+- 2026-10-06 — deliverable 6 closed. The credit is one catalog string used by three surfaces
+  (`art-table`'s body, the `plain` record's following line, the standalone view's last line) and
+  `json` stays the raw document, matching how the air and marine panels carry theirs; the contract's
+  attribution bullet gained the sentence that says so for a block whose numbers come from a service
+  other than the forecast. `docs/providers.md` gained a `## Climate normals (NOAA NCEI)` section —
+  the at-a-glance row, the measured two-step flow with the two traps (the `NW,SE` bbox order and the
+  unsorted `results[]`), the measured sizes and the recorded stations' real holes — rather than a row
+  inside the *location* table, which resolves places and does not; its licence cell names the
+  `LicenseRef-US-Government-Public-Domain` id `LICENSES/` already carries for the NOAA recordings
+  instead of the plan's suggested `LicenseRef-PublicDomain-USGov` spelling, which the repository
+  never defined. The re-verification log gained the 2026-10-06 NCEI entry, README gained the
+  sources-table row beside Open-Meteo and a `### Climate normals` usage section with the recorded
+  Beijing example, and `CHANGELOG.md` gained the Unreleased entry.

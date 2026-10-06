@@ -1060,6 +1060,50 @@ the v1 facts above come from live responses and the public docs repository); the
 (per project vs per account); whether `days[]`'s `daytime`/`nighttime` windows are fixed local
 windows (observed 07:00–19:00 local, which is not the solar day).
 
+## Climate normals (NOAA NCEI)
+
+`--normals` is the one comparison rather than a reading: the month's climate normal is **computed
+here** from NOAA NCEI's Global Summary of the Month (GSOM), the mean of the requested calendar
+month over the configured reference period for the station nearest the location. Two keyless
+requests, both cached for 30 days; the credit
+`Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)` travels with
+the block (`art-table`'s footer, `plain`'s document, the standalone view).
+
+### At a glance
+
+| Service | Endpoint | Auth | Licence / credit | Policy | Cache ceiling | Verified |
+|---|---|---|---|---|---|---|
+| NCEI station search | `GET www.ncei.noaa.gov/access/services/search/v1/data?dataset=global-summary-of-the-month&bbox=<maxLat>,<minLon>,<minLat>,<maxLon>&limit=5` | none | US government work, public domain (`LicenseRef-US-Government-Public-Domain`) | no key; HTTPS only (the service enforces HSTS); no request quota published on the access-services documentation page (checked 2026-10-06); `limit=5` keeps the answer at 24–67 KB measured | 30 days (`normals/search-<lat.2dp>-<lon.2dp>-<radius>km.json`) | 2026-10-06 |
+| NCEI monthly summaries | `GET www.ncei.noaa.gov/access/services/data/v1?dataset=global-summary-of-the-month&stations=<ID>&startDate=<first>-01-01&endDate=<last>-12-31&format=json&units=metric&dataTypes=TAVG,TMAX,TMIN,PRCP` | none | the same | the same; 92 KB for 30 years without the `dataTypes` projection, 27 KB with it (measured) | 30 days (`normals/<station>-<period>-<MM>.json`) | 2026-10-06 |
+
+### The two-step flow (measured 2026-10-06)
+
+1. **Which station answers?** The search endpoint takes a bounding box whose corners are
+   **north-west first**, then south-east: `bbox=<maxLat>,<minLon>,<minLat>,<maxLon>`. The
+   documented-looking `SW,NE` order answers **`HTTP 500`**, and the client's regression test pins
+   the order. The box is the configured radius converted at 111 km per degree of latitude with the
+   longitude half-width divided by `cos(lat)` (clamped at a pole and the antimeridian). The answer
+   carries one `results[]` entry per station file, each with its file `name`
+   (`CHM00054511.csv`), its point as `centroid: [lon, lat]` (also in `location.coordinates` and
+   `boundingPoints[].coordinates`) and a nested `stations[]` list whose `dataTypes[]` records name
+   the covered datatypes. Two traps were measured: the entries are **not** ordered by distance (a
+   recorded two-degree Beijing box lists a station 119.7 km away first and the 12.4 km one last),
+   so every entry is measured; and a box with no station answers `200` with `results: []`, which
+   is an answer, not an error.
+2. **What does that station say?** The data endpoint answers one row per `YYYY-MM` of the period —
+   `{DATE, STATION, TAVG, TMAX, TMIN, PRCP}` with the values as JSON **strings** in °C and mm. The
+   `dataTypes` projection is what keeps the response reasonable (92 KB → 27 KB for 30 years
+   measured); a station may answer `[]` when the file holds nothing for the window. The client
+   averages the requested month over the rows carrying **all four** values — a year with a
+   precipitation total and no temperatures is a real GSOM shape (the recorded Beijing station has
+   one in `2020-10`) and must not make the printed `years` count mean two things at once — and
+   refuses a month with fewer than 20 such years.
+
+Request timings measured from this network: the search took 1.9–10.3 s and the values request
+1.8–16.7 s (NCEI is slower than the weather APIs), which is what the 30-day TTL and the opt-in flag
+are for: a run without `--normals` makes no NCEI request at all. Recorded fixtures and their exact
+request text are in `tests/fixtures/normals/`.
+
 ## Location and IP services
 
 ### At a glance
@@ -1183,6 +1227,18 @@ the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
 
 ## Re-verification log
 
+* **2026-10-06** — the step-26 NCEI access services checked directly against the live endpoints.
+  **Search**: the `bbox` corner order is `maxLat,minLon,minLat,maxLon` (an `SW,NE` attempt answered
+  `HTTP 500`); a two-degree Beijing box returned three station files in an order that is **not**
+  distance (119.7 km, 89.4 km, then the 12.4 km `CHM00054511` last), each carrying `centroid` as a
+  `[lon, lat]` array and a `stations[]` list with per-datatype coverage records; a station-free
+  Pacific box answered `200` with `results: []` in 246 bytes. **Values**: `format=json&units=metric`
+  answers `DATE`-keyed rows whose values are JSON strings; the `dataTypes=TAVG,TMAX,TMIN,PRCP`
+  projection cut the 30-year window from 91 616 B to 26 877 B at Beijing and 35 864 B at Madison;
+  the recorded stations have real holes (Beijing's `2020-10` carries `PRCP` and no temperatures),
+  which is why a year counts only when all four values are present. The access-services
+  documentation page was read the same day: it documents the data endpoint, states the service is
+  HTTPS-only (HSTS) and publishes no request quota.
 * **2026-10-06** — the step-25 location services checked against their live pages and probes.
   **GeoNames**: the endpoint, the parameter set, the string-typed coordinates and the `style=FULL`
   fields from the published documentation; two refusals measured live — no `username` and an

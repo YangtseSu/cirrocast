@@ -399,6 +399,11 @@ report so that no renderer or template token converts a clock per field.
   service). A name that reverse geocoding *attached* to such a location (step 25) is the namer's
   data, though: `Location::named_by` records the source, `attribution_line` falls back to it, and a
   named coordinate carries the GeoNames or ODbL line while a bare one carries none.
+  A block whose numbers come from a *different* service than the forecast carries its own credit,
+  like the air and marine panels: the climate-normal comparison's line
+  (`Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)`) rides
+  inside the normals block in `art-table` and `plain`, the standalone view prints it last, and
+  `json` stays the raw document (step 26).
 * **The machine-readable outputs are frozen contracts (step 22).** `json` (`schema_version` 2,
   additive within a version), the `one-line` token meanings and the `plain` record and field order
   change only as a release event: a minor bump, one release of dual emission where feasible, and a

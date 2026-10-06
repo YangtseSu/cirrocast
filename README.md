@@ -390,6 +390,33 @@ response is cached in the `weather` namespace under
 `weather/open-meteo-air-<lat>-<lon>-<local-date>.json` with `cache.weather_ttl_secs`, and
 `--no-cache`/`--refresh`/`--offline` behave exactly as they do for the forecast.
 
+### Climate normals
+
+`--normals` compares the forecast with the climate: it appends a line to the table and `plain`
+output, carries the comparison as the `normals` object in `json`, and `--format normals` prints it
+standalone. The normal is **computed here**, not fetched as such — NOAA NCEI's Global Summary of
+the Month publishes monthly station summaries, and the normal is the mean of the requested calendar
+month over `[normals] period` (default `1991-2020`, the WMO window) for the station nearest the
+location:
+
+```text
+$ cirrocast --normals -f normals @39.9042,116.4074
+Beijing, Beijing, China (39.90, 116.41) Asia/Shanghai
+Climate normals: 1991–2020 · BEIJING, CH (CHM00054511) 12 km · high 26.4°C (-2.4°C) · low 16.1°C (-2.1°C) · precip 48.9 mm/mo (-100%) · 22 years
+Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)
+```
+
+The comparison uses the first forecast day's high and low; precipitation compares the reported
+span's total with the normal's share of the same number of days (the normal itself is a **monthly**
+total, printed with `/mo` so it cannot be read as a daily figure). Differences carry their sign as
+text, so a colourless terminal keeps the meaning, and the station, its distance and the number of
+contributing years are printed so a thin or far-away record can be discounted — a month with fewer
+than twenty usable years yields no comparison at all. Two requests, both keyless and both cached for
+30 days under `$XDG_CACHE_HOME/cirrocast/normals/`; `--offline` serves the cached answer, and a miss
+is a `-v` note (`warning: climate normals unavailable: …` for a real upstream failure), never a
+changed exit code. `[normals] max_distance_km` (or `CIRROCAST_NORMALS_MAX_DISTANCE_KM`) is how far
+the station may sit; `[normals] period` (`CIRROCAST_NORMALS_PERIOD`) is the window.
+
 ### Moon and sun
 
 `--moon` appends a moon/sun block to the table and `plain` output, carries it as the `astro` object
@@ -676,6 +703,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [Open-Meteo](https://open-meteo.com/) geocoding | `Beijing`, `:Beijing` | free tier is **non-commercial**, < 10 000 calls/day, 5 000/hour, 600/minute; `name` needs ≥ 2 characters | data CC-BY-4.0; the CLI prints `Location data based on GeoNames (CC-BY-4.0) via Open-Meteo` with the service link |
 | [Open-Meteo](https://open-meteo.com/) forecast | every weather query | free tier is **non-commercial**, < 10 000 calls/day; `forecast_days` ≤ 16 | data CC-BY-4.0; the rendered report ends with `Data: Open-Meteo.com (CC BY 4.0)` |
 | [Open-Meteo Air Quality](https://open-meteo.com/en/docs/air-quality-api) | `--aqi`, `--format aqi` | same free tier as the forecast API; one keyless request per run; pollen comes from the CAMS European domain only (elsewhere it is absent, which the panel states) | CAMS ENSEMBLE data, CC BY 4.0; the panel ends with `Air quality data by Open-Meteo.com (CAMS ENSEMBLE)` |
+| [NOAA NCEI](https://www.ncei.noaa.gov/) Global Summary of the Month | `--normals`, `--format normals` | keyless; HTTPS only (the service enforces HSTS); no published request quota on its access-services page; two requests per run, both cached for 30 days | US government work, public domain; the block ends with `Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)` |
 | [SMHI](https://opendata.smhi.se/metfcst/snow1gv1) open data | `-p smhi` (Nordics) | no published quota; SMHI's fair-use rules forbid mass downloads and re-fetching the same data | data CC BY 4.0 SE; the rendered report ends with `Data: SMHI (CC BY 4.0 SE)` |
 | [aviationweather.gov](https://aviationweather.gov/) (NOAA/NWS) | `-p metar`, `--station` | 100 requests/minute, at most 400 entries per response; an unknown station answers `204 No Content`; a custom `User-Agent` is required | US government work, public domain (no credit mandated); the report still names the source: `Data: aviationweather.gov (NOAA/NWS, public domain)` |
 | [OpenWeatherMap](https://openweathermap.org/) | `-p openweathermap` | free tier: 60 calls/minute, 1 000 000 calls/month; two calls per fetch (current + 5-day/3-hourly forecast); a fresh key needs up to 2 hours to activate | data ODbL 1.0; visible attribution required — the rendered report ends with `Data: OpenWeather (ODbL 1.0) — https://openweathermap.org/` |
