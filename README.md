@@ -446,8 +446,10 @@ Every forecast is cached for `cache.weather_ttl_secs` under
 location's own calendar date; a station-based backend keys the same namespace by identifier
 (`weather/metar-<ICAO>-current.json`) and keeps the station's metadata under
 `$XDG_CACHE_HOME/cirrocast/station/<ICAO>.json` for 30 days. Geocoder answers live under `geocode/`
-and `ip/`, the air reading under `weather/<source>-air-<lat>-<lon>-<local-date>.json`, and the OSM
-one-request-per-second stamp under `ratelimit/nominatim.json` — `cache stat` reports the five data
+and `ip/`, the air reading under `weather/<source>-air-<lat>-<lon>-<local-date>.json`, a grid
+backend's coordinate mapping under `grid/`, the alert answers under `alerts/`, the climate-normals
+station search and monthly summaries under `normals/`, and the OSM
+one-request-per-second stamp under `ratelimit/nominatim.json` — `cache stat` reports the seven data
 namespaces. Providers are also requested in metric, and the renderer converts into
 the display units, so a cache entry is unit-independent.
 
@@ -808,6 +810,8 @@ write and the first one read — and `config validate` reports the file that was
 | `alerts.fpas_url` | empty | FOSS Public Alert Server base URL; empty = `https://alerts.kde.org` |
 | `alerts.cache_ttl_secs` | `300` | `> 0` (5 minutes) |
 | `air.index` | `us` | `us`, `european` — the AQI scale behind the panel colour and `%q` |
+| `normals.period` | `1991-2020` | the reference window the normal is averaged over: two four-digit years, the earlier one first |
+| `normals.max_distance_km` | `60` | `1..=500` — farthest NOAA NCEI station that still answers |
 | `providers.metar.station` | empty | ICAO identifier, e.g. `ZBAA` |
 | `providers.qweather.host` | empty | your QWeather API host, from <https://console.qweather.com/setting> (e.g. `https://<account-id>.re.qweatherapi.com`) |
 
@@ -834,7 +838,8 @@ compact = "%c%t"                # cirrocast -f compact  /  --template @compact
 Precedence, highest first: **command line flag → `CIRROCAST_*` environment variable → `config.toml`
 → built-in default**. The variables are `CIRROCAST_PROVIDER`, `CIRROCAST_FORMAT`,
 `CIRROCAST_UNITS`, `CIRROCAST_DAYS`, `CIRROCAST_LANG`, `CIRROCAST_LOCATION`,
-`CIRROCAST_LOCATION_PICK`, `CIRROCAST_TIMEOUT`, `CIRROCAST_NOMINATIM_URL` and
+`CIRROCAST_LOCATION_PICK`, `CIRROCAST_TIMEOUT`, `CIRROCAST_NOMINATIM_URL`,
+`CIRROCAST_NORMALS_PERIOD`, `CIRROCAST_NORMALS_MAX_DISTANCE_KM` and
 `CIRROCAST_IP_SERVICE`; API keys use their own
 `CIRROCAST_<PROVIDER>_KEY` namespace (below). `cirrocast config get <KEY>` prints the effective
 value, environment override included.

@@ -55,6 +55,10 @@ cache_ttl_secs = 300
 [air]
 index = "us"
 
+[normals]
+period = "1991-2020"
+max_distance_km = 60
+
 [status]
 placeholder = "n/a"
 

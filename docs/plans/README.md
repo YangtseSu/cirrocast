@@ -441,19 +441,18 @@ schema_version = 2
 [render]    color = "auto"  width = 0
 [alerts]    enabled = true  severity_threshold = "minor"  sources = ["auto"]  fpas_url = ""  cache_ttl_secs = 300  # step 15
 [air]       index = "us"            # us | european — the AQI scale behind the panel colour and %q
+[normals]   period = "1991-2020"    # the reference window: two four-digit years, the earlier first (step 26)
+            max_distance_km = 60    # farthest NOAA NCEI GSOM station that still answers, 1..=500
 [status]    placeholder = "n/a"     # what `cirrocast status` prints when it has no reading (step 22)
 [providers.metar]    station = ""
 [providers.qweather] host = ""
 ```
 
-* The `[normals]` table is **not** in this block yet: it arrives with step 26, and this build's
-  `check_known_keys` rejects it (a file copied from an earlier draft of the block would fail
-  `config validate`).
-
 * These keys are addressed as dotted paths (`cirrocast config get defaults.days`). The ones that
   also exist as command line flags carry a `CIRROCAST_*` override — `PROVIDER`, `FORMAT`, `UNITS`,
   `DAYS`, `LANG`, `LOCATION`, `TIMEOUT`, `LOCATION_PICK` (`location.pick`), `NOMINATIM_URL`
-  (`network.nominatim_url`), `GEO_SEARCH` (`geo.search`), `GEO_REVERSE` (`geo.reverse`) and
+  (`network.nominatim_url`), `GEO_SEARCH` (`geo.search`), `GEO_REVERSE` (`geo.reverse`),
+  `NORMALS_PERIOD` (`normals.period`), `NORMALS_MAX_DISTANCE_KM` (`normals.max_distance_km`) and
   `IP_SERVICE` (the `--ip` service order)
   — and `config get` prints the environment value when set. (`CIRROCAST_IP_SERVICE` has no config
   key: it selects the IP services directly. `CIRROCAST_GEONAMES_USER` is the GeoNames account name
@@ -482,10 +481,13 @@ schema_version = 2
   per identifier hashes the identifier instead of a place); writes are `tmp` + `rename`. Two small
   state files live beside them, deliberately not cached answers: `ratelimit/nominatim.json` (the OSM
   one-request-per-second stamp) and `geo/update-notice.json` (the 24-hour `[geo] update = "check"`
-  freshness note). Step 24 added one namespace and step 26 will add another, with the
+  freshness note). Step 24 added the `grid` namespace and step 26 the `normals` one, with the
   same discipline: `grid/<provider>-<lat.3dp>-<lon.3dp>.json` (a provider's coordinate → grid/point
-  mapping, 30 days) and `normals/<station>-<YYYY-MM>.json` (climate normals, 30 days). `cache stat`
-  reports the six entry namespaces (`weather`, `geocode`, `ip`, `station`, `alerts`, `grid`) and
+  mapping, 30 days), `normals/<station>-<period>-<MM>.json` (one calendar month's summaries for a
+  station, 30 days) and `normals/search-<lat.2dp>-<lon.2dp>-<radius>km.json` (the station pick for
+  one point and radius, 30 days). `cache stat`
+  reports the seven entry namespaces (`weather`, `geocode`, `ip`, `station`, `alerts`, `grid`,
+  `normals`) and
   then the `ratelimit`/`geo` state namespaces, and ignores a crashed run's `.<name>.tmp.<pid>`
   staging files;
   `cache clean` removes expired entries, and `cache clean --all` the whole tree including those

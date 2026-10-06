@@ -39,13 +39,16 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
     from the **search** response, not the data rows (they carry `STATION` and numbers only). The
     recordings live in `tests/fixtures/normals/` — exact request URLs in its `README.md`, the
     `LicenseRef-US-Government-Public-Domain` annotation in `REUSE.toml`.
-- ⬜ `src/normals/ncei.rs`: `pub fn normals(loc: &Location, month: u8, env: &Env<'_>) ->
+- ✅ `src/normals/{mod,ncei}.rs`: `pub fn normals(loc: &Location, month: u8, env: &Env<'_>) ->
   Result<Option<Normals>>` — two requests, both through the shared client and cache
-  (`normals/<station>-<YYYY-MM>.json`, TTL 30 days, `--no-cache`/`--refresh`/`--offline` honoured);
-  the 1991–2020 window is fetched once per station and month, then the row for the requested month
-  is averaged (mean of `TAVG`, `TMAX`, `TMIN`, sum-then-mean of `PRCP`); a station with fewer than
-  20 usable years, no station inside 60 km, or no row for the month yields `Ok(None)` plus one
-  `--verbose` line naming the reason — never an error that changes the exit code. `[normals] period`
+  (`normals/<station>-<period>-<MM>.json` for the summaries and
+  `normals/search-<lat.2dp>-<lon.2dp>-<radius>km.json` for the station pick, TTL 30 days,
+  `--no-cache`/`--refresh`/`--offline` honoured; an offline miss degrades to `Ok(None)` with a `-v`
+  note, like the gates below); the configured window is fetched once per station and month, then the
+  row for the requested month is averaged (mean of `TAVG`, `TMAX`, `TMIN`, sum-then-mean of `PRCP`
+  over the rows carrying all four values); a station with fewer than
+  20 usable years, no station inside `max_distance_km`, or no row for the month yields `Ok(None)`
+  plus one `--verbose` line naming the reason — never an error that changes the exit code. `[normals] period`
   (default `"1991-2020"`, the WMO normal period; any two four-digit years are accepted) and
   `[normals] max_distance_km` (default 60) are config keys with `CIRROCAST_NORMALS_PERIOD` /
   `CIRROCAST_NORMALS_MAX_DISTANCE_KM`.
@@ -165,3 +168,21 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   fixture union the key-index test walks, and the four inline JSON snapshots moved with the added
   `"normals": null` key. Every `Report` literal in `src/` gained `normals: None`; the tests build
   reports from fixtures, so none needed it.
+- 2026-10-06 — deliverable 2 closed, together with the `[normals]` configuration table it depends
+  on (`period` validated as `YYYY-YYYY` with the earlier year first, `max_distance_km` a `u16` in
+  `1..=500`, both with their `CIRROCAST_*` override). Two divergences from the plan text, recorded
+  as the plan-driven workflow asks: the summaries cache key is
+  `normals/<station>-<period>-<MM>.json`, not `<station>-<YYYY-MM>` — the configured window is part
+  of what the cached body means, so a period change must miss by key instead of serving the old
+  window until the TTL runs out — and the station pick got its own long-TTL entry,
+  `normals/search-<lat.2dp>-<lon.2dp>-<radius>km.json`, which the plan left unspecified; the radius
+  is part of the question, so it is part of the key. The contract's cache-layout bullet, the README
+  key table, `docs/schema.md`, the shipped `DEFAULT_DOCUMENT` and the `expected-after-set.toml`
+  canonical fixture moved with them, and the namespace count in `cache stat` is seven now. A
+  *usable year* is a row carrying all four values (`TAVG`, `TMAX`, `TMIN`, `PRCP`): the recorded
+  Beijing station has a `2020-10` row with a precipitation total and no temperatures, and per-field
+  denominators would make the printed `years` mean two things at once. An offline miss degrades to
+  `Ok(None)` with the cache's own message on the `-v` stream, which is what makes
+  `--normals --offline` a note and exit 0 rather than a failure; the pure helpers (bbox corner
+  order, the completeness rule, the `YYYY-MM` parse, the tolerant value decode) carry unit tests in
+  the module, because the fixture-driven suite is deliverable 7.

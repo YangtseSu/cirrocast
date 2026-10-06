@@ -23,6 +23,7 @@ pub mod geo;
 pub mod http;
 pub mod i18n;
 pub mod model;
+pub mod normals;
 pub mod parallel;
 pub mod paths;
 pub mod provider;

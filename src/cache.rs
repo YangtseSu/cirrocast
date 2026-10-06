@@ -66,8 +66,12 @@ pub const CACHE_SCHEMA_VERSION: u32 = 1;
 ///
 /// `grid` joined them in step 24: a grid backend maps a coordinate to the provider's own grid cell
 /// or point before it can fetch anything, and that mapping is neither a station nor a forecast, so
-/// it has its own directory and its own long TTL.
-pub const NAMESPACES: [&str; 6] = ["weather", "geocode", "ip", "station", "alerts", "grid"];
+/// it has its own directory and its own long TTL. `normals` joined in step 26: the station search
+/// and the monthly climate summaries behind `--normals` are answers about a place but not weather
+/// readings, and they change by the decade, so they keep their own long TTL too.
+pub const NAMESPACES: [&str; 7] = [
+    "weather", "geocode", "ip", "station", "alerts", "grid", "normals",
+];
 
 /// The state directories under the cache root that `cache stat` reports after [`NAMESPACES`].
 ///
@@ -431,6 +435,36 @@ impl CacheKey {
         Self {
             path: PathBuf::from("weather").join(&name),
             normalised: format!("weather|{source}|air|{lat:.2}|{lon:.2}|{date}"),
+        }
+    }
+
+    /// A normals station-search key: one file per point and search radius under the `normals/`
+    /// namespace — `normals/search-39.90-116.41-60km.json`.
+    ///
+    /// The radius is part of the key because it is part of the question: the same point asked with
+    /// a different `[normals] max_distance_km` is a different search and could resolve to a
+    /// different station.
+    #[must_use]
+    pub fn normals_search(lat: f64, lon: f64, radius_km: u16) -> Self {
+        let name = format!("search-{lat:.2}-{lon:.2}-{radius_km}km.json");
+        Self {
+            path: PathBuf::from("normals").join(&name),
+            normalised: format!("normals|search|{lat:.2}|{lon:.2}|{radius_km}"),
+        }
+    }
+
+    /// A normals data key: one file per station, reference period and calendar month under the
+    /// `normals/` namespace — `normals/CHM00054511-1991-2020-09.json`.
+    ///
+    /// The entry holds the whole period's rows for that calendar month, and the period and the
+    /// month are both part of the key: the configured window is part of what the body means, and a
+    /// change to either must miss by key rather than serve the old normal until the TTL runs out.
+    #[must_use]
+    pub fn normals_month(station: &str, period: &str, month: u8) -> Self {
+        let name = format!("{station}-{period}-{month:02}.json");
+        Self {
+            path: PathBuf::from("normals").join(&name),
+            normalised: format!("normals|station|{station}|{period}|{month:02}"),
         }
     }
 
@@ -1474,6 +1508,12 @@ mod tests {
         cache
             .write(&grid, 200, "{}", Duration::from_hours(720))
             .expect("the grid mapping is written");
+        // A normals entry (step 26) is the sixth: a station search or a monthly summary is a
+        // long-TTL answer about a place, neither a forecast nor a station's own identity.
+        let normals = CacheKey::normals_month("CHM00054511", "1991-2020", 9);
+        cache
+            .write(&normals, 200, "[]", Duration::from_hours(720))
+            .expect("the normals entry is written");
 
         let stat = cache.stat().expect("stat succeeds");
         assert_eq!(
@@ -1488,6 +1528,7 @@ mod tests {
                 "station",
                 "alerts",
                 "grid",
+                "normals",
                 "ratelimit",
                 "geo"
             ]
@@ -1500,8 +1541,12 @@ mod tests {
             stat.namespaces[5].entries, 1,
             "the grid mapping is an entry"
         );
-        assert_eq!(stat.namespaces[6].entries, 1);
+        assert_eq!(
+            stat.namespaces[6].entries, 1,
+            "the normals entry is an entry"
+        );
         assert_eq!(stat.namespaces[7].entries, 1);
+        assert_eq!(stat.namespaces[8].entries, 1);
 
         // `clean --all` removes the temporary file, the grid mapping and both state files.
         cache.clean(true).expect("clean succeeds");
@@ -1512,6 +1557,13 @@ mod tests {
                 .join("grid/nws-39.746--97.089.json")
                 .exists(),
             "the grid namespace is cleaned like every other entry"
+        );
+        assert!(
+            !directory
+                .path()
+                .join("normals/CHM00054511-1991-2020-09.json")
+                .exists(),
+            "the normals namespace is cleaned like every other entry"
         );
         assert!(!directory.path().join("geo/update-notice.json").exists());
         assert!(!directory.path().join("ratelimit/nominatim.json").exists());

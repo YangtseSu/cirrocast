@@ -120,6 +120,10 @@ pub const PICK_POLICIES: &[&str] = &["auto", "never"];
 /// Range of `geo.update_interval_days`: a day to ten years.
 const UPDATE_INTERVAL_RANGE: (u32, u32) = (1, 3650);
 
+/// Range of `normals.max_distance_km`: a station must be reachable, and a normal measured on the
+/// far side of a continent is not the location's climate.
+const NORMALS_DISTANCE_RANGE: (u32, u32) = (1, 500);
+
 /// The configuration document, matching the contract's TOML schema exactly.
 ///
 /// Every table and field is optional on input: anything absent falls back to [`Config::default`],
@@ -148,6 +152,8 @@ pub struct Config {
     pub alerts: AlertsConfig,
     /// Air-quality panel settings.
     pub air: AirConfig,
+    /// Climate-normals comparison settings.
+    pub normals: NormalsConfig,
     /// The `status` probe settings.
     pub status: StatusConfig,
     /// Per-provider settings.
@@ -314,6 +320,27 @@ pub struct AirConfig {
     pub index: String,
 }
 
+/// `[normals]` — the climate-normals comparison (`--normals`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NormalsConfig {
+    /// The reference window the normal is averaged over, written `YYYY-YYYY`: any two four-digit
+    /// years with the earlier one first. The WMO normal period is `1991-2020`.
+    pub period: String,
+    /// Farthest station that still answers, in kilometres. GSOM stations are sparse outside the
+    /// US and Europe, so the default is generous and the rendered line prints the distance.
+    pub max_distance_km: u16,
+}
+
+impl Default for NormalsConfig {
+    fn default() -> Self {
+        Self {
+            period: "1991-2020".to_owned(),
+            max_distance_km: 60,
+        }
+    }
+}
+
 /// `[status]` — the `cirrocast status` probe (step 22).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -371,6 +398,7 @@ impl Default for Config {
             render: RenderConfig::default(),
             alerts: AlertsConfig::default(),
             air: AirConfig::default(),
+            normals: NormalsConfig::default(),
             status: StatusConfig::default(),
             providers: Providers::default(),
             locations: BTreeMap::new(),
@@ -633,6 +661,7 @@ impl Config {
         self.validate_render()?;
         self.validate_alerts()?;
         self.validate_air()?;
+        self.validate_normals()?;
         self.validate_providers()
     }
 
@@ -898,6 +927,17 @@ impl Config {
         check_enum("air.index", &self.air.index, AQI_INDEXES)
     }
 
+    /// `[normals] period` must be two four-digit years with the earlier one first, and the radius
+    /// inside the documented range.
+    fn validate_normals(&self) -> Result<()> {
+        check_period("normals.period", &self.normals.period)?;
+        check_range(
+            "normals.max_distance_km",
+            u32::from(self.normals.max_distance_km),
+            NORMALS_DISTANCE_RANGE,
+        )
+    }
+
     /// `alerts.fpas_url` must be empty or an http(s) base URL, like `network.nominatim_url`.
     fn validate_fpas_url(&self) -> Result<()> {
         if !is_service_url(&self.alerts.fpas_url) {
@@ -1018,6 +1058,38 @@ fn check_range(key: &str, value: u32, (min, max): (u32, u32)) -> Result<()> {
             "{key}: {value} is out of range {min}..={max}"
         )))
     }
+}
+
+/// `YYYY-YYYY`, the two four-digit years of a normal period, the earlier one first.
+fn check_period(key: &str, value: &str) -> Result<()> {
+    match parse_period(value) {
+        Some((start, end)) if start < end => Ok(()),
+        Some((start, end)) => Err(Error::Config(format!(
+            "{key}: `{value}` runs from {start} to {end}; the earlier year must come first"
+        ))),
+        None => Err(Error::Config(format!(
+            "{key}: `{value}` is not a period of two four-digit years, e.g. `1991-2020`"
+        ))),
+    }
+}
+
+/// Parses a `YYYY-YYYY` period into its two years; `None` when the text is not shaped that way.
+///
+/// The normals decoder shares this one definition of the format: the same value becomes the
+/// request's `startDate`/`endDate` years and the filter the rows are checked against, so the parse
+/// must not live in two places.
+#[must_use]
+pub fn parse_period(value: &str) -> Option<(u16, u16)> {
+    let (start, end) = value.split_once('-')?;
+    Some((four_digit_year(start)?, four_digit_year(end)?))
+}
+
+/// A four-digit year, `0000`–`9999`.
+fn four_digit_year(text: &str) -> Option<u16> {
+    if text.len() != 4 || !text.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok()
 }
 
 /// `key: must be greater than 0`, for the three cache TTLs.
@@ -1174,6 +1246,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "render",
             "alerts",
             "air",
+            "normals",
             "status",
             "providers",
             "locations",
@@ -1213,6 +1286,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "cache_ttl_secs",
         ],
         "air" => &["index"],
+        "normals" => &["period", "max_distance_km"],
         "status" => &["placeholder"],
         "providers" => &["metar", "qweather"],
         "providers.metar" => &["station"],
@@ -1480,6 +1554,10 @@ cache_ttl_secs = 300          # 5 minutes
 
 [air]
 index = "us"             # us | european: the AQI scale that drives the panel colour and %q
+
+[normals]
+period = "1991-2020"     # the reference window the normal is averaged over: two four-digit years
+max_distance_km = 60     # farthest NOAA NCEI station that still answers, 1..=500
 
 [status]
 placeholder = "n/a"      # `cirrocast status` prints this when it has no reading to show
@@ -1779,6 +1857,18 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "normals.period",
+        kind: KeyKind::Str,
+        doc: "climate-normal window, two four-digit years",
+        env: Some("CIRROCAST_NORMALS_PERIOD"),
+    },
+    KeySpec {
+        name: "normals.max_distance_km",
+        kind: KeyKind::U32,
+        doc: "farthest GSOM station that answers, 1..=500 km",
+        env: Some("CIRROCAST_NORMALS_MAX_DISTANCE_KM"),
+    },
+    KeySpec {
         name: "status.placeholder",
         kind: KeyKind::Str,
         doc: "what `status` prints when it has no reading",
@@ -1867,6 +1957,8 @@ impl Config {
             "alerts.fpas_url" => self.alerts.fpas_url.clone(),
             "alerts.cache_ttl_secs" => self.alerts.cache_ttl_secs.to_string(),
             "air.index" => self.air.index.clone(),
+            "normals.period" => self.normals.period.clone(),
+            "normals.max_distance_km" => self.normals.max_distance_km.to_string(),
             "status.placeholder" => self.status.placeholder.clone(),
             "providers.metar.station" => self.providers.metar.station.clone(),
             "providers.qweather.host" => self.providers.qweather.host.clone(),
@@ -1982,6 +2074,13 @@ impl Config {
                 check_enum(spec.name, &value, AQI_INDEXES)?;
                 self.air.index = value;
             }
+            "normals.period" => {
+                check_period(spec.name, &value)?;
+                self.normals.period = value;
+            }
+            "normals.max_distance_km" => {
+                self.normals.max_distance_km = distance_value(spec.name, &value)?;
+            }
             "status.placeholder" => self.status.placeholder = value,
             "providers.metar.station" => self.providers.metar.station = value,
             "providers.qweather.host" => self.providers.qweather.host = value,
@@ -2039,6 +2138,12 @@ impl Config {
             "alerts.fpas_url" => self.validate_fpas_url(),
             "alerts.cache_ttl_secs" => check_positive(key, self.alerts.cache_ttl_secs),
             "air.index" => self.validate_air(),
+            "normals.period" => check_period(key, &self.normals.period),
+            "normals.max_distance_km" => check_range(
+                key,
+                u32::from(self.normals.max_distance_km),
+                NORMALS_DISTANCE_RANGE,
+            ),
             // `status.placeholder` accepts any text — it is the one part of the probe's output the
             // user chooses, and an empty one (print nothing) is a legitimate choice — so it has no
             // arm here; the wildcard below is its validation.
@@ -2087,6 +2192,18 @@ fn days_value(key: &str, value: &str) -> Result<u8> {
     let days = u32_value(key, value)?;
     check_range(key, days, DAYS_RANGE)?;
     u8::try_from(days).map_err(|_| Error::Config(format!("{key}: {days} is out of range 0..=14")))
+}
+
+/// `normals.max_distance_km`: a `u16` in the field, a `u32` on the wire and in the key table.
+fn distance_value(key: &str, value: &str) -> Result<u16> {
+    let distance = u32_value(key, value)?;
+    check_range(key, distance, NORMALS_DISTANCE_RANGE)?;
+    u16::try_from(distance).map_err(|_| {
+        Error::Config(format!(
+            "{key}: {distance} is out of range {}..={}",
+            NORMALS_DISTANCE_RANGE.0, NORMALS_DISTANCE_RANGE.1
+        ))
+    })
 }
 
 fn width_value(key: &str, value: &str) -> Result<usize> {
@@ -2289,6 +2406,8 @@ mod tests {
         assert_eq!(config.alerts.fpas_url, "");
         assert_eq!(config.alerts.cache_ttl_secs, 300);
         assert_eq!(config.air.index, "us");
+        assert_eq!(config.normals.period, "1991-2020");
+        assert_eq!(config.normals.max_distance_km, 60);
         assert_eq!(config.status.placeholder, "n/a");
         assert_eq!(config.providers.metar.station, "");
         assert_eq!(config.providers.qweather.host, "");
@@ -2384,9 +2503,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn validation_names_the_offending_key() {
         type Case = (&'static str, fn(&mut Config), &'static str);
-        let cases: [Case; 17] = [
+        let cases: [Case; 20] = [
             (
                 "defaults.days",
                 |config| config.defaults.days = 99,
@@ -2474,6 +2594,23 @@ mod tests {
                 |config| config.providers.metar.station = "ZZ Z".to_owned(),
                 "providers.metar.station: `ZZ Z` is not a four-character ICAO station identifier",
             ),
+            (
+                "normals.period",
+                |config| config.normals.period = "1991/2020".to_owned(),
+                "normals.period: `1991/2020` is not a period of two four-digit years, e.g. \
+                 `1991-2020`",
+            ),
+            (
+                "normals.period",
+                |config| config.normals.period = "2020-1991".to_owned(),
+                "normals.period: `2020-1991` runs from 2020 to 1991; the earlier year must come \
+                 first",
+            ),
+            (
+                "normals.max_distance_km",
+                |config| config.normals.max_distance_km = 0,
+                "normals.max_distance_km: 0 is out of range 1..=500",
+            ),
         ];
 
         for (key, mutate, expected) in cases {
@@ -2549,6 +2686,8 @@ mod tests {
         config.alerts.sources = vec!["nws".to_owned(), "fpas".to_owned()];
         config.alerts.fpas_url = "https://alerts.example.org".to_owned();
         config.alerts.cache_ttl_secs = 60;
+        config.normals.period = "1961-1990".to_owned();
+        config.normals.max_distance_km = 120;
         config.validate().expect("every value is in range");
     }
 

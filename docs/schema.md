@@ -499,6 +499,10 @@ cache_ttl_secs = 300          # 5 minutes
 [air]
 index = "us"             # us | european: the AQI scale that drives the panel colour and %q
 
+[normals]
+period = "1991-2020"     # the reference window the normal is averaged over: two four-digit years
+max_distance_km = 60     # farthest NOAA NCEI station that still answers, 1..=500
+
 [status]
 placeholder = "n/a"      # `cirrocast status` prints this when it has no reading to show
 
