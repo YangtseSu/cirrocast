@@ -92,7 +92,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 25 | F | [location-sources-2](25-location-sources-2.md) | ✅ done | 04, 05, 18, 20 |
 | 26 | F | [climate-normals](26-climate-normals.md) | ✅ done | 03, 06, 08 |
 | 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ✅ done | 02, 10, 15 |
-| 28 | G | [docs-and-guides](28-docs-and-guides.md) | ⬜ not-started | 14, 19, and the surface of 18–27 |
+| 28 | G | [docs-and-guides](28-docs-and-guides.md) | ✅ done | 14, 19, and the surface of 18–27 |
 | B01 | Backlog | [wttr-compat-service](B01-wttr-compat-service.md) | ⏸ backlog | 08, 10, 14, 19 |
 | B02 | Backlog | [packaging-matrix](B02-packaging-matrix.md) | ⏸ backlog | 13, 21, 22 |
 

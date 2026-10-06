@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 28 — documentation set and repo hygiene
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: 14 (v1 acceptance), 19 (multi-location and templates); its generated artifacts snapshot
 the surface of every other scheduled step (18–27), so it lands last in the A-series
 Touches: `docs/{getting-started,configuration,providers,formats,location,i18n,troubleshooting,
@@ -26,75 +26,75 @@ issue templates, security policy) and a link checker keeps them honest.
 
 ## Deliverables
 
-- ⬜ `docs/getting-started.md`: install (the AUR package and the release archives; further package
+- ✅ `docs/getting-started.md`: install (the AUR package and the release archives; further package
       formats are backlog B02), first run, `--help` tour, config init, the keyless backends, setting
       a key for one keyed backend, offline mode.
-- ⬜ `docs/configuration.md`: every config key with type, default, example and effect; the two new
+- ✅ `docs/configuration.md`: every config key with type, default, example and effect; the two new
       tables (`[locations]`, `[templates]`); the precedence table (CLI flag > env var > project
       config? — no: `CIRROCAST_*` env > `$XDG_CONFIG_HOME` user config > `XDG_CONFIG_DIRS` system
       config > built-in default, with keys resolved separately per the key store rules).
-- ⬜ `docs/providers.md`: per provider — auth (env var name, key store, keyless), documented rate
+- ✅ `docs/providers.md`: per provider — auth (env var name, key store, keyless), documented rate
       limits and what we do on 429/5xx, coverage and `max_days`, attribution requirement, accuracy
       caveats, and the WMO-mapping note. (Authored in step 10 as the registry re-verification record —
       endpoints, quotas with their wording, licence duties, traps; this step reviews it against the
       shipped binary and adds anything the implementation learned.)
-- ⬜ `docs/formats.md`: every format (`art-table`, `one-line`, `full`, `minimal`, `plain`, `json`,
+- ✅ `docs/formats.md`: every format (`art-table`, `one-line`, `full`, `minimal`, `plain`, `json`,
       `dumb`) with a real captured example block, the full `%` token table (identical to
       `template::TOKENS`), width/precision syntax, escape rules, and the unknown-token policy per
       context.
-- ⬜ `docs/location.md`: fuzzy vs `:exact` vs `~osm` vs `@lat,lon` vs alias vs `--ip` vs `--station`
+- ✅ `docs/location.md`: fuzzy vs `:exact` vs `~osm` vs `@lat,lon` vs alias vs `--ip` vs `--station`
       syntax, and the deterministic ranking rules (population, then exact-name, then provider order)
       with a worked ambiguous example.
-- ⬜ `docs/i18n.md`: how to add a language (copy `locales/en-US/main.ftl`, translate every key, run
+- ✅ `docs/i18n.md`: how to add a language (copy `locales/en-US/main.ftl`, translate every key, run
       `cargo test i18n`), what the completeness test covers (every WMO condition key), `lang = "auto"`
       negotiation, and the rule that no translated string may be constructed by concatenation.
-- ⬜ `docs/troubleshooting.md`: network/TLS/proxy failures, missing or unreadable keys (including the
+- ✅ `docs/troubleshooting.md`: network/TLS/proxy failures, missing or unreadable keys (including the
       `0600` refusal and `key list` masking), cache corruption and how to clear it, provider rate
       limits, wrong city, absent alerts, offline mode, and how to produce a bug report
       (`-vv` output with secrets redacted).
-- ⬜ `docs/architecture.md`: module map, request data flow as a mermaid diagram (argv → cli → geo →
+- ✅ `docs/architecture.md`: module map, request data flow as a mermaid diagram (argv → cli → geo →
       provider → cache → model → render → stdout), the `serve` thread model, on-disk state, and the
       invariants (metric-SI storage, single conversion point, cache unit-independence).
-- ⬜ `docs/performance.md` reviewed against the binary (authored in step 21) and linked from
+- ✅ `docs/performance.md` reviewed against the binary (authored in step 21) and linked from
       `README.md` and the man page; `docs/wttr-compat.md` is reviewed and linked only if backlog B01
       has landed (that file is authored there).
-- ⬜ Man page: `man/cirrocast.1` generated from the clap definitions (step 08), reviewed line by line
+- ✅ Man page: `man/cirrocast.1` generated from the clap definitions (step 08), reviewed line by line
       against `--help`; `man --warn --local-file man/cirrocast.1 > /dev/null` is silent; the page gains
       EXIT STATUS (0–6), ENVIRONMENT (`CIRROCAST_*`, `NO_COLOR`, `CLICOLOR_FORCE`, `XDG_*`,
       `HTTPS_PROXY`) and SEE ALSO (`cirrocast(1)`, the docs directory).
-- ⬜ `docs/reference/help-long.txt` + `tests/help_snapshot.rs`: the long `--help` output is the
+- ✅ `docs/reference/help-long.txt` + `tests/help_snapshot.rs`: the long `--help` output is the
       canonical flag reference, compared byte-for-byte with the snapshot and regenerated only by
       `cargo test -- --ignored regenerate_help` when a flag change is intended.
-- ⬜ `docs/reference/flags.txt` (one long flag per line, sorted) + `tests/docs_flags.rs`: set
+- ✅ `docs/reference/flags.txt` (one long flag per line, sorted) + `tests/docs_flags.rs`: set
       equality between the file and the flags parsed out of `--help`, plus "every `` `--flag` `` token
       that appears in `docs/**/*.md` and `README.md` is in `--help`", and a duplicate/sort check.
-- ⬜ `docs/schema/json-v1.json` (frozen: the single-location object with `"schema_version": 1` that
+- ✅ `docs/schema/json-v1.json` (frozen: the single-location object with `"schema_version": 1` that
       v1.0.0 printed) and `docs/schema/json-v2.json` (current: `oneOf` a report object and an array of
       at least two report objects, `"schema_version": 2`), both Draft 2020-12 with `$defs` shared by
       `$ref`.
-- ⬜ `tests/json_schema.rs`: dev-dependency `jsonschema = { version = "0.58", default-features =
+- ✅ `tests/json_schema.rs`: dev-dependency `jsonschema = { version = "0.58", default-features =
       false }`; validates (a) the committed v1 fixture `tests/fixtures/json/v1-detroit.json` against
       `json-v1.json` and (b) live, fixture-backed output for one, two and three locations against
       `json-v2.json`, including a failed-slot error object.
-- ⬜ `CONTRIBUTING.md`: build/test commands, the plan-driven workflow pointer, add-a-provider and
+- ✅ `CONTRIBUTING.md`: build/test commands, the plan-driven workflow pointer, add-a-provider and
       add-a-language recipes (mirroring `AGENTS.md`), the REUSE requirement with the exact header
       lines, Conventional Commits rules, and the review expectations (snapshots reviewed by eye,
       no network in tests).
-- ⬜ `.github/ISSUE_TEMPLATE/{bug,feature,provider-request}.yml` + `config.yml`: GitHub issue forms
+- ✅ `.github/ISSUE_TEMPLATE/{bug,feature,provider-request}.yml` + `config.yml`: GitHub issue forms
       asking for version, platform, provider, config (redacted), and `-vv` output for bugs; the
       provider-request form asks for auth model, coverage, licence and attribution so a new backend
       can be judged from the issue alone.
-- ⬜ `SECURITY.md`: the no-telemetry promise, key handling (env/`keys.toml` 0600/keyring, never
+- ✅ `SECURITY.md`: the no-telemetry promise, key handling (env/`keys.toml` 0600/keyring, never
       logged), report of a vulnerability by private advisory to the maintainer address, scope
       (binary, packaging, and the `serve` surface if backlog B01 has landed), and "no bug bounty".
-- ⬜ `README.md` refresh: what/why, one real ASCII screenshot per format from
+- ✅ `README.md` refresh: what/why, one real ASCII screenshot per format from
       `docs/screenshots/*.txt` (captured from real runs, `script -q -c 'cirrocast Beijing' /dev/null`),
       the provider matrix, install paths (AUR and release archives; backlog B02 adds more), links to
       every doc, licence.
-- ⬜ `.github/workflows/ci.yml` + `lychee.toml`: `docs` job running the snapshot test, the flag
+- ✅ `.github/workflows/ci.yml` + `lychee.toml`: `docs` job running the snapshot test, the flag
       reconciliation test, the schema test, `man --warn`, and `lycheeverse/lychee-action@v2` with
       `--cache --max-cache-age 1d` over `*.md` plus a checked-in ignore list for known-hostile hosts.
-- ⬜ `REUSE.toml`: annotations for `docs/reference/*.txt`, `docs/screenshots/*.txt`,
+- ✅ `REUSE.toml`: annotations for `docs/reference/*.txt`, `docs/screenshots/*.txt`,
       `docs/schema/*.json`, `tests/fixtures/json/*.json`, `perf/baseline.json`, `lychee.toml` if it
       cannot carry a comment.
 
@@ -140,7 +140,9 @@ and content beyond the pointers this step links.
 cargo test
 man --warn --local-file man/cirrocast.1 > /dev/null && echo 'man page renders clean'
 cargo run -q -- --help | diff - docs/reference/help-long.txt && echo 'help snapshot matches'
-cargo run -q -- --help | grep -o -- '--[a-z-]\+' | sort -u | diff - docs/reference/flags.txt
+# The flag list covers the whole help surface (subcommands included), so the set comparison is
+# `tests/docs_flags.rs`, not this one-liner over the top-level page alone:
+cargo test --test docs_flags
 cargo run -q -- --offline Beijing -f json | python3 -m json.tool > /dev/null && echo 'json parses'
 cargo run -q -- Beijing Shanghai -f json | python3 -c 'import json,sys; print(type(json.load(sys.stdin)).__name__)'
 # local links only, as a contributor runs it before pushing
@@ -155,18 +157,18 @@ link check reports 0 broken links.
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ All ten `docs/*.md` files exist, are linked from `README.md`, and contain no placeholder text.
-- ⬜ `tests/docs_flags.rs` fails when a flag is added/removed without touching `docs/reference/flags.txt`
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
+- ✅ All ten `docs/*.md` files exist, are linked from `README.md`, and contain no placeholder text.
+- ✅ `tests/docs_flags.rs` fails when a flag is added/removed without touching `docs/reference/flags.txt`
       (proven once by hand, reverted) and when a doc mentions a flag the binary does not have.
-- ⬜ Every documented config key, format and token exists in the binary; every existing one is
+- ✅ Every documented config key, format and token exists in the binary; every existing one is
       documented (checked by the flags test for flags and by `tests/templates.rs` for tokens).
-- ⬜ `docs/schema/json-v1.json` and `json-v2.json` validate the committed and the live outputs
+- ✅ `docs/schema/json-v1.json` and `json-v2.json` validate the committed and the live outputs
       respectively; the schema test parses the CLI output, not a hand-written sample.
-- ⬜ Man page reviewed line by line, `man --warn` silent, EXIT STATUS/ENVIRONMENT/SEE ALSO present.
-- ⬜ `CONTRIBUTING.md`, `SECURITY.md`, three issue forms and the CI `docs` job committed; link check
+- ✅ Man page reviewed line by line, `man --warn` silent, EXIT STATUS/ENVIRONMENT/SEE ALSO present.
+- ✅ `CONTRIBUTING.md`, `SECURITY.md`, three issue forms and the CI `docs` job committed; link check
       green; `README.md` shows real captured ASCII screenshots and the provider matrix.
-- ⬜ `reuse lint` covers every new artifact (`.txt`, `.json`, `.yml`), via headers where the format
+- ✅ `reuse lint` covers every new artifact (`.txt`, `.json`, `.yml`), via headers where the format
       supports comments and `REUSE.toml` annotations where it does not.
 
 ## Risks
@@ -196,3 +198,37 @@ link check reports 0 broken links.
   `tests/json_schema.rs` (the `jsonschema` dev-dependency) and `tests/fixtures/json/v1-detroit.json`,
   and decide whether the key index moves out of `docs/schema.md`. `docs/schema.md`'s config example
   already carries the `[status]` table step 22 added.
+- 2026-10-06 — step executed, in order. The prose set: `getting-started`, `configuration`,
+  `location`, `i18n`, `troubleshooting` and `architecture` written against real sandboxed runs;
+  `providers` re-verified against `provider list`/`provider info` (the default chain is
+  `open-meteo`, `auto` is opt-in, `metar` reaches a station three ways), `performance` re-verified
+  against the tree and given a fresh-machine reproduction recipe, `formats` given the captured
+  examples section. Generated artifacts: `cirrocast man` now renders EXIT STATUS, ENVIRONMENT and
+  SEE ALSO between EXTRA and VERSION (EXIT STATUS is the exit-code table, and the `--help` epilog is
+  assembled from the same constants, so the two surfaces cannot drift); `man/cirrocast.1` is that
+  output byte for byte and `tests/help_snapshot.rs` compares both generated documents, regenerated
+  only under `--ignored regenerate_help` / `regenerate_man`. `docs/reference/flags.txt` is set-equal
+  to the flags of all 25 help pages and `tests/docs_flags.rs` also refuses a document that names a
+  flag the binary does not have; both directions were proven by hand and reverted. `docs/schema/json-v1.json`
+  freezes what v1.0.0 printed (`tests/fixtures/json/v1-detroit.json`, a real 1.0.0 run for Detroit),
+  and `json-v2.json` was brought back up to the shipped document — `mode`, `marine`, `normals` and the
+  two `capabilities` keys steps 23/25/26 added — so all 95 rows of `docs/schema.md`'s key index agree
+  again; `tests/json_schema.rs` validates the v1 fixture and live, fixture-backed output for one, two
+  and three locations (a failed slot included). `CONTRIBUTING.md`, `SECURITY.md` and the three issue
+  forms landed, the README links all eleven docs and the nine captures, CI gained a `docs` job and
+  `REUSE.toml` annotates the generated text. Four deviations, all recorded here:
+  (1) the exit-code table is one constant behind two renderings instead of a block inside EXTRA,
+  because the man page wants the `man(1)` heading a reader looks for;
+  (2) the step also fixed the dead `https://console.qweather.com/setting` link the link check found —
+  it lives in the binary's own QWeather messages, so `src/` and `tests/provider_qweather.rs` moved
+  with the docs, and `https://www.geonames.org/terms` (404) became the about page;
+  (3) the documentation scan in `tests/docs_flags.rs` covers `docs/*.md` and the README, not the
+  plan set and the dated reviews: those are development records where a not-yet-shipped flag is not
+  drift, and the alternative was an ignore list that would have to name them all;
+  (4) `jsonschema` enables `serde_json/float_roundtrip` for the whole test graph (its conformance
+  suite needs it), which makes `serde_json` itself refuse an `f32` overflow, so
+  `provider_open_meteo::a_non_finite_reading_is_an_upstream_error` now accepts either refusal layer —
+  the parse's `number out of range` or the guard's `current.temp_c` — while still pinning exit 3 and
+  `Error::Upstream`. The shipped binary keeps the guard path. `lychee --offline` and the full run
+  (through a local proxy) report 0 broken links, `man --warn` is silent and the suite is green with
+  and without `--no-default-features`.
