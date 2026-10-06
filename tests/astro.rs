@@ -172,6 +172,7 @@ fn report_at(name: &str, lat: f64, lon: f64, tz: Tz) -> Report {
         population: None,
         source: LocationSource::Coordinates,
         station: None,
+        named_by: None,
     };
     report.current = None;
     report.days.clear();

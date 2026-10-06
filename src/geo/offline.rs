@@ -252,6 +252,20 @@ impl OfflineTable {
         }
     }
 
+    /// The rows within `radius_km` of `(lat, lon)`, nearest first — the offline half of step 25's
+    /// coordinate naming.
+    ///
+    /// `limit == 0` is a legitimate empty answer; a decode failure is the table's own error, with
+    /// the rebuild hint the rest of this module reports.
+    pub fn nearby(&self, lat: f64, lon: f64, radius_km: f64, limit: u8) -> Result<Vec<City>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        self.cities()?
+            .nearby(lat, lon, radius_km, limit)
+            .map_err(|message| self.corrupt("city table", &message))
+    }
+
     /// The lazily decoded index; a decode failure is cached too, so a corrupt member is reported
     /// once per table instead of being retried on every lookup.
     fn index(&self) -> Result<&Index> {

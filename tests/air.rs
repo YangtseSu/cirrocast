@@ -64,6 +64,7 @@ fn location(name: &str, lat: f64, lon: f64, tz: Tz) -> Location {
         population: None,
         source: LocationSource::Geocoder,
         station: None,
+        named_by: None,
     }
 }
 

@@ -110,6 +110,9 @@ pub const GEO_UPDATES: &[&str] = &["off", "check"];
 /// override and the `-v` narration cannot disagree about what `auto` or `geonames` means.
 pub const GEO_SEARCHES: &[&str] = crate::geo::chain::SEARCH_SETTINGS;
 
+/// Allowed values of `[geo] reverse` (step 25): how a coordinate is named.
+pub const GEO_REVERSES: &[&str] = crate::geo::reverse::REVERSE_SETTINGS;
+
 /// Allowed values of `[location] pick` (step 20): ask which candidate to use when a name resolves
 /// to several places, or always take the ranked winner.
 pub const PICK_POLICIES: &[&str] = &["auto", "never"];
@@ -249,6 +252,9 @@ pub struct GeoConfig {
     /// then `GeoNames` when an account name is configured, then Nominatim as the last resort) or one
     /// of the three ids (step 25).
     pub search: String,
+    /// How a coordinate is named: `auto` (the bundled tables, then Nominatim `/reverse`), `offline`
+    /// (the bundled tables only) or `off` (never) — step 25.
+    pub reverse: String,
     /// Which city table answers: `auto` (a user-installed table when present and valid, else the
     /// bundled one), `bundled` (the bundled one only) or `user` (the user-installed one only).
     pub data: String,
@@ -402,6 +408,7 @@ impl Default for GeoConfig {
         Self {
             strategy: "auto".to_owned(),
             search: "auto".to_owned(),
+            reverse: "auto".to_owned(),
             data: "auto".to_owned(),
             update: "off".to_owned(),
             update_interval_days: 90,
@@ -1177,6 +1184,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
         "geo" => &[
             "strategy",
             "search",
+            "reverse",
             "data",
             "update",
             "update_interval_days",
@@ -1430,6 +1438,7 @@ pick = "auto"            # auto (ask on a terminal when a name has several candi
 [geo]
 strategy = "auto"        # auto (bundled GeoNames table first, network on a miss) | bundled | network
 search = "auto"          # name-search sources: auto (open-meteo, geonames when an account name is set, then nominatim) | open-meteo | geonames | nominatim
+reverse = "auto"         # naming a coordinate: auto (bundled tables, then nominatim) | offline (no socket) | off
 data = "auto"            # which city table answers: auto (user table when present) | bundled | user
 update = "off"           # off | check: a once-a-day note when the table is older than the interval
 update_interval_days = 90
@@ -1606,6 +1615,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         kind: KeyKind::Enum(GEO_SEARCHES),
         doc: "name-search sources: auto, open-meteo, geonames or nominatim",
         env: Some("CIRROCAST_GEO_SEARCH"),
+    },
+    KeySpec {
+        name: "geo.reverse",
+        kind: KeyKind::Enum(GEO_REVERSES),
+        doc: "naming a coordinate: auto, offline or off",
+        env: Some("CIRROCAST_GEO_REVERSE"),
     },
     KeySpec {
         name: "geo.data",
@@ -1825,6 +1840,7 @@ impl Config {
             "location.pick" => self.location.pick.clone(),
             "geo.strategy" => self.geo.strategy.clone(),
             "geo.search" => self.geo.search.clone(),
+            "geo.reverse" => self.geo.reverse.clone(),
             "geo.data" => self.geo.data.clone(),
             "geo.update" => self.geo.update.clone(),
             "geo.update_interval_days" => self.geo.update_interval_days.to_string(),
@@ -1898,6 +1914,10 @@ impl Config {
             "geo.search" => {
                 check_enum(spec.name, &value, GEO_SEARCHES)?;
                 self.geo.search = value;
+            }
+            "geo.reverse" => {
+                check_enum(spec.name, &value, GEO_REVERSES)?;
+                self.geo.reverse = value;
             }
             "geo.data" => {
                 check_enum(spec.name, &value, GEO_DATA_SOURCES)?;
@@ -1986,6 +2006,7 @@ impl Config {
             "location.pick" => check_enum(key, &self.location.pick, PICK_POLICIES),
             "geo.strategy" => check_enum(key, &self.geo.strategy, GEO_STRATEGIES),
             "geo.search" => check_enum(key, &self.geo.search, GEO_SEARCHES),
+            "geo.reverse" => check_enum(key, &self.geo.reverse, GEO_REVERSES),
             "geo.data" => check_enum(key, &self.geo.data, GEO_DATA_SOURCES),
             "geo.update" => check_enum(key, &self.geo.update, GEO_UPDATES),
             "geo.update_interval_days" => {
@@ -2246,6 +2267,7 @@ mod tests {
         assert_eq!(config.location.default, "");
         assert_eq!(config.geo.strategy, "auto");
         assert_eq!(config.geo.search, "auto");
+        assert_eq!(config.geo.reverse, "auto");
         assert_eq!(config.geo.data, "auto");
         assert_eq!(config.geo.update, "off");
         assert_eq!(config.geo.update_interval_days, 90);
@@ -2826,6 +2848,7 @@ mod tests {
         for (key, value, fragment) in [
             ("geo.data", "sometimes", "geo.data"),
             ("geo.search", "openmeteo", "geo.search"),
+            ("geo.reverse", "sometimes", "geo.reverse"),
             ("geo.update", "auto", "geo.update"),
             ("geo.update_interval_days", "0", "geo.update_interval_days"),
             (
@@ -2847,6 +2870,7 @@ mod tests {
         for (key, value) in [
             ("geo.data", "user"),
             ("geo.search", "geonames"),
+            ("geo.reverse", "offline"),
             ("geo.update", "check"),
             ("geo.update_interval_days", "30"),
             (

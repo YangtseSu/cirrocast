@@ -136,7 +136,7 @@ CONFIG PRECEDENCE (highest first)
   --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
   --lang      CIRROCAST_LANG
   env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
-              CIRROCAST_GEO_SEARCH  CIRROCAST_GEONAMES_USER
+              CIRROCAST_GEO_SEARCH  CIRROCAST_GEO_REVERSE  CIRROCAST_GEONAMES_USER
   The configuration file is consulted only when neither the flag nor the variable is set, so an
   environment value is never overridden by config.toml. `config get <key>` prints the variable's
   value when one is set, and `config validate` checks the file without touching the network.
@@ -2072,7 +2072,12 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
         resolution,
     } = resolve_location(&target.spec, geo, cli)?;
     let query = target.spec.query().unwrap_or_default();
-    let picked = geo.prompt.allowed() && should_pick(&cli.query, geo.config, candidates.len())?;
+    // A coordinate's candidates are display names, not places to fetch: the naming step has
+    // already applied the chosen one (and asked, when `--pick` said so), so the outer picker —
+    // which replaces the location outright — must not run for them.
+    let picked = resolution != Resolution::Coordinates
+        && geo.prompt.allowed()
+        && should_pick(&cli.query, geo.config, candidates.len())?;
     let location = if picked {
         let chosen = prompt_location(query, &candidates)?;
         // The echo is a coordinate spec, not the name: a name would re-run the ranking that just
@@ -2725,7 +2730,15 @@ fn resolve_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Res
             let hits = nominatim.search(spec.query().unwrap_or_default(), geo.limit)?;
             resolve_candidates(hits, spec, geo.limit)
         }
-        spec @ LocationSpec::LatLon(..) => resolve_candidates(Vec::new(), spec, geo.limit),
+        spec @ LocationSpec::LatLon(..) => {
+            let resolved = resolve_candidates(Vec::new(), spec, geo.limit)?;
+            let (location, candidates) = name_coordinate(resolved.location, geo, cli)?;
+            Ok(Resolved {
+                location,
+                candidates,
+                resolution: Resolution::Coordinates,
+            })
+        }
         // `@name` is expanded against `[locations]` before this function is reached; a spec that
         // slips through is a wiring bug, not a user error, and must not be resolved as a name.
         spec @ LocationSpec::Alias(_) => Err(Error::Config(format!(
@@ -2819,6 +2832,96 @@ fn geo_search_setting(config: &Config) -> String {
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| config.geo.search.trim().to_owned())
+}
+
+/// `[geo] reverse` with the `CIRROCAST_GEO_REVERSE` override resolved like every other key.
+fn reverse_policy(geo: &GeoRequest<'_>) -> Result<crate::geo::reverse::Policy> {
+    let value = std::env::var("CIRROCAST_GEO_REVERSE")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| geo.config.geo.reverse.trim().to_owned());
+    crate::geo::reverse::Policy::parse(&value)
+}
+
+/// Names a coordinate from the bundled tables, else Nominatim (step 25).
+///
+/// The name is a display attribute: the location keeps its own coordinates, provenance and
+/// provisional zone, and only `name`/`admin1`/`country`/`country_code` plus
+/// [`Location::named_by`] are filled in. Returns the ranked candidates (nearest first) so `--all`
+/// and `-v` can show the alternatives.
+///
+/// Only `--pick` asks which candidate to use. The automatic picker policy stays out of this one:
+/// the choice cannot change what is fetched — the coordinate is the request key — so an automatic
+/// prompt would ask the user to choose something that changes nothing but the label, on every
+/// terminal run whose coordinate happens to have several neighbours.
+fn name_coordinate(
+    location: Location,
+    geo: &GeoRequest<'_>,
+    cli: &Cli,
+) -> Result<(Location, Vec<Location>)> {
+    let inputs = crate::geo::reverse::Inputs {
+        policy: reverse_policy(geo)?,
+        paths: geo.paths,
+        data: &geo.config.geo.data,
+        http: geo.http,
+        cache: geo.cache,
+        nominatim_url: &nominatim_url(geo.config),
+        ttl: Duration::from_secs(u64::from(geo.config.cache.geocode_ttl_secs)),
+        limit: geo.limit,
+        offline: geo.offline.silences(Scope::Geo),
+        quiet: cli.quiet,
+    };
+    let named = crate::geo::reverse::name(location.lat, location.lon, &inputs)?;
+    if named.nearby.is_empty() {
+        if cli.verbose > 0
+            && let Some(note) = &named.note
+        {
+            eprintln!("location: {note}");
+        }
+        return Ok((location, Vec::new()));
+    }
+
+    let candidates: Vec<Location> = named
+        .nearby
+        .iter()
+        .map(|near| near.location.clone())
+        .collect();
+    let chosen = if cli.query.pick && candidates.len() >= 2 {
+        prompt_location(&location.name, &candidates)?
+    } else {
+        candidates[0].clone()
+    };
+    let distance = named
+        .nearby
+        .iter()
+        .find(|near| near.location == chosen)
+        .map(|near| near.distance_km);
+    let mut named_location = location;
+    named_location.name = chosen.name;
+    named_location.admin1 = chosen.admin1.or(named_location.admin1);
+    if !chosen.country.is_empty() {
+        named_location.country = chosen.country;
+    }
+    named_location.country_code = chosen.country_code.or(named_location.country_code);
+    named_location.named_by = Some(chosen.source);
+    if cli.verbose > 0 {
+        let distance = distance.map_or_else(String::new, |km| format!(", {km:.1} km away"));
+        eprintln!(
+            "location: named by {}{distance}: {}",
+            naming_source(chosen.source),
+            place(&named_location)
+        );
+    }
+    Ok((named_location, candidates))
+}
+
+/// How a naming source is described in the `-v` line.
+fn naming_source(source: crate::model::LocationSource) -> &'static str {
+    match source {
+        crate::model::LocationSource::Osm => "nominatim",
+        _ => "the bundled tables",
+    }
 }
 
 /// The `GeoNames` account name for this run: the environment variable first, then `keys.toml`

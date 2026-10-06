@@ -154,6 +154,73 @@ impl<'a> Nominatim<'a> {
             .as_deref()
             .and_then(recorded_stamp))
     }
+
+    /// Names a coordinate: `GET /reverse`, cached and throttled like a search (step 25).
+    ///
+    /// The answer is one jsonv2 object. A point the service cannot place comes back as an
+    /// `{"error": …}` object or a `404`, which is "no name here" — a legitimate answer for the
+    /// open ocean — rather than a failure of the caller's query. Both the request and the cache key
+    /// use the coordinate rounded to five decimals (about a metre), so two spellings of one point
+    /// share an entry and the entry's key describes exactly what was asked.
+    pub fn reverse(&self, lat: f64, lon: f64) -> Result<Option<Location>> {
+        let (lat, lon) = (round_coordinate(lat), round_coordinate(lon));
+        let key = self.reverse_key(lat, lon);
+        let body: Value = self.cache.read_or_fetch_json(
+            &key,
+            self.ttl,
+            "nominatim",
+            "reverse answer",
+            &format!("the point ({lat}, {lon})"),
+            || self.fetch_reverse(lat, lon),
+        )?;
+        reverse_location(&body)
+    }
+
+    /// The `/reverse` request: the parameters the policy and the cache key assume, in wire order.
+    fn reverse_request(&self, lat: f64, lon: f64) -> HttpRequest {
+        let base_url = self.base_url.as_str();
+        HttpRequest::get(format!("{base_url}/reverse"))
+            .query("format", "jsonv2")
+            .query("lat", format!("{lat}"))
+            .query("lon", format!("{lon}"))
+            .query("zoom", "10")
+            .query("addressdetails", "1")
+            .header("user-agent", UA)
+            .header("accept-language", "en")
+    }
+
+    /// The cache key of one reverse lookup: one entry per service and rounded point.
+    fn reverse_key(&self, lat: f64, lon: f64) -> CacheKey {
+        let base_url = self.base_url.as_str();
+        CacheKey::hash(
+            "geocode",
+            &format!("nominatim|reverse|{base_url}|{lat}|{lon}"),
+        )
+    }
+
+    /// Fetches the raw reverse body: wait out the rate limit, then send exactly once.
+    ///
+    /// A `404` is the service saying it cannot name the point; it is recorded as the same refusal
+    /// object a `200` may carry, so the caller's "no name" answer is one code path.
+    fn fetch_reverse(&self, lat: f64, lon: f64) -> Result<(u16, String)> {
+        self.throttle()?;
+        match self.http.send_once(&self.reverse_request(lat, lon)) {
+            Ok(response) => Ok((response.status(), response.body().to_owned())),
+            Err(Error::Upstream {
+                status: Some(404), ..
+            }) => Ok((404, REFUSAL.to_owned())),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+/// The body a `404` reverse answer is recorded as: the shape the service sends when it cannot
+/// name a point.
+const REFUSAL: &str = r#"{"error":"Unable to geocode"}"#;
+
+/// A coordinate rounded to five decimals: about a metre, which is far finer than a place name.
+fn round_coordinate(value: f64) -> f64 {
+    (value * 100_000.0).round() / 100_000.0
 }
 
 impl Geocoder for Nominatim<'_> {
@@ -221,6 +288,34 @@ struct Extratags {
     population: Option<u64>,
 }
 
+/// A `/reverse` answer: one hit, or the service's refusal.
+///
+/// The reverse object carries the same fields as a search hit, so it is deserialized as one;
+/// `error` is the refusal sentence (`Unable to geocode`), which the caller turns into "no name".
+#[derive(Debug, Deserialize)]
+struct ReverseAnswer {
+    /// The refusal's sentence, present instead of a hit.
+    #[serde(default)]
+    error: Option<String>,
+    /// The hit itself, flattened.
+    #[serde(flatten)]
+    hit: Hit,
+}
+
+/// Maps a `/reverse` body to the place it names, or `None` when the service refused the point.
+fn reverse_location(body: &Value) -> Result<Option<Location>> {
+    let answer: ReverseAnswer =
+        serde_json::from_value(body.clone()).map_err(|error| Error::Upstream {
+            provider: "nominatim".to_owned(),
+            status: None,
+            message: format!("the reverse answer is not the documented shape: {error}"),
+        })?;
+    if answer.error.is_some() {
+        return Ok(None);
+    }
+    location_from_hit(answer.hit).map(Some)
+}
+
 /// The `{"last_request_unix_ms": …}` payload of the throttle state file.
 #[derive(Debug, Deserialize)]
 struct ThrottleState {
@@ -277,6 +372,7 @@ fn location_from_hit(hit: Hit) -> Result<Location> {
         population,
         source: LocationSource::Osm,
         station: None,
+        named_by: None,
     })
 }
 

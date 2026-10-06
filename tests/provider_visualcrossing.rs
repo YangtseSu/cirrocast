@@ -55,6 +55,7 @@ fn reston() -> Location {
         population: None,
         source: LocationSource::Geocoder,
         station: None,
+        named_by: None,
     }
 }
 
@@ -72,6 +73,7 @@ fn reston_coordinates() -> Location {
         population: None,
         source: LocationSource::Coordinates,
         station: None,
+        named_by: None,
     }
 }
 

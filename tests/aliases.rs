@@ -31,9 +31,15 @@ fn sandbox_with(entries: &[(&str, &str)]) -> Sandbox {
 }
 
 /// The single line `location search` prints for `argument`.
+///
+/// `[geo] reverse` is pinned to `off` here: these tests are about *which spec an alias expands
+/// to*, and a coordinate spec's display name is step 25's business — with the default policy the
+/// line for `@39.9042,116.4074` reads `Beijing, China (39.90, 116.41)`, which would hide the
+/// expansion this module exists to check.
 fn search(sandbox: &Sandbox, argument: &str) -> String {
     let assert = sandbox
         .cirrocast()
+        .env("CIRROCAST_GEO_REVERSE", "off")
         .args(["location", "search", argument, "--offline"])
         .assert()
         .success();

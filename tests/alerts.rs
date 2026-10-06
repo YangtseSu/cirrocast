@@ -57,6 +57,7 @@ fn location(name: &str, lat: f64, lon: f64, country: Option<&str>, tz: Tz) -> Lo
         population: None,
         source: LocationSource::Coordinates,
         station: None,
+        named_by: None,
     }
 }
 

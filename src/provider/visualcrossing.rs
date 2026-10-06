@@ -1040,6 +1040,7 @@ mod tests {
             population: None,
             source: LocationSource::Coordinates,
             station: None,
+            named_by: None,
         };
         let today = NaiveDate::from_ymd_opt(2026, 10, 6).expect("a valid date");
         let request = window_request(&loc, 3, today, "test-key");

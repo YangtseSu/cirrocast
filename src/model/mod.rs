@@ -98,6 +98,18 @@ pub struct Location {
     /// written before the field existed still parse.
     #[serde(default)]
     pub station: Option<String>,
+    /// The source that attached this location's display *name*, when that is not the location's own
+    /// [`source`](Self::source) (step 25).
+    ///
+    /// A coordinate — and an IP answer whose service reported no city — keeps its own provenance
+    /// (`Coordinates`/`Ip`) because that is what decides the request key and whether a provider may
+    /// correct the zone; the name comes from the bundled city table or Nominatim `/reverse`, and
+    /// the credit for showing that name has to travel with it
+    /// ([`attribution_line`](crate::geo::attribution_line) falls back to this field). `None` for a
+    /// location named by whoever resolved it, and for a bare `@lat,lon`; not part of the `json`
+    /// document, which projects the fields a consumer reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub named_by: Option<LocationSource>,
 }
 
 /// Current conditions at the location.

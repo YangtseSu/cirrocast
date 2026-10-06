@@ -236,6 +236,7 @@ fn from_ipwho_is(service: IpService, body: &Value) -> Result<Location> {
         population: None,
         source: LocationSource::Ip,
         station: None,
+        named_by: None,
     })
 }
 
@@ -264,6 +265,7 @@ fn from_ipapi_co(service: IpService, body: &Value) -> Result<Location> {
         population: None,
         source: LocationSource::Ip,
         station: None,
+        named_by: None,
     })
 }
 
@@ -295,6 +297,7 @@ fn from_ip_sb(service: IpService, body: &Value) -> Result<Location> {
         population: None,
         source: LocationSource::Ip,
         station: None,
+        named_by: None,
     })
 }
 

@@ -27,6 +27,7 @@ pub mod offline;
 pub mod open_meteo;
 pub mod pick;
 pub mod rank;
+pub mod reverse;
 pub mod table;
 pub mod tz;
 pub mod update;
@@ -453,7 +454,9 @@ fn note(query: &str, chosen: &Location, resolution: Resolution, hint: bool) -> O
 #[must_use]
 pub fn location_line(location: &Location) -> String {
     let mut parts = vec![place(location)];
-    if location.source != LocationSource::Coordinates {
+    // A coordinate whose display name is still the pair itself does not repeat it; one that a
+    // reverse lookup named (step 25) shows both, exactly as an IP answer does.
+    if location.source != LocationSource::Coordinates || location.named_by.is_some() {
         parts.push(format!("({:.2}, {:.2})", location.lat, location.lon));
     }
     if provisional_zone(location) {
@@ -464,14 +467,21 @@ pub fn location_line(location: &Location) -> String {
     parts.join(" ")
 }
 
+/// The credit `GeoNames` asks for, next to displayed data.
+const GEONAMES_CREDIT: &str = "Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/";
+
+/// The credit OpenStreetMap's `ODbL` asks for.
+const OSM_CREDIT: &str = "Location data © OpenStreetMap contributors (ODbL)";
+
 /// The attribution a location's data source requires, or `None` when the source asks for none.
 ///
 /// Displaying a place is displaying someone's data: `GeoNames` publishes the geocoding data that
 /// Open-Meteo serves under CC-BY-4.0 (credit plus a link to the service, which is what the licence
-/// page asks for next to displayed data), and OpenStreetMap requires the `ODbL` credit. Coordinates
-/// and IP answers are the user's own input or the locating service's own answer, and neither
-/// `ipwho.is` nor `ipapi.co` asks for a credit line — the privacy disclosure already names whichever
-/// one answered.
+/// page asks for next to displayed data), and OpenStreetMap requires the `ODbL` credit. A bare
+/// coordinate is the user's own input and a bare IP answer is the locating service's own answer —
+/// neither asks for a credit line — but a *name* that the bundled tables or Nominatim attached to
+/// one of them is that source's data, so the credit follows
+/// [`Location::named_by`](crate::model::Location::named_by) (step 25).
 ///
 /// The caller prints this next to the location (stderr in the CLI), and step 06's renderers use the
 /// same function so a weather report carries its sources too.
@@ -481,14 +491,21 @@ pub fn attribution_line(location: &Location) -> Option<&'static str> {
         LocationSource::Geocoder => Some(
             "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
         ),
-        LocationSource::Offline | LocationSource::Geonames => {
-            Some("Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/")
-        }
-        LocationSource::Osm => Some("Location data © OpenStreetMap contributors (ODbL)"),
+        LocationSource::Offline | LocationSource::Geonames => Some(GEONAMES_CREDIT),
+        LocationSource::Osm => Some(OSM_CREDIT),
         // A station's coordinates are US-government public-domain metadata, which asks for no
         // credit line; the *weather* credit (`aviationweather.gov`) travels in the report's
         // attribution instead.
-        LocationSource::Coordinates | LocationSource::Ip | LocationSource::Station => None,
+        LocationSource::Coordinates | LocationSource::Ip | LocationSource::Station => {
+            match location.named_by? {
+                LocationSource::Offline | LocationSource::Geonames => Some(GEONAMES_CREDIT),
+                LocationSource::Osm => Some(OSM_CREDIT),
+                // Only the two naming paths above ever attach a name to someone else's location; a
+                // different value would be a wiring bug, and inventing a credit for it is worse
+                // than carrying none.
+                _ => None,
+            }
+        }
     }
 }
 
@@ -560,6 +577,7 @@ pub fn from_coordinates(lat: f64, lon: f64) -> Location {
         population: None,
         source: LocationSource::Coordinates,
         station: None,
+        named_by: None,
     }
 }
 
@@ -636,6 +654,7 @@ mod tests {
             population,
             source: LocationSource::Geocoder,
             station: None,
+            named_by: None,
         }
     }
 

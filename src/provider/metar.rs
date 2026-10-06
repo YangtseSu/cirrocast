@@ -470,6 +470,7 @@ fn location_of(station: &Station) -> Location {
         population: None,
         source: LocationSource::Station,
         station: Some(station.icao.to_owned()),
+        named_by: None,
     }
 }
 
@@ -500,6 +501,7 @@ fn location_of_info(row: &StationInfo, icao: &str, env: &Env<'_>) -> Location {
         population: None,
         source: LocationSource::Station,
         station: Some(icao.to_owned()),
+        named_by: None,
     }
 }
 
@@ -527,6 +529,7 @@ pub fn placeholder_location(icao: &str) -> Location {
             population: None,
             source: LocationSource::Station,
             station: Some(icao),
+            named_by: None,
         },
     }
 }

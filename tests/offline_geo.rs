@@ -255,6 +255,7 @@ fn fixture_locations(name: &str) -> Vec<Location> {
                 population: hit["population"].as_u64(),
                 source: cirrocast::model::LocationSource::Geocoder,
                 station: None,
+                named_by: None,
             }
         })
         .collect()

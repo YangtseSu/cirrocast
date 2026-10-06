@@ -20,6 +20,7 @@ pick = "auto"
 [geo]
 strategy = "auto"
 search = "auto"
+reverse = "auto"
 data = "auto"
 update = "off"
 update_interval_days = 90

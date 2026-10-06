@@ -475,6 +475,7 @@ mod tests {
             population: None,
             source: LocationSource::Coordinates,
             station: None,
+            named_by: None,
         };
 
         // Delhi and Amritsar are south of the Himalayan frontier: `qweather` must not claim them.

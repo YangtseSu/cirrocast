@@ -266,6 +266,7 @@ impl Hit {
             population: self.population.filter(|population| *population > 0),
             source: LocationSource::Geonames,
             station: None,
+            named_by: None,
         })
     }
 }

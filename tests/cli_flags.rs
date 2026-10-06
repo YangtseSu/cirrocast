@@ -166,8 +166,11 @@ fn every_flag_is_accepted_in_both_spellings() {
 #[test]
 fn latitude_and_longitude_replace_the_location_argument() {
     let sandbox = seeded(3);
+    // `[geo] reverse` is pinned off: this test is about which flag supplied the location, and the
+    // display name a coordinate gains (step 25) would hide the coordinate it must show.
     let assert = sandbox
         .cirrocast()
+        .env("CIRROCAST_GEO_REVERSE", "off")
         .args(["--lat", "39.9042", "--lon", "116.4074", "--offline"])
         .assert()
         .success();
@@ -564,6 +567,7 @@ fn an_environment_location_is_overridden_by_a_flag_not_treated_as_a_conflict() {
     let assert = sandbox
         .cirrocast()
         .env("CIRROCAST_LOCATION", "Beijing")
+        .env("CIRROCAST_GEO_REVERSE", "off")
         .args(["--lat", "39.9042", "--lon", "116.4074", "--offline"])
         .assert()
         .success();

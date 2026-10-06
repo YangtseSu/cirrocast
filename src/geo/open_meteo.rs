@@ -195,6 +195,7 @@ impl Hit {
             population: self.population,
             source: LocationSource::Geocoder,
             station: None,
+            named_by: None,
         })
     }
 

@@ -396,7 +396,9 @@ report so that no renderer or template token converts a clock per field.
   them in its footer, and `one-line` — one line by contract — prints them to stderr.
 * Coordinates and IP answers carry no credit: the first is the user's own input, and none of the IP
   services (`ipwho.is`, `ipapi.co`, IP.SB) asks for one (the `--ip` disclosure already names the
-  service).
+  service). A name that reverse geocoding *attached* to such a location (step 25) is the namer's
+  data, though: `Location::named_by` records the source, `attribution_line` falls back to it, and a
+  named coordinate carries the GeoNames or ODbL line while a bare one carries none.
 * **The machine-readable outputs are frozen contracts (step 22).** `json` (`schema_version` 2,
   additive within a version), the `one-line` token meanings and the `plain` record and field order
   change only as a release event: a minor bump, one release of dual emission where feasible, and a
@@ -425,6 +427,7 @@ schema_version = 2
 [templates] compact = "%c%t"             # named one-line templates for --format/--template @name (step 19)
 [geo]       strategy = "auto"       # bundled table first, network fallback (step 18)
             search = "auto"         # name-search sources: auto (open-meteo, geonames when an account name is set, then nominatim) | open-meteo | geonames | nominatim (step 25)
+            reverse = "auto"        # naming a coordinate: auto (bundled tables, then nominatim) | offline (no socket) | off (step 25)
             data = "auto"           # auto | bundled | user — which city table answers (step 18b)
             update = "off"          # off | check — a freshness note only, never a fetch (step 18b)
             update_interval_days = 90   # the `check` note's threshold (step 18b)
@@ -443,14 +446,15 @@ schema_version = 2
 [providers.qweather] host = ""
 ```
 
-* The `[geo] reverse` key and the `[normals]` table are **not** in this block yet: they arrive with
-  steps 25 and 26, and this build's `check_known_keys` rejects them (a file copied from an earlier
-  draft of the block would fail `config validate`).
+* The `[normals]` table is **not** in this block yet: it arrives with step 26, and this build's
+  `check_known_keys` rejects it (a file copied from an earlier draft of the block would fail
+  `config validate`).
 
 * These keys are addressed as dotted paths (`cirrocast config get defaults.days`). The ones that
   also exist as command line flags carry a `CIRROCAST_*` override — `PROVIDER`, `FORMAT`, `UNITS`,
   `DAYS`, `LANG`, `LOCATION`, `TIMEOUT`, `LOCATION_PICK` (`location.pick`), `NOMINATIM_URL`
-  (`network.nominatim_url`), `GEO_SEARCH` (`geo.search`) and `IP_SERVICE` (the `--ip` service order)
+  (`network.nominatim_url`), `GEO_SEARCH` (`geo.search`), `GEO_REVERSE` (`geo.reverse`) and
+  `IP_SERVICE` (the `--ip` service order)
   — and `config get` prints the environment value when set. (`CIRROCAST_IP_SERVICE` has no config
   key: it selects the IP services directly. `CIRROCAST_GEONAMES_USER` is the GeoNames account name
   — a *named credential* in `keys.toml`, stored by `cirrocast key set geonames`, not a config key,
@@ -573,11 +577,15 @@ the tool can ask: with `--pick`, or on a run whose stdin and stderr are terminal
 `[location] pick = "auto"`, the ranked list is printed on stderr (`[1]`…`[N]`, the winner marked
 `*`) and one line is read — an index in range, Enter for the winner, `q`/`Q` or EOF to abort with
 `Error::LocationNotFound` (exit 5, `no location selected for <query>`), three invalid answers with
-`Error::Usage` (exit 2). `--yes`, `[location] pick = "never"` and every non-terminal run take the
-ranked winner and print the step-04 note extended with the picker hints, so a script is never
+`Error::Usage` (exit 2). A coordinate's nearby names are the one exception to the automatic
+policy: the choice is a display attribute — the coordinate stays the request key — so only
+`--pick` asks for it, and `--all` lists the alternatives. `--yes`, `[location] pick = "never"` and
+every non-terminal run take the ranked winner and print the step-04 note extended with the picker
+hints, so a script is never
 prompted and never hangs; `--pick` and `--yes` are a clap conflict group. A selection echoes
 `selected: <place> — use @<lat>,<lon> to skip the prompt` at full float precision, because a name
-spec would re-run the ranking that produced the ambiguity. Coordinates (`@lat,lon`) remain the only
+spec would re-run the ranking that produced the ambiguity (a coordinate naming choice, which does
+not change the fetch, echoes nothing). Coordinates (`@lat,lon`) remain the only
 geocoder-independent spec and are what the selection echo prints back.
 
 ### Licensing and REUSE (binding)

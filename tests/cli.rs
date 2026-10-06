@@ -231,15 +231,19 @@ fn config_edit_rejects_an_unknown_key_like_config_validate_does() {
 #[test]
 fn location_search_resolves_coordinates_without_touching_the_network() {
     let sandbox = common::Sandbox::new();
+    // The coordinate is named from the bundled tables (step 25) — the sandbox forbids the network,
+    // so the run can only succeed by reading them — and the name's credit is the only stderr line.
     sandbox
         .cirrocast()
         .args(["location", "search", "@39.9042,116.4074"])
         .assert()
         .success()
         .stdout(predicate::eq(
-            "39.9042, 116.4074 <timezone resolved at fetch time>\n",
+            "Beijing, China (39.90, 116.41) <timezone resolved at fetch time>\n",
         ))
-        .stderr(predicate::eq(""));
+        .stderr(predicate::eq(
+            "Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/\n",
+        ));
 }
 
 #[test]

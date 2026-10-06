@@ -948,6 +948,7 @@ mod tests {
                 population: None,
                 source: LocationSource::Geocoder,
                 station: None,
+                named_by: None,
             },
             current,
             days,

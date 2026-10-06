@@ -390,8 +390,11 @@ fn seeded() -> common::Sandbox {
 fn the_full_and_minimal_formats_are_one_line_presets() {
     let sandbox = seeded();
     let run = |args: &[&str]| {
+        // The coordinate's display name (step 25) is not what this module tests, so the naming
+        // policy is pinned off and `%l` prints the coordinate spec's own text.
         let assert = sandbox
             .cirrocast()
+            .env("CIRROCAST_GEO_REVERSE", "off")
             .args(args)
             .args(["@39.9042,116.4074", "--offline"])
             .assert()

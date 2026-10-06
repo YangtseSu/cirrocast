@@ -157,6 +157,7 @@ mod tests {
             population,
             source: LocationSource::Geocoder,
             station: None,
+            named_by: None,
         }
     }
 

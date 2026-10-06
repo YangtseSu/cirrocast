@@ -1,0 +1,32 @@
+{
+    "place_id": 3220634,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "relation",
+    "osm_id": 912940,
+    "lat": "39.9057197",
+    "lon": "116.3912304",
+    "category": "boundary",
+    "type": "administrative",
+    "place_rank": 16,
+    "importance": 0.789307503471665,
+    "addresstype": "city",
+    "name": "Beijing",
+    "display_name": "Beijing, China",
+    "address": {
+        "city": "Beijing",
+        "state": "Beijing",
+        "ISO3166-2-lvl4": "CN-BJ",
+        "country": "China",
+        "country_code": "cn"
+    },
+    "extratags": {
+        "timezone": "Asia/Shanghai",
+        "population": "21540000"
+    },
+    "boundingbox": [
+        "39.6614060",
+        "40.3912468",
+        "115.7234736",
+        "117.0011225"
+    ]
+}

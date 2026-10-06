@@ -116,6 +116,7 @@ impl City {
             population: self.population,
             source: LocationSource::Offline,
             station: None,
+            named_by: None,
         }
     }
 }
@@ -663,6 +664,46 @@ impl Cities {
             ));
         }
         Ok(cities)
+    }
+
+    /// Materialises the rows within `radius_km` of `(lat, lon)`, nearest first.
+    ///
+    /// One pass over the row section, reading every row: the coordinates come after two
+    /// length-prefixed fields, so a row cannot be dismissed from its id alone, and the walk is
+    /// cheap (the whole table is a few tens of thousands of rows). The rows are ordered by
+    /// distance, then by population, then by name — a total order, so two places the same distance
+    /// away cannot swap between runs — and the caller's limit is applied after the sort.
+    pub(crate) fn nearby(
+        &self,
+        lat: f64,
+        lon: f64,
+        radius_km: f64,
+        limit: u8,
+    ) -> std::result::Result<Vec<City>, DecodeError> {
+        let mut cursor = Cursor::new(&self.bytes);
+        cursor.expect(CITIES_MAGIC)?;
+        let count = cursor.u32()?;
+        let mut hits: Vec<(f64, City)> = Vec::new();
+        for _ in 0..count {
+            let city = parse_row(&mut cursor)?;
+            let distance = crate::geo::distance_km(lat, lon, city.lat, city.lon);
+            if distance <= radius_km {
+                hits.push((distance, city));
+            }
+        }
+        hits.sort_by(|(left_distance, left), (right_distance, right)| {
+            left_distance
+                .total_cmp(right_distance)
+                .then_with(|| {
+                    right
+                        .population
+                        .unwrap_or(0)
+                        .cmp(&left.population.unwrap_or(0))
+                })
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        hits.truncate(usize::from(limit));
+        Ok(hits.into_iter().map(|(_, city)| city).collect())
     }
 }
 

@@ -61,7 +61,7 @@ bundled credential: GeoNames is BYOK.
   ranked with step 04's keys (exact name, population, then source order). Unit tests cover the
   Beijing overlap (Open-Meteo vs GeoNames), a 5 km boundary pair, a `TW`/`-99` country-code
   disagreement, and two different Springfields staying separate.
-- ⬜ `src/geo/reverse.rs`: coordinate → name, in this order: (1) the **bundled** city index
+- ✅ `src/geo/reverse.rs`: coordinate → name, in this order: (1) the **bundled** city index
   (step 18) scanned for cities within 25 km, ranked by distance then population; (2) when that finds
   nothing and the run is online, Nominatim `/reverse?lat=&lon=&format=jsonv2&zoom=10&addressdetails=1`
   (same base URL, UA, 1 req/s throttle and `geocode/<sha256>.json` cache as the search path, 30-day
@@ -280,3 +280,25 @@ for the same place and keeps step 04's order.
   code *empty* when neither answers (Siachen Glacier), so no `-99` can reach `Location::country_code`.
   Canaries pin Beijing → `CN`/China, Maseru → `LS` (the Lesotho hole inside South Africa's shape),
   the mid-Pacific → no country, and the four disputed codes.
+
+- 2026-10-06 — coordinate naming landed: `src/geo/reverse.rs` (`Policy`, `Nearby`, `from_table`,
+  `name`), `Nominatim::reverse` (the `/reverse` request, the refusal mapping, the five-decimal
+  cache key), `OfflineTable::nearby`/`Cities::nearby` (one pass over the row section, ordered by
+  distance then population), `[geo] reverse` + `CIRROCAST_GEO_REVERSE` in the config schema, and
+  the CLI's `name_coordinate`. `Location` gained `named_by: Option<LocationSource>` (serde-default,
+  outside the `json` projection) so the credit travels with a name attached to someone else's
+  location; `attribution_line` falls back to it and `location_line` now shows the coordinates of a
+  named coordinate. Two decisions recorded because they are easy to lose:
+  (1) **the automatic picker does not fire for a coordinate.** The step's letter says several
+  nearby names "go through step 20's picker"; taken literally that would prompt on every terminal
+  `@lat,lon` run whose coordinate has two neighbours within 25 km, asking the user to choose
+  something that cannot change what is fetched (the coordinate is the request key) — and the
+  picker's own advice ("use @lat,lon to skip the prompt") would be self-contradictory. So `--pick`
+  asks, `--all` lists, and the automatic policy stays with the name searches it was written for;
+  the README contract paragraph was amended in the same commit. (2) **offline naming carries no
+  admin1**: the city table has no admin-1 column, so a bundled name is "Xianghe, China", not the
+  step's illustrative "Xianghe, Hebei, China" — the country *name* comes from the new layer, the
+  division only from Nominatim. Measured live 2026-10-06: `@39.9042,116.4074` is named "Beijing,
+  China (39.90, 116.41)" 0.9 km away with the GeoNames credit; `--offline=geo` names it with no
+  socket; `@0,-140` under `reverse = "offline"` prints the bare coordinate and the note `no city
+  within 25 km`; under `auto` the unreachable Nominatim is a `-v` note, not a failure.

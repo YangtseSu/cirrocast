@@ -34,6 +34,7 @@ fn point(name: &str, country: Option<&str>, lat: f64, lon: f64) -> Location {
         population: None,
         source: LocationSource::Geocoder,
         station: None,
+        named_by: None,
     }
 }
 

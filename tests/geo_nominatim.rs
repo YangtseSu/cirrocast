@@ -352,3 +352,93 @@ fn hits_without_a_timezone_tag_keep_the_provisional_utc_zone() {
     assert_eq!(hits[1].admin1.as_deref(), Some("Beijing"));
     assert_eq!(hits[1].country, "China");
 }
+
+// ---------------------------------------------------------------------------------------------
+// `/reverse`: naming a coordinate (step 25)
+// ---------------------------------------------------------------------------------------------
+
+/// The hand-authored `/reverse` answer: the documented jsonv2 shape, trimmed to the fields the
+/// mapper reads (`lat`, `lon`, `name`, `display_name`, `address`, `extratags`). It is not a
+/// recording — Nominatim was unreachable from the recording network — so it lives with the other
+/// first-party fixtures in `REUSE.toml`.
+fn reverse_beijing() -> StubReply {
+    StubReply::json_file("tests/fixtures/geo/nominatim_reverse_beijing.json")
+        .expect("the reverse fixture is readable")
+}
+
+/// The refusal the service sends for a point it cannot place.
+fn reverse_ocean() -> StubReply {
+    StubReply::json_file("tests/fixtures/geo/nominatim_reverse_ocean.json")
+        .expect("the refusal fixture is readable")
+}
+
+#[test]
+fn a_reverse_answer_names_the_point() {
+    let harness = Harness::new(vec![reverse_beijing()]);
+    let location = harness
+        .geocoder()
+        .reverse(39.9042, 116.4074)
+        .expect("the answer maps")
+        .expect("the point has a name");
+
+    assert_eq!(location.name, "Beijing");
+    assert_eq!(location.admin1.as_deref(), Some("Beijing"));
+    assert_eq!(location.country, "China");
+    // The service spells the code lower-cased; the mapper keeps what it sends.
+    assert_eq!(location.country_code.as_deref(), Some("cn"));
+    assert_eq!(location.tz, Tz::Asia__Shanghai);
+    assert_eq!(location.population, Some(21_540_000));
+    assert_eq!(location.source, LocationSource::Osm);
+
+    let calls = harness.transport.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].full_url(),
+        format!(
+            "{DEFAULT_URL}/reverse?format=jsonv2&lat=39.9042&lon=116.4074&zoom=10&addressdetails=1"
+        )
+    );
+    assert_eq!(calls[0].headers().len(), 2, "the UA and the language");
+}
+
+#[test]
+fn a_refused_point_has_no_name() {
+    for reply in [reverse_ocean(), StubReply::ok(404, "Not Found")] {
+        let harness = Harness::new(vec![reply]);
+        let location = harness
+            .geocoder()
+            .reverse(0.0, -140.0)
+            .expect("a refusal is not a failure");
+        assert_eq!(location, None);
+        assert_eq!(harness.transport.calls().len(), 1);
+    }
+}
+
+#[test]
+fn a_reverse_answer_is_cached_and_throttled_like_a_search() {
+    let harness = Harness::new(vec![reverse_beijing()]);
+    let geocoder = harness.geocoder();
+
+    let first = geocoder
+        .reverse(39.9042, 116.4074)
+        .expect("the first lookup fetches")
+        .expect("a name");
+    // The same point spelled with more precision is the same cache entry: five decimals.
+    let second = geocoder
+        .reverse(39.904_200_01, 116.407_400_04)
+        .expect("the second lookup hits the cache")
+        .expect("a name");
+    assert_eq!(first, second);
+    assert_eq!(harness.transport.calls().len(), 1, "one request, one entry");
+    assert_eq!(
+        harness.clock.sleeps().len(),
+        0,
+        "a cache hit neither throttles nor sleeps"
+    );
+
+    // The state file the throttle writes is the one the search path uses.
+    let state = std::fs::read_to_string(harness.root().join(THROTTLE_STATE))
+        .expect("the throttle state is written");
+    let state: ThrottleState = serde_json::from_str(&state).expect("the state parses");
+    assert_eq!(state.last_request_unix_ms, millis(start()));
+}

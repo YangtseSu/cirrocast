@@ -40,6 +40,11 @@ path = [
     "tests/fixtures/marine/no-current.json",
     "tests/fixtures/geo/cities-sample.txt",
     "tests/fixtures/geo/cities-sample.zip",
+    # The `/reverse` pair is hand-authored from Nominatim's documented jsonv2 shape (the service
+    # was unreachable from the network this step was written on), so it stays first-party rather
+    # than being annotated as a recording; the test module says so.
+    "tests/fixtures/geo/nominatim_reverse_beijing.json",
+    "tests/fixtures/geo/nominatim_reverse_ocean.json",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
