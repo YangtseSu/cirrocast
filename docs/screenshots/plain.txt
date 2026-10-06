@@ -1,0 +1,9 @@
+location: Beijing, CN (39.91, 116.40) Asia/Shanghai
+updated: 2026-10-06T21:30:00+08:00
+current: Clear sky 20°C (feels 16°C) wind 11km/h SW humidity 29% precip 0.0mm pressure 1021hPa visibility 18km
+day 2026-10-06: Morning Clear sky 18°C 0.0mm (0%) wind 7.0km/h N | Noon Clear sky 26°C 0.0mm (0%) wind 4.2km/h NE | Evening Clear sky 20°C 0.0mm (0%) wind 11km/h SW | Night Clear sky 14°C 0.0mm (0%) wind 8.8km/h NNW
+day 2026-10-07: Morning Clear sky 17°C 0.0mm (0%) wind 1.5km/h NE | Noon Clear sky 27°C 0.0mm (0%) wind 13km/h S | Evening Clear sky 21°C 0.0mm (0%) wind 7.4km/h S | Night Clear sky 17°C 0.0mm (0%) wind 0.9km/h W
+day 2026-10-08: Morning Clear sky 17°C 0.0mm (0%) wind 3.1km/h NNE | Noon Clear sky 26°C 0.0mm (0%) wind 9.4km/h SSE | Evening Clear sky 22°C 0.0mm (0%) wind 5.1km/h SSE | Night Clear sky 17°C 0.0mm (0%) wind 1.0km/h NNW
+Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/
+Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/
+attribution: open-meteo https://api.open-meteo.com/v1/forecast

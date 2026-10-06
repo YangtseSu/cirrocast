@@ -72,13 +72,13 @@ stays pipeable; `-q` silences it and `:Beijing` demands an exact name.
 
 ## Status
 
-Steps 01–21 of 29 in [`docs/plans/`](docs/plans/README.md) — 18b included — are in place: the CLI
+Steps 01–27 of 28 in [`docs/plans/`](docs/plans/README.md) — 18b included — are in place: the CLI
 skeleton, XDG path resolution, the provider registry, the typed configuration with its
 `config`/`key` subcommands, the canonical model, location resolution, the shared HTTP/cache layer,
 the Open-Meteo forecast, the wttr.in-style `art-table` renderer, the full flag matrix with the
 `one-line`/`plain`/`json`/`dumb` formats, shell completions and the man page, localization
-(`en-US` + `zh-CN`) and eight selectable backends — three of them keyless, including the
-station-based `metar` observation. Steps 12–14 hardened the error contract and made it releasable:
+(`en-US` + `zh-CN`) and the eight keyless backends among the fourteen selectable ones, including
+the station-based `metar` observation. Steps 12–14 hardened the error contract and made it releasable:
 `v1.0.0` (2026-10-02) tags the accepted v1 surface, with the release workflow shipping three native
 archives, the AUR package published, and the JSON and config schemas written out in
 [`docs/schema.md`](docs/schema.md) with the versioning policy in [Versioning](#versioning) and the
@@ -88,8 +88,12 @@ block (step 17), and `v1.2.0` adds the offline city database (step 18) with user
 updates (18b), multi-location runs with the shared `%`-token template engine (step 19) and the
 interactive location picker (step 20). Step 21 turned the performance and resource promises into
 enforced numbers — one harness, one committed baseline, one dispatch-only CI workflow — recorded in
-[`docs/performance.md`](docs/performance.md). Phase E's remaining item, the `status` probe and the
-ecosystem recipes (step 22), is next.
+[`docs/performance.md`](docs/performance.md), and step 22 added the `status` probe with its
+status-bar recipes ([`docs/ecosystem.md`](docs/ecosystem.md)). Steps 23–27 opened phase F: MET
+Norway, Visual Crossing and Open-Meteo's archive and marine APIs (23), the keyless national services
+`nws` and `brightsky` (24), the second-generation location sources (25), the climate-normals
+comparison (26) and QWeather's Ed25519 JWT (27). Step 28, the documentation set, is the last open
+step of the plan.
 
 ## Install
 
@@ -124,18 +128,43 @@ cirrocast completion fish > ~/.config/fish/completions/cirrocast.fish
 ```
 
 [Packaging and release](#packaging-and-release) has the full picture: what each path installs, how
-the archives are built and verified, and the checklist a release follows.
+the archives are built and verified, and the checklist a release follows. Those are the v1 install
+paths — `cargo install`, the AUR package and the release archives; further package formats are
+deliberately unscheduled, and the multi-platform packaging matrix is backlog **B02** in
+[`docs/plans/`](docs/plans/README.md).
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/getting-started.md`](docs/getting-started.md) | install, the first run, `config init`, a key for one keyed backend, offline mode |
+| [`docs/configuration.md`](docs/configuration.md) | every configuration key — type, default, example and effect — and the precedence rules |
+| [`docs/providers.md`](docs/providers.md) | the per-backend record: endpoints, auth, quotas with their exact wording, attribution duties and traps |
+| [`docs/formats.md`](docs/formats.md) | every output format, the `%` token table and the multi-location output rules |
+| [`docs/location.md`](docs/location.md) | the location argument forms, the ranking rules and the offline city data |
+| [`docs/i18n.md`](docs/i18n.md) | the shipped catalogs, `auto` negotiation and how to add a language |
+| [`docs/troubleshooting.md`](docs/troubleshooting.md) | failures by symptom — network, keys, cache, rate limits, a wrong city — and how to produce a bug report |
+| [`docs/architecture.md`](docs/architecture.md) | the module map, the request data flow, the on-disk state and the invariants |
+| [`docs/performance.md`](docs/performance.md) | the enforced performance and resource budget and how it is measured |
+| [`docs/ecosystem.md`](docs/ecosystem.md) | the `status` probe contract, the `json`/`one-line`/`plain` output contracts and the status-bar recipes |
+| [`docs/schema.md`](docs/schema.md) | the JSON and config schemas, the versioning policy and the key index |
+
+Captured output for every format lives in [`docs/screenshots/`](docs/screenshots/); the build plan
+these features were delivered under is [`docs/plans/`](docs/plans/README.md), and
+[`CHANGELOG.md`](CHANGELOG.md) records each release.
 
 ## Usage
 
 ```
 cirrocast [OPTIONS] [LOCATION]...
 
-  -p, --provider <ID[,ID...]>   open-meteo | smhi | metar | openweathermap | weatherapi
-                                | worldweatheronline | pirateweather | qweather | auto
-  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts | aqi | moon,
-                                or a one-line preset: full | minimal | short | default | uv | sun,
-                                or a [templates] key
+  -p, --provider <ID[,ID...]>   open-meteo | met-no | smhi | nws | brightsky | metar
+                                | open-meteo-archive | open-meteo-marine | visualcrossing
+                                | openweathermap | weatherapi | worldweatheronline
+                                | pirateweather | qweather | auto
+  -f, --format <NAME>           art-table | one-line | plain | json | dumb | alerts | aqi | moon
+                                | normals, or a one-line preset: full | minimal | short | default
+                                | uv | sun, or a [templates] key
   -d, --days <N>                0..=14, clamped to what the provider serves
   -u, --units <SYSTEM>          metric | us | uk
       --lang <TAG>              BCP-47, or "auto"
@@ -143,12 +172,16 @@ cirrocast [OPTIONS] [LOCATION]...
       --ip                      locate from the public IP
       --station <ICAO>          METAR station; selects --provider metar when no provider is given
       --alerts | --no-alerts    force / suppress severe-weather warnings (they are on by default)
-      --alerts-from <LIST>      explicit alert sources: nws, meteoalarm, qweather, hko, wmoswic, fpas
+      --alerts-from <LIST>      explicit alert sources: nws, meteoalarm, qweather, hko, wmoswic,
+                                fpas, visualcrossing (which needs --provider visualcrossing)
       --severity <LEVEL>        lowest alert severity shown: unknown | minor | moderate | severe | extreme
       --aqi                     append the air-quality panel (US/European AQI, pollutants, pollen)
       --aqi-index <SCALE>       us | european: the AQI scale behind the panel colour and %q
       --moon                    append the locally computed moon/sun block (no request)
       --normals                 compare with the month's climate normal (NOAA NCEI; two requests)
+      --date <YYYY-MM-DD>       render the archive for one date (history-capable backend only)
+      --history <Nd>            render the archive for the last N days, ending yesterday
+      --marine                  append the marine block (waves, swell, sea-surface temperature)
       --template <TEMPLATE>     one-line template or @PRESET
       --template-file <PATH>    read the template from a file; `-` reads standard input
       --no-cache | --refresh | --offline[=<weather|geo|all>]
@@ -264,6 +297,16 @@ The reference for every format, the token contract and the multi-location output
 | `moon` | the standalone moon/sun view: phase, illumination, age, moonrise/moonset, sunrise/sunset and the next four phase instants, all computed locally | wraps to `--width` |
 | `normals` | the standalone climate-normals view (`--normals` implies the fetch): the month's normal for the nearest station against today's forecast, with the station, its distance and the contributing years; `climate normals unavailable` when no normal could be computed | wraps to `--width` |
 
+Real captured output for each of those formats is in [`docs/screenshots/`](docs/screenshots/) — one
+file per format, from the built binary run against Beijing on 2026-10-06 with
+`--lang en-US --color never --width 100 -d 3`, stored as plain text with no colour or escape
+sequences: [`art-table.txt`](docs/screenshots/art-table.txt),
+[`one-line.txt`](docs/screenshots/one-line.txt), [`plain.txt`](docs/screenshots/plain.txt),
+[`json.txt`](docs/screenshots/json.txt), [`dumb.txt`](docs/screenshots/dumb.txt),
+[`alerts.txt`](docs/screenshots/alerts.txt) — no warnings were in force for Beijing at capture time,
+so this is the empty state — [`aqi.txt`](docs/screenshots/aqi.txt),
+[`moon.txt`](docs/screenshots/moon.txt) and [`normals.txt`](docs/screenshots/normals.txt).
+
 `one-line` takes a template with `--template` (or `--template-file <PATH>`, `-` for stdin), either
 a literal string or a preset. `--format` accepts the preset names directly too, so
 `-f minimal` and `-f one-line --template @minimal` are the same run.
@@ -336,7 +379,8 @@ Severe-weather warnings are fetched by default (`[alerts] enabled = true`). The 
 the location are chosen automatically — the national services first (`nws` for the US and its
 territories, `meteoalarm` for the EUMETNET members, `hko` for Hong Kong, `qweather` for China when
 that provider is on the chain) and the two global aggregators last (`wmoswic`, the WMO Severe
-Weather Information Centre, and `fpas`, the FOSS Public Alert Server, which answer anywhere).
+Weather Information Centre, and `fpas`, the FOSS Public Alert Server, which answer anywhere);
+`visualcrossing`'s warnings travel inside that provider's own payload and are shown when it answers.
 Warnings are normalised to CAP 1.2 and appear as a severity-coloured banner above `art-table` and
 `one-line` (the strongest one is also `%A`), as `alert: …` records in `plain`, as the full listing
 under `--format alerts`, and as the `alerts` array in `json`. Alerts whose end (`ends`, else
@@ -347,7 +391,7 @@ three lines with a `… and N more` tail, and the strongest is first.
 |---|---|
 | `--no-alerts` | skip the extra requests for this run |
 | `--alerts` | force the fetch even if `[alerts] enabled = false` |
-| `--alerts-from <LIST>` | query exactly these sources, comma separated; one that does not cover the point is a usage error |
+| `--alerts-from <LIST>` | query exactly these sources, comma separated; one that does not cover the point is a usage error, and `visualcrossing` requires `--provider visualcrossing` |
 | `--severity <LEVEL>` | show only warnings at or above the level (default `minor`, from `[alerts] severity_threshold`) |
 
 MeteoAlarm's endpoints need a token in `CIRROCAST_METEOALARM_KEY`; without one that source is
@@ -782,7 +826,10 @@ through reverse-engineered private routes.
 
 
 Declared capabilities only, each row carrying the date it was last checked against the provider's live
-documentation (`provider info <ID>` prints it). The full record — endpoints, request parameters,
+documentation (`provider info <ID>` prints it), and re-checked against `provider list` /
+`provider info <ID>` on 2026-10-06: the fourteen ids, the `CIRROCAST_<PROVIDER>_KEY` names, the
+`free`/`nonfree` class (every keyless row is `free`, every keyed row `nonfree`) and the max-days
+column all match the binary. The full record — endpoints, request parameters,
 response fields consumed, free-tier quotas with their exact wording, licence duties, caching ceilings
 and the traps — lives in [`docs/providers.md`](docs/providers.md); `cirrocast provider list` /
 `provider info <ID>` print the machine-readable subset from the binary itself. The 2026-09-30
@@ -847,7 +894,7 @@ write and the first one read — and `config validate` reports the file that was
 | `normals.period` | `1991-2020` | the reference window the normal is averaged over: two four-digit years, the earlier one first |
 | `normals.max_distance_km` | `60` | `1..=500` — farthest NOAA NCEI station that still answers |
 | `providers.metar.station` | empty | ICAO identifier, e.g. `ZBAA` |
-| `providers.qweather.host` | empty | your QWeather API host, from <https://console.qweather.com/setting> (e.g. `https://<account-id>.re.qweatherapi.com`) |
+| `providers.qweather.host` | empty | your QWeather API host, from <https://console.qweather.com/> (e.g. `https://<account-id>.re.qweatherapi.com`) |
 
 The `[units]` overrides are per quantity and optional: an absent (or empty) key follows
 `defaults.units`, so switching that one value to `us` moves every quantity that was not pinned.

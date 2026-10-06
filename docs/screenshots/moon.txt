@@ -1,0 +1,11 @@
+Beijing, CN (39.91, 116.40) Asia/Shanghai
+computed locally (no network) at 2026-10-06T21:43:53+08:00
+ █▒░░░  Moon: Waning Crescent
+█▒░░░░░ 18% illuminated (geocentric) · age 25.4 d
+█▒░░░░░ Moonrise 01:03 · Moonset 15:36
+ █▒░░░  Sunrise 06:15 · Sunset 17:49 · daylight 11h 34m
+Next phases:
+  New Moon Sat 10 Oct 23:49
+  First Quarter Mon 19 Oct 00:12
+  Full Moon Mon 26 Oct 12:11
+  Last Quarter Mon 02 Nov 04:28

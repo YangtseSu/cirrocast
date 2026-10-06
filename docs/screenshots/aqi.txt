@@ -1,0 +1,7 @@
+Beijing, CN (39.91, 116.40) Asia/Shanghai
+updated 2026-10-06T21:00:00+08:00 · Open-Meteo
+Air quality: US AQI 145 (Unhealthy for sensitive groups) · European AQI 76 (Poor)
+PM2.5 78.9 · PM10 91 · O3 0 · NO2 92.4 · SO2 11.9 · CO 753 μg/m³
+Pollen: not covered at this location
+UV 0 (low) · weather data
+Air quality data by Open-Meteo.com (CAMS ENSEMBLE)

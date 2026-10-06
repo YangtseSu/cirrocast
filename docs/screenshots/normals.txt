@@ -1,0 +1,4 @@
+Beijing, CN (39.91, 116.40) Asia/Shanghai
+Climate normals: 1991–2020 · BEIJING, CH (CHM00054511) 10 km · high 19.4°C (+6.4°C) · low 8.8°C
+(+4.9°C) · precip 29.1 mm/mo (-100%) · 22 years
+Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)
