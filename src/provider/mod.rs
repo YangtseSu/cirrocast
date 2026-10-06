@@ -435,7 +435,7 @@ impl ProviderId {
                 hourly: true,
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
-                notes: "global coverage; v1 endpoints, metric-only measures; API host from https://console.qweather.com/setting",
+                notes: "global coverage; v1 endpoints, metric-only measures; API host from https://console.qweather.com/",
                 auth: "API key or JWT (Ed25519)",
                 coverage: "global",
                 covers: Coverage::GLOBAL,

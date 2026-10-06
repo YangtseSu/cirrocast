@@ -39,7 +39,7 @@ pub fn fetch(loc: &Location, env: &Env<'_>, _language: &str) -> Result<Vec<Alert
     if host.is_empty() {
         return Err(Error::Config(format!(
             "alert source `qweather` needs `providers.{PROVIDER}.host` (see \
-             https://console.qweather.com/setting)"
+             https://console.qweather.com/)"
         )));
     }
     let variable = ProviderId::QWeather

@@ -25,8 +25,10 @@ release that adds a backend is not a schema change, and a schema change is not a
 ## JSON output schema (v2)
 
 Written by `--format json` (`src/render/json.rs`, `SCHEMA_VERSION = 2`). The same contract as a
-JSON Schema (Draft 2020-12) is [`docs/schema/json-v2.json`](schema/json-v2.json); step 28 adds the
-frozen `json-v1.json` beside it and the test that validates live output against both. The rules
+JSON Schema (Draft 2020-12) is [`docs/schema/json-v2.json`](schema/json-v2.json); the frozen
+[`docs/schema/json-v1.json`](schema/json-v1.json) beside it records what `v1.0.0` printed, and
+`tests/json_schema.rs` validates the committed v1 fixture and live output (one, two and three
+locations, a failed slot included) against the two files. The rules
 that make the document scriptable, in the order they matter:
 
 * every key is **always present**; a value the provider did not report is `null`, never an omitted
@@ -511,7 +513,7 @@ placeholder = "n/a"      # `cirrocast status` prints this when it has no reading
 station = ""             # default ICAO identifier, e.g. "ZBAA"
 
 [providers.qweather]
-host = ""                # API host from https://console.qweather.com/setting,
+host = ""                # API host from https://console.qweather.com/,
                          # e.g. "https://<account-id>.re.qweatherapi.com"
 ```
 

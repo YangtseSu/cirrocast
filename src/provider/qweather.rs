@@ -25,7 +25,7 @@
 //! 7. **Errors are RFC 7807** (`application/problem+json`): a bad key is `401` (mapped to
 //!    [`Error::InvalidKey`] by the shared helper), a bad parameter or location is `400`.
 //! 8. **The host is per account** and comes from `[providers.qweather].host` (the console shows it
-//!    at <https://console.qweather.com/setting>); a missing host is a configuration error naming
+//!    at <https://console.qweather.com/>); a missing host is a configuration error naming
 //!    that page, never a guessed default.
 //! 9. **Two authentication modes** (step 27): the API key in `X-QW-Api-Key`, or an Ed25519 JWT in
 //!    `Authorization: Bearer`. The key store resolves which one is configured
@@ -182,7 +182,7 @@ fn host(env: &Env<'_>) -> Result<String> {
     if host.is_empty() {
         return Err(Error::Config(format!(
             "provider `{PROVIDER}` needs its account API host: set providers.qweather.host \
-             (see https://console.qweather.com/setting, or `cirrocast provider info {PROVIDER}`)"
+             (see https://console.qweather.com/, or `cirrocast provider info {PROVIDER}`)"
         )));
     }
     validate_host(host)?;
@@ -199,7 +199,7 @@ fn validate_host(host: &str) -> Result<()> {
     let rejection = || {
         Error::Config(format!(
             "providers.qweather.host: `{host}` must be the HTTPS account host from \
-             https://console.qweather.com/setting, e.g. `https://<account-id>.re.qweatherapi.com`"
+             https://console.qweather.com/, e.g. `https://<account-id>.re.qweatherapi.com`"
         ))
     };
     let Some(rest) = host.strip_prefix("https://") else {

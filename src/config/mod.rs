@@ -385,7 +385,7 @@ pub struct MetarConfig {
 #[serde(default)]
 pub struct QWeatherConfig {
     /// API host, assigned to your `QWeather` account; the console shows it at
-    /// <https://console.qweather.com/setting>.
+    /// <https://console.qweather.com/>.
     pub host: String,
 }
 
@@ -975,7 +975,7 @@ impl Config {
         if !host.is_empty() && !is_qweather_host(host) {
             return Err(Error::Config(format!(
                 "providers.qweather.host: `{host}` must be the HTTPS account host from \
-                 https://console.qweather.com/setting, e.g. \
+                 https://console.qweather.com/, e.g. \
                  `https://<account-id>.re.qweatherapi.com`"
             )));
         }
@@ -1572,7 +1572,7 @@ placeholder = "n/a"      # `cirrocast status` prints this when it has no reading
 station = ""             # default ICAO identifier, e.g. "ZBAA"
 
 [providers.qweather]
-host = ""                # API host from https://console.qweather.com/setting,
+host = ""                # API host from https://console.qweather.com/,
                          # e.g. "https://<account-id>.re.qweatherapi.com"
 "#;
 

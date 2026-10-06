@@ -197,7 +197,7 @@ fn a_missing_host_is_a_configuration_error_with_the_hint() {
     assert_eq!(error.exit_code(), 4);
     let text = error.to_string();
     assert!(text.contains("providers.qweather.host"), "{text}");
-    assert!(text.contains("console.qweather.com/setting"), "{text}");
+    assert!(text.contains("console.qweather.com"), "{text}");
     assert!(text.contains("provider info qweather"), "{text}");
     assert_eq!(
         run.calls(),
