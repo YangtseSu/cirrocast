@@ -26,10 +26,11 @@ use common::Sandbox;
 const FLAGS_FILE: &str = "docs/reference/flags.txt";
 
 /// Long flags the documentation quotes from other tools, `(flag, tool)`.
-const FOREIGN: [(&str, &str); 6] = [
+const FOREIGN: [(&str, &str); 7] = [
     ("--release", "cargo"),
     ("--locked", "cargo"),
     ("--path", "cargo install"),
+    ("--no-default-features", "cargo test"),
     ("--warmup", "hyperfine"),
     ("--cold-ms", "scripts/bench/cold.sh"),
     ("--free-only", "scripts/bench/run.sh"),

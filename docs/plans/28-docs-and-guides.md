@@ -232,3 +232,16 @@ link check reports 0 broken links.
   `Error::Upstream`. The shipped binary keeps the guard path. `lychee --offline` and the full run
   (through a local proxy) report 0 broken links, `man --warn` is silent and the suite is green with
   and without `--no-default-features`.
+- 2026-10-06 — README slimmed from 1197 to 476 lines, after the step closed and on request. The
+  reference prose it duplicated moved out for good: the `Usage` subsections, `Location`, `Languages`,
+  `Backends`, `Data sources, limits and licences` and the 36-row configuration table now live only
+  in `docs/` (which the Documentation table links). What stays is the front page: what/why, status,
+  install, the quick-start flag block and exit codes, the format table with one embedded capture and
+  the nine capture links, the location forms and the city-data update flow (the anchor
+  `docs/location.md` links to), the provider matrix, the configuration precedence and
+  alias/template example, the API-key rules, the documentation index, and the licence/versioning/
+  release/publishing/CI sections CONTRIBUTING points at as the authoritative copies. The motivation
+  was concrete drift: the README's `render.width` row said `40..=500` while the binary accepts
+  `1..=500` (and the same file's `--width` row said so), and its config table was missing
+  `geo.update_interval_days` and `status.placeholder`. `tests/docs_flags.rs` gained
+  `--no-default-features` in its foreign-tool list, because the new CI table quotes cargo's flag.
