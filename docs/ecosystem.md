@@ -50,7 +50,8 @@ would print the four characters `json`. Every `%` token of the one-line vocabula
 
 "Never exits non-zero because the network was unavailable" is the promise a bar is written
 against: a timer that runs this every 15 minutes renders the placeholder instead of a crashed
-module. Only problems the user has to fix — a typo, a broken file, a missing location — fail.
+module. The placeholder is `n/a` unless `--placeholder <TEXT>` (or `[status] placeholder`) says
+otherwise. Only problems the user has to fix — a typo, a broken file, a missing location — fail.
 
 The classification is `status::degradable` (`src/status.rs`), an exhaustive match: a new `Error`
 variant cannot join the contract without a decision there. `tests/status_contract.rs` drives the
