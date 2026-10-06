@@ -32,6 +32,191 @@ is one `%`-template, so `--format` (and its synonym `--template`) takes the temp
 `--format '%c %t'` — and the format names above are not accepted there. The probe's line, colour
 and exit-code contract is in [`docs/ecosystem.md`](ecosystem.md).
 
+## Captured examples
+
+Every block below is a real capture from the built binary run against Beijing, stored as plain text
+with no colour or escape sequences. The full transcripts live in
+[`docs/screenshots/`](screenshots/), one file per format; each block names the file it came from.
+`full` and `minimal` are `one-line` presets, so they share the `one-line` example below with a
+different template.
+
+### `art-table` (the default)
+
+The head and tail of [`art-table.txt`](screenshots/art-table.txt); the 33-line file continues with
+the Morning, Noon, Evening and Night rows for each of the three days:
+
+```text
+Weather report: Beijing, CN (39.91, 116.40)
+
+  · * · Clear sky
+   (●)  +20°C (+16°C)
+  * · * ↙ 11km/h SW
+        29% 1021hPa 18km 0.0mm
+
+┌───────────────────────┬───────────────────────┬───────────────────────┐
+│ Today, Oct 06         │ Wed 07 Oct            │ Thu 08 Oct            │
+├───────────────────────┼───────────────────────┼───────────────────────┤
+```
+
+The file ends with the day grid's closing rule and the two attribution lines:
+
+```text
+└───────────────────────┴───────────────────────┴───────────────────────┘
+
+Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/
+Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/
+```
+
+### `one-line`
+
+[`one-line.txt`](screenshots/one-line.txt), the `default` preset with `%c`'s 7-bit art:
+
+```text
+Beijing: *o* Clear sky +20°C (+16°C), ↙ 11km/h SW, 29%, 0.0mm, 1021hPa, 18km
+```
+
+### `plain`
+
+[`plain.txt`](screenshots/plain.txt), one `label: value` record per line:
+
+```text
+location: Beijing, CN (39.91, 116.40) Asia/Shanghai
+updated: 2026-10-06T21:30:00+08:00
+current: Clear sky 20°C (feels 16°C) wind 11km/h SW humidity 29% precip 0.0mm pressure 1021hPa visibility 18km
+day 2026-10-06: Morning Clear sky 18°C 0.0mm (0%) wind 7.0km/h N | Noon Clear sky 26°C 0.0mm (0%) wind 4.2km/h NE | Evening Clear sky 20°C 0.0mm (0%) wind 11km/h SW | Night Clear sky 14°C 0.0mm (0%) wind 8.8km/h NNW
+day 2026-10-07: Morning Clear sky 17°C 0.0mm (0%) wind 1.5km/h NE | Noon Clear sky 27°C 0.0mm (0%) wind 13km/h S | Evening Clear sky 21°C 0.0mm (0%) wind 7.4km/h S | Night Clear sky 17°C 0.0mm (0%) wind 0.9km/h W
+day 2026-10-08: Morning Clear sky 17°C 0.0mm (0%) wind 3.1km/h NNE | Noon Clear sky 26°C 0.0mm (0%) wind 9.4km/h SSE | Evening Clear sky 22°C 0.0mm (0%) wind 5.1km/h SSE | Night Clear sky 17°C 0.0mm (0%) wind 1.0km/h NNW
+Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/
+Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/
+attribution: open-meteo https://api.open-meteo.com/v1/forecast
+```
+
+### `json`
+
+The head and tail of [`json.txt`](screenshots/json.txt), 261 lines of pretty-printed
+`schema_version: 2` document; the key index is in [`docs/schema.md`](schema.md):
+
+```text
+{
+  "schema_version": 2,
+  "location": {
+    "name": "Beijing",
+    "admin1": null,
+    "country": "CN",
+    "country_code": "CN",
+    "lat": 39.9075,
+    "lon": 116.39723,
+    "timezone": "Asia/Shanghai",
+    "elevation_m": null,
+    "source": "offline",
+    "station": null
+  },
+```
+
+The document ends with the credits block:
+
+```text
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "notice": "Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/",
+    "location_notice": "Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/",
+    "retrieved_at": "2026-10-06T13:43:52Z"
+  },
+  "alert_credits": []
+}
+```
+
+### `dumb`
+
+[`dumb.txt`](screenshots/dumb.txt), the same layout in 7-bit ASCII:
+
+```text
+Weather report: Beijing, CN (39.91, 116.40)
+
+  . * . Clear sky
+   (o)  +20C (+16C)
+  * . * , 11km/h SW
+        29% 1021hPa 18km 0.0mm
+
++-----------------------+-----------------------+-----------------------+
+| Today, Oct 06         | Wed 07 Oct            | Thu 08 Oct            |
++-----------------------+-----------------------+-----------------------+
+|    \|/  Morning       |    \|/  Morning       |    \|/  Morning       |
+|   -(o)- +18C (+14C)   |   -(o)- +17C (+16C)   |   -(o)- +17C (+16C)   |
+|    /|\  ^ 7.0km/h N   |    /|\  / 1.5km/h NE  |    /|\  / 3.1km/h NNE |
+|         0.0mm 0%      |         0.0mm 0%      |         0.0mm 0%      |
++-----------------------+-----------------------+-----------------------+
+|    \|/  Noon          |    \|/  Noon          |    \|/  Noon          |
+|   -(o)- +26C (+22C)   |   -(o)- +27C (+23C)   |   -(o)- +26C (+24C)   |
+|    /|\  / 4.2km/h NE  |    /|\  v 13km/h S    |    /|\  v 9.4km/h SSE |
+|         0.0mm 0%      |         0.0mm 0%      |         0.0mm 0%      |
++-----------------------+-----------------------+-----------------------+
+|    \|/  Evening       |    \|/  Evening       |    \|/  Evening       |
+|   -(o)- +20C (+17C)   |   -(o)- +21C (+20C)   |   -(o)- +22C (+21C)   |
+|    /|\  , 11km/h SW   |    /|\  v 7.4km/h S   |    /|\  v 5.1km/h SSE |
+|         0.0mm 0%      |         0.0mm 0%      |         0.0mm 0%      |
++-----------------------+-----------------------+-----------------------+
+|   . * . Night         |   . * . Night         |   . * . Night         |
+|    (o)  +14C (+11C)   |    (o)  +17C (+15C)   |    (o)  +17C (+16C)   |
+|   * . * ^ 8.8km/h NNW |   * . * < 0.9km/h W   |   * . * ^ 1.0km/h NNW |
+|         0.0mm 0%      |         0.0mm 0%      |         0.0mm 0%      |
++-----------------------+-----------------------+-----------------------+
+
+Location data by GeoNames (CC BY 4.0) -- https://www.geonames.org/
+Data: Open-Meteo.com (CC BY 4.0) -- https://open-meteo.com/
+```
+
+### `alerts`
+
+[`alerts.txt`](screenshots/alerts.txt); no warning was in force for Beijing at capture time, so this
+is the empty state:
+
+```text
+no active weather alerts
+```
+
+### `aqi`
+
+[`aqi.txt`](screenshots/aqi.txt), the standalone air-quality panel:
+
+```text
+Beijing, CN (39.91, 116.40) Asia/Shanghai
+updated 2026-10-06T21:00:00+08:00 · Open-Meteo
+Air quality: US AQI 145 (Unhealthy for sensitive groups) · European AQI 76 (Poor)
+PM2.5 78.9 · PM10 91 · O3 0 · NO2 92.4 · SO2 11.9 · CO 753 μg/m³
+Pollen: not covered at this location
+UV 0 (low) · weather data
+Air quality data by Open-Meteo.com (CAMS ENSEMBLE)
+```
+
+### `moon`
+
+[`moon.txt`](screenshots/moon.txt), the standalone moon/sun view (computed locally, no request):
+
+```text
+Beijing, CN (39.91, 116.40) Asia/Shanghai
+computed locally (no network) at 2026-10-06T21:43:53+08:00
+ █▒░░░  Moon: Waning Crescent
+█▒░░░░░ 18% illuminated (geocentric) · age 25.4 d
+█▒░░░░░ Moonrise 01:03 · Moonset 15:36
+ █▒░░░  Sunrise 06:15 · Sunset 17:49 · daylight 11h 34m
+Next phases:
+  New Moon Sat 10 Oct 23:49
+  First Quarter Mon 19 Oct 00:12
+  Full Moon Mon 26 Oct 12:11
+  Last Quarter Mon 02 Nov 04:28
+```
+
+### `normals`
+
+[`normals.txt`](screenshots/normals.txt), the month's normal against the forecast:
+
+```text
+Beijing, CN (39.91, 116.40) Asia/Shanghai
+Climate normals: 1991–2020 · BEIJING, CH (CHM00054511) 10 km · high 19.4°C (+6.4°C) · low 8.8°C
+(+4.9°C) · precip 29.1 mm/mo (-100%) · 22 years
+Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)
+```
+
 ## Multiple locations
 
 Several positional arguments are one run:
@@ -80,13 +265,24 @@ temperature and humidity, `n/a` when either is missing) and the astro tokens.
 
 `%[-][0][<width>][.<prec>]X`:
 
-* `<width>` is a minimum in characters; the value is padded on the left, or on the right with `-`.
-* `0` pads a **numeric** token with zeros between its sign and its digits (`%08.1t` → `+021.5°C`);
+* `<width>` is a minimum in characters; the value is padded with spaces on the left, or on the
+  right with `-`.
+* `0` pads a **numeric** token with zeros between its sign and its digits (`%08.1t` → `+019.7°C`);
   text tokens pad with spaces, because `000Cloudy` is never what was meant.
 * `.<prec>` truncates text from the right in characters and rounds a numeric token to that many
-  decimals inside its unit suffix (`%.1t` → `+18.4°C`, `%.4C` → `Main`).
+  decimals inside its unit suffix (`%.1t` → `+19.7°C`, `%.4C` → `Clea`).
+* A width above 200 is clamped to 200 and a precision above 6 to 6, so an absurd specifier widens
+  the line rather than failing.
 * The numeric tokens are `%t %f %H %L %e %u %h %p %P %v`; every other token — `%w` included, whose
   value is arrow plus speed plus direction — is text.
+
+One specifier of each kind, captured live (`%-12l` right-pads `Beijing` to twelve characters and
+`%.4C` truncates the condition text):
+
+```
+$ cirrocast -f one-line --template '%l|%08.1t|%.1t|%-12l|%.4C|%10.2p' --lang en --color never Beijing
+Beijing|+019.7°C|+19.7°C|Beijing     |Clea|    0.00mm
+```
 
 ### Escapes
 
@@ -99,10 +295,20 @@ temperature and humidity, `n/a` when either is missing) and the astro tokens.
 ### Unknown tokens
 
 An unknown `%X` is reported with its 1-based position. On the CLI it is an `Error::Usage` (exit 2)
-because the user is authoring a template and wants the typo. The wttr.in compatibility service
-(B01) serves the same `TOKENS` table with literal passthrough instead, because a script written
-against wttr.in's larger token set must not break; that asymmetry lives at the service boundary,
-never as a second parser.
+because the user is authoring a template and wants the typo; both the `one-line` renderer and
+`status`'s `--format`/`--template` go through the same gate, so they report the same position and
+exit code:
+
+```console
+$ cirrocast -f one-line --template '%l %Q' --offline Beijing
+error: unknown template token `%Q` at position 4; known tokens: cCxtfHLwhpPeuUmMvldDTZzSsAq
+$ cirrocast status --location Beijing --format '%l %Q' --offline
+error: unknown template token `%Q` at position 4; known tokens: cCxtfHLwhpPeuUmMvldDTZzSsAq
+```
+
+The wttr.in compatibility service (B01) serves the same `TOKENS` table with literal passthrough
+instead, because a script written against wttr.in's larger token set must not break; that asymmetry
+lives at the service boundary, never as a second parser.
 
 ## Stability
 
