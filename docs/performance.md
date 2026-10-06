@@ -167,12 +167,38 @@ recorded figure is 845 ms on a direct fibre link with alerts disabled. A default
 measured ~8.5 s on the same link, because the alert sources fan out (the WMO index plus one CAP
 document per FPAS area); that figure is informational and is not a budget.
 
+### Reproducing on a fresh machine
+
+The harness is plain repository shell and Python, so the same runs happen outside CI. The
+prerequisites are the ones `perf.yml` installs on `ubuntu-26.04`: a Rust toolchain at the
+`rust-version` in `Cargo.toml` (1.99), `hyperfine` for the timing loop (`apt-get install -y
+--no-install-recommends hyperfine`) and `python3` for the record and compare scripts. GNU `time` is
+used for the exact per-process RSS when `/usr/bin/time` is present, and hyperfine's per-child peak
+when it is not — the baseline's `rss_method` records which path a set of numbers was measured with.
+`taskset`, where it exists, pins each timed run to one core; a machine without it measures the same
+commands on whatever core the scheduler picks, which is why `record.py` stamps every baseline with
+the machine that produced it and the runner's gate compares only against a runner recording.
+
+One local gate is two commands:
+
+```bash
+scripts/bench/run.sh                                        # build release --locked, measure, write target/bench/raw.json
+python3 scripts/bench/compare.py perf/baseline.json target/bench/raw.json
+```
+
+`run.sh` prints the fresh numbers on its own (through `compare.py --raw-only`); the second command is
+the gate `perf.yml` runs, and it exits 1 on a regression. A new baseline comes from
+`scripts/bench/record.py --raw target/bench/raw.json --out perf/baseline.json`, which carries the
+committed cold figure over when `--cold-ms` is not passed: the local path and the workflow's
+`record_baseline` dispatch share that script, so the two cannot write different shapes, and the
+uploaded file is reviewed and committed rather than written by CI.
+
 ## The budget table
 
 | Metric | Budget | Measured (dev box, 2026-10-05) | Notes |
 |---|---|---|---|
 | `--version` | 20 ms | **2.03 ms** | startup: no runtime, no table |
-| `--help` | < 225 lines | **220 lines** | clap wraps to the width; the test pins `COLUMNS=100` (step 22 added the `status` subcommand line; step 23 raised the ceiling from 200 for `--date`/`--history`/`--marine`, step 26 from 215 for `--normals`) |
+| `--help` | < 225 lines | **220 lines** | clap wraps to the width; the test pins `COLUMNS=100` (step 22 added the `status` subcommand line; step 23 raised the ceiling from 200 for `--date`/`--history`/`--marine`, step 26 from 215 for `--normals` — the count was re-measured with that flag, 2026-10-06) |
 | cached run, `--offline` | 60 ms | **51.4 ms** | includes the city-table name index decode |
 | warm-cache run | 60 ms | **47.5 ms** | the online path with a fresh cache |
 | RSS, `--version` | 15 MiB | **6.4 MiB** | the goal's "RSS under 15 MB", met |
