@@ -30,6 +30,7 @@ use std::time::Duration;
 
 use cirrocast::cache::SystemClock;
 use cirrocast::config::{Config, Network};
+use cirrocast::geo::country;
 use cirrocast::geo::update::{self, Candidate};
 use cirrocast::http::{HttpClient, UreqTransport};
 use cirrocast::paths::Paths;
@@ -78,7 +79,9 @@ fn main() -> ExitCode {
 }
 
 fn usage() -> String {
-    "usage: cargo run -p geo-table -- <path-or-url> [output-dir] [--check]".to_owned()
+    "usage: cargo run -p geo-table -- <path-or-url> [output-dir] [--check]\n\
+           cargo run -p geo-table -- --countries <path-or-url> [output-dir] [--check]"
+        .to_owned()
 }
 
 /// The `-h`/`--help` text: the synopsis plus one line on what the tool does.
@@ -86,7 +89,10 @@ fn help() -> String {
     format!(
         "{}\n\nBuilds the offline city table (`cities.bin.gz`, `keys.bin.gz`, `SNAPSHOT`) from a\n\
          GeoNames cities15000 dump — a local `.txt`/`.zip` or an `http(s)` URL — or, with\n\
-         `--check`, compares the committed snapshot against a dump and exits 1 when it differs.",
+         `--check`, compares the committed snapshot against a dump and exits 1 when it differs.\n\
+         With `--countries`, builds the offline country layer (`countries.bin.gz`, `COUNTRIES`)\n\
+         from a Natural Earth `admin_0_countries` GeoJSON (1:50m; the 1:10m dataset is the\n\
+         documented fallback when the compressed member would exceed the 1 MiB budget).",
         usage()
     )
 }
@@ -97,36 +103,74 @@ fn wants_help(args: &[String]) -> bool {
         .any(|argument| argument == "-h" || argument == "--help")
 }
 
+/// What a run builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// The city table from a `GeoNames` `cities15000` dump (step 18).
+    Cities,
+    /// The country layer from a Natural Earth `admin_0_countries` `GeoJSON` (step 25).
+    Countries,
+}
+
 /// The parsed command line.
 struct Args {
-    /// The dump to read: a `.txt`/`.zip` path, or an `http(s)` URL of either.
+    /// The dump to read: a `.txt`/`.zip` path or an `http(s)` URL of either (cities), or a
+    /// `.geojson` path or URL of one (countries).
     source: String,
+    /// What to build.
+    mode: Mode,
     /// Where the members live (or would be written).
     output: PathBuf,
     /// Compare instead of writing.
     check: bool,
 }
 
-/// Parses the arguments; `--check` may appear before or after the positionals.
+/// Parses the arguments; `--check` may appear before or after the positionals, and `--countries`
+/// (with its value) selects the country layer.
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut check = false;
+    let mut countries: Option<String> = None;
     let mut positional: Vec<String> = Vec::new();
-    for argument in args {
+    let mut arguments = args.into_iter();
+    while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "-h" | "--help" => return Err(usage()),
             "--check" => check = true,
+            "--countries" => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| format!("--countries needs a path or URL\n{}", usage()))?;
+                countries = Some(value);
+            }
+            other if other.starts_with("--countries=") => {
+                let value = other.trim_start_matches("--countries=").to_owned();
+                if value.is_empty() {
+                    return Err(format!("--countries needs a path or URL\n{}", usage()));
+                }
+                countries = Some(value);
+            }
             _ => positional.push(argument),
         }
     }
-    let source = positional.first().cloned().ok_or_else(usage)?;
-    if positional.len() > 2 {
+
+    let (source, mode, output_position) = match countries {
+        // `--countries` supplies the source itself, so the one optional positional is the output.
+        Some(source) => (source, Mode::Countries, 0),
+        None => (
+            positional.first().cloned().ok_or_else(usage)?,
+            Mode::Cities,
+            1,
+        ),
+    };
+    if positional.len() > output_position + 1 {
         return Err(usage());
     }
     let output = positional
-        .get(1)
+        .get(output_position)
         .map_or_else(|| DEFAULT_OUTPUT.to_owned(), Clone::clone);
     Ok(Args {
         source,
+        mode,
         output: PathBuf::from(output),
         check,
     })
@@ -138,11 +182,122 @@ fn run() -> Result<Outcome, String> {
         return Ok(Outcome::Help(help()));
     }
     let args = parse_args(raw)?;
-    if args.check {
-        check_snapshot(&args.source, &args.output)
-    } else {
-        build(&args.source, &args.output).map(Outcome::Built)
+    match (args.mode, args.check) {
+        (Mode::Cities, true) => check_snapshot(&args.source, &args.output),
+        (Mode::Cities, false) => build(&args.source, &args.output).map(Outcome::Built),
+        (Mode::Countries, true) => check_countries(&args.source, &args.output),
+        (Mode::Countries, false) => build_countries(&args.source, &args.output).map(Outcome::Built),
     }
+}
+
+/// Builds the country layer from `source` and writes its two files under `output`.
+fn build_countries(source: &str, output: &Path) -> Result<String, String> {
+    let candidate = country_candidate(source)?;
+    fs::create_dir_all(output)
+        .map_err(|error| format!("cannot create {}: {error}", output.display()))?;
+    for (name, bytes) in [
+        (country::MEMBER, candidate.member.as_slice()),
+        (country::RECORD, candidate.record.as_bytes()),
+    ] {
+        let path = output.join(name);
+        fs::write(&path, bytes)
+            .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
+    }
+    Ok(format!(
+        "{}\nNext: run `cargo test --workspace` (the layer's canary pins coordinates and the size \
+         budget), re-record the size in docs/plans/25-location-sources-2.md, then commit.",
+        country_summary(&candidate, output)
+    ))
+}
+
+/// Builds the candidate and compares it with the files already in `output`; writes nothing.
+fn check_countries(source: &str, output: &Path) -> Result<Outcome, String> {
+    use std::fmt::Write as _;
+
+    let candidate = country_candidate(source)?;
+    let mut report = String::from("== committed country layer vs this source ==\n");
+    let mut differs = false;
+    for name in [country::MEMBER, country::RECORD] {
+        let path = output.join(name);
+        let committed =
+            fs::read(&path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        let fresh = if name == country::MEMBER {
+            &candidate.member
+        } else {
+            candidate.record.as_bytes()
+        };
+        let same = committed == fresh;
+        differs |= !same;
+        // Writing into the string cannot fail; the result is discarded because `String`'s `Write`
+        // never returns an error.
+        let _ = writeln!(
+            report,
+            "  {:<16} {}",
+            name,
+            if same { "unchanged" } else { "CHANGED" }
+        );
+    }
+    if differs {
+        Ok(Outcome::Differs(report))
+    } else {
+        let committed = fs::read_to_string(output.join(country::RECORD)).ok();
+        let _ = write!(
+            report,
+            "\ncommitted: {}\nthis source: {}\nthe committed country layer is current.",
+            describe_record(committed.as_deref()),
+            describe_record(Some(&candidate.record))
+        );
+        Ok(Outcome::Current(report))
+    }
+}
+
+/// The country build path itself: fetch or read, parse, encode, validate.
+fn country_candidate(source: &str) -> Result<country::CountryCandidate, String> {
+    let network = network_config();
+    let transport = UreqTransport::new(&network, TIMEOUT)
+        .map_err(|error| format!("cannot build the HTTP client: {error}"))?;
+    let http = HttpClient::new(
+        Box::new(transport),
+        network.retries,
+        Arc::new(SystemClock),
+        0,
+    );
+    country::build_candidate(source, &http, 1).map_err(|error| error.to_string())
+}
+
+/// The country build report: counts, sizes and where the record went.
+fn country_summary(candidate: &country::CountryCandidate, output: &Path) -> String {
+    let kib = candidate.member.len().div_ceil(1024);
+    format!(
+        "{} countries ({} skipped), {} points\n{:<16}{:>10} bytes ({kib} KiB)\n{:<16}{}",
+        candidate.countries,
+        candidate.skipped,
+        candidate.points,
+        country::MEMBER,
+        candidate.member.len(),
+        country::RECORD,
+        output.join(country::RECORD).display()
+    )
+}
+
+/// One `COUNTRIES` record as a single line, for the `--check` report.
+fn describe_record(record: Option<&str>) -> String {
+    let Some(record) = record else {
+        return "no COUNTRIES record".to_owned();
+    };
+    let field = |key: &str| {
+        record
+            .lines()
+            .find_map(|line| line.strip_prefix(&format!("{key} = ")))
+            .map_or("?", str::trim)
+    };
+    format!(
+        "{} countries, {} points, scale {} (input sha256 {})",
+        field("countries"),
+        field("points"),
+        field("scale"),
+        field("input-sha256")
+    )
 }
 
 /// Builds the table from `source` and writes the three files under `output`.
@@ -280,13 +435,26 @@ fn describe(snapshot: Option<&str>) -> String {
 mod tests {
     use std::path::Path;
 
-    use super::{Outcome, build, check_snapshot, help, parse_args, wants_help};
+    use super::{
+        Mode, Outcome, build, build_countries, check_countries, check_snapshot, help, parse_args,
+        wants_help,
+    };
+    use cirrocast::geo::country;
 
     /// A dump with one usable row and one without a zone.
     const SAMPLE: &str = "\
 123\tMünchen\tMunchen\tMuenchen,Munich\t48.13743\t11.57549\tP\tPPLA\tDE\t\t02\t\t\t\t1260391\t519\t519\tEurope/Berlin\t2026-09-02
 789\tNo Zone\tNo Zone\t\t1.0\t2.0\tP\tPPL\tXX\t\t\t\t\t\t10\t\t\t\t2026-09-02
 ";
+
+    /// A miniature Natural Earth document: one square, one triangle, one feature without geometry.
+    const COUNTRY_SAMPLE: &str = r#"{"type":"FeatureCollection","features":[
+        {"type":"Feature","properties":{"NAME":"Square","ISO_A2":"SQ","ISO_A2_EH":"SQ"},
+         "geometry":{"type":"Polygon","coordinates":[[[0,0],[2,0],[2,2],[0,2],[0,0]]]}},
+        {"type":"Feature","properties":{"NAME":"Triangle","ISO_A2":"-99","ISO_A2_EH":"-99"},
+         "geometry":{"type":"Polygon","coordinates":[[[10,10],[12,10],[11,12],[10,10]]]}},
+        {"type":"Feature","properties":{"NAME":"Nowhere","ISO_A2":"-99"},"geometry":null}
+    ]}"#;
 
     /// A test directory named after the calling test.
     fn scratch(name: &str) -> std::path::PathBuf {
@@ -387,6 +555,7 @@ mod tests {
         let args = parse_args(["--check".to_owned(), "a.zip".to_owned()]).expect("parses");
         assert!(args.check, "--check is seen before the positionals");
         assert_eq!(args.source, "a.zip");
+        assert_eq!(args.mode, Mode::Cities);
         assert_eq!(args.output, Path::new("src/geo/data"));
 
         let args = parse_args(["a.zip".to_owned(), "out".to_owned(), "--check".to_owned()])
@@ -405,6 +574,88 @@ mod tests {
             "a third positional is a usage error"
         );
         assert!(parse_args(["--help".to_owned()]).is_err());
+
+        // The country form takes its source from the flag, so the one positional is the output.
+        let args = parse_args([
+            "--countries".to_owned(),
+            "ne.geojson".to_owned(),
+            "out".to_owned(),
+        ])
+        .expect("parses");
+        assert_eq!(args.mode, Mode::Countries);
+        assert_eq!(args.source, "ne.geojson");
+        assert_eq!(args.output, Path::new("out"));
+        let args = parse_args(["--countries=ne.geojson".to_owned()]).expect("parses");
+        assert_eq!(args.mode, Mode::Countries);
+        assert_eq!(args.source, "ne.geojson");
+        assert_eq!(args.output, Path::new("src/geo/data"));
+        assert!(
+            parse_args(["--countries".to_owned()]).is_err(),
+            "--countries without a value is a usage error"
+        );
+        assert!(
+            parse_args([
+                "--countries".to_owned(),
+                "ne.geojson".to_owned(),
+                "out".to_owned(),
+                "extra".to_owned()
+            ])
+            .is_err(),
+            "a second positional in the country form is a usage error"
+        );
+    }
+
+    #[test]
+    fn the_country_build_writes_both_files_and_is_deterministic() {
+        let root = scratch("countries");
+        let input = root.join("ne_50m_admin_0_countries.geojson");
+        std::fs::write(&input, COUNTRY_SAMPLE).expect("the sample GeoJSON");
+
+        let first = root.join("first");
+        let second = root.join("second");
+        let report = build_countries(&input.to_string_lossy(), &first).expect("the build succeeds");
+        assert!(
+            report.contains("2 countries (1 skipped), 9 points"),
+            "{report}"
+        );
+        build_countries(&input.to_string_lossy(), &second).expect("the second build succeeds");
+        for name in [country::MEMBER, country::RECORD] {
+            let a = std::fs::read(first.join(name)).expect("the first member");
+            let b = std::fs::read(second.join(name)).expect("the second member");
+            assert_eq!(a, b, "{name} differs between runs");
+        }
+        let record = std::fs::read_to_string(first.join(country::RECORD)).expect("the record");
+        assert!(record.contains("countries = 2"), "{record}");
+        assert!(record.contains("points = 9"), "{record}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_country_check_reports_unchanged_and_changed() {
+        let root = scratch("countries-check");
+        let input = root.join("ne.geojson");
+        std::fs::write(&input, COUNTRY_SAMPLE).expect("the sample GeoJSON");
+        let output = root.join("data");
+        build_countries(&input.to_string_lossy(), &output).expect("the first build");
+
+        let outcome = check_countries(&input.to_string_lossy(), &output).expect("the check runs");
+        let Outcome::Current(report) = outcome else {
+            panic!("expected the layer to be current");
+        };
+        assert!(report.contains("unchanged"), "{report}");
+        assert!(report.contains("2 countries"), "{report}");
+
+        let changed = root.join("changed.geojson");
+        std::fs::write(&changed, COUNTRY_SAMPLE.replace("Square", "Oblong"))
+            .expect("the changed GeoJSON");
+        let outcome = check_countries(&changed.to_string_lossy(), &output).expect("the check runs");
+        let Outcome::Differs(report) = outcome else {
+            panic!("expected the layer to differ");
+        };
+        assert!(report.contains("CHANGED"), "{report}");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -414,5 +665,6 @@ mod tests {
         assert!(wants_help(&["a.zip".to_owned(), "--help".to_owned()]));
         assert!(!wants_help(&["a.zip".to_owned()]));
         assert!(help().contains("usage:"), "{}", help());
+        assert!(help().contains("--countries"), "{}", help());
     }
 }

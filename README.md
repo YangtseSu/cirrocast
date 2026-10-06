@@ -550,6 +550,12 @@ the committed data, so a refresh is a reviewable diff, never a silent one (the `
 records the dump date and the dump's SHA-256). A user who does not maintain the repository can install a
 newer table for their own account instead — see [Updating the city data](#updating-the-city-data).
 
+**Offline countries.** A second embedded dataset answers *which country* a coordinate is in:
+Natural Earth's 1:50m admin-0 shapes, quantised to ~110 m (about 407 KiB compressed). It is what
+lets `@lat,lon` be named from the bundled tables alone, and it is public domain (CC0-1.0). Refresh
+it with `cargo run -p geo-table -- --countries <path-or-url>` (the pinned source is in
+`src/geo/data/COUNTRIES`) and check it with the same command plus `--check`.
+
 ### Updating the city data
 
 The bundled table is the default and the fallback; a newer dump can be installed per user without
@@ -918,16 +924,21 @@ sha256sum -c cirrocast-v1.2.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: 
    the committed data), re-record the size/timing numbers in
    [`docs/plans/21-perf-and-resource-budget.md`](docs/plans/21-perf-and-resource-budget.md), and
    commit all of it before tagging.
-3. `version` bumped in `Cargo.toml`; `CHANGELOG.md` gets its dated section and compare link; both
+3. The bundled country layer is current too: `cargo run -p geo-table -- --countries
+   https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson
+   --check` reports both files `unchanged`. `CHANGED` → rebuild without `--check`, run
+   `cargo test --workspace` (the layer's canary pins coordinates and the size budget), and commit
+   `src/geo/data`.
+4. `version` bumped in `Cargo.toml`; `CHANGELOG.md` gets its dated section and compare link; both
    committed.
-4. `cargo package --list --locked` reviewed (`src/`, `locales/`, `Cargo.toml`, `Cargo.lock`,
+5. `cargo package --list --locked` reviewed (`src/`, `locales/`, `Cargo.toml`, `Cargo.lock`,
    `LICENSE`, `README.md`, `CHANGELOG.md` — and nothing else).
-5. A signed tag is pushed: `git tag -s vX.Y.Z -m "cirrocast vX.Y.Z" && git push origin vX.Y.Z`. The
+6. A signed tag is pushed: `git tag -s vX.Y.Z -m "cirrocast vX.Y.Z" && git push origin vX.Y.Z`. The
    workflow refuses a tag that does not match `Cargo.toml`'s version.
-6. The run is watched: three archives, three `.sha256` files, and a GitHub release with generated
+7. The run is watched: three archives, three `.sha256` files, and a GitHub release with generated
    notes. One archive is inspected (`tar tzf`) and verified (`sha256sum -c`).
-7. The `publish` job is approved in the `crates-io` environment — `cargo publish` cannot be undone.
-8. The AUR package is bumped, which is only possible once the tag exists because the checksums come
+8. The `publish` job is approved in the `crates-io` environment — `cargo publish` cannot be undone.
+9. The AUR package is bumped, which is only possible once the tag exists because the checksums come
    from the tag tarball:
 
 ```bash

@@ -720,16 +720,16 @@ impl<'a> Cursor<'a> {
         Self { bytes, position: 0 }
     }
 
-    fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.position >= self.bytes.len()
     }
 
-    fn remaining(&self) -> usize {
+    pub(crate) fn remaining(&self) -> usize {
         self.bytes.len().saturating_sub(self.position)
     }
 
     /// The next `u32` without consuming it.
-    fn peek_u32(&self) -> std::result::Result<u32, DecodeError> {
+    pub(crate) fn peek_u32(&self) -> std::result::Result<u32, DecodeError> {
         let end = self
             .position
             .checked_add(4)
@@ -741,7 +741,7 @@ impl<'a> Cursor<'a> {
         Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
-    fn take(&mut self, len: usize) -> std::result::Result<&'a [u8], DecodeError> {
+    pub(crate) fn take(&mut self, len: usize) -> std::result::Result<&'a [u8], DecodeError> {
         let end = self
             .position
             .checked_add(len)
@@ -754,7 +754,7 @@ impl<'a> Cursor<'a> {
         Ok(slice)
     }
 
-    fn expect(&mut self, magic: &[u8]) -> std::result::Result<(), DecodeError> {
+    pub(crate) fn expect(&mut self, magic: &[u8]) -> std::result::Result<(), DecodeError> {
         let found = self.take(magic.len())?;
         if found == magic {
             Ok(())
@@ -765,50 +765,50 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn u8(&mut self) -> std::result::Result<u8, DecodeError> {
+    pub(crate) fn u8(&mut self) -> std::result::Result<u8, DecodeError> {
         Ok(*self.take(1)?.first().unwrap_or(&0))
     }
 
-    fn u16(&mut self) -> std::result::Result<u16, DecodeError> {
+    pub(crate) fn u16(&mut self) -> std::result::Result<u16, DecodeError> {
         let bytes = self.take(2)?;
         Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
     }
 
-    fn u32(&mut self) -> std::result::Result<u32, DecodeError> {
+    pub(crate) fn u32(&mut self) -> std::result::Result<u32, DecodeError> {
         let bytes = self.take(4)?;
         Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
-    fn i32(&mut self) -> std::result::Result<i32, DecodeError> {
+    pub(crate) fn i32(&mut self) -> std::result::Result<i32, DecodeError> {
         let bytes = self.take(4)?;
         Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
     /// Advances past a length-prefixed field without materialising it.
-    fn skip_text_u8(&mut self) -> std::result::Result<(), DecodeError> {
+    pub(crate) fn skip_text_u8(&mut self) -> std::result::Result<(), DecodeError> {
         let len = usize::from(self.u8()?);
         self.take(len)?;
         Ok(())
     }
 
     /// Advances past a length-prefixed field without materialising it.
-    fn skip_text_u16(&mut self) -> std::result::Result<(), DecodeError> {
+    pub(crate) fn skip_text_u16(&mut self) -> std::result::Result<(), DecodeError> {
         let len = usize::from(self.u16()?);
         self.take(len)?;
         Ok(())
     }
 
-    fn text_u8(&mut self) -> std::result::Result<String, DecodeError> {
+    pub(crate) fn text_u8(&mut self) -> std::result::Result<String, DecodeError> {
         let len = usize::from(self.u8()?);
         self.text(len)
     }
 
-    fn text_u16(&mut self) -> std::result::Result<String, DecodeError> {
+    pub(crate) fn text_u16(&mut self) -> std::result::Result<String, DecodeError> {
         let len = usize::from(self.u16()?);
         self.text(len)
     }
 
-    fn text(&mut self, len: usize) -> std::result::Result<String, DecodeError> {
+    pub(crate) fn text(&mut self, len: usize) -> std::result::Result<String, DecodeError> {
         let bytes = self.take(len)?;
         String::from_utf8(bytes.to_vec()).map_err(|error| format!("not UTF-8: {error}"))
     }

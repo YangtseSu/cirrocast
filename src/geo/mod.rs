@@ -16,6 +16,7 @@
 //! own, which is what makes the parse table and the ranking rules testable without a network.
 
 pub mod chain;
+pub mod country;
 pub mod fold;
 pub mod geonames;
 pub mod ip;

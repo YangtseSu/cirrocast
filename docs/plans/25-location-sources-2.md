@@ -71,7 +71,7 @@ bundled credential: GeoNames is BYOK.
   (nearest first); the chosen name is a **display attribute only** — a coordinate location keeps its
   `source = Coordinates` and its full-precision `lat`/`lon` as the request key, and `-v` prints which
   source named it and how far away the place is.
-- ⬜ `src/geo/country.rs` + `build/geo-table/`: Natural Earth 1:50m countries (public domain),
+- ✅ `src/geo/country.rs` + `build/geo-table/`: Natural Earth 1:50m countries (public domain),
   quantised and stripped to `ISO_A2` + English name, embedded gzip like the city table (fall back to
   the 110m dataset if the compressed member exceeds 1 MiB; measure and record the size);
   point-in-polygon gives the country name and code for any coordinate, offline; the four `ISO_A2`
@@ -263,3 +263,20 @@ for the same place and keeps step 04's order.
   endpoint is `secure.geonames.org`; and `nominatim.openstreetmap.org` is unreachable from this
   network (connect timeout, measured 2026-10-06), so the Nominatim path is verified through its
   recorded fixture (`tests/geo_nominatim.rs`, `tests/geo_merge.rs`) rather than live.
+
+- 2026-10-06 — the country layer landed: `src/geo/country.rs` (the Natural Earth parser, the member
+  codec, the point-in-polygon lookup and the build path) plus the builder's `--countries` mode
+  (`cargo run -p geo-table -- --countries <path-or-url> [output-dir] [--check]`, writing
+  `countries.bin.gz` + `COUNTRIES` with the same compare discipline as the city table).
+  `src/geo/table.rs`'s byte reader, gzip helper and 64 MiB inflate cap are shared rather than
+  copied; `LICENSES/CC0-1.0.txt` and the `REUSE.toml` annotation carry the public-domain dedication.
+  Measured on the pinned `v5.1.2` GeoJSON (identical to `master` on 2026-10-06, 3 083 490 bytes):
+  242 countries, 99 613 points, **416 965 bytes (407 KiB)** compressed at 1e-3 quantisation — inside
+  the step's 1 MiB budget, so 1:50m ships and no 110m fallback is needed; the builder refuses a
+  member over the budget instead of letting a refresh regress it silently. The code field prefers
+  Natural Earth's corrected `ISO_A2_EH` (which fills France, Norway, the Indian Ocean Territories,
+  Ashmore and Cartier, and carries `TW`/`XK`), falls back to `ISO_A2`, then to the explicit
+  `DISPUTED_CODES` table (Taiwan `TW`, Kosovo `XK`, N. Cyprus `CY`, Somaliland `SO`), and leaves the
+  code *empty* when neither answers (Siachen Glacier), so no `-99` can reach `Location::country_code`.
+  Canaries pin Beijing → `CN`/China, Maseru → `LS` (the Lesotho hole inside South Africa's shape),
+  the mid-Pacific → no country, and the four disputed codes.

@@ -264,6 +264,20 @@ precedence = "override"
 SPDX-FileCopyrightText = "GeoNames (https://www.geonames.org/)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# The embedded Natural Earth country layer (step 25): the vendored `ne_50m_admin_0_countries`
+# extract (`src/geo/data/countries.bin.gz`) and its provenance record. Natural Earth's vector data
+# is in the public domain, which the layer keeps as CC0-1.0 rather than being relicensed to GPL;
+# the `geo-table` builder that produces it is first-party and carries the GPL header. No credit is
+# required for display, and the layer prints none.
+[[annotations]]
+path = [
+    "src/geo/data/countries.bin.gz",
+    "src/geo/data/COUNTRIES",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Natural Earth (https://www.naturalearthdata.com/)"
+SPDX-License-Identifier = "CC0-1.0"
+
 # Recorded OpenStreetMap/Nominatim responses: ODbL requires attribution, and the fixtures keep the
 # upstream licence rather than being relicensed.
 [[annotations]]

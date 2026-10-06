@@ -146,7 +146,7 @@ fn source_kind(source: &str) -> Result<Kind> {
 ///
 /// A value carrying an unsupported scheme (`file:///srv/dump.zip`) is a usage error naming it,
 /// rather than a confusing `cannot read file:///…` from treating it as a local path.
-fn read_source(source: &str, http: &HttpClient, verbose: u8) -> Result<Vec<u8>> {
+pub(crate) fn read_source(source: &str, http: &HttpClient, verbose: u8) -> Result<Vec<u8>> {
     if source.starts_with("http://") || source.starts_with("https://") {
         if verbose > 0 {
             eprintln!("geo: downloading {source}");

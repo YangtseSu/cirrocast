@@ -143,8 +143,19 @@ cargo test --workspace          # the suite pins rows of the committed snapshot
 git add src/geo/data docs/plans/21-perf-and-resource-budget.md && git commit
 ```
 
-The README's release checklist mirrors this. The full development/release guide is step 28's
-`CONTRIBUTING.md`; this rule moves there once that file exists.
+The README's release checklist mirrors this. The country layer (`src/geo/data/countries.bin.gz` +
+`COUNTRIES`) is refreshed the same way against the tagged Natural Earth release its record names:
+
+```bash
+cargo run -p geo-table -- --countries https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson --check
+```
+
+`unchanged` for both files → the layer is current. `CHANGED` → rebuild without `--check`, run
+`cargo test --workspace` (the layer's canary pins coordinates and the 1 MiB size budget), and commit
+`src/geo/data` before tagging.
+
+The full development/release guide is step 28's `CONTRIBUTING.md`; this rule moves there once that
+file exists.
 
 ## Plan-driven workflow
 
