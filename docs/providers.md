@@ -1109,8 +1109,9 @@ Data is ODbL: "Clearly display attribution as suitable for your medium", the acc
 (<https://operations.osmfoundation.org/policies/nominatim/>,
 <https://wiki.osmfoundation.org/wiki/Licence/Attribution_Guidelines>).
 
-**Unverified.** The public instance was unreachable from the verification network (timeouts, no status),
-so the live response shape is documented-only.
+**Verified through a proxy.** The public instance is unreachable directly from the verification
+network (connect timeouts) but answers normally through a local HTTP proxy (`[network] proxy`,
+measured 2026-10-06); the recordings under `tests/fixtures/geo/` were made that way.
 
 **`/reverse` (step 25).** `GET <base>/reverse?format=jsonv2&lat=…&lon=…&zoom=10&addressdetails=1`
 with the same `accept-language: en` and `User-Agent`, the same one-request-per-second throttle and
@@ -1119,7 +1120,9 @@ fields as a search hit, so it is mapped by the same code; a point the service ca
 as `{"error":"Unable to geocode"}` or a `404`, which `reverse` turns into "no name here" — a
 legitimate answer for the open ocean — rather than a failure. Coordinates are rounded to five
 decimals in both the request and the cache key, so two spellings of one point share an entry. The
-`Unverified` note above applies to this endpoint too.
+recorded answer for a city-centre coordinate is the *suburb* the point falls in
+(`39.9042,116.4074` → `Donghuamen Subdistrict`), and a point nothing names answers `200` with
+`{"error":"Unable to geocode"}` — both measured 2026-10-06.
 
 ### GeoNames `searchJSON` (BYOK, step 25)
 
@@ -1187,9 +1190,12 @@ the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
   `value: 18` and the 20 000-credit sentence; `api.geonames.org` fails TLS certificate validation
   while `secure.geonames.org` serves the same API, which is why the client pins the latter.
   **IP.SB**: `api.ip.sb/geoip` answered `200` with the documented flat JSON from this network,
-  `/geoip/<ip>` answered `403` and `?ip=` was ignored. **Nominatim `/reverse`**: not reachable from
-  this network (the public instance times out), so the request shape, the refusal mapping and the
-  cache key are documented-only and the tests replay a hand-authored fixture.
+  `/geoip/<ip>` answered `403` and `?ip=` was ignored. **Nominatim** (search and
+  `/reverse`): verified through a local HTTP proxy (the public instance times out when dialled
+  directly): the request shape, the mapped fields, the lower-cased country code, the suburb-level
+  answer `zoom=10` gives for a city centre, and the `200` + `{"error":"Unable to geocode"}` refusal
+  were all observed; the `nominatim_reverse_*.json` fixtures are recordings made with the client's
+  own headers.
   **Natural Earth**: the pinned `v5.1.2` GeoJSON (byte-identical to `master` on this date) measured
   at 242 features, 99 613 points and 416 965 bytes compressed at 1e-3°, inside the step's 1 MiB
   budget; the four `-99` shapes resolve through `ISO_A2_EH` (`TW`, `XK`) and the explicit

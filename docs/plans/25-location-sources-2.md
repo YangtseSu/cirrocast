@@ -162,9 +162,9 @@ for the same place and keeps step 04's order.
 - ✅ `CIRROCAST_IP_SERVICE=ipsb` answers with a real location; the chain message still names every
       attempted service when all three fail.
 - ✅ GeoNames without a username is skipped silently under `auto` and named as the missing piece
-      under `-v`; with one, a fuzzy query returns merged candidates (fixture-verified: no GeoNames
-      account exists for this repository, so the merge is pinned by `tests/geo_merge.rs` and the
-      live half by the skip note).
+      under `-v`; with one, a fuzzy query returns merged candidates (live-verified 2026-10-06 with
+      the maintainer's account: `Beijng` → Open-Meteo 0, GeoNames 10, a GeoNames-credited winner;
+      `Springfiel` → 20 hits merged to 10 unique rows).
 - ✅ `[geo] reverse = "off"` and `--offline` never name a coordinate from the network; `auto` names it
       offline-first (asserted by fixture and by the no-socket `strace` check).
 - ✅ The merged list for Beijing contains no duplicate place; the 5 km boundary and `-99` country
@@ -349,3 +349,26 @@ for the same place and keeps step 04's order.
   and `tests/geo_merge.rs` against hand-authored/recorded fixtures instead; and a live Nominatim
   answer, since the public instance is unreachable from this network (timeouts), which is why the
   `/reverse` fixture is hand-authored and `docs/providers.md` marks the endpoint `Unverified`.
+
+- 2026-10-06 — the two items the closing entry listed as not-live-verified are now verified, with
+  the account and proxy the maintainer supplied (GeoNames user `yangtse`; Nominatim through
+  `127.0.0.1:2080` as `[network] proxy`):
+  * **GeoNames**: `location search Beijng -v` → `open-meteo: 0 candidates`, `geonames: 10
+    candidates`, and the winner is a GeoNames hit carrying **GeoNames' own credit** (`Location data
+    by GeoNames (CC BY 4.0)`) — the fuzzy index answering where the prefix search cannot;
+    `location search Springfiel -v` → `open-meteo: 10`, `geonames: 10`, merged to exactly **10**
+    rows, so the live merge drops every duplicate place. `nominatim: not asked (an earlier source
+    answered)` in both runs.
+  * **Nominatim**: `~Tsinghua University` (search) and `/reverse` both answer through the proxy.
+    The refusal is a **`200`** with `{"error":"Unable to geocode"}` (measured; the client also
+    handles the `404` shape). Both `/reverse` fixtures are now **recordings** made with the
+    client's own `User-Agent` and `accept-language: en`, trimmed like the search fixtures, so
+    `REUSE.toml` carries them in the ODbL block and `tests/geo_nominatim.rs` asserts the recorded
+    answer: `39.9042,116.4074` names the *suburb* `Donghuamen Subdistrict` (what `zoom=10` returns
+    for a city-centre point), with no `state` and no `extratags`, so the zone stays provisional —
+    the 25 km bundled-table radius is why the online half is rarely reached.
+  * One observation recorded for a later tuning, deliberately not changed here: a point far from
+    every named object is named after its containing *administrative area* (`@-54.6,158.9` →
+    `Tasmania, Tasmania, Australia`, 1660 km from the object's centroid, printed as the distance
+    under `-v`). The step's risk note chose disclosure over filtering, and `--all`/`@lat,lon`
+    remain the escape hatches.

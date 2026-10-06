@@ -357,10 +357,14 @@ fn hits_without_a_timezone_tag_keep_the_provisional_utc_zone() {
 // `/reverse`: naming a coordinate (step 25)
 // ---------------------------------------------------------------------------------------------
 
-/// The hand-authored `/reverse` answer: the documented jsonv2 shape, trimmed to the fields the
-/// mapper reads (`lat`, `lon`, `name`, `display_name`, `address`, `extratags`). It is not a
-/// recording — Nominatim was unreachable from the recording network — so it lives with the other
-/// first-party fixtures in `REUSE.toml`.
+/// The recorded `/reverse` answer for `39.9042,116.4074`: a verbatim recording of
+/// `GET https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=39.9042&lon=116.4074&zoom=10&addressdetails=1`
+/// made with the client's own `User-Agent` and `accept-language: en` (through the local proxy the
+/// recording network needs for this host, 2026-10-06), trimmed to the keys the mapper reads plus
+/// `place_id` and `display_name` — the same trimming the search fixtures carry. The answer names
+/// the *suburb* the point falls in, which is what `zoom=10` returns for a city-centre coordinate;
+/// the 25 km bundled-table radius is why the online half is only reached for points nothing else
+/// can name.
 fn reverse_beijing() -> StubReply {
     StubReply::json_file("tests/fixtures/geo/nominatim_reverse_beijing.json")
         .expect("the reverse fixture is readable")
@@ -381,13 +385,15 @@ fn a_reverse_answer_names_the_point() {
         .expect("the answer maps")
         .expect("the point has a name");
 
-    assert_eq!(location.name, "Beijing");
-    assert_eq!(location.admin1.as_deref(), Some("Beijing"));
+    assert_eq!(location.name, "Donghuamen Subdistrict");
+    // The reverse object has no `state` and no `extratags` for this point, so the division is
+    // absent and the zone stays provisional — exactly what the mapper's defaults are for.
+    assert_eq!(location.admin1, None);
     assert_eq!(location.country, "China");
     // The service spells the code lower-cased; the mapper keeps what it sends.
     assert_eq!(location.country_code.as_deref(), Some("cn"));
-    assert_eq!(location.tz, Tz::Asia__Shanghai);
-    assert_eq!(location.population, Some(21_540_000));
+    assert_eq!(location.tz, Tz::UTC);
+    assert_eq!(location.population, None);
     assert_eq!(location.source, LocationSource::Osm);
 
     let calls = harness.transport.calls();
@@ -403,6 +409,8 @@ fn a_reverse_answer_names_the_point() {
 
 #[test]
 fn a_refused_point_has_no_name() {
+    // The recorded refusal rides on a `200` (measured 2026-10-06); a `404` is the other shape the
+    // service uses, so both are pinned.
     for reply in [reverse_ocean(), StubReply::ok(404, "Not Found")] {
         let harness = Harness::new(vec![reply]);
         let location = harness
