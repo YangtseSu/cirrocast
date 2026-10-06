@@ -20,17 +20,25 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
 
 ## Deliverables
 
-- ⬜ Endpoint shape, measured 2026-10-03 through the proxy (recorded here because it is not obvious):
-  * nearest station — `GET https://www.ncei.noaa.gov/access/services/search/v1/data?dataset=global-summary-of-the-month&bbox=<maxLat>,<minLon>,<minLat>,<maxLon>&limit=<n>`
+- ✅ Endpoint shape, measured 2026-10-06 direct (recorded here because it is not obvious):
+  * nearest station — `GET https://www.ncei.noaa.gov/access/services/search/v1/data?dataset=global-summary-of-the-month&bbox=<maxLat>,<minLon>,<minLat>,<maxLon>&limit=5`
     (the bounding box is **NW corner then SE corner**; the documented-looking `SW,NE` order returns
-    HTTP 500). The response carries `results[]`, one entry per station file, each with `name`,
-    `centroid`/`boundingPoints[].coordinates` (lon, lat) and a nested `stations[]` array of
-    per-datatype coverage records; the nearest entry by great-circle distance wins, and its
-    `stations[].id` is the station to query.
-  * values — `GET https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-summary-of-the-month&stations=<ID>&startDate=<YYYY-01-01>&endDate=<YYYY-12-31>&format=json&units=metric`
-    → rows `{DATE: "YYYY-MM", STATION, TAVG, TMAX, TMIN, PRCP, …}` with values in °C and mm; a
-    station's name and coordinates come from the **search** response, not the data rows (the data
-    rows carry `STATION` and numbers only).
+    HTTP 500). The answer carries `results[]`, one entry per station file, each with its file `name`
+    (`CHM00054511.csv`), its point as `centroid: [lon, lat]` (also in `location.coordinates` and
+    `boundingPoints[].coordinates`) and a nested `stations[]` array whose `dataTypes[]` records name
+    the covered datatypes; the nearest entry **by great-circle distance** wins and its
+    `stations[].id` is the station to query. Measured 2026-10-06: `results[]` is **not**
+    distance-ordered (the recorded Beijing box lists a station 119.7 km away first and the 12.4 km
+    one last), so the client measures every returned entry; a box with no station answers `200` with
+    `results: []` (recorded); `limit=5` keeps a dense two-degree box at 24 KB and the 60 km box the
+    adapter derives at 67 KB.
+  * values — `GET https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-summary-of-the-month&stations=<ID>&startDate=<YYYY-01-01>&endDate=<YYYY-12-31>&format=json&units=metric&dataTypes=TAVG,TMAX,TMIN,PRCP`
+    → rows `{DATE: "YYYY-MM", STATION, TAVG, TMAX, TMIN, PRCP}` with the values as JSON **strings**
+    in °C and mm; the `dataTypes` projection cuts the 30-year window from 92 KB to 27 KB (both
+    measured 2026-10-06) and a station can answer with `[]`; a station's name and coordinates come
+    from the **search** response, not the data rows (they carry `STATION` and numbers only). The
+    recordings live in `tests/fixtures/normals/` — exact request URLs in its `README.md`, the
+    `LicenseRef-US-Government-Public-Domain` annotation in `REUSE.toml`.
 - ⬜ `src/normals/ncei.rs`: `pub fn normals(loc: &Location, month: u8, env: &Env<'_>) ->
   Result<Option<Normals>>` — two requests, both through the shared client and cache
   (`normals/<station>-<YYYY-MM>.json`, TTL 30 days, `--no-cache`/`--refresh`/`--offline` honoured);
@@ -75,8 +83,9 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
   climate normal, and the number of contributing years is printed so a thin record is visible. The
   credit says "computed from", matching the project's modified-data disclosure habit.
 * **The two-request flow is a real cost, hence the 30-day cache and the opt-in flag.** The search
-  response is up to ~100 KB (it embeds per-datatype coverage), the data response ~200 KB for 30
-  years; both are cached per station+month, and `--normals` off means zero requests.
+  response is 24–67 KB (it embeds per-datatype coverage; measured 2026-10-06), the data response
+  92 KB for 30 years without the `dataTypes` projection and 27 KB with it; both are cached
+  per station+month, and `--normals` off means zero requests.
 * **No station-name table is bundled.** The search endpoint answers "which station is near me"
   directly, which avoids shipping GHCN metadata (≈10 MB) for a single line of output.
 * **60 km is generous on purpose.** GSOM stations are sparse outside the US and Europe; a distant
@@ -134,3 +143,15 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   are recorded above; the idea and the two-step structure come from the breezy-weather audit
   (`ncei` normals module), minus its Gaussian weighting.
 - 2026-10-04 — renumbered from 29 to 26 by the plan reorganization; dependencies (03, 06, 08) unchanged.
+- 2026-10-06 — deliverable 1 closed. The flow was measured live directly (not through a proxy) and
+  the recordings landed under `tests/fixtures/normals/`: five payloads with their exact request
+  URLs and the values the tests will pin in the directory's `README.md`, and the public-domain
+  `LicenseRef` annotation in `REUSE.toml`. What the measurement corrected in the text above: the
+  search `limit` is pinned to 5; `results[]` is **not** distance-ordered (the recorded three-station
+  box lists the 12.4 km station last), so the client measures every entry; `centroid` arrives as a
+  `[lon, lat]` array; a station-free box answers `200` with `results: []`; and the
+  `dataTypes=TAVG,TMAX,TMIN,PRCP` projection cuts the values response from 92 KB to 27 KB. Two
+  stations were recorded on purpose: the 24-year holey Beijing record (October: 23 rows, 22 complete
+  — `2020-10` carries only `PRCP`) and the complete 30-year Madison record, so the averaging and the
+  completeness rule have a gappy and a full case; the gate payloads are trimmed from the recordings
+  inside the tests rather than stored as extra fixtures.

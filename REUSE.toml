@@ -348,3 +348,14 @@ path = "tests/fixtures/nws/edge_hourly.json"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Recorded NOAA NCEI Access Services payloads (step 26): the station search answer for two boxes
+# and the Global Summary of the Month rows for the two stations they resolve. NOAA/NCEI is US
+# government material and therefore public domain, like the aviationweather.gov and api.weather.gov
+# recordings above, so these carry the same `LicenseRef`; the exact request text of every recording
+# is in `tests/fixtures/normals/README.md`.
+[[annotations]]
+path = "tests/fixtures/normals/*.json"
+precedence = "override"
+SPDX-FileCopyrightText = "NOAA/NCEI (ncei.noaa.gov)"
+SPDX-License-Identifier = "LicenseRef-US-Government-Public-Domain"
