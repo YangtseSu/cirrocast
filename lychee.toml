@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Lychee's configuration (step 28). The link checker runs in the `docs` CI job over every Markdown
+# file in the repository, and a contributor runs the same command before pushing:
+#
+#   lychee --config lychee.toml --offline --root-dir "$(pwd)" './**/*.md'      # local links only
+#   lychee --config lychee.toml --root-dir "$(pwd)" --cache --max-cache-age 1d './**/*.md'
+#
+# The cache is what keeps a push from re-requesting every upstream host; one day is short enough
+# that a link that starts failing is noticed while the commit is still fresh.
+
+# One day of cache, and the same value the CI job passes on the command line.
+max_cache_age = "1d"
+
+# The project's links are to plain documentation pages; ten hops is generous, and a longer chain
+# is usually a redirect loop rather than a moved page.
+max_redirects = 10
+
+# Twenty seconds is enough for a documentation host and keeps one slow host from deciding the job.
+timeout = 20
+
+# A retry, because a documentation host occasionally answers 429/503 to the first request.
+retry_wait_time = 2
+
+# Directories the glob would otherwise walk. `target/` is the build tree, and `cargo package`
+# leaves staged copies of the source there whose relative links point outside the staged crate —
+# links a reader of the repository never follows, and a fresh CI checkout does not even contain.
+exclude_path = ["target", ".git"]
+
+# Hosts that refuse automated clients, one entry per host with the reason it is here. Every entry
+# is an external constant, not a link this project controls; a broken *local* link can never be
+# excused this way because `--offline` never consults the list.
+exclude = [
+    # Add entries here with a comment naming what the host does (403 to non-browser agents,
+    # JS-only page, rate limit without a key) and the date it was observed.
+]

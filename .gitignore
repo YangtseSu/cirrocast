@@ -6,3 +6,8 @@
 *.pdb
 .env
 .DS_Store
+
+# lychee's on-disk request cache (`.lycheecache`, step 28's link check). The documented local
+# command uses `--cache`, and the file is a per-machine artefact: CI writes its own and never
+# commits one.
+.lycheecache

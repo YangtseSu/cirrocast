@@ -117,7 +117,10 @@ stable it builds with and is bumped with the toolchain), and macOS is covered wh
 test job also runs the reduced build (`cargo test --workspace --no-default-features --locked`); the
 `gates` job runs `scripts/check-render-imports.py` (the render-layer rule: `src/render` and
 `src/model` may not name `http`, `provider` or `cache`) and checks that
-`LICENSES/GPL-3.0-or-later.txt` is byte-identical to `LICENSE`. The performance budget lives in
+`LICENSES/GPL-3.0-or-later.txt` is byte-identical to `LICENSE`; and the `docs` job runs the three
+generated-artifact tests (`help_snapshot`, `docs_flags`, `json_schema`), `man --warn` over
+`man/cirrocast.1` and lychee over every Markdown file (`lychee.toml` holds the cache age and the
+ignore list). The performance budget lives in
 `.github/workflows/perf.yml`, which is dispatch-only: nothing in it runs on a push or a pull
 request. Dependency policy lives in
 `deny.toml`: an audited licence allow list, duplicates and wildcards denied, crates.io as the only

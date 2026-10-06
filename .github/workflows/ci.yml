@@ -148,6 +148,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
 
+  # The documentation set (step 28). The generated artifacts are compared with the binary itself, so
+  # a flag change cannot land without the reference, the man page and the snapshots moving with it;
+  # the JSON schemas are validated against output the binary really prints; the man page has to
+  # render without warnings; and every Markdown link in the repository has to resolve. The link
+  # checker is an action rather than a crate dependency — it never enters this project's build graph
+  # — and its cache keeps a push from re-requesting every upstream host.
+  docs:
+    name: docs
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # `help_snapshot` compares the long help and the man page byte for byte, `docs_flags` the
+      # flag reference (both directions), `json_schema` the committed schemas against live output.
+      - name: the generated documents match the binary
+        run: |
+          cargo test --locked --test help_snapshot
+          cargo test --locked --test docs_flags
+          cargo test --locked --test json_schema
+      - name: the man page renders without warnings
+        run: |
+          command -v man >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq man-db; }
+          man --warn --local-file man/cirrocast.1 > /dev/null
+      - name: links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
+        with:
+          args: >-
+            --config lychee.toml --root-dir . --cache --max-cache-age 1d './**/*.md'
+          fail: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   deny:
     name: cargo deny
     runs-on: ubuntu-26.04
