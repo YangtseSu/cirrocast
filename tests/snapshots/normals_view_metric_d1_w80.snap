@@ -3,7 +3,7 @@ source: tests/render_snapshots.rs
 expression: "render(Case\n{\n    format: Format::Normals,\n    ..case(\"beijing-normals.json\", UnitSystem::Metric, 80)\n})"
 ---
 Beijing, Beijing, China (39.90, 116.41) Asia/Shanghai
-Climate normals: 1991–2020 · BEIJING, CH (CHM00054511) 12 km · high 26.4°C
+Climate normals: 1991–2020 · BEIJING, CH (CHM00054511) 11 km · high 26.4°C
 (-2.4°C) · low 16.1°C (-2.1°C) · precip 48.9 mm/mo (-100%) · 22 years
 Climate normals computed from NOAA NCEI Global Summary of the Month (public
 domain)

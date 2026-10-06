@@ -79,27 +79,34 @@ impl Renderer for NormalsView {
     }
 }
 
-/// The `art-table` line: the comparison, wrapped to `ctx.width`; empty when the report carries no
-/// normal.
+/// The `art-table` panel: the comparison line and the credit, wrapped to `ctx.width`; empty when
+/// the report carries no normal.
 ///
 /// Wrapped and folded exactly like the air and marine panels: a caller appends the lines to its own
-/// output, so the width invariant is the panel's own business.
+/// output, so the width invariant is the panel's own business. The credit travels inside the panel
+/// (it belongs to those numbers), which is what puts it in the table's body.
 #[must_use]
 pub fn panel(report: &Report, ctx: &RenderContext<'_>) -> Vec<String> {
     let Some(normals) = report.normals.as_ref() else {
         return Vec::new();
     };
     let charset = ctx.term.charset();
-    let line = format!(
-        "{}: {}",
-        ctx.i18n.format(
-            &keys::NORMALS_VS,
-            &[("period", FluentValue::from(period_label(normals)))]
+    let lines = vec![
+        format!(
+            "{}: {}",
+            ctx.i18n.format(
+                &keys::NORMALS_VS,
+                &[("period", FluentValue::from(period_label(normals)))]
+            ),
+            comparison(normals, report, ctx)
         ),
-        comparison(normals, report, ctx)
-    );
-    let folded = super::air::fold_line(&line, charset);
-    super::air::wrap_all(vec![folded], ctx.width, charset)
+        ctx.i18n.text(&keys::NORMALS_CREDIT_NCEI).into_owned(),
+    ];
+    let folded = lines
+        .into_iter()
+        .map(|line| super::air::fold_line(&line, charset))
+        .collect();
+    super::air::wrap_all(folded, ctx.width, charset)
 }
 
 /// The `plain` format's records: the greppable line and the credit, in that order.

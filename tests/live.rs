@@ -218,3 +218,37 @@ fn live_metar_station() {
         "{text}"
     );
 }
+
+#[test]
+#[ignore = "live network: set CIRROCAST_LIVE_TESTS=1 and run `cargo test --test live -- --ignored --nocapture`"]
+fn live_climate_normals_for_beijing() {
+    if !enabled() {
+        return;
+    }
+
+    let live = Live::new();
+    // October is a month every long-record station covers, so the assertions can be exact about
+    // what a normal is rather than about which month the run happens in.
+    let normal = cirrocast::normals::fetch(&beijing(), 10, &live.env())
+        .expect("NCEI answers")
+        .expect("Beijing has a GSOM station inside the default 60 km");
+    assert!(!normal.station.is_empty(), "{normal:?}");
+    assert!(normal.distance_km <= 60.0, "{normal:?}");
+    assert!(normal.years >= 20, "{normal:?}");
+    assert!((-60.0..=60.0).contains(&normal.temp_max_c), "{normal:?}");
+    assert!(
+        normal.temp_min_c <= normal.temp_max_c,
+        "the mean low sits below the mean high: {normal:?}"
+    );
+    assert!(normal.precip_mm >= 0.0, "{normal:?}");
+
+    let mut report = live.fetch(&beijing()).expect("Open-Meteo answers");
+    report.normals = Some(normal);
+    let text = live.render(&report);
+    println!("{text}");
+    assert!(text.contains("climate_normals: "), "{text}");
+    assert!(
+        text.contains("Climate normals computed from NOAA NCEI Global Summary of the Month"),
+        "{text}"
+    );
+}

@@ -109,7 +109,7 @@ expression: "render(&report, UnitSystem::Metric)"
   "normals": {
     "station": "CHM00054511",
     "station_name": "BEIJING, CH",
-    "distance_km": 12.447,
+    "distance_km": 11.0819,
     "period": "1991-2020",
     "month": 9,
     "temp_mean_c": 21.2318,

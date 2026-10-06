@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 26 — climate normals
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: `03-canonical-model-and-units.md` (model + units), `06-open-meteo-provider.md` (report assembly), `08-cli-surface-and-formats.md` (flags, formats)
 Touches: `src/normals/{mod,ncei}.rs`, `src/model/mod.rs`, `src/render/{art_table,plain,json}.rs`, `src/cli.rs`, `src/config/mod.rs`, `src/cache.rs`, `tests/normals.rs`, `tests/fixtures/normals/`, `docs/providers.md`, `README.md`, `docs/plans/README.md`, `CHANGELOG.md`
 
@@ -81,12 +81,18 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
   `LICENSES/` already ships for the NOAA recordings, not a new spelling. README's sources section
   lists NCEI beside Open-Meteo, and a `### Climate normals` usage section plus a `CHANGELOG.md`
   entry land with it.
-- ⬜ Tests (`tests/normals.rs`, offline): a station fixture (search + data) for a full 30-year month
-  → the exact means and `years = 30`; a 12-year station → `Ok(None)` with the verbose reason; a
-  point with no station in range; a month present in the data but not in the window; the second run
-  served from cache; `--offline` with and without a cached entry; the renderer line and `json`
-  object snapshots; the `NW,SE` bbox order asserted from the recorded request (a regression to
-  `SW,NE` must fail).
+- ✅ Tests (`tests/normals.rs`, offline): a station fixture (search + data) for a full 30-year month
+  → the exact means and `years = 30` (the Madison recording); the 24-year holey Beijing record →
+  `years = 22` with the incomplete row excluded; a 12-year trim → `Ok(None)`; a point with no
+  station in range (the recorded empty box); the radius gate; a month present in the data but
+  outside the configured window (a `2000-2019` period over the 1991–2020 payload → `years = 20`);
+  the second run served from cache with both keys' paths, `normalised()` text and 30-day TTLs
+  asserted; `--offline` serving a warm cache and a cold cache being `Ok(None)`; the renderer line
+  at every documented width, the `--units us` conversation, the signs under `color = never` and the
+  paint under `always`, the standalone view's exact three lines, the plain record and the credit;
+  the CLI over a seeded normals cache (every surface, no request without the flag, the offline note
+  and the thin-record note, `[defaults] normals`); and the `NW,SE` bbox order asserted from the
+  recorded request (a regression to `SW,NE` must fail).
 
 ## Design notes
 
@@ -128,13 +134,22 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean.
-- ⬜ The computed means for the pinned station/month fixture match the values averaged by hand in the
-      test, and `years` equals the contributing row count.
-- ⬜ A run without `--normals` makes no NCEI request; a second `--normals` run is a cache hit; an
-      offline run with no entry degrades with a verbose note and exit 0.
-- ⬜ The bbox order regression test fails when the corners are swapped.
-- ⬜ Rendering respects `--units`, `--width` and `--color`, and `json` output stays additive.
+- ✅ `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test
+      --workspace` and `reuse lint` clean.
+- ✅ The computed means for the pinned station/month fixture match the values averaged by hand in
+      the test (`tests/fixtures/normals/README.md` records them), and `years` equals the contributing
+      row count: 30 for the complete Madison record, 22 for the Beijing record whose `2020-10` row
+      lacks its temperatures.
+- ✅ A run without `--normals` makes no NCEI request (and creates no `normals/` directory); a
+      second `--normals` run is a cache hit (no second request pair); an offline run with no entry
+      degrades with a verbose note and exit 0 (verified live: `normals: offline: no cached
+      noaa-ncei station search …`).
+- ✅ The bbox order regression test fails when the corners are swapped (`bbox` is asserted as an
+      ordered `query_pairs()` entry, `40.4447,115.7028,39.3637,117.1120`).
+- ✅ Rendering respects `--units` (79.4 °F, −4.2 °F differences, 1.92 in/mo), `--width` (every
+      line inside 40/59/60/80/120 columns) and `--color` (signs without escapes under `never`,
+      painted under `always`), and `json` stays additive (the `normals` key with the same schema
+      version, `null` without the flag).
 
 ## Risks
 
@@ -238,3 +253,22 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   never defined. The re-verification log gained the 2026-10-06 NCEI entry, README gained the
   sources-table row beside Open-Meteo and a `### Climate normals` usage section with the recorded
   Beijing example, and `CHANGELOG.md` gained the Unreleased entry.
+- 2026-10-06 — deliverable 7 closed and the step done. `tests/normals.rs` runs the recorded flow
+  through the scripted transport (both request URLs with the `NW,SE` bbox pinned verbatim, the
+  hand-averaged means for the complete 30-year Madison record and for the holey 24-year Beijing one
+  whose `2020-10` row is excluded, the period filter over a `2000-2019` window, all four `Ok(None)`
+  gates, the two cache keys' paths/text/TTLs, the second-run cache hit, both `--offline` outcomes
+  with zero transport calls), drives the real binary offline over a seeded cache for the four
+  surfaces, the no-flag control and the two verbose notes, and renders the fixture at every
+  documented width plus a `--units us`/`--color always` pair. The bbox regression was proved by
+  swapping the corners in `bbox()`: the run fails with the two orders printed, and the file was
+  restored byte-identically. Both new locale catalogs, `tests/i18n.rs`'s argument table, the cache
+  namespace vectors and the `cache stat` golden string moved with the code. A live test
+  (`live_climate_normals_for_beijing`, `#[ignore]`d like the others) closes the gap the smoke runs
+  would otherwise leave, and the plan's verification block was executed live: the `plain` line with
+  a real 22-year Beijing normal (11 km away, `+6.0`/`+4.9` against a warm October), the standalone
+  view, the `jq`-style `json` projection, the no-station point answering
+  `normals: no GSOM station within 60 km of 0, -140 (0.00, -140.00)` with exit 0 (and
+  `climate normals unavailable` under `-f normals`), and `--units us` showing °F. Gates:
+  `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo test
+  --workspace` and `reuse lint` all clean.
