@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 25 — location sources, second generation
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: `04-geocoding-and-location-syntax.md` (spec parsing, ranking, attribution lines, Nominatim throttle), `05-http-cache-and-ip-location.md` (IP chain and cache), `18-offline-city-database.md` (bundled city index), `20-location-candidate-selection.md` (the picker that consumes the candidate lists this step produces)
 Touches: `src/geo/{mod,ip,reverse,chain,merge}.rs`, `src/geo/data/`, `build/geo-table/`, `src/config/mod.rs`, `src/cli.rs`, `src/main.rs`, `tests/{geo_ip,geo_geonames,geo_reverse,geo_merge}.rs`, `tests/fixtures/geo/`, `REUSE.toml`, `LICENSES/`, `docs/providers.md`, `README.md`, `CHANGELOG.md`
 
@@ -83,12 +83,12 @@ bundled credential: GeoNames is BYOK.
   nearby places the picker asks; the disclosure line and README/`--help` privacy text list all three
   IP services. `location search @lat,lon` prints the coordinate line plus the named candidates under
   `--all` (step 20's flag); `location search --ip --all` does the same for the IP answer.
-- ⬜ `docs/providers.md`: a new "Location services" table — service, endpoint, auth, licence/credit,
+- ✅ `docs/providers.md`: a new "Location services" table — service, endpoint, auth, licence/credit,
   privacy-policy URL, cache ceiling, `verified: <date>` — covering the Open-Meteo geocoder,
   Nominatim search and reverse, GeoNames search, IP.SB, ipwho.is, ipapi.co and the bundled Natural
   Earth/GeoNames data sets (which get no network row but a data section), with the per-service
   caching and rate-limit obligations quoted from the live pages at the recorded date.
-- ⬜ Tests (`tests/geo_ip.rs` extended, `tests/geo_geonames.rs`, `tests/geo_reverse.rs`,
+- ✅ Tests (`tests/geo_ip.rs` extended, `tests/geo_geonames.rs`, `tests/geo_reverse.rs`,
   `tests/geo_merge.rs`, all offline): ip.sb fixture plus its fall-through; a GeoNames hit, a quota
   body, a `0,0` row and an invalid country row; Nominatim reverse fixture sharing the search
   mapping; offline naming from the bundled table (Beijing coordinates → a Hebei city within 25 km),
@@ -157,17 +157,19 @@ for the same place and keeps step 04's order.
 
 ## Exit criteria
 
-- ⬜ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean
+- ✅ `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `reuse lint` clean
       (with the Natural Earth annotation and licence text in place).
-- ⬜ `CIRROCAST_IP_SERVICE=ipsb` answers with a real location; the chain message still names every
+- ✅ `CIRROCAST_IP_SERVICE=ipsb` answers with a real location; the chain message still names every
       attempted service when all three fail.
-- ⬜ GeoNames without a username is skipped silently under `auto` and named as the missing piece
-      under `-v`; with one, a fuzzy query returns merged candidates.
-- ⬜ `[geo] reverse = "off"` and `--offline` never name a coordinate from the network; `auto` names it
+- ✅ GeoNames without a username is skipped silently under `auto` and named as the missing piece
+      under `-v`; with one, a fuzzy query returns merged candidates (fixture-verified: no GeoNames
+      account exists for this repository, so the merge is pinned by `tests/geo_merge.rs` and the
+      live half by the skip note).
+- ✅ `[geo] reverse = "off"` and `--offline` never name a coordinate from the network; `auto` names it
       offline-first (asserted by fixture and by the no-socket `strace` check).
-- ⬜ The merged list for Beijing contains no duplicate place; the 5 km boundary and `-99` country
+- ✅ The merged list for Beijing contains no duplicate place; the 5 km boundary and `-99` country
       fixtures pass.
-- ⬜ `docs/providers.md` gains the location-services table with live-verified lines, and README's
+- ✅ `docs/providers.md` gains the location-services table with live-verified lines, and README's
       `--ip` privacy note lists all three services.
 
 ## Risks
@@ -316,3 +318,34 @@ for the same place and keeps step 04's order.
   `location: named by the bundled tables … Beijing, Beijing, China` with the GeoNames credit and
   the three nearby candidates, `--all` lists them, and `CIRROCAST_GEO_REVERSE=off` falls back to
   `39.907503, 116.397228, Beijing, China`.
+
+- 2026-10-06 — the documentation pass: `docs/providers.md` gained the "Location services at a
+  glance" table (endpoint, auth, licence/credit, policy, cache ceiling, `verified`) plus the bundled
+  data table, a `### GeoNames searchJSON (BYOK)` section with the measured 401/quota behaviour, an
+  `### IP.SB` section with the caller-address-only finding, and a `/reverse` paragraph in the
+  Nominatim section; the re-verification log carries the 2026-10-06 entry. The README documents the
+  two new `[geo]` keys, the named credential, the search chain, coordinate naming, the refreshed
+  location examples and two new data-sources rows; `CHANGELOG.md` opens with the step's entry.
+
+- 2026-10-06 — step closed. Every deliverable and exit criterion is ticked; the four gates
+  (`cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
+  `cargo test --workspace --locked`, `reuse lint`) are clean, and the changed surface was run, not
+  only tested: `location search Beijing --all` from the bundled table; `location search
+  @39.9042,116.4074` → `Beijing, China (39.90, 116.41)` with the GeoNames credit;
+  `location search @0,-140 -v` → the bare pair plus `no city within 25 km` (and, under `auto`, the
+  unreachable Nominatim as a `-v` note rather than a failure); `--offline=geo -f plain
+  @39.9042,116.4074` → the report headed with the name, `strace -f -e trace=network` counting **0**
+  `socket(` calls; `--ip` with a seeded cityless answer named from the bundled tables;
+  `CIRROCAST_IP_SERVICE=ipsb location search --ip` → a real answer via `api.ip.sb/geoip`.
+  One deviation from the letter of the deliverable was recorded earlier and is now in the README
+  contract as well: the automatic picker never fires for a *display-only* name (a coordinate's or
+  an IP answer's); `--pick` asks and `--all` lists. One more rule was added while closing, because
+  it would have been a latency regression: the `status` probe names a coordinate from the bundled
+  tables at most (`GeoRequest::online_naming`), so a status bar never waits on a donated service
+  for a display name — pinned by `tests/status_contract.rs`.
+  Not verified live, and recorded here so a later session can close it: a GeoNames *account* query
+  (`CIRROCAST_GEONAMES_USER=… location search 'Springfiel' -v`) — no account exists for this
+  repository, so the fuzzy hit, the quota error and the merge are pinned by `tests/geo_geonames.rs`
+  and `tests/geo_merge.rs` against hand-authored/recorded fixtures instead; and a live Nominatim
+  answer, since the public instance is unreachable from this network (timeouts), which is why the
+  `/reverse` fixture is hand-authored and `docs/providers.md` marks the endpoint `Unverified`.

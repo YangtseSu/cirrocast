@@ -19,6 +19,9 @@
 //!   has no way to consent to a lookup;
 //! * it **never prompts** ([`crate::cli::Prompt::Never`]): an ambiguous name takes the ranked
 //!   winner, since a bar reads no stdin;
+//! * it **never adds a request to name a coordinate** (step 25): the bundled tables may name the
+//!   point, and the online half of `[geo] reverse` is pinned offline, because a bar must not wait
+//!   on a donated service for a display name;
 //! * `--max-age` widens the window in which a cached answer is served without revalidating
 //!   ([`crate::cache::Cache::with_max_age`]), and `--offline` never opens a socket and accepts a
 //!   cached answer however old it is.
@@ -296,6 +299,9 @@ fn probe(
         cache: &geo_cache,
         offline,
         prompt: Prompt::Never,
+        // The probe names a coordinate from the bundled tables at most: adding a reverse request
+        // would make a status bar wait on a donated service for a display name.
+        online_naming: false,
         limit: QUERY_CANDIDATES,
     };
     let env = Env {

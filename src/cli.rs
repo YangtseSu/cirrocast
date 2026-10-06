@@ -1281,6 +1281,7 @@ fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
         cache: &geo_cache,
         offline,
         prompt: Prompt::Policy,
+        online_naming: true,
         limit: QUERY_CANDIDATES,
     };
     let targets = location_targets(query, &settings, &config)?;
@@ -2516,6 +2517,7 @@ fn run_location_search(args: &SearchArgs, cli: &Cli) -> Result<()> {
         cache: &cache,
         offline,
         prompt: Prompt::Policy,
+        online_naming: true,
         limit: args.limit,
     };
     let resolved = resolve_location(&spec, &geo_request, cli)?;
@@ -2861,8 +2863,12 @@ fn name_coordinate(
     geo: &GeoRequest<'_>,
     cli: &Cli,
 ) -> Result<(Location, Vec<Location>)> {
+    let mut policy = reverse_policy(geo)?;
+    if !geo.online_naming && policy == crate::geo::reverse::Policy::Auto {
+        policy = crate::geo::reverse::Policy::Offline;
+    }
     let inputs = crate::geo::reverse::Inputs {
-        policy: reverse_policy(geo)?,
+        policy,
         paths: geo.paths,
         data: &geo.config.geo.data,
         http: geo.http,
@@ -3107,6 +3113,10 @@ pub(crate) struct GeoRequest<'a> {
     pub(crate) offline: OfflineMode,
     /// Whether the picker may run (see [`Prompt`]): a run that must not block reads stdin never.
     pub(crate) prompt: Prompt,
+    /// Whether naming a coordinate may ask Nominatim when the bundled tables find nothing
+    /// (step 25). The `status` probe sets it `false`: its whole contract is one cheap line, so it
+    /// names from the bundled tables and never *adds* a request to the run.
+    pub(crate) online_naming: bool,
     /// How many candidates to rank.
     pub(crate) limit: u8,
 }

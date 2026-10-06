@@ -89,7 +89,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 22 | E | [status-and-ecosystem](22-status-and-ecosystem.md) | ✅ done | 13, 19 |
 | 23 | F | [more-providers](23-more-providers.md) | ✅ done | 10, 15, 16 |
 | 24 | F | [keyless-national-providers](24-keyless-national-providers.md) | ✅ done | 06, 10, 23 |
-| 25 | F | [location-sources-2](25-location-sources-2.md) | ⬜ not-started | 04, 05, 18, 20 |
+| 25 | F | [location-sources-2](25-location-sources-2.md) | ✅ done | 04, 05, 18, 20 |
 | 26 | F | [climate-normals](26-climate-normals.md) | ⬜ not-started | 03, 06, 08 |
 | 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ⬜ not-started | 02, 10, 15 |
 | 28 | G | [docs-and-guides](28-docs-and-guides.md) | ⬜ not-started | 14, 19, and the surface of 18–27 |

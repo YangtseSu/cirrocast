@@ -438,3 +438,25 @@ fn the_environment_location_outranks_the_configured_one() {
         .code(0);
     assert_eq!(stdout_of(&assert), "n/a\n", "the flag won");
 }
+
+/// The probe names a coordinate from the bundled tables at most: it never adds a reverse request
+/// to the run (step 25), because a status bar must not wait on a donated service for a display
+/// name.
+#[test]
+fn the_probe_never_adds_a_reverse_request() {
+    let sandbox = Sandbox::new();
+    // A point no bundled city is within 25 km of, so the online half *would* be asked.
+    let assert = sandbox
+        .cirrocast()
+        .args(["status", "--location", "@0,-140", "-v"])
+        .assert();
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("UTF-8 stderr");
+    assert!(
+        !stderr.contains("nominatim"),
+        "the probe must not name a coordinate over the network: {stderr}"
+    );
+    assert!(
+        stderr.contains("no city within 25 km"),
+        "the bundled-table note is what a `-v` run prints: {stderr}"
+    );
+}

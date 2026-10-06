@@ -1062,6 +1062,28 @@ windows (observed 07:00–19:00 local, which is not the solar day).
 
 ## Location and IP services
 
+### At a glance
+
+| Service | Endpoint | Auth | Licence / credit | Policy | Cache ceiling | Verified |
+|---|---|---|---|---|---|---|
+| Open-Meteo geocoding | `GET geocoding-api.open-meteo.com/v1/search` | none | GeoNames data, CC BY 4.0, via Open-Meteo | free tier shared with the forecast API: non-commercial, 10 000/day, 5 000/hour, 600/minute | 30 days (`cache.geocode_ttl_secs`) | 2026-10-06 |
+| GeoNames search | `GET secure.geonames.org/searchJSON` | **BYOK**: `CIRROCAST_GEONAMES_USER`, else `keys.toml [keys] geonames` (`key set geonames`) | GeoNames CC BY 4.0: `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` | free registration, no card; per-account daily credit quota | 30 days (`cache.geocode_ttl_secs`) | 2026-10-06 |
+| Nominatim `/search` | `GET <base>/search` | none; a descriptive `User-Agent` is mandatory | ODbL: `Location data © OpenStreetMap contributors (ODbL)` | "absolute maximum of 1 request per second", results must be cached, no autocomplete, no bulk geocoding | 30 days (`nominatim::TTL`), shared throttle state | 2026-10-06 |
+| Nominatim `/reverse` | `GET <base>/reverse` | none; the same `User-Agent` | ODbL, the same credit | the same one-request-per-second rule and caching duty | 30 days, same namespace and throttle | 2026-10-06 |
+| ipwho.is | `GET ipwho.is/` | none | none required | 1 000 requests/day per client IP; `429` + `Retry-After` beyond it | ≤ 24 h (`cache.ip_ttl_secs`) | 2026-10-06 |
+| ipapi.co | `GET ipapi.co/json/` | none | none required (DB-IP/IP2Location attribution is ipapi.co's own) | up to 1 000 lookups/day, "not meant for use in production" | **at most 24 h** by its terms — the cap `cache.ip_ttl_secs` honours | 2026-10-06 |
+| IP.SB | `GET api.ip.sb/geoip` | none | none required | keyless public endpoint; no published quota | ≤ 24 h, the same cap | 2026-10-06 |
+
+### Bundled location data (no network, no service)
+
+| Data set | Source | Licence | Committed size | Verified |
+|---|---|---|---|---|
+| City table (`cities.bin.gz`, `keys.bin.gz`, `SNAPSHOT`) | GeoNames `cities15000` dump | CC BY 4.0 | 3.4 MiB compressed | 2026-10-04 (dump date in `SNAPSHOT`) |
+| Country layer (`countries.bin.gz`, `COUNTRIES`) | Natural Earth 1:50m `admin_0_countries`, quantised to 1e-3° | public domain (CC0-1.0); no credit required | 407 KiB compressed | 2026-10-06 (input sha256 in `COUNTRIES`) |
+
+Both are refreshed and checked with `cargo run -p geo-table -- …` (see `AGENTS.md` § Releasing);
+`--check` compares the committed bytes against the pinned source without writing anything.
+
 ### Open-Meteo geocoding (keyless)
 
 `GET https://geocoding-api.open-meteo.com/v1/search` with `name` (required), `count` (default 10, max
@@ -1090,6 +1112,49 @@ Data is ODbL: "Clearly display attribution as suitable for your medium", the acc
 **Unverified.** The public instance was unreachable from the verification network (timeouts, no status),
 so the live response shape is documented-only.
 
+**`/reverse` (step 25).** `GET <base>/reverse?format=jsonv2&lat=…&lon=…&zoom=10&addressdetails=1`
+with the same `accept-language: en` and `User-Agent`, the same one-request-per-second throttle and
+the same cached namespace as `/search` (30 days). The answer is a single jsonv2 object with the same
+fields as a search hit, so it is mapped by the same code; a point the service cannot name comes back
+as `{"error":"Unable to geocode"}` or a `404`, which `reverse` turns into "no name here" — a
+legitimate answer for the open ocean — rather than a failure. Coordinates are rounded to five
+decimals in both the request and the cache key, so two spellings of one point share an entry. The
+`Unverified` note above applies to this endpoint too.
+
+### GeoNames `searchJSON` (BYOK, step 25)
+
+`GET https://secure.geonames.org/searchJSON` with `q` (required), `fuzzy` (0..1; this client sends
+0.8, the step's threshold), `maxRows`, `style=FULL` and `username`. The `secure.` host is the one
+whose certificate matches the name: `api.geonames.org` fails TLS validation with "no alternative
+certificate subject name matches target hostname", measured 2026-10-06. Registration is free and
+needs no card; the account name is a **credential**, never a bundled value — `CIRROCAST_GEONAMES_USER`
+or `keys.toml [keys] geonames`, written by `cirrocast key set geonames` from stdin and masked by
+`key list`. Measured refusals, both live on 2026-10-06: **no `username`, or an unregistered one** →
+HTTP 401 with `{"status":{"value":10,"message":…}}`, mapped to `Error::MissingKey` (exit 6) naming
+the credential rather than to the shared helper's invalid-key path; **the daily credit quota** →
+HTTP 200 with `{"status":{"value":18,"message":"the daily limit of 20000 credits for demo has been
+exceeded. …"}}` (18/19/20 are the documented limits), mapped to `Error::Upstream` (exit 3) quoting
+the service's sentence, never a silently empty result. `lat` and `lng` arrive as JSON **strings**,
+`population` as a number whose `0` means unknown, and `style=FULL` adds `timezone.timeZoneId`,
+`adminName1` and `countryName`. A row that cannot become a location — the `0, 0` sentinel, a
+country code that is not two ASCII letters, no usable zone — is dropped rather than failing the
+query, because this source is one of several a name query merges. Credit: `Location data by
+GeoNames (CC BY 4.0) — https://www.geonames.org/`
+(<https://www.geonames.org/export/web-services.html>, <https://www.geonames.org/terms>).
+
+### IP.SB (keyless, last-resort IP locator)
+
+`GET https://api.ip.sb/geoip` — the caller's own address, no key, worldwide. Measured 2026-10-06:
+HTTP 200 flat JSON with `city`, `region`, `country`, `country_code`, `latitude`, `longitude`,
+`timezone` (plus `ip`, `asn`, `isp`, `organization`, …), city-level. The per-address path
+(`/geoip/<ip>`) answers **403 Forbidden** on the free endpoint and a `?ip=` parameter is ignored
+(the answer stays the caller's), so only the caller-address form is used. An address the service
+cannot place comes back as `0, 0` with empty names — a sentinel, so it is refused as upstream data
+and the chain moves on rather than querying the weather for the Gulf of Guinea. No credit line is
+required; the `--ip` disclosure names the service that answered. The local proxy's TLS handshake to
+this host fails while a direct connection succeeds (measured 2026-10-03), which is part of why it
+sits last in the chain (<https://ip.sb/>, <https://api.ip.sb/geoip>).
+
 ### ipwho.is (keyless, primary IP locator)
 
 `GET https://ipwho.is/` (caller's IP) or `https://ipwho.is/<ip>`; optional `fields`, `output`, `lang`.
@@ -1097,7 +1162,8 @@ Free tier: "1,000 requests per day per client IP address", no key, HTTPS include
 allowed. Over-limit is `429` **with** a `Retry-After` header ("Access will be restored automatically
 after 24 hours"). Application errors ride on HTTP 200 as `{"success":false,"message":…}` — a 2xx status
 is not success — while a non-IP path segment is a 404. The terms grant no redistribution and require no
-credit line; the privacy disclosure naming the service is our own practice
+credit line; the privacy disclosure naming the service is our own practice. First of the three
+services the `auto` chain tries (then ipapi.co, then IP.SB; step 25)
 (<https://ipwhois.io/documentation>, <https://ipwhois.io/terms>).
 
 ### ipapi.co (keyless, fallback IP locator)
@@ -1113,6 +1179,22 @@ the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
 (<https://ipapi.co/terms>, <https://ipapi.co/api/>).
 
 ## Re-verification log
+
+* **2026-10-06** — the step-25 location services checked against their live pages and probes.
+  **GeoNames**: the endpoint, the parameter set, the string-typed coordinates and the `style=FULL`
+  fields from the published documentation; two refusals measured live — no `username` and an
+  unregistered one both answer `401` with `value: 10`, the `demo` account answers `200` with
+  `value: 18` and the 20 000-credit sentence; `api.geonames.org` fails TLS certificate validation
+  while `secure.geonames.org` serves the same API, which is why the client pins the latter.
+  **IP.SB**: `api.ip.sb/geoip` answered `200` with the documented flat JSON from this network,
+  `/geoip/<ip>` answered `403` and `?ip=` was ignored. **Nominatim `/reverse`**: not reachable from
+  this network (the public instance times out), so the request shape, the refusal mapping and the
+  cache key are documented-only and the tests replay a hand-authored fixture.
+  **Natural Earth**: the pinned `v5.1.2` GeoJSON (byte-identical to `master` on this date) measured
+  at 242 features, 99 613 points and 416 965 bytes compressed at 1e-3°, inside the step's 1 MiB
+  budget; the four `-99` shapes resolve through `ISO_A2_EH` (`TW`, `XK`) and the explicit
+  `DISPUTED_CODES` table (`CY`, `SO`). The registry rows and the tables above carry
+  `verified: 2026-10-06`.
 
 * **2026-10-06** — the two step-24 backends checked against `src/provider/mod.rs` and their modules,
   and their registry rows carry `verified: 2026-10-06`. NWS: the two-step `points` → `gridpoints`

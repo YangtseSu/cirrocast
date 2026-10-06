@@ -27,6 +27,20 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Added
 
+* **Second-generation location sources (step 25).** A plain name now runs through `[geo] search`
+  (`CIRROCAST_GEO_SEARCH`): `auto` queries Open-Meteo, then **GeoNames `searchJSON`** (BYOK —
+  `CIRROCAST_GEONAMES_USER` or `key set geonames`; a free account with fuzzy matching), then
+  **Nominatim** as the last resort, and the per-source candidate lists are merged and
+  de-duplicated (same folded name, same country code, within 5 km) before the shared ranking picks
+  a winner. **`IP.SB`** joins the IP chain as the third keyless service (`auto` = ipwho.is →
+  ipapi.co → IP.SB), a `0,0` answer being the service's own sentinel. A coordinate — and an IP
+  answer whose service reported no city — is now **named for display**: the bundled city index
+  within 25 km, the new **Natural Earth 1:50m country layer** (public domain, 407 KiB, embedded)
+  for the country name, and Nominatim `/reverse` when the tables find nothing; `[geo] reverse`
+  (`CIRROCAST_GEO_REVERSE`) picks `auto`/`offline`/`off`. A name is display-only — the coordinate
+  stays the request key — and its credit travels with it, so a named coordinate carries the
+  GeoNames or ODbL line while a bare one carries none. `--all` lists the nearby names, `--pick`
+  asks which one to use, and `-v` says which source named the point and how far away it is.
 * **Two keyless national backends (step 24).** `nws` (`api.weather.gov`: the US and its
   territories, hourly plus 7-day periods, its coordinate → grid mapping cached for 30 days in the
   new `grid/` cache namespace) and `brightsky` (Bright Sky's DWD open data for Germany, hourly).

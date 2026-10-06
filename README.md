@@ -220,6 +220,9 @@ tier it came from.
 | Offline policy | `--offline[=<weather\|geo\|all>]` | — | `network.offline` |
 | Candidate pick | `--pick` / `--yes` | `CIRROCAST_LOCATION_PICK` | `location.pick` |
 | Geo strategy | — | — | `geo.strategy` |
+| Name-search sources | — | `CIRROCAST_GEO_SEARCH` | `geo.search` |
+| Coordinate naming | — | `CIRROCAST_GEO_REVERSE` | `geo.reverse` |
+| GeoNames account | — | `CIRROCAST_GEONAMES_USER` | `keys.toml [keys] geonames` |
 | City table source | — | — | `geo.data` |
 | Freshness note | — | — | `geo.update` |
 | Update source | `--from` (`update-data`) | — | `geo.update_url` |
@@ -504,10 +507,10 @@ the same command twice gets the same answer:
 
 | Argument | Meaning |
 |---|---|
-| `Beijing` | fuzzy search: the bundled city table first, the keyless Open-Meteo geocoding API on a miss |
+| `Beijing` | fuzzy search: the bundled city table first, then the `[geo] search` chain on a miss (Open-Meteo, GeoNames with an account name, Nominatim as the last resort — merged and de-duplicated) |
 | `:Beijing` | only a candidate whose name matches exactly (diacritics and punctuation folded) |
 | `~Tsinghua` | OpenStreetMap/Nominatim, cached for 30 days and throttled to one request per second |
-| `@39.9042,116.4074` | coordinates; no geocoding request at all |
+| `@39.9042,116.4074` | coordinates; no geocoding request at all, and the point is named from the bundled tables (else Nominatim `/reverse`) for display only — `[geo] reverse` picks `auto`/`offline`/`off` |
 | *(empty)* | `location.default`, else the public-IP lookup |
 
 Multiple fuzzy candidates are ranked by exact name, then a name prefix, then population, then the
@@ -555,6 +558,24 @@ Natural Earth's 1:50m admin-0 shapes, quantised to ~110 m (about 407 KiB compres
 lets `@lat,lon` be named from the bundled tables alone, and it is public domain (CC0-1.0). Refresh
 it with `cargo run -p geo-table -- --countries <path-or-url>` (the pinned source is in
 `src/geo/data/COUNTRIES`) and check it with the same command plus `--check`.
+
+**Name-search sources.** `[geo] search` (`CIRROCAST_GEO_SEARCH`) picks what a plain name asks:
+`auto` — the default — queries Open-Meteo, then GeoNames when an account name is configured
+(`CIRROCAST_GEONAMES_USER` or `key set geonames`), then Nominatim as the last resort. The hits are
+merged and de-duplicated (same folded name, same country code, within 5 km of each other) before the
+shared ranking picks a winner, so one place is never offered three times; `-v` says which source
+answered with how many candidates. An explicit `open-meteo`/`geonames`/`nominatim` pins one source,
+and `--offline`/`--offline=geo` stops the chain at the bundled table.
+
+**Naming a coordinate.** `@39.9042,116.4074` is a request key, not a name, so the point is named for
+display: the bundled city index is scanned for places within 25 km (nearest first) and the country
+layer supplies the country name; when nothing is that close and the run may open a socket, Nominatim
+`/reverse` names it. The name never changes what is fetched — the coordinates stay the key — and
+`[geo] reverse` (`CIRROCAST_GEO_REVERSE`) picks `auto` (the default), `offline` (the bundled tables
+only, never a socket; what `--offline` and `--offline=geo` force) or `off`. `-v` says which source
+named the point and how far away it is, `--all` lists the nearby candidates, `--pick` asks which one
+to use, and a named coordinate carries the credit the naming data's licence asks for (a bare one
+carries none).
 
 ### Updating the city data
 
@@ -624,7 +645,8 @@ cirrocast location search :Beijing         # same line, no ambiguity note
 cirrocast location search --all Beijing    # the ranked candidates, numbered, with populations
 cirrocast location search --offline sao paulo   # bundled table only, no socket
 cirrocast location search '~Tsinghua University' --limit 5
-cirrocast location search @39.9042,116.4074
+cirrocast location search @39.9042,116.4074     # Beijing, China (39.90, 116.41) <timezone resolved at fetch time>
+cirrocast location search --ip --all            # the IP answer's nearby names, nearest first
 ```
 
 **Privacy:** the public-IP lookup is the only request that reveals anything about *you* rather than
@@ -655,7 +677,9 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [Pirate Weather](https://pirateweather.net/) | `-p pirateweather` | free tier: 10 000 calls/month, 1–4 requests/second; `extend=hourly` is sent for the 7-day horizon | data proprietary; no attribution is mandated — the rendered report ends with `Data: Pirate Weather — https://pirateweather.net/` |
 | [QWeather](https://www.qweather.com/) | `-p qweather` | free allowance: first 50 000 requests/month at ¥0, QPM 3 000; needs the account API host in `[providers.qweather].host` | data proprietary; the rendered report ends with `Data: QWeather — https://www.qweather.com/` |
 | [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding, and the city tables: the bundled one (`src/geo/data`, snapshot `cities15000`, dump date in `SNAPSHOT`) and any the user installs with `location update-data` under `$XDG_DATA_HOME/cirrocast/geo/` | — | CC-BY-4.0; both paths print `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` |
-| [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua` | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
+| [GeoNames](https://www.geonames.org/) `searchJSON` | `[geo] search` with a GeoNames account (`CIRROCAST_GEONAMES_USER` or `key set geonames`) | free registration, no card; per-account daily credit quota (the `demo` account allows 20 000/day) | CC-BY-4.0; the same credit line as above; without an account the source is skipped under `auto` and an explicit `geonames` selection exits 6 |
+| [Natural Earth](https://www.naturalearthdata.com/) 1:50m admin-0 | bundled country layer (`src/geo/data/countries.bin.gz`): which country a coordinate is in, offline | — (public domain, no service) | no credit required; refreshed with `cargo run -p geo-table -- --countries <path-or-url>` |
+| [Nominatim](https://nominatim.openstreetmap.org/) / OpenStreetMap | `~Tsinghua`, and `/reverse` when `[geo] reverse = "auto"` cannot name a coordinate from the bundled tables | ≤ 1 request/second, an identifying `User-Agent`, results must be cached, no autocomplete and no bulk geocoding | data ODbL; `Location data © OpenStreetMap contributors (ODbL)` is printed; the service is switchable through `network.nominatim_url` without a code change, which the policy requires |
 | [api.weather.gov](https://api.weather.gov/) (NOAA/NWS) | alerts for the US and territories | a descriptive `User-Agent` (sent); public-domain data | no credit mandated; the source is named in the listing |
 | [MeteoAlarm](https://api.meteoalarm.org/) | alerts for EUMETNET members | a bearer token (`CIRROCAST_METEOALARM_KEY`) that the portal issues to members and re-distributors; the source is optional | cached warnings are for the local user only, not for redistribution |
 | [WMO SWIC](https://severeweather.wmo.int/) | global alert aggregator | keyless; the WFS index and one CAP document per warning are cached | credit printed with the warnings: `Warnings by the WMO Severe Weather Information Centre (severeweather.wmo.int), © the issuing agencies` |
@@ -840,6 +864,11 @@ for v1).
 The MeteoAlarm alert token is the one credential outside the provider key store: it is read from
 `CIRROCAST_METEOALARM_KEY` only (the service is not a weather provider, so `key set` does not know
 it), and `[alerts] sources`/`--alerts-from` decide whether that source is used at all.
+
+The GeoNames geocoder's **account name** is a *named credential* — a service account rather than a
+provider key — and takes the same two tiers: `CIRROCAST_GEONAMES_USER`, else a `[keys] geonames`
+entry. `key set geonames` writes it (stdin only, as above), `key list` shows it masked and
+`key rm geonames` removes it, so the entry never has to be hand-edited.
 
 ```bash
 printf %s "$CIRROCAST_OPENWEATHERMAP_KEY" | cirrocast key set openweathermap
