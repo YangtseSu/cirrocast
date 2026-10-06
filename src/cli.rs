@@ -195,8 +195,8 @@ pub struct QueryArgs {
     pub provider: Option<String>,
 
     /// Output format: a built-in name (`art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts`,
-    /// `aqi`, `moon`), a one-line preset (`default`, `short`, `minimal`, `full`, `uv`, `sun`) or a
-    /// `[templates]` key.
+    /// `aqi`, `moon`, `normals`), a one-line preset (`default`, `short`, `minimal`, `full`, `uv`,
+    /// `sun`) or a `[templates]` key.
     #[arg(short = 'f', long, value_name = "NAME", env = "CIRROCAST_FORMAT")]
     pub format: Option<String>,
 

@@ -50,6 +50,7 @@ pub const FORMATS: &[&str] = &[
     "alerts",
     "aqi",
     "moon",
+    "normals",
 ];
 
 /// Values accepted by `defaults.units`.
@@ -1486,7 +1487,7 @@ schema_version = 2
 
 [defaults]
 provider = "open-meteo"  # id, comma separated chain, or "auto" (the keyless chain)
-format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon,
+format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon | normals,
                          # or a one-line preset: full | minimal | short | default | uv | sun,
                          # or a [templates] key
 units = "metric"         # metric | us | uk
@@ -2516,8 +2517,8 @@ mod tests {
                 "defaults.format",
                 |config| config.defaults.format = "yaml".to_owned(),
                 "defaults.format: `yaml` is not a format (art-table, one-line, plain, json, dumb, \
-                 alerts, aqi, moon), a template preset (default, short, minimal, full, uv, sun) or \
-                 a `[templates]` key",
+                 alerts, aqi, moon, normals), a template preset (default, short, minimal, full, \
+                 uv, sun) or a `[templates]` key",
             ),
             (
                 "defaults.units",

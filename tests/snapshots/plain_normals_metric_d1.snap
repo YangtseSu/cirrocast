@@ -1,0 +1,13 @@
+---
+source: tests/render_snapshots.rs
+expression: "render(plain(\"beijing-normals.json\", UnitSystem::Metric, 80))"
+---
+location: Beijing, Beijing, China (39.90, 116.41) Asia/Shanghai
+updated: 2026-09-30T12:15:00+08:00
+current: Mainly clear 22°C (feels 22°C) wind 10km/h NNE humidity 52% precip 0.0mm pressure 1015hPa visibility 14km
+day 2026-09-30: Morning Clear sky 17°C 0.0mm (10%) wind 7.0km/h E | Noon Mainly clear 23°C 0.0mm (5%) wind 12km/h SE | Evening Partly cloudy 19°C 0.0mm (10%) wind 9.0km/h S | Night Overcast 14°C 0.0mm (5%) wind 6.0km/h SSW
+climate_normals: 1991–2020 · BEIJING, CH (CHM00054511) 12 km · high 26.4°C (-2.4°C) · low 16.1°C (-2.1°C) · precip 48.9 mm/mo (-100%) · 22 years
+Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)
+Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/
+Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/
+attribution: open-meteo https://api.open-meteo.com/v1/forecast

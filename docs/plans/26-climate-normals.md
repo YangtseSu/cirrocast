@@ -62,11 +62,13 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
 - ⬜ `src/cli.rs`: `--normals` (fetch and render; implies the extra two requests) and
   `[defaults] normals = false` so a script that never asked pays nothing; `--format normals` prints
   the block alone (mirroring `--format aqi`), and `--normals` composes with every other format.
-- ⬜ Renderers: `art_table` appends the comparison line to its footer (high/low against the daily
-  `temp_max_c`/`temp_min_c`, precipitation against the requested days' total, deltas signed and
-  coloured with the existing temperature ramp; `color = never` keeps the ± signs); `plain` prints a
-  `Normals: 1991–2020 · Beijing (54511) 12 km · high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · precip
-  178 mm (−12%) · 30 years` line; `json` carries the typed object; `one_line` gets no token (the
+- ✅ Renderers (`src/render/normals.rs`): `art_table` appends the comparison line to its footer
+  (`high`/`low` of the first reported day against the normal's means, the precipitation of the
+  reported span against the normal's share of the same number of days, deltas signed — the sign is
+  text — and the temperature deltas coloured with the existing ramp); `plain` prints a
+  `climate_normals  1991–2020 · BEIJING, CH (CHM00054511) 12 km · high 26.4°C (-2.4°C) · low
+  16.1°C (-2.1°C) · precip 48.9 mm/mo (-100%) · 22 years` record with the credit after it; `json`
+  carries the typed object; `one_line` gets no token (the
   wttr.in token table stays untouched). Every number goes through the single conversion point, so
   `--units us` shows °F/inches.
 - ⬜ Credit: the footer line includes `Climate normals computed from NOAA NCEI Global Summary of the
@@ -186,3 +188,22 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   `--normals --offline` a note and exit 0 rather than a failure; the pure helpers (bbox corner
   order, the completeness rule, the `YYYY-MM` parse, the tolerant value decode) carry unit tests in
   the module, because the fixture-driven suite is deliverable 7.
+- 2026-10-06 — deliverable 5 closed. `src/render/normals.rs` carries the three surfaces — the
+  `art-table` line, the `plain` record and the standalone `--format normals` view — with the labels
+  and the credit as Fluent keys in both catalogs. The plan's Touches list did not name `locales/`,
+  but every other panel's chrome is a catalog string and a key missing from a catalog fails the i18n
+  completeness test, so a literal would have been the odd one out; the plan's example strings also
+  show `°C` with a space, while the crate's single spelling is `26.4°C`, which is what the line
+  uses. Decisions the plan left open, recorded in the module docs: the comparison uses `days[0]`'s
+  high and low, and the precipitation comparison covers the whole reported span against the
+  normal's share of the same number of days (a *monthly* total against three forecast days would
+  read as a permanent drought); the monthly figure is labelled `mm/mo` (`in/mo` under `--units us`)
+  so it cannot be read as a daily one; the station reads exactly as the search response spells it
+  (`BEIJING, CH (CHM00054511) 12 km`) because shortening it would invent a name; the `plain` record
+  key is `climate_normals` and the standalone view without a reading prints
+  `climate normals unavailable`. Two conversion-point helpers landed with it — `format_temp_prec`
+  (a normal is worth a decimal, `format_temp` is not) and `format_temp_delta` (a *difference* must
+  not take Fahrenheit's `+32`) — and `fold_ascii` gained the en-dash arm so the period stays 7-bit
+  under `dumb`. Five render snapshots cover metric/us/dumb table lines, the standalone view and the
+  plain record, plus the `json_beijing_normals` document; the `Format` enum, `config::FORMATS`, the
+  shipped document's format comment and the `docs/formats.md` table moved with them.

@@ -135,6 +135,10 @@ fn arguments() -> Vec<(&'static str, fluent_bundle::FluentValue<'static>)> {
         ("lon", "10.208"),
         ("distance", "1.7"),
         ("date", "2026-10-06"),
+        // The normals block's arguments (step 26).
+        ("period", "1991-2020"),
+        ("name", "BEIJING, CH"),
+        ("id", "CHM00054511"),
     ]
     .into_iter()
     .map(|(name, value)| (name, fluent_bundle::FluentValue::from(value)))

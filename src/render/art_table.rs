@@ -274,6 +274,16 @@ impl Renderer for ArtTable {
                 table.flush();
             }
         }
+        // The normals line is not a reading: it measures the forecast against the climate, so it
+        // closes the block after the readings and before the credits.
+        let normals = super::normals::panel(report, &panels);
+        if !normals.is_empty() {
+            table.blank();
+            for line in normals {
+                table.line.push_str(&line);
+                table.flush();
+            }
+        }
         write_credits(&mut table, report, ctx);
 
         Ok(table.out)
@@ -1134,8 +1144,8 @@ fn write_folded(out: &mut String, text: &str, charset: Charset) {
 }
 
 /// The 7-bit spelling of the few glyphs the table composes itself and that have no ASCII form:
-/// the degree sign of a temperature, the em dash of a credit line, the middle dot of a moonlit
-/// block and the micro/superscript of the air panel's units.
+/// the degree sign of a temperature, the em dash of a credit line, the en dash of a period, the
+/// middle dot of a moonlit block and the micro/superscript of the air panel's units.
 ///
 /// Only the renderer's own chrome is folded. A place name is the user's data: replacing a city
 /// with question marks would be worse than the byte a dumb terminal cannot draw.
@@ -1154,6 +1164,7 @@ pub(crate) fn write_fold_ascii(out: &mut String, text: &str) {
         match character {
             '\u{b0}' => {}
             '\u{2014}' => out.push_str("--"),
+            '\u{2013}' => out.push('-'),
             '\u{b7}' => out.push('.'),
             // `μ` (micro sign) and `μ` (Greek mu) are both in use for μg/m³, and `³` has no ASCII
             // form either; the unit reads `ug/m3` on a dumb terminal.

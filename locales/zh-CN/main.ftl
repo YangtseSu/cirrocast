@@ -329,6 +329,20 @@ marine-daily-max = 当日最大 { $date } { $height } 米 { $degrees }°
 marine-sampled = 采样于 { $lat }, { $lon }（距该地点 { $distance } 公里）
 marine-credit-open-meteo = 海洋数据：Open-Meteo.com（CC BY 4.0）— https://open-meteo.com/（Copernicus Marine Service、DWD ICON Wave）
 
+# --- 气候平均值（步骤 26）--------------------------------------------------------------------------
+# `--normals` 绘制的对比：常年值所用的站点与基准期、预报的最高/最低气温与之的差值、该月降水量合计、
+# 参与平均的年数，以及数据来源。数值已经换算并格式化，消息只负责摆放；正负号是文本，无色终端也能读出。
+
+normals-panel-title = 气候平均值
+normals-unavailable = 气候平均值不可用
+normals-vs = 对比常年值 { $period }
+normals-high = 最高 { $value }
+normals-low = 最低 { $value }
+normals-precip = 降水 { $value }/月
+normals-years = { $count } 年
+normals-station = { $name }（{ $id }）{ $distance }
+normals-credit-ncei = 气候平均值根据 NOAA NCEI 全球月度摘要（Global Summary of the Month）计算（公有领域）
+
 # `archive` 标记历史数据（`--date`、`--history`），与所覆盖的日期一同显示。
 mode-archive = 历史
 

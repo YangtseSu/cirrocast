@@ -626,6 +626,59 @@ pub fn format_temp_signed_prec(celsius: f32, unit: TempUnit, decimals: usize) ->
     )
 }
 
+/// Formats a temperature with `decimals` decimal places and no sign, e.g. `23.5°C`, `74.2°F`.
+///
+/// [`format_temp`] rounds to whole degrees, which is right for a forecast reading and wrong for a
+/// climate normal: the averaged mean is worth one decimal, and printing it as an integer would
+/// hide the precision the normal actually has.
+///
+/// ```
+/// # use cirrocast::model::units::{TempUnit, format_temp_prec};
+/// assert_eq!(format_temp_prec(23.45, TempUnit::Celsius, 1), "23.5°C");
+/// assert_eq!(format_temp_prec(23.45, TempUnit::Fahrenheit, 1), "74.2°F");
+/// assert_eq!(format_temp_prec(-0.04, TempUnit::Celsius, 1), "0.0°C");
+/// ```
+#[must_use]
+pub fn format_temp_prec(celsius: f32, unit: TempUnit, decimals: usize) -> String {
+    let value = match unit {
+        TempUnit::Celsius => celsius,
+        TempUnit::Fahrenheit => c_to_f(celsius),
+    };
+    format!("{}{}", fmt_decimals(value, decimals), unit.symbol())
+}
+
+/// Formats a temperature *difference* with an explicit sign and `decimals` decimals, e.g. `+1.4°C`,
+/// `-0.6°F`.
+///
+/// A difference is not a temperature: converting one must **not** apply Fahrenheit's `+32` offset,
+/// so this is deliberately not [`format_temp_signed_prec`] (which would turn a −2 K anomaly into
+/// `+28.4°F`). The sign is decided after rounding, so a zero difference prints `+0.0`.
+///
+/// ```
+/// # use cirrocast::model::units::{TempUnit, format_temp_delta};
+/// assert_eq!(format_temp_delta(1.44, TempUnit::Celsius, 1), "+1.4°C");
+/// assert_eq!(format_temp_delta(-0.6, TempUnit::Celsius, 1), "-0.6°C");
+/// assert_eq!(format_temp_delta(-2.0, TempUnit::Fahrenheit, 1), "-3.6°F");
+/// assert_eq!(format_temp_delta(0.0, TempUnit::Celsius, 1), "+0.0°C");
+/// ```
+#[must_use]
+pub fn format_temp_delta(delta_c: f32, unit: TempUnit, decimals: usize) -> String {
+    let value = match unit {
+        TempUnit::Celsius => delta_c,
+        TempUnit::Fahrenheit => delta_c * 9.0 / 5.0,
+    };
+    let sign = if normalise_zero(round_half_away_from_zero(value)) < 0.0 {
+        "-"
+    } else {
+        "+"
+    };
+    format!(
+        "{sign}{}{}",
+        fmt_decimals(value.abs(), decimals),
+        unit.symbol()
+    )
+}
+
 /// Formats a wind speed, e.g. `12 km/h`, `8.3 km/h`, `5.8 mph`.
 ///
 /// The one-decimal form is used below 10 in the target unit (after rounding), so a light breeze

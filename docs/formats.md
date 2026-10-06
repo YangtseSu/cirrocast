@@ -20,6 +20,7 @@ environment: width, colour and charset are resolved once by the CLI and travel i
 | `alerts` | the full severe-weather warning listing, strongest first | ignores `--width` |
 | `aqi` | the standalone air-quality panel (implies `--aqi`) | wraps to `--width` |
 | `moon` | the standalone moon/sun view | wraps to `--width` |
+| `normals` | the month's climate normal against the forecast (`--normals` implies the fetch) | wraps to `--width` |
 
 `--format` also accepts the other one-line preset names (`default`, `short`, `uv`, `sun`) and any
 key of the `[templates]` table; those render as `one-line` with that template. The resolution order

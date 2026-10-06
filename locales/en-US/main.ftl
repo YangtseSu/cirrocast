@@ -343,6 +343,22 @@ marine-daily-max = daily max { $date } { $height } m { $degrees }°
 marine-sampled = sampled at { $lat }, { $lon } ({ $distance } km from the location)
 marine-credit-open-meteo = Marine data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/ (Copernicus Marine Service, DWD ICON Wave)
 
+# --- Climate normals (step 26) ------------------------------------------------------------------
+# The comparison `--normals` draws: the station and period the normal was computed for, the
+# forecast's high and low against it, the month's precipitation total, the contributing years and
+# the credit. Values arrive already converted and formatted; a message only places them, and every
+# sign is text, so a colourless terminal keeps it.
+
+normals-panel-title = Climate normals
+normals-unavailable = climate normals unavailable
+normals-vs = vs normal { $period }
+normals-high = high { $value }
+normals-low = low { $value }
+normals-precip = precip { $value }/mo
+normals-years = { $count } years
+normals-station = { $name } ({ $id }) { $distance }
+normals-credit-ncei = Climate normals computed from NOAA NCEI Global Summary of the Month (public domain)
+
 # `archive` marks a historical answer (`--date`, `--history`), beside the date it covers.
 mode-archive = archive
 

@@ -582,13 +582,13 @@ struct NormalsJson<'a> {
     /// The calendar month, `1`–`12`.
     month: u8,
     /// Mean of the month's mean daily temperatures, °C.
-    temp_mean_c: f64,
+    temp_mean_c: f32,
     /// Mean of the month's mean daily maxima, °C.
-    temp_max_c: f64,
+    temp_max_c: f32,
     /// Mean of the month's mean daily minima, °C.
-    temp_min_c: f64,
+    temp_min_c: f32,
     /// Mean of the month's precipitation totals, mm.
-    precip_mm: f64,
+    precip_mm: f32,
     /// Number of contributing years; the fetcher refuses fewer than 20.
     years: u16,
 }
@@ -602,10 +602,10 @@ impl<'a> NormalsJson<'a> {
             distance_km: normalise_zero_f64(normals.distance_km),
             period: &normals.period,
             month: normals.month,
-            temp_mean_c: normalise_zero_f64(f64::from(normals.temp_mean_c)),
-            temp_max_c: normalise_zero_f64(f64::from(normals.temp_max_c)),
-            temp_min_c: normalise_zero_f64(f64::from(normals.temp_min_c)),
-            precip_mm: normalise_zero_f64(f64::from(normals.precip_mm)),
+            temp_mean_c: normalise_zero(normals.temp_mean_c),
+            temp_max_c: normalise_zero(normals.temp_max_c),
+            temp_min_c: normalise_zero(normals.temp_min_c),
+            precip_mm: normalise_zero(normals.precip_mm),
             years: normals.years,
         }
     }

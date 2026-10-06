@@ -383,6 +383,27 @@ pub mod keys {
     /// The credit line Open-Meteo's terms require beside its marine data.
     pub const MARINE_CREDIT_OPEN_METEO: MessageKey = MessageKey::new("marine-credit-open-meteo");
 
+    // --- Climate normals (step 26) -----------------------------------------------------------
+
+    /// The normals block's own label (`Climate normals`), also the `plain` record key.
+    pub const NORMALS_PANEL_TITLE: MessageKey = MessageKey::new("normals-panel-title");
+    /// `climate normals unavailable`: the standalone view without a reading.
+    pub const NORMALS_UNAVAILABLE: MessageKey = MessageKey::new("normals-unavailable");
+    /// `vs normal { $period }`, the comparison line's heading.
+    pub const NORMALS_VS: MessageKey = MessageKey::new("normals-vs");
+    /// `high { $value }`, the forecast high against the normal's mean high.
+    pub const NORMALS_HIGH: MessageKey = MessageKey::new("normals-high");
+    /// `low { $value }`, the forecast low against the normal's mean low.
+    pub const NORMALS_LOW: MessageKey = MessageKey::new("normals-low");
+    /// `precip { $value }/mo`: the month's normal precipitation total.
+    pub const NORMALS_PRECIP: MessageKey = MessageKey::new("normals-precip");
+    /// `{ $count } years`: the years of the period that contributed.
+    pub const NORMALS_YEARS: MessageKey = MessageKey::new("normals-years");
+    /// `{ $name } ({ $id }) { $distance }`: the station the normal was computed from.
+    pub const NORMALS_STATION: MessageKey = MessageKey::new("normals-station");
+    /// The credit line the computed-from-NCEI disclosure requires.
+    pub const NORMALS_CREDIT_NCEI: MessageKey = MessageKey::new("normals-credit-ncei");
+
     // --- Archive labelling (step 23) ---------------------------------------------------------
 
     /// The word that marks a historical answer (`archive`), beside the date it covers.
@@ -529,6 +550,15 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::MARINE_DAILY_MAX,
     keys::MARINE_SAMPLED,
     keys::MARINE_CREDIT_OPEN_METEO,
+    keys::NORMALS_PANEL_TITLE,
+    keys::NORMALS_UNAVAILABLE,
+    keys::NORMALS_VS,
+    keys::NORMALS_HIGH,
+    keys::NORMALS_LOW,
+    keys::NORMALS_PRECIP,
+    keys::NORMALS_YEARS,
+    keys::NORMALS_STATION,
+    keys::NORMALS_CREDIT_NCEI,
     keys::MODE_ARCHIVE,
     keys::LABEL_MOON,
     keys::LABEL_SUN,

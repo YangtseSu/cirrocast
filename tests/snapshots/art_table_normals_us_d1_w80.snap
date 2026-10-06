@@ -1,0 +1,40 @@
+---
+source: tests/render_snapshots.rs
+expression: "render(case(\"beijing-normals.json\", UnitSystem::Us, 80))"
+---
+Weather report: Beijing, Beijing, China (39.90, 116.41)
+
+   \│/  Mainly clear
+  ─(●)─ +71°F (+72°F)
+   /│\  ↗ 6.2mph NNE
+   ▁▁▁  52% 29.97inHg 8.7mi 0.00in
+
+┌───────────────────────┐
+│ Today, Sep 30         │
+├───────────────────────┤
+│    \│/  Morning       │
+│   ─(●)─ +63°F (+61°F) │
+│    /│\  → 4.3mph E    │
+│         0.00in 10%    │
+├───────────────────────┤
+│    \│/  Noon          │
+│   ─(●)─ +73°F (+74°F) │
+│    /│\  ↘ 7.5mph SE   │
+│    ▁▁▁  0.00in 5%     │
+├───────────────────────┤
+│    \│/  Evening       │
+│  ╭───╮  +66°F (+65°F) │
+│ (     ) ↓ 5.6mph S    │
+│  ╰───╯  0.00in 10%    │
+├───────────────────────┤
+│  ╭───╮  Night         │
+│ ╭╯   ╰╮ +57°F (+55°F) │
+│ (     ) ↙ 3.7mph SSW  │
+│ ╰─────╯ 0.00in 5%     │
+└───────────────────────┘
+
+vs normal 1991–2020: high 79.4°F (-4.2°F) · low 60.9°F (-3.7°F) · precip 1.92
+in/mo (-100%)
+
+Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo…
+Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/

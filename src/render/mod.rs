@@ -32,6 +32,7 @@ pub mod color;
 pub mod json;
 pub mod marine;
 pub mod moon;
+pub mod normals;
 pub mod one_line;
 pub mod plain;
 
@@ -517,11 +518,13 @@ pub enum Format {
     Aqi,
     /// The standalone moon/sun view.
     Moon,
+    /// The standalone climate-normals view.
+    Normals,
 }
 
 impl Format {
     /// Every format, in `--help` and documentation order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::ArtTable,
         Self::OneLine,
         Self::Plain,
@@ -530,6 +533,7 @@ impl Format {
         Self::Alerts,
         Self::Aqi,
         Self::Moon,
+        Self::Normals,
     ];
 
     /// The format's command line spelling.
@@ -544,6 +548,7 @@ impl Format {
             Self::Alerts => "alerts",
             Self::Aqi => "aqi",
             Self::Moon => "moon",
+            Self::Normals => "normals",
         }
     }
 
@@ -647,6 +652,7 @@ pub fn renderer_for(
         Format::Alerts => Ok(Box::new(alerts::Alerts)),
         Format::Aqi => Ok(Box::new(air::Air)),
         Format::Moon => Ok(Box::new(moon::MoonView)),
+        Format::Normals => Ok(Box::new(normals::NormalsView)),
         Format::OneLine => Ok(Box::new(one_line::OneLine::new(
             crate::template::resolve_template(template, &std::collections::BTreeMap::new())?,
         ))),

@@ -431,7 +431,7 @@ schema_version = 2
 
 [defaults]
 provider = "open-meteo"  # id, comma separated chain, or "auto" (the keyless chain)
-format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon,
+format = "art-table"     # art-table | one-line | plain | json | dumb | alerts | aqi | moon | normals,
                          # or a one-line preset: full | minimal | short | default | uv | sun,
                          # or a [templates] key
 units = "metric"         # metric | us | uk

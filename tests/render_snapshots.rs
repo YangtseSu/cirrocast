@@ -232,6 +232,36 @@ fn the_moon_block_renders_under_the_table_in_both_charsets() {
 }
 
 #[test]
+fn the_normals_block_renders_under_the_table_in_both_units() {
+    snapshot!(
+        "art_table_normals_metric_d1_w80",
+        case("beijing-normals.json", UnitSystem::Metric, 80)
+    );
+    snapshot!(
+        "art_table_normals_us_d1_w80",
+        case("beijing-normals.json", UnitSystem::Us, 80)
+    );
+    snapshot!(
+        "art_table_normals_dumb_d1_w80",
+        Case {
+            format: Format::Dumb,
+            ..case("beijing-normals.json", UnitSystem::Metric, 80)
+        }
+    );
+    snapshot!(
+        "normals_view_metric_d1_w80",
+        Case {
+            format: Format::Normals,
+            ..case("beijing-normals.json", UnitSystem::Metric, 80)
+        }
+    );
+    snapshot!(
+        "plain_normals_metric_d1",
+        plain("beijing-normals.json", UnitSystem::Metric, 80)
+    );
+}
+
+#[test]
 fn the_dumb_format_is_ascii_without_colour() {
     snapshot!(
         "art_table_dumb_d3_w80",

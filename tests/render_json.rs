@@ -226,6 +226,14 @@ fn a_document_with_an_astro_block_is_exactly_this() {
 }
 
 #[test]
+fn a_document_with_a_normals_block_is_exactly_this() {
+    let report = common::fixture_report("beijing-normals.json");
+    insta::with_settings!({ prepend_module_to_snapshot => false }, {
+        insta::assert_snapshot!("json_beijing_normals", render(&report, UnitSystem::Metric));
+    });
+}
+
+#[test]
 fn the_schema_version_leads_the_document_and_is_the_documented_one() {
     let text = render(&report(), UnitSystem::Metric);
     assert_eq!(SCHEMA_VERSION, 2);
