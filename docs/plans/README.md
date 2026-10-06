@@ -91,7 +91,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 24 | F | [keyless-national-providers](24-keyless-national-providers.md) | ✅ done | 06, 10, 23 |
 | 25 | F | [location-sources-2](25-location-sources-2.md) | ✅ done | 04, 05, 18, 20 |
 | 26 | F | [climate-normals](26-climate-normals.md) | ✅ done | 03, 06, 08 |
-| 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ⬜ not-started | 02, 10, 15 |
+| 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ✅ done | 02, 10, 15 |
 | 28 | G | [docs-and-guides](28-docs-and-guides.md) | ⬜ not-started | 14, 19, and the surface of 18–27 |
 | B01 | Backlog | [wttr-compat-service](B01-wttr-compat-service.md) | ⏸ backlog | 08, 10, 14, 19 |
 | B02 | Backlog | [packaging-matrix](B02-packaging-matrix.md) | ⏸ backlog | 13, 21, 22 |
@@ -558,7 +558,8 @@ cirrocast [OPTIONS] [LOCATION]...
   -h, --help    -V, --version
 
 cirrocast config   <path|init|show|get|set|edit|validate>
-cirrocast key      <set|rm|list>            # `key set qweather --jwt --key-file <PATH|->` (step 27)
+cirrocast key      <set|rm|list>            # `key set qweather --jwt --key-file <PATH|-> --credential-id <ID>
+                                            #   --developer-id <ID> --project-id <ID>` (step 27)
 cirrocast provider <list|info>
 cirrocast cache    <stat|clean>
 cirrocast status   [--format <TEMPLATE>|--template <TEMPLATE>] [--location <SPEC>] [--max-age <SECS>]

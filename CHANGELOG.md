@@ -27,6 +27,25 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Added
 
+* **QWeather JWT authentication (step 27).** The second authentication mode the vendor recommends is
+  now usable beside the API key. `cirrocast key set qweather --jwt --key-file <PATH|-> --credential-id
+  <ID> --developer-id <ID> --project-id <ID>` validates an Ed25519 (PKCS#8) PEM — read from a file or
+  stdin, never from argv — and stores it with its three non-secret identifiers in the same `0600`
+  `keys.toml`, under `[jwt.qweather]`; the `CIRROCAST_QWEATHER_JWT_{CREDENTIAL_ID,DEVELOPER_ID,PROJECT_ID,PRIVATE_KEY}`
+  quartet configures the same credential from the environment. Resolution is first-complete-set-wins
+  (quartet → `[jwt.qweather]` → `CIRROCAST_QWEATHER_KEY` → `[keys]`), and a **partial** JWT set is a
+  config error naming what is missing rather than a silent fall-back to the API key. Every weather
+  and alert request then carries `Authorization: Bearer <token>`, a 15-minute EdDSA token minted per
+  fetch (backdated 30 s for clock skew, inside the vendor's 24 h ceiling) and never persisted; the
+  token is registered as a request secret, so no `-v` line, error message or cache entry can contain
+  it, and two fetches of the same request share one cache key. `key list` prints
+  `qweather  jwt (kid …, iss …, sub …)` (plus `api key <masked>` when both are stored, never the
+  PEM), `key rm qweather` removes both forms, `provider info qweather` says
+  `auth: API key or JWT (Ed25519)`, and a 401 names both remedies — replace the credential, or
+  validate the token in the console's JWT Validation. `ring` and `base64` become direct
+  dependencies; both were already in the build (`rustls`, `ureq`), so no crate joins the graph. The
+  API host requirement is unchanged.
+
 * **Climate normals (step 26).** `--normals` compares the forecast with the climate: the month's
   normal (mean of the calendar month's mean daily temperature, mean high, mean low and monthly
   precipitation) is **computed here** from NOAA NCEI's Global Summary of the Month — the mean over

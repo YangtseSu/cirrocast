@@ -1013,9 +1013,35 @@ and `HourlyResponse` read:
   `daytime`/`nighttime` sub-blocks — is **not deserialised**, because its split does not map onto the
   four canonical parts and the daily extremes are derivable from the hourly series.
 
-**Auth.** `X-QW-Api-Key: <key>` header (the `key=` query form also works; never both). The API KEY
-*signature* flow is retired, and API-KEY volume will be limited from 2027 (the docs give both
-2027-01-01 and 2027-02-01).
+**Auth.** Two modes, both against the same per-account host:
+
+* **API KEY** — `X-QW-Api-Key: <key>` header (the `key=` query form also works; never both). The
+  API KEY *signature* flow is retired, and API-KEY volume will be limited from 2027 (the docs give
+  both 2027-01-01 and 2027-02-01).
+* **JWT** (the vendor's recommendation) — `Authorization: Bearer <token>`, an Ed25519 (EdDSA) token
+  minted in-process per fetch. The console steps: `openssl genpkey -algorithm ED25519 -out key.pem`,
+  upload the **public** half under *Console → Project → Add Credential → JSON Web Token*, and keep
+  the **credential id** the console issues plus the **developer id** (`iss`, ten characters starting
+  with `Q`) and the **project id** (`sub`). Header `{"alg":"EdDSA","kid":"<credential id>"}`, payload
+  `{"iss","sub","iat","exp"}`; `exp − iat` must not exceed 24 h (86 400 s) and `typ`, `aud` and `nbf`
+  are reserved and must not be sent. This client mints a **15-minute** token — backdated 30 s to
+  absorb clock skew — for every fetch and persists nothing; a long-running consumer therefore never
+  presents a token older than its own request. The private key stays in `keys.toml` (mode `0600`)
+  except inside the signer, and the minted token is registered as a request secret, so no `-v` line,
+  error message or cache envelope can carry it. `cirrocast key set qweather --jwt --key-file <PATH|->`
+  `--credential-id <ID> --developer-id <ID> --project-id <ID>` stores it (the PEM is validated
+  before anything is written, and read from a file or stdin, never from argv); the quartet
+  `CIRROCAST_QWEATHER_JWT_{CREDENTIAL_ID,DEVELOPER_ID,PROJECT_ID,PRIVATE_KEY}` configures the same
+  four items without touching the file.
+
+Resolution for `qweather`, first complete set wins: the environment quartet → the `[jwt.qweather]`
+table of `keys.toml` → `CIRROCAST_QWEATHER_KEY` → the `[keys] qweather` entry. A **partial** JWT set
+(some but not all of the quartet, or a table missing a field) is a configuration error (exit 4)
+naming the missing items — never a silent fall-back to the API key. `key list` shows the identifiers
+(`qweather  jwt (kid …, iss …, sub …)`) and the masked API key beside them when both are stored,
+never the PEM; `key rm qweather` removes both forms. The API host requirement is unchanged: it is
+part of the authentication, and a JWT-configured run without `[providers.qweather].host` fails the
+same way an API-key one does.
 
 **Limits.** Pay-as-you-go with the **first 50 000 requests/month at ¥0** (no "Standard" free plan);
 QPM 3 000 for pay-as-you-go, 50 000+ for Premium. Non-2xx responses are not billed, but sustained
@@ -1052,13 +1078,24 @@ rather than a silent conversion; the day extremes come from the samples. Finding
 
 Credit line: `QWeather — https://www.qweather.com/`. A missing host with a key present is
 `Error::Config` (exit 4) with `set providers.qweather.host (see
-https://console.qweather.com/setting, or cirrocast provider info qweather)`; with no key either, the
-chain reports the missing key first (exit 6).
+https://console.qweather.com/setting, or cirrocast provider info qweather)`; with no credential
+either, the chain reports the missing credential first (exit 6), naming both `key set` forms.
+
+**JWT mode implemented 2026-10-06** (step 27). The token shape, the claim set, the 24 h ceiling and
+the console flow come from the vendor documentation (read 2026-10-03) and are pinned by a byte-exact
+test vector computed independently of this implementation; the request path is exercised through
+`StubTransport` in both modes, and the cache-key invariance, the redaction and the exit codes have
+their own tests. **Not verified against the live service in this repository**: no credential was
+used, so the first live call is the opt-in smoke in `tests/live.rs` (`live_qweather_jwt`, enabled
+with `CIRROCAST_LIVE_TESTS=1` plus the quartet and `CIRROCAST_QWEATHER_HOST`). The vendor's token
+validator (Console → JWT Validation) is the tool to reach for if a live token is refused.
 
 **Unverified.** The Developers License text (403) and every rendered `dev.qweather.com` page (403 —
 the v1 facts above come from live responses and the public docs repository); the exact QPM scope
 (per project vs per account); whether `days[]`'s `daytime`/`nighttime` windows are fixed local
-windows (observed 07:00–19:00 local, which is not the solar day).
+windows (observed 07:00–19:00 local, which is not the solar day); whether the live JWT endpoint
+accepts the 15-minute lifetime and the 30 s backdating as documented (the vector is only as good as
+the documentation).
 
 ## Climate normals (NOAA NCEI)
 

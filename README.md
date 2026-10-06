@@ -710,7 +710,7 @@ response fields consumed, quotas with their exact wording, caching ceilings and 
 | [WeatherAPI.com](https://www.weatherapi.com/) | `-p weatherapi` | free tier: 100 000 calls/month, 3-day forecast; `lang=en` is pinned and translation is ours | data proprietary; free keys must credit WeatherAPI.com — the rendered report ends with `Data: WeatherAPI.com (free-tier attribution) — https://www.weatherapi.com/`; caching ceilings 60 min (current) / 24 h (forecast) |
 | [World Weather Online](https://www.worldweatheronline.com/) | `-p worldweatheronline` | free tier: 100 requests/day, up to 5 forecast days per its FAQ; `format=json` is sent explicitly | data proprietary; free keys must credit WorldWeatherOnline.com — the rendered report ends with `Data: WorldWeatherOnline.com (free-tier attribution) — https://www.worldweatheronline.com/` |
 | [Pirate Weather](https://pirateweather.net/) | `-p pirateweather` | free tier: 10 000 calls/month, 1–4 requests/second; `extend=hourly` is sent for the 7-day horizon | data proprietary; no attribution is mandated — the rendered report ends with `Data: Pirate Weather — https://pirateweather.net/` |
-| [QWeather](https://www.qweather.com/) | `-p qweather` | free allowance: first 50 000 requests/month at ¥0, QPM 3 000; needs the account API host in `[providers.qweather].host` | data proprietary; the rendered report ends with `Data: QWeather — https://www.qweather.com/` |
+| [QWeather](https://www.qweather.com/) | `-p qweather` | free allowance: first 50 000 requests/month at ¥0, QPM 3 000; needs the account API host in `[providers.qweather].host`; API key or Ed25519 JWT (`key set qweather --jwt`) | data proprietary; the rendered report ends with `Data: QWeather — https://www.qweather.com/` |
 | [GeoNames](https://www.geonames.org/) | the data behind Open-Meteo's geocoding, and the city tables: the bundled one (`src/geo/data`, snapshot `cities15000`, dump date in `SNAPSHOT`) and any the user installs with `location update-data` under `$XDG_DATA_HOME/cirrocast/geo/` | — | CC-BY-4.0; both paths print `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` |
 | [GeoNames](https://www.geonames.org/) `searchJSON` | `[geo] search` with a GeoNames account (`CIRROCAST_GEONAMES_USER` or `key set geonames`) | free registration, no card; per-account daily credit quota (the `demo` account allows 20 000/day) | CC-BY-4.0; the same credit line as above; without an account the source is skipped under `auto` and an explicit `geonames` selection exits 6 |
 | [Natural Earth](https://www.naturalearthdata.com/) 1:50m admin-0 | bundled country layer (`src/geo/data/countries.bin.gz`): which country a coordinate is in, offline | — (public domain, no service) | no credit required; refreshed with `cargo run -p geo-table -- --countries <path-or-url>` |
@@ -908,6 +908,29 @@ The GeoNames geocoder's **account name** is a *named credential* — a service a
 provider key — and takes the same two tiers: `CIRROCAST_GEONAMES_USER`, else a `[keys] geonames`
 entry. `key set geonames` writes it (stdin only, as above), `key list` shows it masked and
 `key rm geonames` removes it, so the entry never has to be hand-edited.
+
+QWeather accepts a second authentication mode, an Ed25519 **JWT** (the vendor's recommendation).
+Generate a key, upload its public half in *Console → Project → Add Credential → JSON Web Token*, and
+store the private key plus the three identifiers the console shows:
+
+```bash
+openssl genpkey -algorithm ED25519 -out ed25519-private.pem
+cirrocast key set qweather --jwt --key-file ed25519-private.pem \
+    --credential-id ABCDE12345 --developer-id Q12345ABCD --project-id ABC2345DEF
+cirrocast key list   # qweather  jwt (kid ABCDE12345, iss Q12345ABCD, sub ABC2345DEF)  (file)
+```
+
+The PEM is read from a file or stdin (`--key-file -`), never from the command line; it is validated
+before anything is written and lives in the same `0600` `keys.toml`, under `[jwt.qweather]`. The
+four environment variables `CIRROCAST_QWEATHER_JWT_CREDENTIAL_ID`,
+`CIRROCAST_QWEATHER_JWT_DEVELOPER_ID`, `CIRROCAST_QWEATHER_JWT_PROJECT_ID` and
+`CIRROCAST_QWEATHER_JWT_PRIVATE_KEY` configure the same credential without touching the file, and
+win over it. Resolution for `qweather`, first complete set wins: that quartet → `[jwt.qweather]` →
+`CIRROCAST_QWEATHER_KEY` → `[keys] qweather`; a *partial* JWT set is a configuration error naming
+what is missing rather than a silent fall-back to the API key. A 15-minute token is minted for every
+fetch (backdated 30 s for clock skew, well inside the vendor's 24 h ceiling) and never written to
+disk, `key list` never prints the PEM, `key rm qweather` removes both forms, and the account host in
+`[providers.qweather].host` is required either way.
 
 ```bash
 printf %s "$CIRROCAST_OPENWEATHERMAP_KEY" | cirrocast key set openweathermap
