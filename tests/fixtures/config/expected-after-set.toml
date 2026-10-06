@@ -12,6 +12,7 @@ format = "art-table"
 units = "metric"
 days = 5
 language = "auto"
+normals = false
 
 [location]
 default = ""

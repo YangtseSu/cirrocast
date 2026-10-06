@@ -232,7 +232,14 @@ fn cached<T: DeserializeOwned>(
         Err(error)
             if env.cache.mode() == CacheMode::Offline && matches!(error, Error::Network(_)) =>
         {
-            note(env, &error.to_string());
+            // The cache's own error carries the same facts with an `Error` variant's prefix; the
+            // note says what happened and what to do about it, in the shape the other notes use.
+            note(
+                env,
+                &format!(
+                    "offline: no cached {PROVIDER} {what} for {place}; rerun without `--offline` to fetch it"
+                ),
+            );
             Ok(None)
         }
         Err(error) => Err(error),

@@ -148,6 +148,7 @@ cirrocast [OPTIONS] [LOCATION]...
       --aqi                     append the air-quality panel (US/European AQI, pollutants, pollen)
       --aqi-index <SCALE>       us | european: the AQI scale behind the panel colour and %q
       --moon                    append the locally computed moon/sun block (no request)
+      --normals                 compare with the month's climate normal (NOAA NCEI; two requests)
       --template <TEMPLATE>     one-line template or @PRESET
       --template-file <PATH>    read the template from a file; `-` reads standard input
       --no-cache | --refresh | --offline[=<weather|geo|all>]
@@ -217,6 +218,9 @@ tier it came from.
 | Colour | `--color` | — | `render.color` |
 | Width | `--width` | — | `render.width` |
 | AQI scale | `--aqi-index` | — | `air.index` |
+| Climate normals | `--normals` | — | `defaults.normals` |
+| Normal period | — | `CIRROCAST_NORMALS_PERIOD` | `normals.period` |
+| Normal station radius | — | `CIRROCAST_NORMALS_MAX_DISTANCE_KM` | `normals.max_distance_km` |
 | Offline policy | `--offline[=<weather\|geo\|all>]` | — | `network.offline` |
 | Candidate pick | `--pick` / `--yes` | `CIRROCAST_LOCATION_PICK` | `location.pick` |
 | Geo strategy | — | — | `geo.strategy` |
@@ -258,6 +262,7 @@ The reference for every format, the token contract and the multi-location output
 | `alerts` | the full severe-weather warning listing for the location, strongest first; `no active weather alerts` when there are none | ignores `--width` |
 | `aqi` | the standalone air-quality panel (implies `--aqi`); `air quality unavailable` when the reading could not be fetched | wraps to `--width` |
 | `moon` | the standalone moon/sun view: phase, illumination, age, moonrise/moonset, sunrise/sunset and the next four phase instants, all computed locally | wraps to `--width` |
+| `normals` | the standalone climate-normals view (`--normals` implies the fetch): the month's normal for the nearest station against today's forecast, with the station, its distance and the contributing years; `climate normals unavailable` when no normal could be computed | wraps to `--width` |
 
 `one-line` takes a template with `--template` (or `--template-file <PATH>`, `-` for stdin), either
 a literal string or a preset. `--format` accepts the preset names directly too, so
@@ -781,10 +786,11 @@ write and the first one read — and `config validate` reports the file that was
 | Key | Default | Values |
 |---|---|---|
 | `defaults.provider` | `open-meteo` | provider id, comma separated chain, or `auto` |
-| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts`, `aqi`, `moon`, a one-line preset (`full`, `minimal`, `short`, `default`, `uv`, `sun`) or a `[templates]` key |
+| `defaults.format` | `art-table` | `art-table`, `one-line`, `plain`, `json`, `dumb`, `alerts`, `aqi`, `moon`, `normals`, a one-line preset (`full`, `minimal`, `short`, `default`, `uv`, `sun`) or a `[templates]` key |
 | `defaults.units` | `metric` | `metric`, `us`, `uk` |
 | `defaults.days` | `3` | `0..=14`, clamped per provider |
 | `defaults.language` | `auto` | `auto` or a BCP-47 tag such as `zh-CN` |
+| `defaults.normals` | `false` | `true`, `false` — fetch the climate-normals comparison on every run (`--normals` forces it for one run) |
 | `location.default` | empty | `Beijing`, `:Beijing`, `@39.9,116.4`, `~Tsinghua`, `@home` (an alias) |
 | `location.pick` | `auto` | `auto` (ask on a terminal when a name has several candidates), `never` |
 | `locations.<NAME>` | none | any location argument; define `@NAME` (values may name other aliases) |

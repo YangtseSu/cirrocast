@@ -59,9 +59,10 @@ table (`vs normal 1991–2020: high 31.2 °C (+1.4) · low 24.0 °C (−0.6) · 
   `Report.normals: Option<Normals>` (additive in `json`, `schema_version` unchanged by the contract's
   additive rule); `Attribution` gains nothing — the credit is source-level and travels through the
   existing footer text.
-- ⬜ `src/cli.rs`: `--normals` (fetch and render; implies the extra two requests) and
+- ✅ `src/cli.rs`: `--normals` (fetch and render; implies the extra two requests) and
   `[defaults] normals = false` so a script that never asked pays nothing; `--format normals` prints
-  the block alone (mirroring `--format aqi`), and `--normals` composes with every other format.
+  the block alone (mirroring `--format aqi`), and `--normals` composes with every other format
+  (the format-driven fetch is `query.normals || defaults.normals || format == Format::Normals`).
 - ✅ Renderers (`src/render/normals.rs`): `art_table` appends the comparison line to its footer
   (`high`/`low` of the first reported day against the normal's means, the precipitation of the
   reported span against the normal's share of the same number of days, deltas signed — the sign is
@@ -207,3 +208,15 @@ cargo run -q -- --normals --units us Beijing -f plain | grep -o '°F'
   under `dumb`. Five render snapshots cover metric/us/dumb table lines, the standalone view and the
   plain record, plus the `json_beijing_normals` document; the `Format` enum, `config::FORMATS`, the
   shipped document's format comment and the `docs/formats.md` table moved with them.
+- 2026-10-06 — deliverable 4 closed. The fetch is asked for by three things — `--normals`,
+  `[defaults] normals`, or `--format normals` (whose renderer would otherwise always print
+  `unavailable`) — and the flag is refused nowhere: `one-line` and the listing formats simply do not
+  draw the block, exactly like `--marine`. The month is anchored on the report — the first day's own
+  month, so a `--history` run normalises the month it renders, and the run clock at the location for
+  an observation-only report — and the failure policy mirrors `attach_marine` (a warning, exit code
+  unchanged), while the decoder's own `Ok(None)` outcomes stay `-v` notes. `[defaults] normals`
+  deliberately has no environment tier: the plan asked for overrides on the `[normals]` table only.
+  The flag pushed `--help` past step 21's ceiling — 220 lines at `COLUMNS=100` against a budget of
+  215 — so the budget went 215 → 225 everywhere it is written down (`tests/cli.rs`,
+  `scripts/bench/compare.py`, `docs/performance.md` and step 21's own file, the last with a
+  progress-log entry, the same rationale as step 23's raise from 200).

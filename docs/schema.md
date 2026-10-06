@@ -437,6 +437,7 @@ format = "art-table"     # art-table | one-line | plain | json | dumb | alerts |
 units = "metric"         # metric | us | uk
 days = 3                 # 0..=14; each provider clamps to its own maximum
 language = "auto"        # "auto" or a BCP-47 tag such as "en-US", "zh-CN"
+normals = false          # fetch the climate-normals comparison on every run (--normals forces it)
 
 [location]
 default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", or "@home" for an

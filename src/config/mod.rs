@@ -182,6 +182,9 @@ pub struct Defaults {
     pub days: u8,
     /// Output language tag, or `auto`.
     pub language: String,
+    /// Whether every run fetches the climate-normals comparison (`--normals` makes it explicit for
+    /// one run); off by default so a script that never asked pays no extra request.
+    pub normals: bool,
 }
 
 /// `[location]`.
@@ -416,6 +419,7 @@ impl Default for Defaults {
             units: "metric".to_owned(),
             days: 3,
             language: "auto".to_owned(),
+            normals: false,
         }
     }
 }
@@ -1253,7 +1257,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "locations",
             "templates",
         ],
-        "defaults" => &["provider", "format", "units", "days", "language"],
+        "defaults" => &["provider", "format", "units", "days", "language", "normals"],
         "location" => &["default", "pick"],
         "geo" => &[
             "strategy",
@@ -1493,6 +1497,7 @@ format = "art-table"     # art-table | one-line | plain | json | dumb | alerts |
 units = "metric"         # metric | us | uk
 days = 3                 # 0..=14; each provider clamps to its own maximum
 language = "auto"        # "auto" or a BCP-47 tag such as "en-US", "zh-CN"
+normals = false          # fetch the climate-normals comparison on every run (--normals forces it)
 
 [location]
 default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", or "@home" for an
@@ -1670,6 +1675,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         kind: KeyKind::Str,
         doc: "output language tag or auto",
         env: Some("CIRROCAST_LANG"),
+    },
+    KeySpec {
+        name: "defaults.normals",
+        kind: KeyKind::Bool,
+        doc: "fetch the climate-normals comparison on every run",
+        env: None,
     },
     KeySpec {
         name: "location.default",
@@ -1927,6 +1938,7 @@ impl Config {
             "defaults.units" => self.defaults.units.clone(),
             "defaults.days" => self.defaults.days.to_string(),
             "defaults.language" => self.defaults.language.clone(),
+            "defaults.normals" => self.defaults.normals.to_string(),
             "location.default" => self.location.default.clone(),
             "location.pick" => self.location.pick.clone(),
             "geo.strategy" => self.geo.strategy.clone(),
@@ -1995,6 +2007,7 @@ impl Config {
                 check_language(spec.name, &value)?;
                 self.defaults.language = value;
             }
+            "defaults.normals" => self.defaults.normals = bool_value(spec.name, &value)?,
             "location.default" => self.location.default = value,
             "location.pick" => {
                 check_enum(spec.name, &value, PICK_POLICIES)?;
@@ -2382,6 +2395,7 @@ mod tests {
         assert_eq!(config.defaults.units, "metric");
         assert_eq!(config.defaults.days, 3);
         assert_eq!(config.defaults.language, "auto");
+        assert!(!config.defaults.normals);
         assert_eq!(config.location.default, "");
         assert_eq!(config.geo.strategy, "auto");
         assert_eq!(config.geo.search, "auto");

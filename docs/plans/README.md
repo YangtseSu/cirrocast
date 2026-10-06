@@ -420,6 +420,7 @@ report so that no renderer or template token converts a clock per field.
 ```toml
 schema_version = 2
 [defaults]  provider = "open-meteo"  format = "art-table"  units = "metric"  days = 3  language = "auto"
+            normals = false         # fetch the climate-normals comparison on every run (step 26)
             # format also accepts a one-line preset (full | minimal | short | default | uv | sun) or a [templates] key
 [location]  default = ""            # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", "@home"
             pick = "auto"           # auto | never (never = always take the ranked winner; step 20)

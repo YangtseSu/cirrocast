@@ -31,8 +31,9 @@ import pathlib
 import sys
 
 # The hard budgets of step 21's goal, as re-derived in docs/performance.md. `--version` 20 ms, a
-# cached run 60 ms and `--help` 215 lines are the goal's numbers, met by the recorded baseline
-# (the line budget was 200 from step 21 until step 23 added `--date`/`--history`/`--marine`).
+# cached run 60 ms and `--help` 225 lines are the goal's numbers, met by the recorded baseline
+# (the line budget was 200 from step 21 until step 23 added `--date`/`--history`/`--marine`, and
+# 215 until step 26 added `--normals`).
 # Two budgets are re-derived from measurement:
 # * the binary: the goal's 5 MiB predates the offline city table, and the bundled GeoNames members
 #   (3.28 MiB) plus the decoder, TLS and the catalogs put the floor near 15 MiB, so the enforced
@@ -48,7 +49,7 @@ BUDGETS = {
     "version_rss_kib": 15 * 1024.0,
     "plain_rss_kib": 32 * 1024.0,
     "binary_bytes": 17 * 1024 * 1024.0,
-    "help_lines": 215.0,
+    "help_lines": 225.0,
 }
 
 # The ratio a fresh median may exceed the baseline by before it counts as a regression.

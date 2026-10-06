@@ -137,7 +137,7 @@ document per FPAS area); that figure is informational and is not a budget.
 | Metric | Budget | Measured (dev box, 2026-10-05) | Notes |
 |---|---|---|---|
 | `--version` | 20 ms | **2.03 ms** | startup: no runtime, no table |
-| `--help` | < 215 lines | **210 lines** | clap wraps to the width; the test pins `COLUMNS=100` (step 22 added the `status` subcommand line; step 23 raised the ceiling from 200 for `--date`/`--history`/`--marine`) |
+| `--help` | < 225 lines | **220 lines** | clap wraps to the width; the test pins `COLUMNS=100` (step 22 added the `status` subcommand line; step 23 raised the ceiling from 200 for `--date`/`--history`/`--marine`, step 26 from 215 for `--normals`) |
 | cached run, `--offline` | 60 ms | **51.4 ms** | includes the city-table name index decode |
 | warm-cache run | 60 ms | **47.5 ms** | the online path with a fresh cache |
 | RSS, `--version` | 15 MiB | **6.4 MiB** | the goal's "RSS under 15 MB", met |

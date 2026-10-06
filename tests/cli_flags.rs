@@ -63,7 +63,7 @@ fn every_flag_is_accepted_in_both_spellings() {
     // the flags whose effect the rendered output cannot show (a *resolution* the renderer does not
     // print) add `-v`; the note that then names the flag's tier is the observable effect. Cases
     // whose effect is entirely in the output keep an empty stderr fragment.
-    let cases: [(&[&str], &str, &str); 20] = [
+    let cases: [(&[&str], &str, &str); 21] = [
         (
             &["-p", "open-meteo", "-v"],
             "Weather report:",
@@ -128,6 +128,13 @@ fn every_flag_is_accepted_in_both_spellings() {
         ),
         (&["-v"], "Weather report:", "provider: "),
         (&["--verbose"], "Weather report:", "provider: "),
+        // `--normals` under `--offline` with nothing cached still names the fetch it wanted: the
+        // miss is a `-v` note, not a failure, which is also what keeps its exit code 0.
+        (
+            &["--normals", "-v"],
+            "Weather report:",
+            "normals: offline: no cached noaa-ncei station search",
+        ),
     ];
 
     for (args, expected, note) in cases {
@@ -733,6 +740,7 @@ fn the_help_documents_the_flag_matrix_and_both_tables() {
         "--refresh",
         "--offline",
         "--timeout <SECS>",
+        "--normals",
     ] {
         assert!(
             stdout.contains(fragment),

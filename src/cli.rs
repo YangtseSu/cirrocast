@@ -137,6 +137,7 @@ CONFIG PRECEDENCE (highest first)
   --lang      CIRROCAST_LANG
   env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
               CIRROCAST_GEO_SEARCH  CIRROCAST_GEO_REVERSE  CIRROCAST_GEONAMES_USER
+              CIRROCAST_NORMALS_PERIOD  CIRROCAST_NORMALS_MAX_DISTANCE_KM
   The configuration file is consulted only when neither the flag nor the variable is set, so an
   environment value is never overridden by config.toml. `config get <key>` prints the variable's
   value when one is set, and `config validate` checks the file without touching the network.
@@ -289,6 +290,14 @@ pub struct QueryArgs {
     /// Append the marine block (waves, swell, sea-surface temperature).
     #[arg(long)]
     pub marine: bool,
+
+    /// Compare the forecast with the climate: fetch the month's normal for the station nearest the
+    /// location from NOAA NCEI's Global Summary of the Month (two extra requests, cached for 30
+    /// days) and append the comparison to the table and `plain` output, or carry it as the typed
+    /// `normals` object in `json`. `--format normals` prints it standalone. Off unless asked for,
+    /// or unless `[defaults] normals = true`.
+    #[arg(long)]
+    pub normals: bool,
 
     /// Template for a one-line output: a literal `%`-token string, or `@PRESET`. The presets are
     /// `@default`, `@short`, `@minimal`, `@full`, `@uv` and `@sun`, plus any `[templates]` key;
@@ -1556,6 +1565,14 @@ fn fetch_for_location(
         attach_marine(&mut report, context.env, context.cli.quiet);
     }
 
+    // The climate comparison is best-effort too, and the one extra surface three things can ask
+    // for: `--normals`, `[defaults] normals`, or `--format normals` (whose renderer would
+    // otherwise always print `unavailable`).
+    if context.query.normals || context.config.defaults.normals || context.format == Format::Normals
+    {
+        attach_normals(&mut report, context.env, context.now, context.cli.quiet);
+    }
+
     // The astro block is attached only when the run asks for it (see `attach_astro`).
     if context.query.moon || context.format == Format::Moon {
         attach_astro(&mut report, context.now, context.cli.verbose);
@@ -1777,6 +1794,45 @@ fn attach_marine(report: &mut crate::model::Report, env: &Env<'_>, quiet: bool) 
             }
         }
     }
+}
+
+/// Fetches the climate-normal comparison and attaches it to the report; a failure is a warning.
+///
+/// The decoder answers `Ok(None)` for the conditions that make a normal impossible — no station
+/// inside the configured radius, a record thinner than twenty years, a month the rows do not cover
+/// — and prints the reason on the `-v` stream, so the common outcome never even reaches this
+/// warning. A real transport or decode failure is one, like the marine block's, because
+/// `--normals` promises a comparison, not a successful second call.
+fn attach_normals(
+    report: &mut crate::model::Report,
+    env: &Env<'_>,
+    now: chrono::DateTime<chrono::Utc>,
+    quiet: bool,
+) {
+    let month = normals_month(report, now);
+    match crate::normals::fetch(&report.location, month, env) {
+        Ok(normals) => report.normals = normals,
+        Err(error) => {
+            if !quiet {
+                eprintln!("warning: climate normals unavailable: {error}");
+            }
+        }
+    }
+}
+
+/// The calendar month a report's comparison is for.
+///
+/// The first forecast day's own month, so a `--history` run normalises the month it actually
+/// renders rather than the month it runs in; a report without days (an observation-only backend)
+/// falls back to the run clock at the location. The month is `1..=12` by construction, and a
+/// failed conversion keeps the January default rather than panicking.
+fn normals_month(report: &crate::model::Report, now: chrono::DateTime<chrono::Utc>) -> u8 {
+    use chrono::Datelike as _;
+    let month = match report.days.first() {
+        Some(day) => day.date.month(),
+        None => now.with_timezone(&report.location.tz).date_naive().month(),
+    };
+    u8::try_from(month).unwrap_or(1)
 }
 
 /// The `--alerts-from` ids, split on commas and trimmed; `None` when the flag was not given.

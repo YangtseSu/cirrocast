@@ -13,13 +13,14 @@ use predicates::prelude::*;
 
 /// Every key of `KEY_TABLE` with a value that passes validation — the table is the source of truth
 /// for the *set* of keys, so this list is checked against it below.
-const PROBES: [(&str, &str); 42] = [
+const PROBES: [(&str, &str); 43] = [
     ("schema_version", "2"),
     ("defaults.provider", "smhi"),
     ("defaults.format", "json"),
     ("defaults.units", "us"),
     ("defaults.days", "7"),
     ("defaults.language", "zh-CN"),
+    ("defaults.normals", "true"),
     ("location.default", "@39.9,116.4"),
     ("location.pick", "never"),
     ("geo.strategy", "bundled"),
