@@ -2072,10 +2072,10 @@ fn query_location(target: &LocationTarget, geo: &GeoRequest<'_>, cli: &Cli) -> R
         resolution,
     } = resolve_location(&target.spec, geo, cli)?;
     let query = target.spec.query().unwrap_or_default();
-    // A coordinate's candidates are display names, not places to fetch: the naming step has
-    // already applied the chosen one (and asked, when `--pick` said so), so the outer picker —
-    // which replaces the location outright — must not run for them.
-    let picked = resolution != Resolution::Coordinates
+    // The picker replaces the location outright, so it runs only where the candidates *are* the
+    // fetch key — a name the user typed. A coordinate's nearby names and an IP answer's are
+    // display-only (step 25): those paths pick for themselves when `--pick` asks.
+    let picked = target.spec.query().is_some()
         && geo.prompt.allowed()
         && should_pick(&cli.query, geo.config, candidates.len())?;
     let location = if picked {
@@ -2711,9 +2711,10 @@ fn resolve_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Res
             if !cli.quiet {
                 eprintln!("ip: located from the public IP via {}", service.label());
             }
+            let (location, candidates) = name_ip_answer(location, geo, cli)?;
             Ok(Resolved {
                 location,
-                candidates: Vec::new(),
+                candidates,
                 resolution: Resolution::Only,
             })
         }
@@ -2914,6 +2915,27 @@ fn name_coordinate(
         );
     }
     Ok((named_location, candidates))
+}
+
+/// Names an IP answer whose service reported no city (step 25).
+///
+/// An answer that carries a city is already named; one that does not gets exactly the treatment a
+/// typed coordinate gets — the bundled tables, else Nominatim — and when nothing names it the pair
+/// itself, so the header is never blank. The location keeps its coordinates, its `Ip` provenance
+/// and the zone the service reported; only the display fields and `named_by` change.
+fn name_ip_answer(
+    location: Location,
+    geo: &GeoRequest<'_>,
+    cli: &Cli,
+) -> Result<(Location, Vec<Location>)> {
+    if !location.name.trim().is_empty() {
+        return Ok((location, Vec::new()));
+    }
+    let (mut named, candidates) = name_coordinate(location, geo, cli)?;
+    if named.name.trim().is_empty() {
+        named.name = crate::geo::coordinate_name(named.lat, named.lon);
+    }
+    Ok((named, candidates))
 }
 
 /// How a naming source is described in the `-v` line.

@@ -176,3 +176,108 @@ fn a_named_coordinate_carries_its_name_and_credit_into_the_report() {
         "{stdout}"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// `--ip` naming (step 25)
+// ---------------------------------------------------------------------------------------------
+
+/// Writes the `ip/ipwho-is.json` entry the binary reads for `--ip`, with `body` as its payload.
+fn seed_ip(sandbox: &Sandbox, body: &str) {
+    let key = cirrocast::cache::CacheKey::ip("ipwho-is");
+    let path = sandbox.cache_dir().join(key.path());
+    std::fs::create_dir_all(path.parent().expect("the entry has a parent"))
+        .expect("the cache directory");
+    let envelope = serde_json::json!({
+        "cache_schema_version": cirrocast::cache::CACHE_SCHEMA_VERSION,
+        "key": key.normalised(),
+        "fetched_at": chrono::Utc::now().to_rfc3339(),
+        "ttl_secs": 86_400,
+        "status": 200,
+        "body": body,
+    });
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&envelope).expect("the envelope encodes"),
+    )
+    .expect("the entry is written");
+}
+
+/// An `ipwho.is` answer that names no city: the schema allows it, and it is what the naming path
+/// exists for.
+const IP_WITHOUT_A_CITY: &str = r#"{"ip":"203.0.113.7","success":true,"region":"Beijing",
+    "country":"China","country_code":"CN","latitude":39.907503,"longitude":116.397228,
+    "timezone":{"id":"Asia/Shanghai"}}"#;
+
+#[test]
+fn an_ip_answer_without_a_city_is_named_from_the_bundled_tables() {
+    let sandbox = Sandbox::new();
+    seed_ip(&sandbox, IP_WITHOUT_A_CITY);
+    let body = std::fs::read_to_string(fixture_path("open_meteo/forecast_beijing_2026-07-15.json"))
+        .expect("the recorded forecast is readable");
+    // The IP answer carries a real zone, so that is the zone the weather key is built in.
+    common::seed_weather(
+        &sandbox,
+        "open-meteo",
+        39.907_503,
+        116.397_228,
+        3,
+        Tz::Asia__Shanghai,
+        &body,
+    );
+
+    let output = sandbox
+        .cirrocast()
+        .args(["--ip", "-v", "-f", "plain", "--offline"])
+        .output()
+        .expect("the binary runs");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+
+    assert!(
+        stderr.contains("ip: located from the public IP via ipwho.is"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("location: named by the bundled tables"),
+        "{stderr}"
+    );
+    // The service's own fields survive: its zone, its country and its coordinates.
+    assert!(
+        stdout.contains("Beijing, China (39.91, 116.40)"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn an_ip_answer_nothing_can_name_shows_its_coordinates() {
+    let sandbox = Sandbox::new();
+    // A point no bundled city is within 25 km of, and `reverse = "off"` so nothing is asked.
+    seed_ip(
+        &sandbox,
+        r#"{"ip":"203.0.113.7","success":true,"region":"","country":"","country_code":"",
+            "latitude":0.0,"longitude":-140.0,"timezone":{"id":"Etc/GMT+9"}}"#,
+    );
+
+    let output = sandbox
+        .cirrocast()
+        .env("CIRROCAST_GEO_REVERSE", "off")
+        .args(["location", "search", "--ip"])
+        .output()
+        .expect("the binary runs");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    assert_eq!(stdout, "0, -140 Etc/GMT+9\n", "the pair is the name");
+}

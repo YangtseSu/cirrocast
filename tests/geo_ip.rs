@@ -356,10 +356,6 @@ fn a_failing_primary_falls_through_to_the_fallback() {
 fn a_missing_required_field_names_the_service_and_the_field() {
     let cases = [
         (
-            r#"{"success":true,"region":"Beijing","country":"China","latitude":39.9,"longitude":116.4,"timezone":{"id":"Asia/Shanghai"}}"#,
-            "city",
-        ),
-        (
             r#"{"success":true,"city":"Beijing","country":"China","longitude":116.4,"timezone":{"id":"Asia/Shanghai"}}"#,
             "latitude",
         ),
@@ -386,6 +382,26 @@ fn a_missing_required_field_names_the_service_and_the_field() {
         assert!(text.contains(field), "`{body}` should name {field}: {text}");
         assert_eq!(harness.calls(), 1);
     }
+}
+
+/// A city the answer omits is not an error: the location comes back unnamed (step 25), and the
+/// caller names the coordinate from the bundled tables or Nominatim.
+#[test]
+fn a_missing_city_is_an_unnamed_location() {
+    let body = r#"{"success":true,"region":"Henan","country":"China","country_code":"CN",
+                   "latitude":35.1874,"longitude":113.8025,"timezone":{"id":"Asia/Shanghai"}}"#;
+    let harness = Harness::with_mode(vec![StubReply::ok(200, body)], CacheMode::NoCache);
+    let (location, service) = harness
+        .chain(IpService::chain("ipwhois").expect("`ipwhois` is known"))
+        .locate_with_service()
+        .expect("an unnamed answer is still a location");
+
+    assert_eq!(service, IpService::IpWhoIs);
+    assert_eq!(location.name, "");
+    assert_eq!(location.country, "China");
+    assert_eq!(location.country_code.as_deref(), Some("CN"));
+    assert_eq!(location.tz, Tz::Asia__Shanghai);
+    assert_eq!(location.source, LocationSource::Ip);
 }
 
 /// An empty chain never asks anyone and says why.

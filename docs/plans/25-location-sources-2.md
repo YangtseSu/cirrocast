@@ -78,7 +78,7 @@ bundled credential: GeoNames is BYOK.
   values Natural Earth leaves as `-99` (Taiwan, Northern Cyprus, Kosovo, Somaliland) map through an
   explicit name table so no candidate ends up with an invalid code; `REUSE.toml` carries the Natural
   Earth annotation and `LICENSES/CC0-1.0.txt` the licence text.
-- ⬜ `--ip` naming: when the IP service's own city is empty (allowed by the ipwho.is schema) the
+- ✅ `--ip` naming: when the IP service's own city is empty (allowed by the ipwho.is schema) the
   coordinate now gets a name through `reverse.rs` instead of being printed bare; with several
   nearby places the picker asks; the disclosure line and README/`--help` privacy text list all three
   IP services. `location search @lat,lon` prints the coordinate line plus the named candidates under
@@ -302,3 +302,17 @@ for the same place and keeps step 04's order.
   China (39.90, 116.41)" 0.9 km away with the GeoNames credit; `--offline=geo` names it with no
   socket; `@0,-140` under `reverse = "offline"` prints the bare coordinate and the note `no city
   within 25 km`; under `auto` the unreachable Nominatim is a `-v` note, not a failure.
+
+- 2026-10-06 — `--ip` naming landed: a city the IP service omits is no longer an error in any of
+  the three decoders (`Location.name` comes back empty), and the CLI's `name_ip_answer` gives such
+  an answer the same treatment a typed coordinate gets — the bundled tables, else Nominatim, else
+  the coordinate pair itself, so the header is never blank. `place()` now skips an empty name part
+  and `location_line` omits the parenthesised pair when the name *is* the pair
+  (`geo::coordinate_name`, one spelling shared by `from_coordinates` and the IP fallback). The
+  automatic picker stays out of this path too, for the same reason as the coordinate's: the name is
+  display-only and the answer's coordinates are the request key. The privacy disclosure already
+  named whichever service answered, and the README/`--help` text lists all three. Observed live
+  (2026-10-06, a seeded cityless answer): `location search --ip -v` prints
+  `location: named by the bundled tables … Beijing, Beijing, China` with the GeoNames credit and
+  the three nearby candidates, `--all` lists them, and `CIRROCAST_GEO_REVERSE=off` falls back to
+  `39.907503, 116.397228, Beijing, China`.

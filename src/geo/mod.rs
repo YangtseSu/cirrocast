@@ -454,9 +454,10 @@ fn note(query: &str, chosen: &Location, resolution: Resolution, hint: bool) -> O
 #[must_use]
 pub fn location_line(location: &Location) -> String {
     let mut parts = vec![place(location)];
-    // A coordinate whose display name is still the pair itself does not repeat it; one that a
-    // reverse lookup named (step 25) shows both, exactly as an IP answer does.
-    if location.source != LocationSource::Coordinates || location.named_by.is_some() {
+    // The coordinates are omitted when the name *is* the pair: a bare `@lat,lon`, or an IP answer
+    // nothing could name (step 25). A coordinate a reverse lookup named, and every other location,
+    // shows both.
+    if location.name != coordinate_name(location.lat, location.lon) {
         parts.push(format!("({:.2}, {:.2})", location.lat, location.lon));
     }
     if provisional_zone(location) {
@@ -510,9 +511,16 @@ pub fn attribution_line(location: &Location) -> Option<&'static str> {
 }
 
 /// `Name, admin1, country`, skipping the parts a geocoder did not report.
+///
+/// An empty name is skipped like an empty division or country: an IP answer whose service named no
+/// city and that nothing else could name (step 25) still prints its coordinates rather than a
+/// blank first field.
 #[must_use]
 pub fn place(location: &Location) -> String {
-    let mut parts = vec![location.name.clone()];
+    let mut parts = Vec::new();
+    if !location.name.trim().is_empty() {
+        parts.push(location.name.clone());
+    }
     if let Some(admin1) = location
         .admin1
         .as_deref()
@@ -562,11 +570,21 @@ pub(crate) fn offline_not_found(query: &str) -> Error {
     ))
 }
 
+/// The display text of a bare coordinate pair: `39.9042, 116.4074`, at full precision.
+///
+/// One spelling for the `@lat,lon` location's name and for the fallback an IP answer that nothing
+/// could name gets (step 25), so [`location_line`] can tell "the name *is* the pair" by comparing
+/// the two strings.
+#[must_use]
+pub fn coordinate_name(lat: f64, lon: f64) -> String {
+    format!("{lat}, {lon}")
+}
+
 /// The location behind `@lat,lon`: named after the pair, in UTC until a provider says otherwise.
 #[must_use]
 pub fn from_coordinates(lat: f64, lon: f64) -> Location {
     Location {
-        name: format!("{lat}, {lon}"),
+        name: coordinate_name(lat, lon),
         admin1: None,
         country: String::new(),
         country_code: None,

@@ -14,11 +14,12 @@
 //!
 //! Two rules are worth restating because they are easy to undo by accident:
 //!
-//! * a missing name, latitude, longitude or zone is an error naming the service and the field,
-//!   never a default — a guessed `0.0` would query the weather for the Gulf of Guinea, and a guessed
+//! * a missing latitude, longitude or zone is an error naming the service and the field, never a
+//!   default — a guessed `0.0` would query the weather for the Gulf of Guinea, and a guessed
 //!   `UTC` would shift every day part of the forecast (step 06 buckets hours by the location's
 //!   local clock); a country the answer does not name simply stays empty, because the renderers
-//!   already skip an empty part;
+//!   already skip an empty part, and a *city* the answer omits is not an error either: the caller
+//!   names the coordinate from the bundled tables or Nominatim instead (step 25);
 //! * the answers are cached per service ([`CacheKey::ip`]), so a fallback result never masquerades
 //!   as the primary's, and the [`Location`] keeps [`LocationSource::Ip`] as its provenance.
 //!
@@ -225,7 +226,9 @@ fn from_ipwho_is(service: IpService, body: &Value) -> Result<Location> {
     }
     let (lat, lon) = coordinates(service, answer.latitude, answer.longitude)?;
     Ok(Location {
-        name: required(service, "city", text(answer.city))?,
+        // A city the answer omits is not an error: the caller names the coordinate (step 25), and
+        // the answer's country and zone are still worth having.
+        name: text(answer.city).unwrap_or_default(),
         admin1: text(answer.region),
         country: text(answer.country).unwrap_or_default(),
         country_code: text(answer.country_code),
@@ -254,7 +257,8 @@ fn from_ipapi_co(service: IpService, body: &Value) -> Result<Location> {
     }
     let (lat, lon) = coordinates(service, answer.latitude, answer.longitude)?;
     Ok(Location {
-        name: required(service, "city", text(answer.city))?,
+        // A city the answer omits is not an error (step 25); see `from_ipwho_is`.
+        name: text(answer.city).unwrap_or_default(),
         admin1: text(answer.region),
         country: text(answer.country_name).unwrap_or_default(),
         country_code: text(answer.country).or_else(|| text(answer.country_code)),
@@ -286,7 +290,8 @@ fn from_ip_sb(service: IpService, body: &Value) -> Result<Location> {
         ));
     }
     Ok(Location {
-        name: required(service, "city", text(answer.city))?,
+        // A city the answer omits is not an error (step 25); see `from_ipwho_is`.
+        name: text(answer.city).unwrap_or_default(),
         admin1: text(answer.region),
         country: text(answer.country).unwrap_or_default(),
         country_code: text(answer.country_code),
