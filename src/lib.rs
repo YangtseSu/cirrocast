@@ -15,6 +15,7 @@
 pub mod air;
 pub mod alerts;
 pub mod astro;
+pub mod auth;
 pub mod cache;
 pub mod cli;
 pub mod config;

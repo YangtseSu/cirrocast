@@ -333,6 +333,66 @@ fn qweather_reuses_the_provider_host_and_credential() {
 }
 
 #[test]
+fn qweather_alerts_follow_the_jwt_mode_too() {
+    // The alert source borrows the provider's credential through the same store resolution and
+    // header helper, so a JWT-configured run sends a bearer token here as well (step 27).
+    let exported = [
+        "CIRROCAST_QWEATHER_JWT_CREDENTIAL_ID",
+        "CIRROCAST_QWEATHER_JWT_DEVELOPER_ID",
+        "CIRROCAST_QWEATHER_JWT_PROJECT_ID",
+        "CIRROCAST_QWEATHER_JWT_PRIVATE_KEY",
+        "CIRROCAST_QWEATHER_KEY",
+    ]
+    .iter()
+    .any(|name| std::env::var_os(name).is_some());
+    if exported {
+        return;
+    }
+
+    let mut harness = Harness::new(vec![fixture("qweather-rainstorm.json")], CacheMode::Normal);
+    harness.config.providers.qweather.host = "https://abc123.re.qweatherapi.com".to_owned();
+    harness
+        .keys
+        .set_jwt(
+            "qweather",
+            &cirrocast::config::keys::JwtCredential {
+                credential_id: "ABCDE12345".to_owned(),
+                developer_id: "Q12345ABCD".to_owned(),
+                project_id: "ABC2345DEF".to_owned(),
+                private_key: include_str!("fixtures/qweather/ed25519-test-key.pem").to_owned(),
+            },
+        )
+        .expect("the credential is stored");
+
+    let alerts = harness
+        .fetch(
+            &beijing(),
+            &[AlertSource::QWeather],
+            true,
+            Severity::Unknown,
+        )
+        .expect("the warning list decodes");
+    assert_eq!(alerts.len(), 1);
+
+    let calls = harness.calls();
+    assert_eq!(calls.len(), 1);
+    let authorization = calls[0]
+        .headers()
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+        .map(|(_, value)| value.as_str())
+        .expect("a bearer header");
+    assert!(authorization.starts_with("Bearer "), "{authorization}");
+    assert!(
+        !calls[0]
+            .headers()
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("X-QW-Api-Key")),
+        "no API-key header in JWT mode"
+    );
+}
+
+#[test]
 fn an_expired_alert_never_leaves_the_fetch() {
     let later = DateTime::parse_from_rfc3339("2026-10-03T14:00:00Z")
         .expect("a valid instant")

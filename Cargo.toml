@@ -38,6 +38,11 @@ default = ["offline-geo"]
 offline-geo = []
 
 [dependencies]
+# JWT minting for QWeather's second authentication mode (step 27): `ring` signs the token and
+# `base64` writes the two unpadded URL-safe segments. Both crates are already compiled into this
+# binary (`rustls` → `ring`, `ureq` → `base64`), so declaring them adds no crate to the graph;
+# `ring` is used for its `Ed25519KeyPair` PKCS#8 parser and nothing else.
+base64 = "0.23.1"
 chrono = { version = "0.4.45", features = ["serde"] }
 chrono-tz = { version = "0.10.4", features = ["serde"] }
 clap = { version = "4.6", features = ["derive", "env", "wrap_help"] }
@@ -51,6 +56,7 @@ flate2 = "1"
 fluent-bundle = "0.16"
 percent-encoding = "2.3.2"
 quick-xml = "0.42"
+ring = "0.17.14"
 rpassword = "7.5.4"
 rustix = { version = "1.1.5", features = ["termios"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -76,6 +82,9 @@ ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 assert_cmd = "2"
+# The JWT tests decode the two token segments, so the integration tests need the same engine the
+# minting code uses (a normal dependency is not visible to them).
+base64 = "0.23.1"
 insta = "1.48.0"
 predicates = "3"
 serde_json = "1"

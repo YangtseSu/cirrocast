@@ -146,7 +146,7 @@ fn a_failed_slot_keeps_its_place_and_the_exit_code_is_the_largest_mapped_one() {
     .assert()
     .code(6);
     assert_eq!(stdout(&assert).lines().count(), 2);
-    assert_eq!(stderr(&assert).matches("missing API key").count(), 2);
+    assert_eq!(stderr(&assert).matches("missing credential").count(), 2);
 }
 
 #[test]

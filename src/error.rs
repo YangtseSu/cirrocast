@@ -61,6 +61,21 @@ pub enum Error {
         env: String,
     },
 
+    /// A provider with two authentication modes found neither of them configured.
+    ///
+    /// Separate from [`Error::MissingKey`] because the remedy has two forms: the API key and the
+    /// JWT credential (`QWeather`, step 27). Same exit code, different instruction.
+    #[error(
+        "missing credential for {provider}: run `cirrocast key set {provider}` (API key) or \
+         `cirrocast key set {provider} --jwt` (JWT), or set {env} in the environment"
+    )]
+    MissingCredential {
+        /// Provider id, e.g. `qweather`.
+        provider: String,
+        /// Environment variable that would supply the API key.
+        env: String,
+    },
+
     /// A provider rejected the API key it was given.
     ///
     /// Separate from [`Error::Upstream`] because the answer is never "try again": the credential
@@ -72,6 +87,22 @@ pub enum Error {
         /// Provider id, e.g. `openweathermap`.
         provider: String,
         /// The HTTP status the rejection came with (`401` today; a provider may refine it).
+        status: u16,
+    },
+
+    /// A provider with two authentication modes rejected the credential it was given.
+    ///
+    /// The remedy depends on which form was stored, which the message cannot know, so it names
+    /// both (`QWeather`, step 27).
+    #[error(
+        "provider {provider} rejected the credential (HTTP {status}): replace it with \
+         `cirrocast key set {provider}` or `cirrocast key set {provider} --jwt`; for a JWT, \
+         validate the token in Console → JWT Validation"
+    )]
+    InvalidCredential {
+        /// Provider id, e.g. `qweather`.
+        provider: String,
+        /// The HTTP status the rejection came with.
         status: u16,
     },
 
@@ -114,7 +145,11 @@ impl Error {
             Self::Network(_) | Self::Upstream { .. } | Self::Chain { .. } => 3,
             Self::Config(_) => 4,
             Self::LocationNotFound(_) => 5,
-            Self::MissingKey { .. } | Self::InvalidKey { .. } | Self::InvalidToken { .. } => 6,
+            Self::MissingKey { .. }
+            | Self::MissingCredential { .. }
+            | Self::InvalidKey { .. }
+            | Self::InvalidCredential { .. }
+            | Self::InvalidToken { .. } => 6,
         }
     }
 
@@ -181,8 +216,22 @@ mod tests {
                 6,
             ),
             (
+                Error::MissingCredential {
+                    provider: "qweather".into(),
+                    env: "CIRROCAST_QWEATHER_KEY".into(),
+                },
+                6,
+            ),
+            (
                 Error::InvalidKey {
                     provider: "openweathermap".into(),
+                    status: 401,
+                },
+                6,
+            ),
+            (
+                Error::InvalidCredential {
+                    provider: "qweather".into(),
                     status: 401,
                 },
                 6,
@@ -252,6 +301,20 @@ mod tests {
     }
 
     #[test]
+    fn an_invalid_credential_names_both_key_set_forms() {
+        let error = Error::InvalidCredential {
+            provider: "qweather".into(),
+            status: 401,
+        };
+        assert_eq!(
+            error.to_string(),
+            "provider qweather rejected the credential (HTTP 401): replace it with \
+             `cirrocast key set qweather` or `cirrocast key set qweather --jwt`; for a JWT, \
+             validate the token in Console → JWT Validation"
+        );
+    }
+
+    #[test]
     fn exit_codes_follow_the_contract() {
         for (error, expected) in cases() {
             assert_eq!(error.exit_code(), expected, "wrong code for {error}");
@@ -295,6 +358,16 @@ mod tests {
         assert_eq!(
             Error::LocationNotFound("Atlantis".into()).to_string(),
             "location not found: Atlantis"
+        );
+        assert_eq!(
+            Error::MissingCredential {
+                provider: "qweather".into(),
+                env: "CIRROCAST_QWEATHER_KEY".into(),
+            }
+            .to_string(),
+            "missing credential for qweather: run `cirrocast key set qweather` (API key) or \
+             `cirrocast key set qweather --jwt` (JWT), or set CIRROCAST_QWEATHER_KEY in the \
+             environment"
         );
     }
 

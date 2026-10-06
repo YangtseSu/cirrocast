@@ -18,7 +18,7 @@ use chrono_tz::Tz;
 
 use cirrocast::cache::{Cache, CacheKey, CacheMode, FakeClock, SystemClock};
 use cirrocast::config::Config;
-use cirrocast::config::keys::KeyStore;
+use cirrocast::config::keys::{JwtCredential, KeyStore};
 use cirrocast::http::{HttpClient, StubReply, StubTransport};
 use cirrocast::model::{Location, LocationSource, Report};
 use cirrocast::paths::Paths;
@@ -26,8 +26,10 @@ use cirrocast::provider::open_meteo::OpenMeteo;
 use cirrocast::provider::{Env, FetchRequest, HourlyResolution, Provider};
 
 /// Every `CIRROCAST_*` override variable, cleared for the child process so that the developer's
-/// shell cannot influence a test.
-const OVERRIDE_VARS: [&str; 12] = [
+/// shell cannot influence a test. The credential variables are included for the same reason: a
+/// key or a JWT quartet exported in the developer's shell would otherwise decide what a test sees
+/// (`key list` would grow a row, `key rm` would remove something).
+const OVERRIDE_VARS: [&str; 17] = [
     "CIRROCAST_PROVIDER",
     "CIRROCAST_FORMAT",
     "CIRROCAST_UNITS",
@@ -40,6 +42,11 @@ const OVERRIDE_VARS: [&str; 12] = [
     "CIRROCAST_IP_SERVICE",
     "CIRROCAST_GEO_SEARCH",
     "CIRROCAST_GEONAMES_USER",
+    "CIRROCAST_QWEATHER_KEY",
+    "CIRROCAST_QWEATHER_JWT_CREDENTIAL_ID",
+    "CIRROCAST_QWEATHER_JWT_DEVELOPER_ID",
+    "CIRROCAST_QWEATHER_JWT_PROJECT_ID",
+    "CIRROCAST_QWEATHER_JWT_PRIVATE_KEY",
 ];
 
 /// A throwaway XDG environment: config, cache and data all point into a temporary directory, the
@@ -356,6 +363,7 @@ pub struct ProviderRun {
     keys: KeyStore,
     transport: Arc<StubTransport>,
     clock: Arc<FakeClock>,
+    verbose: u8,
 }
 
 impl ProviderRun {
@@ -380,6 +388,7 @@ impl ProviderRun {
             keys: KeyStore::new(&paths),
             transport,
             clock,
+            verbose: 0,
         }
     }
 
@@ -413,8 +422,15 @@ impl ProviderRun {
             config: &self.config,
             keys: &self.keys,
             quiet: true,
-            verbose: 0,
+            verbose: self.verbose,
         }
+    }
+
+    /// Sets the `-v` level the providers see, so a test can read the notes that only print then.
+    #[must_use]
+    pub fn with_verbose(mut self, verbose: u8) -> Self {
+        self.verbose = verbose;
+        self
     }
 
     /// Every request the transport has seen.
@@ -430,6 +446,14 @@ impl ProviderRun {
     /// Stores an API key for the run, exactly as `cirrocast key set` does (`0600`, `[keys]` table).
     pub fn with_key(&self, provider: &str, value: &str) {
         self.keys.set(provider, value).expect("the key is stored");
+    }
+
+    /// Stores a JWT credential for the run, exactly as `cirrocast key set --jwt` does (the
+    /// `[jwt.<provider>]` table of the same `0600` file).
+    pub fn with_jwt(&self, provider: &str, credential: &JwtCredential) {
+        self.keys
+            .set_jwt(provider, credential)
+            .expect("the JWT credential is stored");
     }
 
     /// The clock this run uses, for `advance`.

@@ -221,6 +221,61 @@ fn live_metar_station() {
 
 #[test]
 #[ignore = "live network: set CIRROCAST_LIVE_TESTS=1 and run `cargo test --test live -- --ignored --nocapture`"]
+fn live_qweather_jwt() {
+    if !enabled() {
+        return;
+    }
+
+    // The credential comes from the environment quartet (`CIRROCAST_QWEATHER_JWT_*`), which is the
+    // way a live run configures one without touching the developer's real `keys.toml`. The account
+    // host has no environment override of its own, so this harness names its own variable for it.
+    let host = std::env::var("CIRROCAST_QWEATHER_HOST").unwrap_or_default();
+    if host.trim().is_empty() {
+        eprintln!(
+            "skipping: set CIRROCAST_QWEATHER_HOST and the CIRROCAST_QWEATHER_JWT_* quartet to run this test"
+        );
+        return;
+    }
+
+    let mut live = Live::new();
+    live.config.providers.qweather.host = host.trim().to_owned();
+    let credential = live
+        .keys
+        .credential(cirrocast::provider::ProviderId::QWeather)
+        .expect("the store reads the quartet")
+        .expect("the quartet is configured");
+    let cirrocast::config::keys::Credential::QWeatherJwt(jwt) = &credential else {
+        eprintln!("skipping: this test needs the JWT quartet, not an API key");
+        return;
+    };
+    // Minted here too, so the test can prove the token reaches neither the report nor the output.
+    let token = cirrocast::auth::jwt::qweather_token(jwt, std::time::SystemTime::now())
+        .expect("the configured key signs");
+
+    let report = cirrocast::provider::provider_for(cirrocast::provider::ProviderId::QWeather)
+        .expect("qweather has a backend")
+        .fetch(
+            &beijing(),
+            &FetchRequest::new(3, HourlyResolution::Hourly),
+            &live.env(),
+        )
+        .expect("QWeather answers a JWT-authenticated request");
+
+    assert_eq!(report.attribution.provider, "qweather");
+    let current = report.current.as_ref().expect("current conditions");
+    assert!((-60.0..=60.0).contains(&current.temp_c), "{current:?}");
+    assert!(!report.days.is_empty(), "the v1 hourly series covers days");
+
+    let text = live.render(&report);
+    println!("{text}");
+    assert!(
+        !text.contains(&token),
+        "the token must never be echoed: {text}"
+    );
+}
+
+#[test]
+#[ignore = "live network: set CIRROCAST_LIVE_TESTS=1 and run `cargo test --test live -- --ignored --nocapture`"]
 fn live_climate_normals_for_beijing() {
     if !enabled() {
         return;

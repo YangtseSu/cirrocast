@@ -187,6 +187,7 @@ name = "cirrocast"
 version = "1.2.0"
 dependencies = [
  "assert_cmd",
+ "base64",
  "chrono",
  "chrono-tz",
  "clap",
@@ -199,6 +200,7 @@ dependencies = [
  "percent-encoding",
  "predicates",
  "quick-xml",
+ "ring",
  "rpassword",
  "rustix",
  "serde",

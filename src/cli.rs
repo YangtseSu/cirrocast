@@ -8,6 +8,7 @@
 //! implement them, so that a flag never exists before the behaviour behind it.
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::io::{IsTerminal as _, Read as _};
 use std::process::Command as StdCommand;
 use std::str::FromStr as _;
@@ -19,7 +20,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use crate::air::aqi::AqiIndex;
 use crate::alerts::{self, AlertsRequest};
 use crate::cache::{Cache, CacheMode, CacheStat, Clock, OfflineMode, Scope, SystemClock};
-use crate::config::keys::{KeySource, KeyStore};
+use crate::config::keys::{JwtCredential, KeyForm, KeySource, KeyStore, KeySummary};
 use crate::config::{Config, Settings};
 use crate::error::{Error, Result};
 use crate::geo::chain::{SearchChain, SearchInputs};
@@ -776,19 +777,19 @@ pub struct KeyArgs {
 /// Actions of `cirrocast key`.
 #[derive(Debug, Subcommand)]
 pub enum KeyCommand {
-    /// Store an API key for a provider.
+    /// Store an API key for a provider, or a JWT credential with `--jwt`.
     ///
     /// The secret is read from stdin — never from the command line, where `ps` and the shell
-    /// history would see it.
+    /// history would see it; `--key-file -` does the same for a JWT private key.
     Set(KeySetArgs),
 
-    /// Remove a stored API key.
+    /// Remove every stored credential of a provider.
     Rm {
         /// Provider id, e.g. `openweathermap`.
         provider: String,
     },
 
-    /// List the configured keys, masked.
+    /// List the configured credentials, masked (a JWT credential shows its identifiers only).
     List,
 }
 
@@ -801,6 +802,30 @@ pub struct KeySetArgs {
     /// Read the key from stdin even when stdin is a terminal.
     #[arg(long)]
     pub stdin: bool,
+
+    /// Store a JWT credential (Ed25519) instead of an API key; needs the four flags below.
+    #[arg(
+        long,
+        conflicts_with = "stdin",
+        requires_all = ["key_file", "credential_id", "developer_id", "project_id"]
+    )]
+    pub jwt: bool,
+
+    /// File holding the PKCS#8 Ed25519 private key; `-` reads it from stdin.
+    #[arg(long, value_name = "PATH", requires = "jwt")]
+    pub key_file: Option<String>,
+
+    /// Credential id the console issued for the uploaded public key (`kid`).
+    #[arg(long, value_name = "ID", requires = "jwt")]
+    pub credential_id: Option<String>,
+
+    /// Developer id shown in the console (`iss`), ten characters starting with `Q`.
+    #[arg(long, value_name = "ID", requires = "jwt")]
+    pub developer_id: Option<String>,
+
+    /// Project id shown in the console (`sub`).
+    #[arg(long, value_name = "ID", requires = "jwt")]
+    pub project_id: Option<String>,
 }
 
 /// Arguments of `cirrocast provider`.
@@ -3470,6 +3495,15 @@ fn run_key(command: &KeyCommand) -> Result<()> {
     match command {
         KeyCommand::Set(args) => {
             let name = KeyStore::canonical(&args.provider)?;
+            if args.jwt {
+                let credential = jwt_credential(args)?;
+                store.set_jwt(&name, &credential)?;
+                print_line(format_args!(
+                    "stored {name} JWT credential in {}",
+                    store.path().display()
+                ))?;
+                return Ok(());
+            }
             let noun = credential_noun(&name);
             let secret = read_secret(&prompt_for(&name), args.stdin)?;
             store.set(&name, &secret)?;
@@ -3481,11 +3515,18 @@ fn run_key(command: &KeyCommand) -> Result<()> {
         }
         KeyCommand::Rm { provider } => {
             let name = KeyStore::canonical(provider)?;
-            let noun = credential_noun(&name);
-            if store.remove(&name)? {
-                print_line(format_args!("removed {name} {noun}"))?;
+            let removed = store.remove(&name)?;
+            if removed.any() {
+                let what = if removed.jwt && removed.api_key {
+                    "JWT credential and API key"
+                } else if removed.jwt {
+                    "JWT credential"
+                } else {
+                    credential_noun(&name)
+                };
+                print_line(format_args!("removed {name} {what}"))?;
             } else {
-                print_line(format_args!("no {name} {noun} stored"))?;
+                print_line(format_args!("no {name} {} stored", stored_noun(&name)))?;
             }
             Ok(())
         }
@@ -3499,13 +3540,92 @@ fn run_key(command: &KeyCommand) -> Result<()> {
                 print_line(format_args!(
                     "{:<width$}  {}  ({})",
                     row.provider,
-                    row.masked,
-                    source_label(row.source)
+                    credential_column(row),
+                    source_column(row)
                 ))?;
             }
             Ok(())
         }
     }
+}
+
+/// The `key set --jwt` credential: the PEM read from the file or stdin, validated before storage.
+fn jwt_credential(args: &KeySetArgs) -> Result<JwtCredential> {
+    let path = args
+        .key_file
+        .as_deref()
+        .ok_or_else(|| Error::Usage("--key-file is required with --jwt".to_owned()))?;
+    let private_key = read_key_file(path)?;
+    let credential = JwtCredential {
+        credential_id: args
+            .credential_id
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_owned(),
+        developer_id: args
+            .developer_id
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_owned(),
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .trim()
+            .to_owned(),
+        private_key,
+    };
+    // Refuse a mistyped identifier or the wrong key file here, where the console step that
+    // produced it is still in front of the user, rather than at the first fetch.
+    crate::auth::jwt::validate(&credential)?;
+    Ok(credential)
+}
+
+/// The PEM text `key set --jwt --key-file` reads: a path, or stdin for `-`.
+fn read_key_file(path: &str) -> Result<String> {
+    if path == "-" {
+        let mut pem = String::new();
+        std::io::stdin().read_to_string(&mut pem).map_err(|error| {
+            Error::Config(format!("cannot read the private key from stdin: {error}"))
+        })?;
+        return Ok(pem);
+    }
+    fs::read_to_string(path).map_err(|error| Error::Config(format!("{path}: {error}")))
+}
+
+/// The credential column of one `key list` row.
+///
+/// A single form prints bare, exactly as it always has; when both are stored the API key gains its
+/// label so the two cannot be confused.
+fn credential_column(row: &KeySummary) -> String {
+    let labelled = row.forms.len() > 1;
+    let forms: Vec<String> = row
+        .forms
+        .iter()
+        .map(|form| match form {
+            KeyForm::ApiKey { masked, .. } if labelled => format!("api key {masked}"),
+            KeyForm::ApiKey { masked, .. } => masked.clone(),
+            KeyForm::QWeatherJwt { ids, .. } => format!(
+                "jwt (kid {}, iss {}, sub {})",
+                ids.credential_id, ids.developer_id, ids.project_id
+            ),
+        })
+        .collect();
+    forms.join(", ")
+}
+
+/// The source column of one `key list` row: one label per distinct place a form came from.
+fn source_column(row: &KeySummary) -> String {
+    let mut labels: Vec<&str> = Vec::new();
+    for form in &row.forms {
+        let label = source_label(form.source());
+        if !labels.contains(&label) {
+            labels.push(label);
+        }
+    }
+    labels.join(", ")
 }
 
 /// The `key set` prompt: a provider gets the API-key wording, a named credential its own.
@@ -3521,6 +3641,23 @@ fn prompt_for(name: &str) -> String {
 fn credential_noun(name: &str) -> &'static str {
     if KeyStore::named(name).is_some() {
         "credential"
+    } else {
+        "API key"
+    }
+}
+
+/// What `key rm` calls the thing that is *not* stored.
+///
+/// A provider with a JWT mode has two forms, so the plural is the only accurate word for it; a
+/// single-mode provider keeps the wording it always had.
+fn stored_noun(name: &str) -> &'static str {
+    if KeyStore::named(name).is_some() {
+        "credential"
+    } else if name
+        .parse::<ProviderId>()
+        .is_ok_and(|id| id.jwt_env().is_some())
+    {
+        "credentials"
     } else {
         "API key"
     }
@@ -3692,6 +3829,12 @@ fn provider_details(meta: &ProviderMeta) -> Vec<String> {
         lines.push(info_line(
             "store key:",
             format!("cirrocast key set {}", meta.id),
+        ));
+    }
+    if meta.id.jwt_env().is_some() {
+        lines.push(info_line(
+            "store jwt:",
+            format!("cirrocast key set {} --jwt", meta.id),
         ));
     }
     lines.extend([

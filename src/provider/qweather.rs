@@ -27,6 +27,11 @@
 //! 8. **The host is per account** and comes from `[providers.qweather].host` (the console shows it
 //!    at <https://console.qweather.com/setting>); a missing host is a configuration error naming
 //!    that page, never a guessed default.
+//! 9. **Two authentication modes** (step 27): the API key in `X-QW-Api-Key`, or an Ed25519 JWT in
+//!    `Authorization: Bearer`. The key store resolves which one is configured
+//!    (`CIRROCAST_QWEATHER_JWT_*` → `[jwt.qweather]` → `CIRROCAST_QWEATHER_KEY` → `[keys]`) and
+//!    [`QWeatherAuth`] mints a token per fetch; a 401 means the same for both (exit 6), and the
+//!    message names the console's JWT validator beside the `key set` remedy.
 //!
 //! Licence: proprietary (`QWeather` Developers License). The docs require the name `QWeather` plus
 //! <https://www.qweather.com> wherever data is shown; the registry row carries the line the
@@ -43,7 +48,9 @@ use super::{
     Capabilities, Env, FetchRequest, JsonFetch, Provider, ProviderId, attribution, fetch_json,
     local_today, requested_days,
 };
+use crate::auth::QWeatherAuth;
 use crate::cache::CacheKey;
+use crate::config::keys::Credential;
 use crate::error::{Error, Result};
 use crate::geo::provisional_zone;
 use crate::http::HttpRequest;
@@ -87,15 +94,20 @@ impl Provider for QWeather {
             .capabilities()
             .key_env
             .ok_or_else(|| Error::Config(format!("provider `{PROVIDER}` names no key variable")))?;
-        let key = env.keys.get(PROVIDER)?.ok_or_else(|| Error::MissingKey {
-            provider: PROVIDER.to_owned(),
-            env: variable.to_owned(),
-        })?;
+        // Step 27: the credential may be an API key or a JWT; the store decides which form is
+        // configured and the request builder presents it. A missing credential names both
+        // `key set` forms, because either one would do.
+        let credential = env
+            .keys
+            .credential(ProviderId::QWeather)?
+            .ok_or_else(|| super::missing_credential(ProviderId::QWeather, variable))?;
+        // One token per fetch, reused for both requests; nothing is cached between fetches.
+        let auth = QWeatherAuth::resolve(&credential, env.cache.clock().now())?;
 
         let ttl = Duration::from_secs(u64::from(env.config.cache.weather_ttl_secs));
         let today = local_today(env, loc.tz);
 
-        let current_request = request(&host, "current", loc, &key);
+        let current_request = request(&host, "current", loc, &auth);
         let current: CurrentResponse = fetch_json(
             env,
             loc,
@@ -114,7 +126,7 @@ impl Provider for QWeather {
             // The series starts at the next UTC midnight, so covering `days` location-local days
             // needs two extra UTC days of slack at either end of the offset range.
             let hours = (u32::from(days) + 2) * 24;
-            let hourly_request = request(&host, "hourly", loc, &key)
+            let hourly_request = request(&host, "hourly", loc, &auth)
                 .query("hours", hours.min(MAX_HOURS).to_string());
             let hourly: HourlyResponse = fetch_json(
                 env,
@@ -148,7 +160,8 @@ impl Provider for QWeather {
                 now,
                 (env.verbose > 0).then(|| {
                     format!(
-                        "host {host}; v1 metric-only measures; metadata tag {}",
+                        "host {host}; auth: {}; v1 metric-only measures; metadata tag {}",
+                        auth_note(&credential),
                         current.metadata.tag
                     )
                 }),
@@ -202,15 +215,27 @@ fn validate_host(host: &str) -> Result<()> {
     Ok(())
 }
 
-/// One endpoint's URL for a location, with the key in the documented header.
-fn request(host: &str, endpoint: &str, loc: &Location, key: &str) -> HttpRequest {
-    HttpRequest::get(format!(
-        "{host}/weather/v1/{endpoint}/{:.4}/{:.4}",
-        loc.lat, loc.lon
-    ))
-    .query("lang", "en")
-    .header("X-QW-Api-Key", key)
-    .secret(key)
+/// One endpoint's URL for a location, with the credential's header applied.
+///
+/// The header is the API key (`X-QW-Api-Key`) or `Authorization: Bearer <token>`, decided by
+/// [`QWeatherAuth`]; the value is registered as a secret, so no log line, error or cache envelope
+/// can carry it.
+fn request(host: &str, endpoint: &str, loc: &Location, auth: &QWeatherAuth) -> HttpRequest {
+    auth.apply(
+        HttpRequest::get(format!(
+            "{host}/weather/v1/{endpoint}/{:.4}/{:.4}",
+            loc.lat, loc.lon
+        ))
+        .query("lang", "en"),
+    )
+}
+
+/// What `-v` says about the credential in use: the form and, for a JWT, its non-secret `kid`.
+fn auth_note(credential: &Credential) -> String {
+    match credential {
+        Credential::ApiKey(_) => "api key".to_owned(),
+        Credential::QWeatherJwt(jwt) => format!("jwt (kid {})", jwt.credential_id),
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

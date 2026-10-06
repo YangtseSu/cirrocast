@@ -5,9 +5,10 @@
 //!
 //! `{host}/weatheralert/v7/alert/now?location=<lon>,<lat>` answers the same
 //! severity/urgency/certainty triple as CAP, so the mapping is direct. The credential and host are
-//! the `qweather` provider's (`X-QW-Api-Key` and `providers.qweather.host`); the source is only
-//! selected when that provider is on the chain. Step 27 switches the header to the JWT resolver in
-//! its own commit; this adapter calls the same accessors then.
+//! the `qweather` provider's (`providers.qweather.host` and whichever of the API key / JWT the key
+//! store resolves, step 27); the source is only selected when that provider is on the chain. The
+//! header comes from the same `QWeatherAuth` helper the forecast backend uses, so both follow the
+//! configured authentication mode with no second code path.
 //!
 //! Two documented v7 revisions differ in where the severity colour lives (`severity` versus
 //! `color.code`, plus a `severityColor` spelling in older payloads), so all three are accepted in
@@ -17,6 +18,7 @@ use serde::Deserialize;
 
 use super::cap::instant;
 use super::{Alert, AlertSource, Certainty, Severity, Urgency};
+use crate::auth::QWeatherAuth;
 use crate::error::{Error, Result};
 use crate::http::HttpRequest;
 use crate::model::Location;
@@ -44,15 +46,18 @@ pub fn fetch(loc: &Location, env: &Env<'_>, _language: &str) -> Result<Vec<Alert
         .metadata()
         .key_env
         .unwrap_or("CIRROCAST_QWEATHER_KEY");
-    let key = env.keys.get(PROVIDER)?.ok_or_else(|| Error::MissingKey {
-        provider: PROVIDER.to_owned(),
-        env: variable.to_owned(),
-    })?;
+    // Step 27: the same store resolution and the same header helper the forecast backend uses, so
+    // the alert request follows the configured mode with no second code path.
+    let credential = env
+        .keys
+        .credential(ProviderId::QWeather)?
+        .ok_or_else(|| crate::provider::missing_credential(ProviderId::QWeather, variable))?;
+    let auth = QWeatherAuth::resolve(&credential, env.cache.clock().now())?;
 
-    let request = HttpRequest::get(format!("{host}/weatheralert/v7/alert/now"))
-        .query("location", format!("{:.4},{:.4}", loc.lon, loc.lat))
-        .header("X-QW-Api-Key", &key)
-        .secret(&key);
+    let request = auth.apply(
+        HttpRequest::get(format!("{host}/weatheralert/v7/alert/now"))
+            .query("location", format!("{:.4},{:.4}", loc.lon, loc.lat)),
+    );
     let cache_key = super::key(env, AlertSource::QWeather.as_str(), loc);
     let body = super::cached_text(
         env,
@@ -127,7 +132,7 @@ pub fn decode(body: &str) -> Result<Vec<Alert>> {
     match response.code.as_deref() {
         None | Some("200") => {}
         Some("401") => {
-            return Err(Error::InvalidKey {
+            return Err(Error::InvalidCredential {
                 provider: PROVIDER.to_owned(),
                 status: 401,
             });

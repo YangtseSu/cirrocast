@@ -84,6 +84,35 @@ pub enum ProviderId {
     Nws,
 }
 
+/// The environment variables of one provider's JWT credential (step 27).
+///
+/// The field names are also the keys of that provider's `[jwt.<provider>]` table in `keys.toml`,
+/// so the two tiers cannot drift apart, and the values are the variables that supply the same four
+/// items from the environment.
+pub struct JwtEnv {
+    /// The credential id the console issued (`kid`).
+    pub credential_id: &'static str,
+    /// The developer id (`iss`).
+    pub developer_id: &'static str,
+    /// The project id (`sub`).
+    pub project_id: &'static str,
+    /// The PKCS#8 Ed25519 private key, as PEM text.
+    pub private_key: &'static str,
+}
+
+impl JwtEnv {
+    /// The four variables with the `[jwt.<provider>]` field each one fills, in table order.
+    #[must_use]
+    pub const fn fields(&self) -> [(&'static str, &'static str); 4] {
+        [
+            ("credential_id", self.credential_id),
+            ("developer_id", self.developer_id),
+            ("project_id", self.project_id),
+            ("private_key", self.private_key),
+        ]
+    }
+}
+
 impl ProviderId {
     /// Every provider, in registry order (this is the order `provider list` prints).
     pub const fn all() -> [Self; 14] {
@@ -132,6 +161,26 @@ impl ProviderId {
             .map(Self::as_str)
             .collect::<Vec<_>>()
             .join(", ")
+    }
+
+    /// The JWT environment quartet of this provider, `None` when it has only one authentication
+    /// mode.
+    ///
+    /// `QWeather` accepts an API key and a JWT (step 27); `config::keys` resolves the quartet
+    /// before the `[jwt.<provider>]` table and the API-key tiers, and a *partial* quartet is a
+    /// configuration error there rather than a fall-through. `provider info` and `key set --jwt`
+    /// read the same method, so a provider gains the mode in exactly one place.
+    #[must_use]
+    pub const fn jwt_env(self) -> Option<JwtEnv> {
+        match self {
+            Self::QWeather => Some(JwtEnv {
+                credential_id: "CIRROCAST_QWEATHER_JWT_CREDENTIAL_ID",
+                developer_id: "CIRROCAST_QWEATHER_JWT_DEVELOPER_ID",
+                project_id: "CIRROCAST_QWEATHER_JWT_PROJECT_ID",
+                private_key: "CIRROCAST_QWEATHER_JWT_PRIVATE_KEY",
+            }),
+            _ => None,
+        }
     }
 
     /// Capability metadata for this provider.
@@ -387,7 +436,7 @@ impl ProviderId {
                 daily: true,
                 location_kinds: LocationKinds::CITY_AND_LAT_LON,
                 notes: "global coverage; v1 endpoints, metric-only measures; API host from https://console.qweather.com/setting",
-                auth: "API key in the `X-QW-Api-Key` header (or `key=` query)",
+                auth: "API key or JWT (Ed25519)",
                 coverage: "global",
                 covers: Coverage::GLOBAL,
                 network: NetworkClass::NonFree,
@@ -1008,14 +1057,27 @@ pub fn fetch_json<T: DeserializeOwned>(
 }
 
 /// Turns a provider's `401` into [`Error::InvalidKey`]; every other error keeps its taxonomy.
+///
+/// A provider with a JWT mode gets [`Error::InvalidCredential`] instead, whose message names both
+/// `key set` forms and the console's token validator (step 27).
 fn rejected_key(error: Error, provider: ProviderId) -> Error {
     match error {
         Error::Upstream {
             status: Some(401), ..
-        } => Error::InvalidKey {
-            provider: provider.to_string(),
-            status: 401,
-        },
+        } => {
+            let name = provider.to_string();
+            if provider.jwt_env().is_some() {
+                Error::InvalidCredential {
+                    provider: name,
+                    status: 401,
+                }
+            } else {
+                Error::InvalidKey {
+                    provider: name,
+                    status: 401,
+                }
+            }
+        }
         other => other,
     }
 }
@@ -1200,6 +1262,36 @@ pub fn display_name_of(provider: &str) -> Option<&'static str> {
         .map(|id| id.metadata().display_name)
 }
 
+/// Whether the provider `name` accepts a JWT credential beside its API key (step 27).
+///
+/// The alert layer asks this so that a `401` from a provider-bound source names both `key set`
+/// forms; the registry method behind it is the same one `key set --jwt` consults.
+#[must_use]
+pub fn accepts_jwt(name: &str) -> bool {
+    name.parse::<ProviderId>()
+        .is_ok_and(|id| id.jwt_env().is_some())
+}
+
+/// The exit-6 error for a provider whose credential is not configured at all.
+///
+/// A provider with a JWT mode names both `key set` forms, because either would do (step 27); a
+/// single-mode provider names its API key. Every caller that reports a missing credential builds it
+/// here, so the chain precheck, the backend and the alert source agree.
+#[must_use]
+pub fn missing_credential(id: ProviderId, variable: &str) -> Error {
+    if id.jwt_env().is_some() {
+        Error::MissingCredential {
+            provider: id.to_string(),
+            env: variable.to_owned(),
+        }
+    } else {
+        Error::MissingKey {
+            provider: id.to_string(),
+            env: variable.to_owned(),
+        }
+    }
+}
+
 /// The chain a `--provider` value names, with no location known: `auto` answers with its global
 /// tier.
 ///
@@ -1346,11 +1438,11 @@ fn fetch_chain_with(
                     "provider `{id}` declares that it needs a key but names no environment variable"
                 ))
             })?;
-            if env.keys.get(id.as_str())?.is_none() {
-                return Err(Error::MissingKey {
-                    provider: id.to_string(),
-                    env: variable.to_owned(),
-                });
+            // The store resolves the credential exactly as the backend will (step 27): an API key
+            // or, where the provider has one, a JWT. A partial JWT set is a config error from the
+            // store, never a "missing key".
+            if env.keys.credential(*id)?.is_none() {
+                return Err(missing_credential(*id, variable));
             }
         }
 
@@ -2001,8 +2093,18 @@ mod tests {
     #[test]
     fn a_missing_key_is_reported_before_the_backend_runs() {
         let fixture = Fixture::new();
-        if fixture.keys.get("qweather").expect("key lookup").is_some() {
-            // A machine that exports CIRROCAST_QWEATHER_KEY cannot exercise this path.
+        // A machine that exports the credential cannot exercise this path: an API key, or any part
+        // of the JWT quartet (a partial one is its own config error).
+        let exported = [
+            "CIRROCAST_QWEATHER_KEY",
+            "CIRROCAST_QWEATHER_JWT_CREDENTIAL_ID",
+            "CIRROCAST_QWEATHER_JWT_DEVELOPER_ID",
+            "CIRROCAST_QWEATHER_JWT_PROJECT_ID",
+            "CIRROCAST_QWEATHER_JWT_PRIVATE_KEY",
+        ]
+        .iter()
+        .any(|name| std::env::var_os(name).is_some());
+        if exported {
             return;
         }
         let calls = Arc::new(AtomicUsize::new(0));
@@ -2017,17 +2119,18 @@ mod tests {
             &fixture.env(),
             factory(&outcomes, &calls),
         )
-        .expect_err("no key is configured");
+        .expect_err("no credential is configured");
         assert_eq!(error.exit_code(), 6);
-        let Error::MissingKey { provider, env } = error else {
-            panic!("expected a missing-key error");
+        // `QWeather` has two authentication modes, so the message names both `key set` forms.
+        let Error::MissingCredential { provider, env } = error else {
+            panic!("expected a missing-credential error");
         };
         assert_eq!(provider, "qweather");
         assert_eq!(env, "CIRROCAST_QWEATHER_KEY");
         assert_eq!(
             calls.load(Ordering::SeqCst),
             0,
-            "a backend without its key must not be called"
+            "a backend without its credential must not be called"
         );
     }
 }

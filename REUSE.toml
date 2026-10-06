@@ -198,6 +198,15 @@ precedence = "override"
 SPDX-FileCopyrightText = "WeatherAPI.com, World Weather Online, Pirate Weather and QWeather (recorded API responses)"
 SPDX-License-Identifier = "LicenseRef-Proprietary-API-Data"
 
+# The Ed25519 key step 27's JWT tests sign with: generated for the test vector, never a live
+# credential, so it is first-party rather than recorded upstream data. This annotation is later
+# than the block above, so it wins for this one file.
+[[annotations]]
+path = "tests/fixtures/qweather/ed25519-test-key.pem"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # Recorded OpenWeatherMap responses: the data is ODbL 1.0 (attribution required, share-alike only
 # for an adapted database), and the fixtures keep the upstream licence rather than being relicensed.
 # The API key travels in the request's `appid` query parameter and is absent from every response

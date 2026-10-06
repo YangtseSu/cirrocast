@@ -137,7 +137,7 @@ fn key_rm_removes_the_stored_key() {
         .args(["key", "rm", "qweather"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("no qweather API key stored"));
+        .stdout(predicate::str::contains("no qweather credentials stored"));
 }
 
 #[test]

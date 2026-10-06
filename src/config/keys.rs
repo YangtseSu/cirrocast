@@ -22,6 +22,27 @@
 //! tiers serve it through [`NAMED_CREDENTIALS`]: `CIRROCAST_GEONAMES_USER` first, then a
 //! `[keys] geonames` entry, written by the same `key set` path (stdin only) and shown masked by
 //! the same `key list`.
+//!
+//! A provider with a second authentication mode stores a `[jwt.<provider>]` table beside `[keys]`
+//! (step 27, `QWeather`):
+//!
+//! ```toml
+//! [jwt.qweather]
+//! credential_id = "ABCDE12345"
+//! developer_id = "Q12345ABCD"
+//! project_id = "ABC2345DEF"
+//! private_key = """
+//! -----BEGIN PRIVATE KEY-----
+//! …
+//! -----END PRIVATE KEY-----
+//! """
+//! ```
+//!
+//! [`KeyStore::credential`] resolves such a provider through four tiers, first complete set wins:
+//! the `CIRROCAST_<PROVIDER>_JWT_*` quartet, the `[jwt.<provider>]` table, `CIRROCAST_<PROVIDER>_KEY`,
+//! then `[keys]`. A *partial* JWT set — some but not all of the quartet, or a table missing a field
+//! — is [`Error::Config`] naming what is missing, never a silent fall-through to the other mode. The
+//! private key is the secret; the three identifiers are not, which is why `key list` prints them.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -32,7 +53,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::atomic_write;
 use crate::error::{Error, Result};
 use crate::paths::Paths;
-use crate::provider::ProviderId;
+use crate::provider::{JwtEnv, ProviderId};
 
 /// Mode of `keys.toml`: owner read/write only.
 const KEYS_FILE_MODE: u32 = 0o600;
@@ -41,8 +62,130 @@ const KEYS_FILE_MODE: u32 = 0o600;
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct KeyFile {
     /// The one table of the document, keyed by canonical provider id.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     keys: BTreeMap<String, String>,
+    /// The JWT credentials, keyed by canonical provider id (step 27).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    jwt: BTreeMap<String, JwtTable>,
+}
+
+/// One `[jwt.<provider>]` table: the three console identifiers plus the private key.
+///
+/// Every field is an `Option` so that a table written by hand with a key missing is *detected* and
+/// named in the error, instead of deserialising into an empty string that would later sign an
+/// invalid token.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct JwtTable {
+    /// The credential id the console issued (`kid`).
+    #[serde(default)]
+    credential_id: Option<String>,
+    /// The developer id (`iss`).
+    #[serde(default)]
+    developer_id: Option<String>,
+    /// The project id (`sub`).
+    #[serde(default)]
+    project_id: Option<String>,
+    /// The PKCS#8 Ed25519 private key, as PEM text.
+    #[serde(default)]
+    private_key: Option<String>,
+}
+
+impl JwtTable {
+    /// The fields that are absent or empty, in table order.
+    fn missing(&self) -> Vec<&'static str> {
+        let mut missing = Vec::new();
+        for (name, value) in [
+            ("credential_id", &self.credential_id),
+            ("developer_id", &self.developer_id),
+            ("project_id", &self.project_id),
+            ("private_key", &self.private_key),
+        ] {
+            if value.as_deref().is_none_or(|value| value.trim().is_empty()) {
+                missing.push(name);
+            }
+        }
+        missing
+    }
+
+    /// The credential this table holds, `None` while a field is missing.
+    fn credential(&self) -> Option<JwtCredential> {
+        Some(JwtCredential {
+            credential_id: self.credential_id.as_deref()?.trim().to_owned(),
+            developer_id: self.developer_id.as_deref()?.trim().to_owned(),
+            project_id: self.project_id.as_deref()?.trim().to_owned(),
+            private_key: self.private_key.as_deref()?.trim().to_owned(),
+        })
+    }
+
+    /// The table for `credential`, in the field order `keys.toml` is written in.
+    fn of(credential: &JwtCredential) -> Self {
+        Self {
+            credential_id: Some(credential.credential_id.clone()),
+            developer_id: Some(credential.developer_id.clone()),
+            project_id: Some(credential.project_id.clone()),
+            private_key: Some(credential.private_key.clone()),
+        }
+    }
+}
+
+/// A credential a request can present.
+///
+/// `QWeather` accepts two forms (step 27); a provider with one form is always [`Credential::ApiKey`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Credential {
+    /// The API key, sent in the provider's documented header or query parameter.
+    ApiKey(String),
+    /// A `QWeather` JWT credential, signed into an `Authorization: Bearer` token per fetch.
+    QWeatherJwt(JwtCredential),
+}
+
+/// A `QWeather` JWT credential: the three console identifiers and the PEM private key.
+#[derive(Clone, PartialEq, Eq)]
+pub struct JwtCredential {
+    /// The credential id the console issued (`kid`).
+    pub credential_id: String,
+    /// The developer id (`iss`), ten characters starting with `Q`.
+    pub developer_id: String,
+    /// The project id (`sub`).
+    pub project_id: String,
+    /// The PKCS#8 Ed25519 private key, as PEM text; its public half is registered in the console.
+    pub private_key: String,
+}
+
+impl JwtCredential {
+    /// The non-secret identifiers, for `key list`.
+    #[must_use]
+    pub fn ids(&self) -> JwtIds {
+        JwtIds {
+            credential_id: self.credential_id.clone(),
+            developer_id: self.developer_id.clone(),
+            project_id: self.project_id.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for JwtCredential {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The private key is a secret; only the identifiers may be printed.
+        formatter
+            .debug_struct("JwtCredential")
+            .field("credential_id", &self.credential_id)
+            .field("developer_id", &self.developer_id)
+            .field("project_id", &self.project_id)
+            .field("private_key", &"***")
+            .finish()
+    }
+}
+
+/// The non-secret identifiers of a JWT credential, as `key list` prints them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JwtIds {
+    /// The credential id the console issued (`kid`).
+    pub credential_id: String,
+    /// The developer id (`iss`).
+    pub developer_id: String,
+    /// The project id (`sub`).
+    pub project_id: String,
 }
 
 /// Where a configured key came from.
@@ -77,15 +220,59 @@ pub const NAMED_CREDENTIALS: &[NamedCredential] = &[NamedCredential {
     what: "GeoNames user name",
 }];
 
-/// One row of `cirrocast key list`.
+/// One stored credential form, as `key list` reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyForm {
+    /// An API key: the masked value, never the key itself.
+    ApiKey {
+        /// The masked secret — never the value itself.
+        masked: String,
+        /// Where the key was found.
+        source: KeySource,
+    },
+    /// A JWT credential: the identifiers only, never the PEM.
+    QWeatherJwt {
+        /// The console identifiers.
+        ids: JwtIds,
+        /// Where the credential was found.
+        source: KeySource,
+    },
+}
+
+impl KeyForm {
+    /// Where this form was found.
+    #[must_use]
+    pub const fn source(&self) -> KeySource {
+        match self {
+            Self::ApiKey { source, .. } | Self::QWeatherJwt { source, .. } => *source,
+        }
+    }
+}
+
+/// One row of `cirrocast key list`: a provider and every form it has stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeySummary {
     /// Canonical provider id, `id.as_str()`.
     pub provider: String,
-    /// The masked secret — never the value itself.
-    pub masked: String,
-    /// Where the key was found.
-    pub source: KeySource,
+    /// The stored forms, JWT first when both exist: it is what a request would present.
+    pub forms: Vec<KeyForm>,
+}
+
+/// What a `key rm` removed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Removed {
+    /// The API-key form was stored and is now gone.
+    pub api_key: bool,
+    /// The JWT form was stored and is now gone.
+    pub jwt: bool,
+}
+
+impl Removed {
+    /// Whether anything was removed at all.
+    #[must_use]
+    pub const fn any(&self) -> bool {
+        self.api_key || self.jwt
+    }
 }
 
 /// The key store behind `cirrocast key …`.
@@ -158,6 +345,77 @@ impl KeyStore {
         Ok(entry(&self.read()?.keys, id).cloned())
     }
 
+    /// The credential to present for `id`, in the order a request tries the forms.
+    ///
+    /// A provider with a JWT mode (step 27) resolves through four tiers, first complete set wins:
+    /// the `CIRROCAST_<ID>_JWT_*` quartet, the `[jwt.<id>]` table, the API-key environment
+    /// variable, then the `[keys]` entry. A partial JWT set is [`Error::Config`] naming what is
+    /// missing, never a silent fall-through to the API key; a provider without a JWT mode has the
+    /// two API-key tiers of [`KeyStore::get`].
+    pub fn credential(&self, id: ProviderId) -> Result<Option<Credential>> {
+        if let Some(env) = id.jwt_env() {
+            if let Some(credential) = jwt_from_env(id, &env)? {
+                return Ok(Some(Credential::QWeatherJwt(credential)));
+            }
+            let file = self.read()?;
+            if let Some((credential, _)) = self.jwt_from_file(id, &file)? {
+                return Ok(Some(Credential::QWeatherJwt(credential)));
+            }
+            return Ok(api_key(id, &file).map(|(value, _)| Credential::ApiKey(value)));
+        }
+        Ok(self.get(id.as_str())?.map(Credential::ApiKey))
+    }
+
+    /// Stores (or replaces) the JWT credential of a provider that accepts one.
+    ///
+    /// The caller validates the credential first (`auth::jwt::validate`); a file edited by hand is
+    /// re-validated when a token is minted. Storing a JWT leaves any API key in place —
+    /// [`KeyStore::credential`] prefers the JWT, and [`KeyStore::remove`] drops both forms.
+    pub fn set_jwt(&self, provider: &str, credential: &JwtCredential) -> Result<()> {
+        let id: ProviderId = provider.parse()?;
+        if id.jwt_env().is_none() {
+            return Err(Error::Usage(format!(
+                "provider `{id}` has no JWT mode; `cirrocast key set {id}` stores an API key"
+            )));
+        }
+        let mut file = self.read()?;
+        // Replace any spelling of the same provider so the file cannot hold two credentials.
+        file.jwt
+            .retain(|name, _| name.parse::<ProviderId>().ok() != Some(id));
+        file.jwt
+            .insert(id.as_str().to_owned(), JwtTable::of(credential));
+        self.write(&file)
+    }
+
+    /// The JWT credential the `[jwt.<id>]` table holds, and its source; `None` when there is no
+    /// table for `id`.
+    fn jwt_from_file(
+        &self,
+        id: ProviderId,
+        file: &KeyFile,
+    ) -> Result<Option<(JwtCredential, KeySource)>> {
+        let Some(table) = jwt_entry(&file.jwt, id) else {
+            return Ok(None);
+        };
+        let missing = table.missing();
+        if !missing.is_empty() {
+            return Err(self.incomplete_jwt(id, &missing));
+        }
+        Ok(table
+            .credential()
+            .map(|credential| (credential, KeySource::File)))
+    }
+
+    /// The error for a `[jwt.<id>]` table that is missing fields.
+    fn incomplete_jwt(&self, id: ProviderId, missing: &[&str]) -> Error {
+        Error::Config(format!(
+            "[jwt.{id}] in {} is missing {}; every JWT field is required, and a partial credential \
+             never falls back to the API key",
+            self.path.display(),
+            missing.join(", ")
+        ))
+    }
+
     /// Stores (or replaces) `name`'s credential in the key file.
     ///
     /// `name` is a provider id or one of [`NAMED_CREDENTIALS`]; a keyless provider is refused.
@@ -181,21 +439,31 @@ impl KeyStore {
         self.write(&file)
     }
 
-    /// Removes `name`'s stored credential, reporting whether the file changed.
-    pub fn remove(&self, name: &str) -> Result<bool> {
+    /// Removes every stored credential of `name`, reporting which forms were there.
+    ///
+    /// Both forms of a provider with a JWT mode go together: `key rm qweather` is the one command
+    /// that removes a credential, and leaving a JWT behind because the user once stored an API key
+    /// would keep a secret on disk they asked to be rid of.
+    pub fn remove(&self, name: &str) -> Result<Removed> {
         if let Some(credential) = Self::named(name) {
             return self.remove_named(credential);
         }
         let id: ProviderId = name.parse()?;
         let mut file = self.read()?;
-        let before = file.keys.len();
+        let keys_before = file.keys.len();
         file.keys
             .retain(|name, _| name.parse::<ProviderId>().ok() != Some(id));
-        if file.keys.len() == before {
-            return Ok(false);
+        let jwt_before = file.jwt.len();
+        file.jwt
+            .retain(|name, _| name.parse::<ProviderId>().ok() != Some(id));
+        let removed = Removed {
+            api_key: file.keys.len() != keys_before,
+            jwt: file.jwt.len() != jwt_before,
+        };
+        if removed.any() {
+            self.write(&file)?;
         }
-        self.write(&file)?;
-        Ok(true)
+        Ok(removed)
     }
 
     /// The named-credential arm of [`KeyStore::set`].
@@ -211,55 +479,72 @@ impl KeyStore {
     }
 
     /// The named-credential arm of [`KeyStore::remove`].
-    fn remove_named(&self, credential: &NamedCredential) -> Result<bool> {
+    fn remove_named(&self, credential: &NamedCredential) -> Result<Removed> {
         let mut file = self.read()?;
         let before = file.keys.len();
         file.keys
             .retain(|name, _| !name.trim().eq_ignore_ascii_case(credential.name));
-        if file.keys.len() == before {
-            return Ok(false);
+        let removed = Removed {
+            api_key: file.keys.len() != before,
+            jwt: false,
+        };
+        if removed.any() {
+            self.write(&file)?;
         }
-        self.write(&file)?;
-        Ok(true)
+        Ok(removed)
     }
 
     /// Every configured credential, masked, in registry order with hand-written entries last.
+    ///
+    /// A provider with a JWT mode lists that form first — it is what a request would present — and
+    /// the API key beside it when both are stored. A partial JWT set is the same
+    /// [`Error::Config`] a fetch reports, so a broken credential is never hidden by a listing.
     pub fn list(&self) -> Result<Vec<KeySummary>> {
         let file = self.read()?;
         let mut summaries = Vec::new();
         for id in ProviderId::all() {
-            if let Some(env) = id.metadata().key_env
-                && let Some(value) = super::env_value(env)
-            {
-                summaries.push(KeySummary {
-                    provider: id.as_str().to_owned(),
-                    masked: Self::mask(&value),
-                    source: KeySource::Env,
-                });
-                continue;
+            let mut forms = Vec::new();
+            if let Some(env) = id.jwt_env() {
+                if let Some(credential) = jwt_from_env(id, &env)? {
+                    forms.push(KeyForm::QWeatherJwt {
+                        ids: credential.ids(),
+                        source: KeySource::Env,
+                    });
+                } else if let Some((credential, source)) = self.jwt_from_file(id, &file)? {
+                    forms.push(KeyForm::QWeatherJwt {
+                        ids: credential.ids(),
+                        source,
+                    });
+                }
             }
-            if let Some(value) = entry(&file.keys, id) {
+            if let Some((value, source)) = api_key(id, &file) {
+                forms.push(KeyForm::ApiKey {
+                    masked: Self::mask(&value),
+                    source,
+                });
+            }
+            if !forms.is_empty() {
                 summaries.push(KeySummary {
                     provider: id.as_str().to_owned(),
-                    masked: Self::mask(value),
-                    source: KeySource::File,
+                    forms,
                 });
             }
         }
         for credential in NAMED_CREDENTIALS {
-            if let Some(value) = super::env_value(credential.env) {
-                summaries.push(KeySummary {
-                    provider: credential.name.to_owned(),
-                    masked: Self::mask(&value),
-                    source: KeySource::Env,
+            let found = super::env_value(credential.env)
+                .map(|value| (value, KeySource::Env))
+                .or_else(|| {
+                    named_entry(&file.keys, credential)
+                        .cloned()
+                        .map(|value| (value, KeySource::File))
                 });
-                continue;
-            }
-            if let Some(value) = named_entry(&file.keys, credential) {
+            if let Some((value, source)) = found {
                 summaries.push(KeySummary {
                     provider: credential.name.to_owned(),
-                    masked: Self::mask(value),
-                    source: KeySource::File,
+                    forms: vec![KeyForm::ApiKey {
+                        masked: Self::mask(&value),
+                        source,
+                    }],
                 });
             }
         }
@@ -267,8 +552,10 @@ impl KeyStore {
             if name.parse::<ProviderId>().is_err() && Self::named(name).is_none() {
                 summaries.push(KeySummary {
                     provider: name.clone(),
-                    masked: Self::mask(value),
-                    source: KeySource::File,
+                    forms: vec![KeyForm::ApiKey {
+                        masked: Self::mask(value),
+                        source: KeySource::File,
+                    }],
                 });
             }
         }
@@ -340,6 +627,62 @@ fn named_entry<'a>(
     keys.iter()
         .find(|(name, _)| name.trim().eq_ignore_ascii_case(credential.name))
         .map(|(_, value)| value)
+}
+
+/// The `[jwt.<id>]` table, accepting any spelling of the provider id a user may have written.
+fn jwt_entry(tables: &BTreeMap<String, JwtTable>, id: ProviderId) -> Option<&JwtTable> {
+    tables
+        .iter()
+        .find(|(name, _)| name.parse::<ProviderId>().ok() == Some(id))
+        .map(|(_, table)| table)
+}
+
+/// The API key the environment or `file` supplies for `id`, and where it came from.
+fn api_key(id: ProviderId, file: &KeyFile) -> Option<(String, KeySource)> {
+    if let Some(variable) = id.metadata().key_env
+        && let Some(value) = super::env_value(variable)
+    {
+        return Some((value, KeySource::Env));
+    }
+    entry(&file.keys, id)
+        .cloned()
+        .map(|value| (value, KeySource::File))
+}
+
+/// The JWT credential the environment supplies for `id`, `None` when none of the quartet is set.
+///
+/// A quartet that is present but incomplete is [`Error::Config`] naming the missing variables: a
+/// half-exported credential must not fall through to the API key, which is exactly the confusion
+/// the second mode is there to avoid.
+fn jwt_from_env(id: ProviderId, env: &JwtEnv) -> Result<Option<JwtCredential>> {
+    let mut values = BTreeMap::new();
+    let mut missing = Vec::new();
+    for (field, variable) in env.fields() {
+        match super::env_value(variable) {
+            Some(value) => {
+                values.insert(field, value);
+            }
+            None => missing.push(variable),
+        }
+    }
+    if values.is_empty() {
+        return Ok(None);
+    }
+    if !missing.is_empty() {
+        return Err(Error::Config(format!(
+            "the JWT environment for `{id}` is incomplete: {} {} not set, and a partial credential \
+             never falls back to the API key",
+            missing.join(", "),
+            if missing.len() == 1 { "is" } else { "are" }
+        )));
+    }
+    Ok(JwtTable {
+        credential_id: values.remove("credential_id"),
+        developer_id: values.remove("developer_id"),
+        project_id: values.remove("project_id"),
+        private_key: values.remove("private_key"),
+    }
+    .credential())
 }
 
 /// Rejects an empty value, so a stray newline cannot store an unusable credential.

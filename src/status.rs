@@ -401,7 +401,9 @@ fn degradable(error: &Error) -> bool {
         | Error::Upstream { .. }
         | Error::LocationNotFound(_)
         | Error::MissingKey { .. }
+        | Error::MissingCredential { .. }
         | Error::InvalidKey { .. }
+        | Error::InvalidCredential { .. }
         | Error::InvalidToken { .. }
         | Error::Chain { .. } => true,
         Error::Usage(_) | Error::Config(_) | Error::Other(_) => false,

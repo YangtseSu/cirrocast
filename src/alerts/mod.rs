@@ -452,14 +452,27 @@ pub fn credits(alerts: &[Alert], config: &AlertsConfig, i18n: &crate::i18n::I18n
 
 /// A `401` means the credential is wrong and only its owner can fix it; every other error keeps
 /// its taxonomy.
+///
+/// A source bound to a provider with a JWT mode borrows that provider's credential, so its message
+/// names both `key set` forms (step 27).
 fn rejected_key(error: Error, source: AlertSource) -> Error {
     match error {
         Error::Upstream {
             status: Some(401), ..
-        } => Error::InvalidKey {
-            provider: source.to_string(),
-            status: 401,
-        },
+        } => {
+            let provider = source.to_string();
+            if crate::provider::accepts_jwt(source.provider().unwrap_or(source.as_str())) {
+                Error::InvalidCredential {
+                    provider,
+                    status: 401,
+                }
+            } else {
+                Error::InvalidKey {
+                    provider,
+                    status: 401,
+                }
+            }
+        }
         other => other,
     }
 }
