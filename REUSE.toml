@@ -165,6 +165,17 @@ precedence = "override"
 SPDX-FileCopyrightText = "Open-Meteo.com (ERA5/Copernicus reanalysis)"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# The frozen v1.0.0 output document (step 28): the bytes `--format json` printed for Detroit, kept
+# as the fixture the frozen `docs/schema/json-v1.json` is validated against. The document structure
+# is ours, but the numbers in it are Open-Meteo's forecast and the place name is GeoNames', so it
+# keeps the two upstream licences rather than being relicensed to GPL — the same rule the recorded
+# payloads above follow. Re-encoding or hand-editing it would defeat its purpose: it is a witness.
+[[annotations]]
+path = "tests/fixtures/json/*.json"
+precedence = "override"
+SPDX-FileCopyrightText = "Open-Meteo.com and GeoNames (data recorded in a v1.0.0 output document)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
 # The cache fixture step 22's `status` probe and `contrib/statusbar/verify.sh` read offline: a real
 # cache envelope (`CacheEntry`) around the recorded Beijing forecast body above, so it carries that
 # payload's upstream licence rather than the GPL rule for first-party fixtures. The `fetched_at`
@@ -180,6 +191,30 @@ SPDX-License-Identifier = "CC-BY-4.0"
 # cannot carry a comment header, and the schemas are our own description of our own output.
 [[annotations]]
 path = "docs/schema/*.json"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Plain-text captures of real CLI runs (`docs/screenshots/*.txt`, step 28): the transcripts are our
+# own output, like the example blocks in `README.md`, and carry the project licence. The upstream
+# values quoted inside them (forecasts, air readings, climate normals) keep their own credits in the
+# text itself — each capture ends with the attribution line its data licence requires.
+[[annotations]]
+path = "docs/screenshots/*.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The generated reference documents and the man page (step 28): `help-long.txt` is the `--help`
+# output byte for byte, `flags.txt` the sorted flag list, and `man/cirrocast.1` is `cirrocast man`
+# verbatim. They are first-party text produced from the binary's own clap definitions, but no
+# comment survives generation — the tests compare them byte for byte — so they carry the licence
+# through this annotation instead of a header line.
+[[annotations]]
+path = [
+    "docs/reference/*.txt",
+    "man/cirrocast.1",
+]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
