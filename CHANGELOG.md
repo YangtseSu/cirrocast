@@ -25,7 +25,40 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+* The README is user-facing again: its versioning, packaging, publishing and CI sections moved to
+  where the contributors need them — the version table with the schema compatibility rules it belongs
+  to (`docs/schema.md#versioning`), and the packaging, release, publishing and CI material, including
+  the release checklist, to [`CONTRIBUTING.md`](CONTRIBUTING.md#packaging-and-release). The README
+  keeps a short Development pointer, and `AGENTS.md`'s release section keeps only the two invariants.
+* `CIRROCAST_LOCATION` is documented as what it has always been — **one** location. The `--help`
+  epilogue, `docs/configuration.md` and `docs/location.md` now say that the environment tier has no
+  second argument, so a comma in the value is part of the spec (a coordinate pair, or a
+  `City, Region` name) and a multi-location run belongs on the command line.
+
+### Fixed
+
+* **Obscuration conditions no longer collapse into fog (WeatherAPI, QWeather, World Weather Online,
+  NWS).** These backends mapped haze, dust, sand, smoke and mist to WMO 45 (`Fog`), although the
+  canonical model describes each phenomenon (WMO 4/5/6/7/10) and the METAR/OpenWeatherMap mappings
+  already used them: a `Smoke` reading prints `Smoke`, a sandstorm `Dust or sand raised by wind`,
+  and NWS's `Blowing Dust` is no longer `Fog`. Only the members WMO 4677 does not describe in this
+  crate's table still take the nearest described family (dust/sand *storms*, smog, and NWS's
+  combined `Fog/mist` icon). World Weather Online also gained the eleven published obscuration codes
+  it had no arm for (125–161, previously `Unknown`), and each affected provider's published code
+  list is now pinned by an exact mapping test — the NWS icon table against the vendor's `/icons`
+  list, the three native-code tables against their published feeds.
+* The unreachable `Mono` branch in `color::paint` is gone: a monochrome run resolves to "nothing may
+  be painted" through the same helper `write_paint` uses, so the two no-colour paths cannot drift
+  apart.
+
+### Removed
+
+* `I18n::format_temp` — a public wrapper no renderer called (every format formats temperatures
+  through `model::units`), deleted so it can no longer be mistaken for the conversion path. The
+  `format-temp-c`/`format-temp-f` catalog messages remain, like the other reserved `format-*`
+  spellings.
 
 ## [1.3.0] - 2026-10-06
 
