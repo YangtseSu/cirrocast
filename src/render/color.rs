@@ -135,14 +135,15 @@ fn ramp(stops: &[(f32, u8)], value: f32) -> u8 {
 /// monochrome run must not allocate and must not emit escapes for nothing.
 #[must_use]
 pub fn paint(text: &str, fg: u8, depth: ColorDepth) -> Cow<'_, str> {
-    if depth == ColorDepth::Mono || text.is_empty() {
+    if text.is_empty() {
         return Cow::Borrowed(text);
     }
-    let colour = match depth {
-        ColorDepth::Ansi16 => ansi16_from_256(fg),
-        ColorDepth::Ansi256 | ColorDepth::Mono => fg,
-    };
-    Cow::Owned(sgr(text, colour))
+    // A monochrome depth resolves to `None` through [`painted_colour`], so the two no-colour cases
+    // (nothing may be painted, nothing to paint) share this one path.
+    match painted_colour(fg, depth) {
+        Some(colour) => Cow::Owned(sgr(text, colour)),
+        None => Cow::Borrowed(text),
+    }
 }
 
 /// One `38;5` foreground escape plus a reset.
