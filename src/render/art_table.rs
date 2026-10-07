@@ -354,6 +354,10 @@ impl ArtTable {
             return None;
         }
         let charset = self.charset;
+        // Every slot's context is built from the one `RenderSetup` the run resolved, so the width
+        // and the palette are identical across the slots and the first available context speaks
+        // for the whole run. A slot that failed carries no context, which is why the search is
+        // `find_map` rather than an index.
         let width = slots
             .iter()
             .find_map(|slot| slot.ctx.as_ref())

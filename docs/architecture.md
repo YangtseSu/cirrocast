@@ -276,7 +276,8 @@ contract](plans/README.md#architecture-contract).
 * **Metric-SI storage, one conversion point.** Every numeric field is stored canonically
   (`temp_c`, `wind_kmh`, `precip_mm`, `pressure_hpa`, `visibility_km`); a provider requests metric
   upstream wherever the API allows it. Unit conversion and display formatting live only in
-  `src/model/units.rs`, are reached only through `src/render/`, and a renderer holds one
+  `src/model/units.rs`, are reached only through the render surface — `src/render/` and the shared
+  `%`-template engine `src/template.rs` — and a renderer holds one
   `ResolvedUnits`. Cache entries are therefore unit-independent, and a second conversion point must
   not appear.
 * **Canonical conditions.** A condition is a WMO 4677 code (`model::Condition`). Providers own the

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The render-layer import rule: `src/render` and `src/model` must not name `http`, `provider` or
-`cache` (step 12's render-path audit; the CI `gates` job runs this from the repository root).
+"""The render-layer import rule: `src/render`, `src/model` and the shared template engine
+`src/template.rs` must not name `http`, `provider` or `cache` (step 12's render-path audit; the CI
+`gates` job runs this from the repository root). The template engine is part of the render surface
+(the one place a unit is converted, beside `src/render`), so it is held to the same rule.
 
 A line-based `grep` is defeatable by ordinary Rust: `use crate::{\\n cache::Cache, …}` and
 `crate :: cache::Cache` (spaces around the path separator) both pass one. This is a small
@@ -23,7 +25,7 @@ import pathlib
 import re
 import sys
 
-ROOTS = ("src/render", "src/model")
+ROOTS = ("src/render", "src/model", "src/template.rs")
 
 
 def blanked(src: str) -> str:
@@ -107,11 +109,13 @@ def main() -> int:
     found = False
     scanned = 0
     for root in ROOTS:
-        if not pathlib.Path(root).is_dir():
+        if not pathlib.Path(root).exists():
             print(f"::error::{root} does not exist — run this from the repository root")
             return 2
     for root in ROOTS:
-        for source in sorted(pathlib.Path(root).rglob("*.rs")):
+        path = pathlib.Path(root)
+        sources = [path] if path.is_file() else sorted(path.rglob("*.rs"))
+        for source in sources:
             scanned += 1
             text = blanked(source.read_text())
             for offset in sorted(offences(text)):
@@ -119,7 +123,10 @@ def main() -> int:
                 print(f"{source}:{line}")
                 found = True
     if found:
-        print("::error::src/render and src/model must not reference http, provider or cache")
+        print(
+            "::error::the render surface (src/render, src/model, src/template.rs) must not "
+            "reference http, provider or cache"
+        )
         return 1
     print(f"ok: {scanned} files under {' and '.join(ROOTS)} name no http, provider or cache")
     return 0

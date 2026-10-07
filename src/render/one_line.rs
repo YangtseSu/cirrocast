@@ -11,6 +11,10 @@
 //! width/precision rules — lives in [`crate::template`], shared with the `full`/`minimal` presets,
 //! step 22's `status` probe and the wttr.in compatibility surface. This module is only the
 //! renderer: it wraps one expansion with the alert banner that belongs above it.
+//!
+//! The line **ignores `ctx.width`**: a template is as wide as its tokens make it, exactly like the
+//! `plain`, `json` and `alerts` record formats, and the resolved width shapes only the table
+//! formats (`art-table`, `dumb`), which draw columns.
 
 use std::fmt::Write as _;
 

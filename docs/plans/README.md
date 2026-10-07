@@ -206,7 +206,8 @@ src/
     metar.rs         aviationweather.gov METAR/TAF (keyless, station based)
     metar/decode.rs          the raw METAR/TAF decoder (groups, present weather, clouds)
     metar/station_table.rs   the embedded 55-station table and its lookup
-  template.rs        the `%`-token engine: TOKENS table, presets, width/precision, escapes (step 19)
+  template.rs        the `%`-token engine: TOKENS table, presets, width/precision, escapes (step 19);
+                     part of the render surface, `src/render`'s sibling for unit conversion
   parallel.rs        ordered parallel mapping for multi-location runs (step 19)
   status.rs          the `status` probe: one line, the failure policy, `--max-age`, the placeholder (step 22)
   render/
@@ -233,8 +234,9 @@ tests/               integration tests (CLI level), fixtures/ = recorded API res
   on provider-specific codes.
 * All numeric fields are stored in **canonical metric/SI** (`temp_c`, `wind_kmh`, `precip_mm`,
   `pressure_hpa`, `visibility_km`). Providers request metric from upstream wherever the API allows
-  it; **the render layer is the only place that converts units**. Cache entries are therefore
-  unit-independent.
+  it; **the render surface — `src/render/` plus the shared template engine `src/template.rs` — is
+  the only place that converts units**, and the conversion happens at display time, after the cache
+  key is built. Cache entries are therefore unit-independent.
 * `Report { location, current: Option<Current>, days: Vec<DayForecast>, alerts, air, astro,
   attribution }`; `alerts` (step 15), `air` (step 16) and `astro` (step 17) are attached after the
   forecast and default to empty/`None`, so a hand-built or older document still parses.
@@ -359,7 +361,9 @@ report so that no renderer or template token converts a clock per field.
   degrades to a stacked layout; the table formats never emit lines wider than the resolved width.
   `plain`, `json` and `alerts` are record formats and **ignore the width**: truncating a record
   would delete the values the format exists to carry, and a pipe wraps or not at its leisure
-  (step 08). `alerts` writes the CAP `headline`/`description`/`instruction` verbatim, so it is
+  (step 08). The `one-line` template ignores it for the same reason — a template is exactly as wide
+  as its tokens make it — so `--width` shapes the table formats alone. `alerts` writes the CAP
+  `headline`/`description`/`instruction` verbatim, so it is
   width-exempt for the same reason rather than truncating a warning body.
 * **Multi-location runs (step 19, binding).** Several positional `LOCATION` arguments are one run:
   at most four fetches at a time (`min(len, min(4, available_parallelism))`), results written into
@@ -372,9 +376,11 @@ report so that no renderer or template token converts a clock per field.
   `{"schema_version": 2, "query": "<as typed>", "error": {"code": …, "message": …}}`;
   `art-table` draws a combined summary layout for 2–4 locations (falling back to the full tables
   and a one-time stderr note above four, silenced by `-q`). The template engine behind `one-line`,
-  the `full`/`minimal` presets, `status` and the compat surface is `src/template.rs`, with
-  `TOKENS: &[TokenSpec]` exported and unknown tokens a usage error on the CLI (the compat surface
-  keeps them literal at its own boundary).
+  the `full`/`minimal` presets, `status` and the compat surface is `src/template.rs` — part of the
+  render surface, so the unit conversions it runs through `model::units` are the same display-time
+  ones the renderers run, never a second conversion point — with `TOKENS: &[TokenSpec]` exported
+  and unknown tokens a usage error on the CLI (the compat surface keeps them literal at its own
+  boundary).
 * Colour: honour `NO_COLOR` (present with any value, an empty one included, disables),
   `CLICOLOR_FORCE` (set and not `0` enables, and wins over `NO_COLOR`), `--color auto|always|never`,
   and non-tty stdout ⇒ no colour in `auto`. An explicit `always` emits escapes even into a pipe; the
