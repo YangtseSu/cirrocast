@@ -602,9 +602,10 @@ fn daylight(code: &str, at: DateTime<Tz>) -> bool {
 /// `QWeather`'s condition code as a WMO 4677 code.
 ///
 /// The families follow the provider's published code list (100–999, plus the 150–154 night family
-/// its own examples emit); `900`/`901` (hot/cold) and `999` (unknown) have no WMO equivalent and
-/// stay undescribed, and an unlisted or unparsable code is unknown rather than clamped into a
-/// neighbour.
+/// its own examples emit); each published obscuration maps onto the model's own code for the
+/// phenomenon it names (mist, haze, dust, sand). `900`/`901` (hot/cold) and `999` (unknown) have no
+/// WMO equivalent and stay undescribed, and an unlisted or unparsable code is unknown rather than
+/// clamped into a neighbour.
 #[allow(clippy::match_same_arms)]
 fn condition_of(code: &str) -> Condition {
     let Ok(code) = code.trim().parse::<u16>() else {
@@ -635,8 +636,25 @@ fn condition_of(code: &str) -> Condition {
         402 | 403 | 410 => 75,                   // heavy snow, snowstorm
         404..=406 => 66,                         // sleet, rain and snow
         407 => 85,                               // snow flurry
-        500..=515 => 45, // mist, fog, haze, sand, dust and their stronger forms
-        _ => 255,        // hot, cold, unknown and anything unlisted
+        // The 500 obscuration family: each published code keeps the model's own code for the
+        // phenomenon it names (mist, haze, dust, sand), so a duststorm never reads as fog again
+        // (review 05 §3.3). The dense-fog ladder and plain fog share Fog; 505/506 are not
+        // published and stay unknown.
+        500 => 10, // mist
+        501 => 45, // fog
+        502 => 5,  // haze
+        503 => 7,  // sand (raised by wind)
+        504 => 6,  // dust (in suspension)
+        507 => 7,  // duststorm
+        508 => 7,  // sandstorm
+        509 => 45, // dense fog
+        510 => 45, // strong fog
+        511 => 5,  // moderate haze
+        512 => 5,  // heavy haze
+        513 => 5,  // severe haze
+        514 => 45, // heavy fog
+        515 => 45, // extra heavy fog
+        _ => 255,  // hot, cold, unknown and anything unlisted
     })
 }
 
@@ -645,26 +663,90 @@ mod tests {
     use super::{condition_of, validate_host};
     use crate::model::Condition;
 
-    /// Every code the provider publishes, minus the three with no weather meaning.
-    const PUBLISHED: &[u16] = &[
-        100, 101, 102, 103, 104, 154, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211,
-        212, 213, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315,
-        316, 317, 318, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 499, 500, 501,
-        502, 503, 504, 507, 508, 509, 510, 511, 512, 513, 514, 515,
+    /// Every code the provider publishes (minus the three with no weather meaning) plus the
+    /// 150–154 night family its examples emit, with the WMO 4677 code the mapping owes it.
+    ///
+    /// The expectation is written out from the vendor's own condition table rather than echoed
+    /// from [`condition_of`], so an edit that collapses two distinct phenomena — the review-05
+    /// §3.3 defect, where the whole 500 family became fog — fails here.
+    const PUBLISHED: [(u16, u8); 70] = [
+        (100, 0),  // sunny
+        (101, 2),  // cloudy
+        (102, 1),  // few clouds
+        (103, 2),  // partly cloudy
+        (104, 3),  // overcast
+        (150, 0),  // clear night
+        (151, 2),  // cloudy night
+        (152, 1),  // few clouds at night
+        (153, 2),  // partly cloudy at night
+        (154, 3),  // overcast at night
+        (200, 3),  // windy, and the rest of the wind family (no WMO equivalent)
+        (201, 3),  // calm
+        (202, 3),  // light breeze
+        (203, 3),  // moderate breeze
+        (204, 3),  // fresh breeze
+        (205, 3),  // strong breeze
+        (206, 3),  // high wind
+        (207, 3),  // gale
+        (208, 3),  // strong gale
+        (209, 3),  // storm
+        (210, 3),  // violent storm
+        (211, 3),  // hurricane
+        (212, 3),  // tornado
+        (213, 3),  // tropical storm
+        (300, 80), // shower rain
+        (301, 82), // heavy shower rain
+        (302, 95), // thundershower
+        (303, 96), // heavy thunderstorm
+        (304, 96), // thundershower with hail
+        (305, 61), // light rain
+        (306, 63), // moderate rain
+        (307, 65), // heavy rain
+        (308, 65), // extreme rain
+        (309, 53), // drizzle rain
+        (310, 65), // storm
+        (311, 65), // heavy storm
+        (312, 65), // severe storm
+        (313, 66), // freezing rain
+        (314, 63), // light to moderate rain
+        (315, 63), // moderate to heavy rain
+        (316, 65), // heavy rain to storm
+        (317, 65), // storm to heavy storm
+        (318, 65), // heavy to severe storm
+        (399, 63), // rain
+        (400, 71), // light snow
+        (401, 73), // moderate snow
+        (402, 75), // heavy snow
+        (403, 75), // snowstorm
+        (404, 66), // sleet
+        (405, 66), // rain and snow
+        (406, 66), // shower rain and snow
+        (407, 85), // snow flurry
+        (408, 71), // light to moderate snow
+        (409, 73), // moderate to heavy snow
+        (410, 75), // heavy snow to snowstorm
+        (499, 73), // snow
+        (500, 10), // mist
+        (501, 45), // fog
+        (502, 5),  // haze
+        (503, 7),  // sand
+        (504, 6),  // dust
+        (507, 7),  // duststorm
+        (508, 7),  // sandstorm
+        (509, 45), // dense fog
+        (510, 45), // strong fog
+        (511, 5),  // moderate haze
+        (512, 5),  // heavy haze
+        (513, 5),  // severe haze
+        (514, 45), // heavy fog
+        (515, 45), // extra heavy fog
     ];
 
     #[test]
-    fn every_published_code_maps_to_a_described_condition() {
-        for &code in PUBLISHED {
+    fn every_published_code_maps_to_its_documented_wmo_code() {
+        for (code, wmo) in PUBLISHED {
             let condition = condition_of(&code.to_string());
-            assert!(
-                condition.is_known(),
-                "{code} maps to an undescribed condition"
-            );
-        }
-        // The night family the published table omits but the API emits.
-        for code in 150..=154 {
-            assert!(condition_of(&code.to_string()).is_known(), "{code}");
+            assert_eq!(condition.code(), wmo, "{code} must map to WMO {wmo}");
         }
     }
 

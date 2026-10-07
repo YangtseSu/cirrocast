@@ -108,10 +108,10 @@ fn the_days_use_the_daily_aggregates_and_the_hourly_parts() {
     assert_eq!(part(first, DayPartKind::Morning).wind_dir_deg, Some(318));
     assert_eq!(part(first, DayPartKind::Morning).humidity_pct, Some(12));
     assert_eq!(part(first, DayPartKind::Morning).precip_prob_pct, Some(0));
-    // 1036 (smoky haze) maps into the atmosphere family.
+    // 1036 (smoky haze) is haze, not fog.
     assert_eq!(
         part(first, DayPartKind::Evening).weather,
-        Condition::from_u8(45)
+        Condition::from_u8(5)
     );
 
     // The daily extremes come from the response's own `day` block.

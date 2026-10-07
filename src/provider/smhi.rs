@@ -449,3 +449,68 @@ fn raw_summary(response: &PointResponse) -> String {
         response.time_series.len()
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::condition_of;
+    use crate::model::Condition;
+
+    /// Every code of SMHI's own symbol table (1–27) and the WMO 4677 code [`condition_of`] owes
+    /// it.
+    ///
+    /// The expectation is written out from SMHI's published symbol list rather than echoed from
+    /// the mapping, so a mistyped arm cannot hide; code `5` is absent from that list but is
+    /// answered as overcast, the documented decision this table pins.
+    ///
+    /// [`condition_of`]: super::condition_of
+    const SYMBOLS: [(u8, u8); 27] = [
+        (1, 0),   // clear sky
+        (2, 1),   // nearly clear sky
+        (3, 2),   // variable cloudiness
+        (4, 2),   // halfclear sky
+        (5, 3),   // cloudy sky (the code SMHI's own page omits)
+        (6, 3),   // overcast
+        (7, 45),  // fog
+        (8, 80),  // light rain showers
+        (9, 81),  // moderate rain showers
+        (10, 82), // heavy rain showers
+        (11, 95), // thunderstorm
+        (12, 66), // light sleet showers
+        (13, 67), // moderate sleet showers
+        (14, 67), // heavy sleet showers
+        (15, 85), // light snow showers
+        (16, 85), // moderate snow showers
+        (17, 86), // heavy snow showers
+        (18, 61), // light rain
+        (19, 63), // moderate rain
+        (20, 65), // heavy rain
+        (21, 95), // rain with thunder
+        (22, 66), // light sleet
+        (23, 67), // moderate sleet
+        (24, 67), // heavy sleet
+        (25, 71), // light snowfall
+        (26, 73), // moderate snowfall
+        (27, 75), // heavy snowfall
+    ];
+
+    #[test]
+    fn every_published_symbol_maps_to_its_documented_wmo_code() {
+        for (symbol, wmo) in SYMBOLS {
+            let condition = condition_of(f32::from(symbol));
+            assert_eq!(condition.code(), wmo, "{symbol} must map to WMO {wmo}");
+        }
+    }
+
+    #[test]
+    fn a_hostile_symbol_is_unknown_rather_than_a_neighbour() {
+        for symbol in [0.0, 28.0, 99.0, -1.0, 1000.0, f32::NAN, f32::INFINITY] {
+            assert!(
+                !condition_of(symbol).is_known(),
+                "{symbol} must stay undescribed"
+            );
+        }
+        // The payload sends whole numbers, but a fractional one rounds to its nearest code.
+        assert_eq!(condition_of(4.6), Condition::from_u8(3));
+        assert_eq!(condition_of(2.4), Condition::from_u8(1));
+    }
+}

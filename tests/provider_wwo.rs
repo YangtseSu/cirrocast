@@ -125,10 +125,10 @@ fn the_days_join_the_unpadded_hour_strings_to_the_dates() {
     assert_eq!(part(first, DayPartKind::Morning).wind_dir_deg, Some(319));
     assert_eq!(part(first, DayPartKind::Morning).humidity_pct, Some(12));
     assert_eq!(part(first, DayPartKind::Morning).precip_prob_pct, Some(0));
-    // 149 (smoky haze) maps into the atmosphere family.
+    // 149 (smoky haze) is haze, not fog.
     assert_eq!(
         part(first, DayPartKind::Evening).weather,
-        Condition::from_u8(45)
+        Condition::from_u8(5)
     );
 
     // The daily extremes come from the response's own `maxtempC`/`mintempC`.

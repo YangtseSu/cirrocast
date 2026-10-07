@@ -447,8 +447,11 @@ fn degrees(value: f32) -> u16 {
 
 /// `WeatherAPI`'s condition code as a WMO 4677 code.
 ///
-/// The families follow the provider's own code list (1000–1282); the mapping is lossy where WMO has
-/// no equivalent, and an unlisted code stays unknown instead of being clamped into a neighbour.
+/// The families follow the provider's own code list (1000–1282); each published obscuration maps
+/// onto the model's own code for the phenomenon it names (mist, smoke, haze, dust, sand), and only
+/// the phenomena WMO 4677 does not describe in this crate's table (dust/sand storms, smog) choose
+/// the nearest described family. An unlisted code stays unknown instead of being clamped into a
+/// neighbour.
 ///
 /// The arms are deliberately kept one per published code (or per published family) even where two
 /// map to the same WMO code: the comments carry the provider's own names, which is what a future
@@ -460,39 +463,55 @@ fn condition_of(code: u16) -> Condition {
         1003 => 1, // partly cloudy
         1006 => 2, // cloudy
         1009 => 3, // overcast
-        1012 | 1015 | 1018 | 1021 | 1024 | 1027 | 1030 | 1033 | 1036 | 1039 | 1042 | 1045
-        | 1048 => 45, // haze, dust, sand, smoke, smog, mist
-        1063 => 51, // patchy rain possible
-        1066 => 71, // patchy snow possible
-        1069 => 66, // patchy sleet possible
-        1072 => 56, // patchy freezing drizzle possible
-        1087 => 95, // thundery outbreaks possible
-        1114 => 85, // blowing snow
-        1117 => 75, // blizzard
-        1135 => 45, // fog
-        1147 => 48, // freezing fog
+        1012 => 5, // haze
+        1015 => 6, // dust haze
+        1018 => 7, // blowing dust
+        // The storm forms have no described WMO 4677 code (the standard's own duststorm codes,
+        // 9 and 30–35, are not in this crate's table), so they take the model's raised-by-wind
+        // family, which is what a storm is.
+        1021 => 7,  // dust storm
+        1024 => 7,  // sandstorm
+        1027 => 7,  // severe sandstorm
+        1030 => 10, // mist
+        1033 => 4,  // smoke
+        1036 => 5,  // smoky haze
+        // Smog has no WMO 4677 code of its own: the suspended-particle haze family is the honest
+        // nearest described one, never fog.
+        1039 => 5,         // smog
+        1042 => 5,         // severe smog
+        1045 => 6,         // Saharan dust
+        1048 => 6,         // dust
+        1063 => 51,        // patchy rain possible
+        1066 => 71,        // patchy snow possible
+        1069 => 66,        // patchy sleet possible
+        1072 => 56,        // patchy freezing drizzle possible
+        1087 => 95,        // thundery outbreaks possible
+        1114 => 85,        // blowing snow
+        1117 => 75,        // blizzard
+        1135 => 45,        // fog
+        1147 => 48,        // freezing fog
         1150 | 1153 => 51, // patchy light drizzle, light drizzle
         1168 | 1171 => 56, // freezing drizzle, heavy freezing drizzle
         1180 | 1183 => 61, // patchy light rain, light rain
         1186 | 1189 => 63, // moderate rain at times, moderate rain
         1192 | 1195 => 65, // heavy rain at times, heavy rain
-        1198 => 66, // light freezing rain
-        1201 => 67, // moderate or heavy freezing rain
+        1198 => 66,        // light freezing rain
+        1201 => 67,        // moderate or heavy freezing rain
         1204 | 1207 => 66, // light sleet, moderate or heavy sleet
         1210 | 1213 => 71, // patchy light snow, light snow
         1216 | 1219 => 73, // patchy moderate snow, moderate snow
         1222 | 1225 => 75, // patchy heavy snow, heavy snow
-        1237 => 77, // ice pellets
-        1240 => 80, // light rain shower
-        1243 => 81, // moderate or heavy rain shower
-        1246 => 82, // torrential rain shower
+        1237 => 77,        // ice pellets
+        1240 => 80,        // light rain shower
+        1243 => 81,        // moderate or heavy rain shower
+        1246 => 82,        // torrential rain shower
         1249 | 1252 => 66, // light sleet showers, moderate or heavy sleet showers
-        1255 => 85, // light snow showers
-        1258 => 86, // moderate or heavy snow showers
+        1255 => 85,        // light snow showers
+        1258 => 86,        // moderate or heavy snow showers
         1261 | 1264 => 77, // light / moderate or heavy showers of ice pellets
         1273 | 1276 => 95, // patchy light rain with thunder, heavy rain with thunder
         1279 | 1282 => 95, // light / heavy snow with thunder
-        _ => 255,  // undescribed: `Condition::from_u8` keeps 255 as unknown
+        _ => 255,          // undescribed: `Condition::from_u8` keeps 255 as unknown
     })
 }
 
@@ -501,26 +520,83 @@ mod tests {
     use super::condition_of;
     use crate::model::Condition;
 
-    /// Every code the provider publishes, so a missing family arm cannot hide.
-    const PUBLISHED: [u16; 53] = [
-        1000, 1003, 1006, 1009, 1012, 1015, 1018, 1021, 1024, 1027, 1030, 1033, 1036, 1039, 1042,
-        1045, 1048, 1063, 1066, 1069, 1072, 1087, 1114, 1117, 1135, 1147, 1150, 1153, 1168, 1171,
-        1180, 1183, 1186, 1189, 1192, 1195, 1198, 1201, 1204, 1207, 1210, 1213, 1216, 1219, 1222,
-        1225, 1237, 1240, 1243, 1246, 1249, 1252, 1255,
+    /// Every code the provider publishes and the WMO 4677 code the mapping owes it.
+    ///
+    /// The expectation is written out from the vendor's own list
+    /// (`https://www.weatherapi.com/docs/weather_conditions.json`) rather than echoed from
+    /// [`condition_of`], so a future edit that collapses two distinct phenomena into one code —
+    /// the review-05 §3.2 defect, where the whole obscuration family became fog — fails here.
+    const PUBLISHED: [(u16, u8); 60] = [
+        (1000, 0),  // sunny / clear
+        (1003, 1),  // partly cloudy
+        (1006, 2),  // cloudy
+        (1009, 3),  // overcast
+        (1012, 5),  // haze
+        (1015, 6),  // dust haze
+        (1018, 7),  // blowing dust
+        (1021, 7),  // dust storm
+        (1024, 7),  // sandstorm
+        (1027, 7),  // severe sandstorm
+        (1030, 10), // mist
+        (1033, 4),  // smoke
+        (1036, 5),  // smoky haze
+        (1039, 5),  // smog
+        (1042, 5),  // severe smog
+        (1045, 6),  // Saharan dust
+        (1048, 6),  // dust
+        (1063, 51), // patchy rain possible
+        (1066, 71), // patchy snow possible
+        (1069, 66), // patchy sleet possible
+        (1072, 56), // patchy freezing drizzle possible
+        (1087, 95), // thundery outbreaks possible
+        (1114, 85), // blowing snow
+        (1117, 75), // blizzard
+        (1135, 45), // fog
+        (1147, 48), // freezing fog
+        (1150, 51), // patchy light drizzle
+        (1153, 51), // light drizzle
+        (1168, 56), // freezing drizzle
+        (1171, 56), // heavy freezing drizzle
+        (1180, 61), // patchy light rain
+        (1183, 61), // light rain
+        (1186, 63), // moderate rain at times
+        (1189, 63), // moderate rain
+        (1192, 65), // heavy rain at times
+        (1195, 65), // heavy rain
+        (1198, 66), // light freezing rain
+        (1201, 67), // moderate or heavy freezing rain
+        (1204, 66), // light sleet
+        (1207, 66), // moderate or heavy sleet
+        (1210, 71), // patchy light snow
+        (1213, 71), // light snow
+        (1216, 73), // patchy moderate snow
+        (1219, 73), // moderate snow
+        (1222, 75), // patchy heavy snow
+        (1225, 75), // heavy snow
+        (1237, 77), // ice pellets
+        (1240, 80), // light rain shower
+        (1243, 81), // moderate or heavy rain shower
+        (1246, 82), // torrential rain shower
+        (1249, 66), // light sleet showers
+        (1252, 66), // moderate or heavy sleet showers
+        (1255, 85), // light snow showers
+        (1258, 86), // moderate or heavy snow showers
+        (1261, 77), // light showers of ice pellets
+        (1264, 77), // moderate or heavy showers of ice pellets
+        (1273, 95), // patchy light rain with thunder
+        (1276, 95), // heavy rain with thunder
+        (1279, 95), // light snow with thunder
+        (1282, 95), // heavy snow with thunder
     ];
 
     #[test]
-    fn every_published_code_maps_to_a_described_condition() {
-        for code in PUBLISHED {
-            let condition = condition_of(code);
-            assert!(
-                condition.is_known(),
-                "{code} maps to an undescribed condition"
+    fn every_published_code_maps_to_its_documented_wmo_code() {
+        for (code, wmo) in PUBLISHED {
+            assert_eq!(
+                condition_of(code).code(),
+                wmo,
+                "{code} must map to WMO {wmo}"
             );
-        }
-        // The remaining published codes: the shower and thunder tail of the list.
-        for code in [1258, 1261, 1264, 1273, 1276, 1279, 1282] {
-            assert!(condition_of(code).is_known(), "{code} is undescribed");
         }
     }
 

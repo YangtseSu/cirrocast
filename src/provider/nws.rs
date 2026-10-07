@@ -73,7 +73,12 @@ const MPH_TO_KMH: f32 = 1.609_344;
 /// `https://api.weather.gov/icons/land/day/rain_showers?size=small` — the `land`/`marine` and
 /// `day`/`night` path segments carry no weather meaning and are stripped. An icon can name more
 /// than one condition (`.../land/day/ovc/rain`), so the most severe mapped code wins.
-pub const ICON_CODES: [(&str, u8); 30] = [
+///
+/// Every code of the vendor's published icon list (`https://api.weather.gov/icons`) has an arm,
+/// and each obscuration keeps the model's own code for the phenomenon: `dust`, `smoke` and `haze`
+/// are not fog. The list's one combined icon, `fog` (`Fog/mist`), takes the more significant of
+/// the two; the `*_sleet`/`*_fzra` mixes follow the crate-wide sleet convention (`66`).
+pub const ICON_CODES: [(&str, u8); 35] = [
     ("skc", 0),
     ("wind_skc", 0),
     ("hot", 0),
@@ -87,9 +92,9 @@ pub const ICON_CODES: [(&str, u8); 30] = [
     ("ovc", 3),
     ("wind_ovc", 3),
     ("fog", 45),
-    ("haze", 45),
-    ("smoke", 45),
-    ("dust", 45),
+    ("haze", 5),
+    ("smoke", 4),
+    ("dust", 6),
     ("blizzard", 75),
     ("snow", 71),
     ("rain_showers_hi", 81),
@@ -98,6 +103,11 @@ pub const ICON_CODES: [(&str, u8); 30] = [
     ("fzra", 66),
     ("sleet", 68),
     ("rain", 61),
+    ("rain_snow", 68),
+    ("rain_sleet", 66),
+    ("snow_sleet", 66),
+    ("rain_fzra", 66),
+    ("snow_fzra", 66),
     ("tsra", 95),
     ("tsra_sct", 95),
     ("tsra_hi", 95),
@@ -111,7 +121,11 @@ pub const ICON_CODES: [(&str, u8); 30] = [
 /// NWS text is compositional (`"Chance Rain Showers"`, `"Patchy Fog"`, `"Mostly Cloudy"`), so the
 /// entries are ordered longest/most specific first and matched as substrings of the lowercased
 /// text: `"rain and snow"` must win before `"rain"`, and `"snow showers"` before `"snow"`.
-pub const TEXT_CONDITIONS: [(&str, u8); 26] = [
+///
+/// The obscuration phrases keep the model's own code for the phenomenon (smoke, haze, dust), and
+/// `"blowing dust"`/`"blowing snow"` come before their base words so a wind-raised reading is not
+/// filed as suspended dust or settled snow.
+pub const TEXT_CONDITIONS: [(&str, u8); 28] = [
     ("thunder", 95),
     ("tornado", 95),
     ("freezing rain", 66),
@@ -119,6 +133,7 @@ pub const TEXT_CONDITIONS: [(&str, u8); 26] = [
     ("wintry mix", 68),
     ("sleet", 68),
     ("snow showers", 85),
+    ("blowing snow", 85),
     ("snow", 71),
     ("blizzard", 75),
     ("rain showers", 80),
@@ -126,9 +141,10 @@ pub const TEXT_CONDITIONS: [(&str, u8); 26] = [
     ("drizzle", 51),
     ("rain", 61),
     ("fog", 45),
-    ("haze", 45),
-    ("smoke", 45),
-    ("dust", 45),
+    ("haze", 5),
+    ("smoke", 4),
+    ("blowing dust", 7),
+    ("dust", 6),
     ("overcast", 3),
     ("mostly cloudy", 3),
     ("partly cloudy", 2),
@@ -707,7 +723,144 @@ fn raw_summary(mapping: &PointsResponse, hourly: Option<&HourlyResponse>) -> Str
 mod tests {
     #![allow(clippy::float_cmp)]
 
-    use super::{temperature_c, wind_kmh};
+    use super::{condition_of, icon_condition, temperature_c, text_condition, wind_kmh};
+    use crate::model::Condition;
+
+    /// Every code of the vendor's published icon list (`https://api.weather.gov/icons`) and the
+    /// WMO 4677 code [`ICON_CODES`] owes it.
+    ///
+    /// The expectation is written out from the vendor's list rather than echoed from the table, so
+    /// a dropped code or a collapsed obscuration — the review-05 defect class — fails here.
+    ///
+    /// [`ICON_CODES`]: super::ICON_CODES
+    const ICONS: [(&str, u8); 34] = [
+        ("skc", 0),
+        ("few", 1),
+        ("sct", 2),
+        ("bkn", 3),
+        ("ovc", 3),
+        ("wind_skc", 0),
+        ("wind_few", 1),
+        ("wind_sct", 2),
+        ("wind_bkn", 3),
+        ("wind_ovc", 3),
+        ("snow", 71),
+        ("rain_snow", 68),
+        ("rain_sleet", 66),
+        ("snow_sleet", 66),
+        ("fzra", 66),
+        ("rain_fzra", 66),
+        ("snow_fzra", 66),
+        ("sleet", 68),
+        ("rain", 61),
+        ("rain_showers", 80),
+        ("rain_showers_hi", 81),
+        ("tsra", 95),
+        ("tsra_sct", 95),
+        ("tsra_hi", 95),
+        ("tornado", 95),
+        ("hurricane", 95),
+        ("tropical_storm", 95),
+        ("dust", 6),
+        ("smoke", 4),
+        ("haze", 5),
+        ("hot", 0),
+        ("cold", 0),
+        ("blizzard", 75),
+        ("fog", 45),
+    ];
+
+    fn icon(name: &str) -> Option<Condition> {
+        icon_condition(&format!(
+            "https://api.weather.gov/icons/land/day/{name}?size=small"
+        ))
+    }
+
+    #[test]
+    fn every_published_icon_maps_to_its_documented_wmo_code() {
+        for (name, wmo) in ICONS {
+            assert_eq!(
+                icon(name).map(Condition::code),
+                Some(wmo),
+                "{name} must map to WMO {wmo}"
+            );
+        }
+        // The docs' own spelling of freezing rain is an alias the vendor's list omits.
+        assert_eq!(icon("freezing_rain").map(Condition::code), Some(66));
+    }
+
+    #[test]
+    fn the_icon_precedes_the_text_and_the_most_severe_segment_wins() {
+        // Two condition segments: the more significant one is kept (`ovc` alone is 3).
+        assert_eq!(
+            icon_condition("https://api.weather.gov/icons/land/day/ovc/rain").map(Condition::code),
+            Some(61)
+        );
+        // The icon is consulted first…
+        assert_eq!(
+            condition_of(
+                "Rain Showers",
+                "https://api.weather.gov/icons/land/night/skc",
+                false
+            ),
+            Condition::from_u8(0)
+        );
+        // …and the text answers when the icon names nothing mapped.
+        assert_eq!(
+            condition_of(
+                "Patchy Fog",
+                "https://api.weather.gov/icons/land/day/",
+                false
+            ),
+            Condition::from_u8(45)
+        );
+    }
+
+    #[test]
+    fn an_unknown_pair_is_overcast() {
+        assert_eq!(icon("not_a_condition"), None);
+        assert_eq!(icon_condition("https://api.weather.gov/icons"), None);
+        // The verbose branch emits its note and still answers overcast.
+        for verbose in [false, true] {
+            assert_eq!(
+                condition_of(
+                    "no such wording",
+                    "https://api.weather.gov/icons/land/day/",
+                    verbose
+                ),
+                Condition::from_u8(3)
+            );
+        }
+        assert_eq!(text_condition(""), None);
+    }
+
+    #[test]
+    fn the_text_table_keeps_the_longer_phrase_and_the_obscurations_apart() {
+        // Ordering: `rain and snow` before `rain`/`snow`, `snow showers` and `blowing snow`
+        // before `snow`, `blowing dust` before `dust`; the obscurations are never fog.
+        for (text, wmo) in [
+            ("Chance Rain Showers", 80),
+            ("Rain And Snow", 68),
+            ("Snow Showers Likely", 85),
+            ("Areas Of Blowing Snow", 85),
+            ("Areas Of Blowing Dust", 7),
+            ("Widespread Dust", 6),
+            ("Patchy Smoke", 4),
+            ("Haze", 5),
+            ("Patchy Fog", 45),
+            ("Slight Chance Thunderstorms", 95),
+            ("Freezing Rain", 66),
+            ("Mostly Cloudy", 3),
+            ("Sunny", 0),
+        ] {
+            assert_eq!(
+                text_condition(text).map(Condition::code),
+                Some(wmo),
+                "`{text}` must map to WMO {wmo}"
+            );
+        }
+        assert_eq!(text_condition("no such wording"), None);
+    }
 
     #[test]
     fn a_wind_range_keeps_its_upper_bound_and_names_itself() {

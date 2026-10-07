@@ -454,19 +454,37 @@ fn degrees(value: f32) -> u16 {
 
 /// World Weather Online's `weatherCode` as a WMO 4677 code.
 ///
-/// The families follow the provider's published code feed (113–395); the mapping is lossy where WMO
-/// has no equivalent, and an unlisted code stays unknown instead of being clamped into a neighbour.
+/// The families follow the provider's published code feed (113–395), one arm per published code;
+/// each obscuration maps onto the model's own code for the phenomenon it names (mist, smoke, haze,
+/// dust, sand), and only the phenomena this crate's table does not describe (the storm forms,
+/// smog) choose the nearest described family. An unlisted code stays unknown instead of being
+/// clamped into a neighbour.
 #[allow(clippy::match_same_arms)]
 fn condition_of(code: f32) -> Condition {
     #[allow(clippy::cast_possible_truncation)]
     let code = code.round() as i64;
     Condition::from_u8(match code {
-        113 => 0,  // clear / sunny
-        116 => 1,  // partly cloudy
-        119 => 2,  // cloudy
-        122 => 3,  // overcast
-        143 => 45, // mist
-        149 => 45, // smoky haze
+        113 => 0, // clear / sunny
+        116 => 1, // partly cloudy
+        119 => 2, // cloudy
+        122 => 3, // overcast
+        // The feed's obscuration family, each onto the model's own code for the phenomenon it
+        // names (review 05 §3.4). The storm forms take the raised-by-wind family because the
+        // standard's duststorm codes are not in this crate's table, and smog has no WMO 4677 code
+        // and takes the suspended-particle haze family rather than fog.
+        125 => 5,  // haze
+        128 => 6,  // dust haze
+        131 => 7,  // blowing dust
+        134 => 7,  // dust storm
+        137 => 7,  // sandstorm
+        140 => 7,  // severe sandstorm
+        143 => 10, // mist
+        146 => 4,  // smoke
+        149 => 5,  // smoky haze
+        152 => 5,  // smog
+        155 => 5,  // severe smog
+        158 => 6,  // Saharan dust
+        161 => 6,  // dust
         176 => 51, // patchy rain nearby
         179 => 71, // patchy snow nearby
         182 => 66, // patchy sleet nearby
@@ -519,11 +537,74 @@ mod tests {
     use super::condition_of;
     use crate::model::Condition;
 
-    /// Every code the provider's published feed lists.
-    const PUBLISHED: [i64; 48] = [
-        113, 116, 119, 122, 143, 149, 176, 179, 182, 185, 200, 227, 230, 248, 260, 263, 266, 281,
-        284, 293, 296, 299, 302, 305, 308, 311, 314, 317, 320, 323, 326, 329, 332, 335, 338, 350,
-        353, 356, 359, 362, 365, 368, 371, 374, 377, 386, 389, 392,
+    /// Every code the provider's published feed lists and the WMO 4677 code the mapping owes it.
+    ///
+    /// The expectation is written out from the vendor's own feed
+    /// (`worldweatheronline.com/feed/wwoConditionCodes.xml`) rather than echoed from
+    /// [`condition_of`], so a future edit that drops a code or collapses two distinct phenomena —
+    /// the review-05 §3.4 defects, where mist and smoky haze became fog and the eleven obscuration
+    /// codes had no arm at all — fails here.
+    const PUBLISHED: [(i64, u8); 60] = [
+        (113, 0),  // clear / sunny
+        (116, 1),  // partly cloudy
+        (119, 2),  // cloudy
+        (122, 3),  // overcast
+        (125, 5),  // haze
+        (128, 6),  // dust haze
+        (131, 7),  // blowing dust
+        (134, 7),  // dust storm
+        (137, 7),  // sandstorm
+        (140, 7),  // severe sandstorm
+        (143, 10), // mist
+        (146, 4),  // smoke
+        (149, 5),  // smoky haze
+        (152, 5),  // smog
+        (155, 5),  // severe smog
+        (158, 6),  // Saharan dust
+        (161, 6),  // dust
+        (176, 51), // patchy rain nearby
+        (179, 71), // patchy snow nearby
+        (182, 66), // patchy sleet nearby
+        (185, 56), // patchy freezing drizzle nearby
+        (200, 95), // thundery outbreaks in nearby
+        (227, 85), // blowing snow
+        (230, 75), // blizzard
+        (248, 45), // fog
+        (260, 48), // freezing fog
+        (263, 51), // patchy light drizzle
+        (266, 53), // light drizzle
+        (281, 56), // freezing drizzle
+        (284, 57), // heavy freezing drizzle
+        (293, 61), // patchy light rain
+        (296, 61), // light rain
+        (299, 63), // moderate rain at times
+        (302, 63), // moderate rain
+        (305, 65), // heavy rain at times
+        (308, 65), // heavy rain
+        (311, 66), // light freezing rain
+        (314, 67), // moderate or heavy freezing rain
+        (317, 66), // light sleet
+        (320, 67), // moderate or heavy sleet
+        (323, 71), // patchy light snow
+        (326, 71), // light snow
+        (329, 73), // patchy moderate snow
+        (332, 73), // moderate snow
+        (335, 75), // patchy heavy snow
+        (338, 75), // heavy snow
+        (350, 77), // ice pellets
+        (353, 80), // light rain shower
+        (356, 81), // moderate or heavy rain shower
+        (359, 82), // torrential rain shower
+        (362, 66), // light sleet showers
+        (365, 67), // moderate or heavy sleet showers
+        (368, 85), // light snow showers
+        (371, 86), // moderate or heavy snow showers
+        (374, 77), // light showers of ice pellets
+        (377, 77), // moderate or heavy showers of ice pellets
+        (386, 95), // patchy light rain with thunder
+        (389, 96), // moderate or heavy rain with thunder
+        (392, 95), // patchy light snow with thunder
+        (395, 96), // moderate or heavy snow with thunder
     ];
 
     #[test]
@@ -543,15 +624,11 @@ mod tests {
 
     #[test]
     #[allow(clippy::cast_precision_loss)] // the published codes are small integers
-    fn every_published_code_maps_to_a_described_condition() {
-        for code in PUBLISHED {
+    fn every_published_code_maps_to_its_documented_wmo_code() {
+        for (code, wmo) in PUBLISHED {
             let condition = condition_of(code as f32);
-            assert!(
-                condition.is_known(),
-                "{code} maps to an undescribed condition"
-            );
+            assert_eq!(condition.code(), wmo, "{code} must map to WMO {wmo}");
         }
-        assert!(condition_of(395.0).is_known(), "395 is published too");
     }
 
     #[test]
@@ -587,7 +664,9 @@ mod tests {
     fn the_families_follow_the_published_groups() {
         assert_eq!(condition_of(113.0).description_en(), "Clear sky");
         assert_eq!(condition_of(122.0).description_en(), "Overcast");
-        assert_eq!(condition_of(149.0).description_en(), "Fog");
+        assert_eq!(condition_of(143.0).description_en(), "Mist");
+        assert_eq!(condition_of(149.0).description_en(), "Haze");
+        assert_eq!(condition_of(248.0).description_en(), "Fog");
         assert_eq!(condition_of(296.0).description_en(), "Slight rain");
         assert_eq!(condition_of(338.0).description_en(), "Heavy snow fall");
         assert_eq!(
