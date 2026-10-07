@@ -4,7 +4,7 @@
 .SH NAME
 cirrocast \- Terminal weather client with pluggable backends and wttr.in\-style output
 .SH SYNOPSIS
-\fBcirrocast\fR [\fB\-v\fR|\fB\-\-verbose\fR]... [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-p\fR|\fB\-\-provider\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-d\fR|\fB\-\-days\fR] [\fB\-u\fR|\fB\-\-units\fR] [\fB\-\-lang\fR] [\fB\-\-lat\fR] [\fB\-\-lon\fR] [\fB\-\-ip\fR] [\fB\-\-station\fR] [\fB\-\-alerts\fR] [\fB\-\-no\-alerts\fR] [\fB\-\-alerts\-from\fR] [\fB\-\-severity\fR] [\fB\-\-aqi\fR] [\fB\-\-aqi\-index\fR] [\fB\-\-moon\fR] [\fB\-\-date\fR] [\fB\-\-history\fR] [\fB\-\-marine\fR] [\fB\-\-normals\fR] [\fB\-\-template\fR] [\fB\-\-template\-file\fR] [\fB\-\-color\fR] [\fB\-\-width\fR] [\fB\-\-timeout\fR] [\fB\-\-no\-cache\fR] [\fB\-\-refresh\fR] [\fB\-\-offline\fR] [\fB\-\-pick\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fILOCATION\fR] [\fIsubcommands\fR]
+\fBcirrocast\fR [\fB\-v\fR|\fB\-\-verbose\fR]... [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-tz\fR] [\fB\-p\fR|\fB\-\-provider\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-d\fR|\fB\-\-days\fR] [\fB\-u\fR|\fB\-\-units\fR] [\fB\-\-lang\fR] [\fB\-\-lat\fR] [\fB\-\-lon\fR] [\fB\-\-ip\fR] [\fB\-\-station\fR] [\fB\-\-alerts\fR] [\fB\-\-no\-alerts\fR] [\fB\-\-alerts\-from\fR] [\fB\-\-severity\fR] [\fB\-\-aqi\fR] [\fB\-\-aqi\-index\fR] [\fB\-\-moon\fR] [\fB\-\-date\fR] [\fB\-\-history\fR] [\fB\-\-marine\fR] [\fB\-\-normals\fR] [\fB\-\-template\fR] [\fB\-\-template\-file\fR] [\fB\-\-color\fR] [\fB\-\-width\fR] [\fB\-\-timeout\fR] [\fB\-\-no\-cache\fR] [\fB\-\-refresh\fR] [\fB\-\-offline\fR] [\fB\-\-pick\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fILOCATION\fR] [\fIsubcommands\fR]
 .SH DESCRIPTION
 Terminal weather client with pluggable backends and wttr.in\-style output
 .SH OPTIONS
@@ -14,6 +14,9 @@ Print more detail: settings, resolution notes, the upstream request behind the a
 .TP
 \fB\-q\fR, \fB\-\-quiet\fR
 Suppress non\-essential output
+.TP
+\fB\-\-tz\fR \fI<ZONE>\fR
+Express the report\*(Aqs times in this IANA zone (e.g. `Asia/Shanghai`) instead of the zone the location resolves; overrides `[location] tz`
 .TP
 \fB\-p\fR, \fB\-\-provider\fR \fI<LIST>\fR
 Provider chain, comma separated; `auto` ranks the keyless backends by coverage for the resolved place (plus `metar` with `\-\-station`)
@@ -158,7 +161,7 @@ CONFIG PRECEDENCE (highest first)
   command line flag > CIRROCAST_* environment variable > config.toml > built\-in default
   \-\-provider  CIRROCAST_PROVIDER   \-\-days    CIRROCAST_DAYS     \-\-timeout CIRROCAST_TIMEOUT
   \-\-format    CIRROCAST_FORMAT     \-\-units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
-  \-\-lang      CIRROCAST_LANG
+  \-\-lang      CIRROCAST_LANG       \-\-tz      CIRROCAST_TZ
   env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
               CIRROCAST_GEO_SEARCH  CIRROCAST_GEO_REVERSE  CIRROCAST_GEONAMES_USER
               CIRROCAST_NORMALS_PERIOD  CIRROCAST_NORMALS_MAX_DISTANCE_KM

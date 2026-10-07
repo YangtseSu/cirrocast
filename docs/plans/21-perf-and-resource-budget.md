@@ -18,8 +18,9 @@ The informal budgets become enforced numbers with one measurement harness, one c
 a CI gate: `--version` under 20 ms, a cached single-location run under 60 ms, a cold run under 1.5 s on
 a 100 Mbps link, RSS under 15 MB (the `--version` probe; a cached run that decodes the offline name
 index gets the re-derived 32 MB budget), the default release binary under the re-derived 17 MB (the
-original 5 MB predates the 3.41 MB embedded city table), `--help` under 225 lines (200 until
-step 23 added `--date`, `--history` and `--marine`, 215 until step 26 added `--normals`). The
+original 5 MB predates the 3.41 MB embedded city table), `--help` under 230 lines (200 until
+step 23 added `--date`, `--history` and `--marine`, 215 until step 26 added `--normals`, 225 until
+step 32 added `--tz`). The
 step also does the rendering work the numbers demand (`fmt::Write` hot path, one timezone lookup per
 report instead of one per field, lazy offline-geo decode), audits dependency weight with `cargo
 bloat`/`cargo llvm-lines`, and re-evaluates "no async runtime / no TUI toolkit" against the measured
@@ -73,13 +74,13 @@ evidence — keeping the decision, recording why.
       `flate2` (accepted, feature-reviewed), `idna`/`url` (accepted via `ureq`), plus the gate list
       (`keyring`, `offline-geo`, `ureq` compression features, `clap` `wrap_help`) and the measured
       delta of turning each off.
-- ✅ `tests/cli.rs`: `--help` line count < 225 and `--help` exit 0 asserted deterministically.
+- ✅ `tests/cli.rs`: `--help` line count < 230 and `--help` exit 0 asserted deterministically.
 
 ## Design notes
 
 * **Gate on ratios, report absolute budgets.** Shared CI runners fluctuate by more than the 20 %
   tolerance in absolute terms, so the gate compares fresh medians against the committed baseline with
-  a 20 % allowance; the absolute budgets (20 ms, 60 ms, 15 MB, 5 MB, 225 lines) are printed and
+  20 % allowance; the absolute budgets (20 ms, 60 ms, 15 MB, 5 MB, 230 lines) are printed and
   enforced as hard failures only when they are exceeded *and* the baseline also sits near the limit.
   `--version`, `--help`, binary size and RSS are machine-stable enough to gate directly.
 * **Cold networking is measured, not gated.** A 1.5 s cold budget depends on the link, the provider and
@@ -159,7 +160,7 @@ python3 scripts/bench/compare.py perf/baseline.json target/bench/raw.json    # e
 cargo bloat --profile release-audit --crates -n 10   # the audit profile resolves more of the tail than the stripped `release`
 cargo llvm-lines --release --lib -p cirrocast | head -n 10   # the workspace needs a single target
 stat -c '%s bytes' target/release/cirrocast                # < 5242880
-cargo run -q -- --help | wc -l                             # < 225
+cargo run -q -- --help | wc -l                             # < 230
 /usr/bin/time -v cargo run -q -- --offline Beijing -f plain 2>&1 | grep 'Maximum resident'
 scripts/bench/cold.sh                                      # manual, documents the link used
 ```
@@ -177,8 +178,8 @@ into `docs/performance.md`.
       `--version` 2.10 ms (< 20 ms), cached run 51.4 ms (< 60 ms), cold run 845 ms (< 1.5 s, with
       link), RSS 6.4 MiB for `--version` (< 15 MiB) and 25.6 MiB for the cached run (< 32 MiB,
       re-derived), binary 14.36 MiB (< 17 MiB, re-derived; the goal's 5 MiB predates the 3.41 MiB
-      offline table), `--help` 198 lines (< 200 then; the budget is 225 since step 23 added
-      three flags and step 26 `--normals`).
+      offline table), `--help` 198 lines (< 200 then; the budget is 230 since step 23 added
+      three flags, step 26 `--normals` and step 32 `--tz`).
 - ✅ `perf/baseline.json` committed and consumed by the dispatch-only `perf.yml` gate; the artificial-regression proof
       is recorded in the doc and in the progress log.
 - ✅ `cargo bloat`/`cargo llvm-lines` top contributors named with sizes, every heavy crate accepted or
@@ -319,3 +320,7 @@ into `docs/performance.md`.
   (5 lines with clap's spacing) plus the two `CIRROCAST_NORMALS_*` names the epilogue lists, and the
   measured count at `COLUMNS=100` is 220. `tests/cli.rs`, `scripts/bench/compare.py` and
   `docs/performance.md` carry the new number, the same rationale as step 23's raise from 200.
+- 2026-10-07 — the budget was raised again, 225 → 230, by step 32: `--tz` is a documented flag
+  (3 lines with clap's spacing plus the `[env: CIRROCAST_TZ=]` line) and the epilogue's flag ladder
+  gained one entry, taking the measured count at `COLUMNS=100` from 224 to 227. The same three
+  places carry the new number.

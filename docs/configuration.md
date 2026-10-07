@@ -73,6 +73,7 @@ every `CIRROCAST_*` override applied — so the two never disagree about a key.
 | `--units` | `CIRROCAST_UNITS` | `defaults.units` |
 | `--days` | `CIRROCAST_DAYS` | `defaults.days` |
 | `--lang` | `CIRROCAST_LANG` | `defaults.language` |
+| `--tz` | `CIRROCAST_TZ` | `location.tz` |
 | `--timeout` | `CIRROCAST_TIMEOUT` | `network.timeout_secs` |
 | `LOCATION` (positional) | `CIRROCAST_LOCATION` | `location.default` |
 
@@ -132,6 +133,7 @@ section.
 |---|---|---|---|---|
 | `location.default` | string | `""` (empty) | `"Beijing"` | Location argument used when none is given; empty means ask for the IP location. Any argument form is allowed, including `@name` for an alias. See [location.md](location.md). |
 | `location.pick` | string | `"auto"` | `"never"` | `auto` asks which candidate to use on a terminal when a name matches several places; `never` always takes the ranked winner. |
+| `location.tz` | string | `""` (empty) | `"Asia/Shanghai"` | IANA zone the report's times are expressed in; empty means the zone the location resolves. Mostly for `@lat,lon`, whose zone the bundled tables may not know; `--tz` overrides it. See [location.md](location.md). |
 
 ### `[geo]`
 

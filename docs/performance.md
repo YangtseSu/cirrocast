@@ -198,7 +198,7 @@ uploaded file is reviewed and committed rather than written by CI.
 | Metric | Budget | Measured (dev box, 2026-10-05) | Notes |
 |---|---|---|---|
 | `--version` | 20 ms | **2.03 ms** | startup: no runtime, no table |
-| `--help` | < 225 lines | **220 lines** | clap wraps to the width; the test pins `COLUMNS=100` (step 22 added the `status` subcommand line; step 23 raised the ceiling from 200 for `--date`/`--history`/`--marine`, step 26 from 215 for `--normals` — the count was re-measured with that flag, 2026-10-06) |
+| `--help` | < 230 lines | **227 lines** | clap wraps to the width; the test pins `COLUMNS=100` (step 22 added the `status` subcommand line; step 23 raised the ceiling from 200 for `--date`/`--history`/`--marine`, step 26 from 215 for `--normals`, step 32 from 225 for `--tz` — the count was re-measured with that flag, 2026-10-07) |
 | cached run, `--offline` | 60 ms | **51.4 ms** | includes the city-table name index decode |
 | warm-cache run | 60 ms | **47.5 ms** | the online path with a fresh cache |
 | RSS, `--version` | 15 MiB | **6.4 MiB** | the goal's "RSS under 15 MB", met |

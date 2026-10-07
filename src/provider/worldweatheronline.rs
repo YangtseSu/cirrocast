@@ -68,8 +68,9 @@ impl Provider for WorldWeatherOnline {
         if provisional_zone(loc) {
             return Err(Error::Usage(format!(
                 "provider `{PROVIDER}` needs the location's time zone and its response carries only \
-                 local times: pass a place name (e.g. `cirrocast -p {PROVIDER} Beijing`) or set \
-                 `location.default` instead of raw coordinates"
+                 local times: pass a place name (e.g. `cirrocast -p {PROVIDER} Beijing`), name the \
+                 zone with `--tz Asia/Shanghai`, or set `location.default` to a place name instead \
+                 of raw coordinates"
             )));
         }
 

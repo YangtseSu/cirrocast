@@ -17,6 +17,7 @@ normals = false
 [location]
 default = ""
 pick = "auto"
+tz = ""
 
 [geo]
 strategy = "auto"

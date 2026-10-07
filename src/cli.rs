@@ -116,6 +116,17 @@ pub struct Cli {
     #[arg(global = true, short, long, conflicts_with = "verbose")]
     pub quiet: bool,
 
+    /// Express the report's times in this IANA zone (e.g. `Asia/Shanghai`) instead of the zone the
+    /// location resolves; overrides `[location] tz`.
+    #[arg(
+        global = true,
+        long,
+        value_name = "ZONE",
+        env = "CIRROCAST_TZ",
+        value_parser = parse_zone_flag
+    )]
+    pub tz: Option<chrono_tz::Tz>,
+
     /// What to do; omitted = fetch the weather for the location argument.
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -131,7 +142,7 @@ CONFIG PRECEDENCE (highest first)
   command line flag > CIRROCAST_* environment variable > config.toml > built-in default
   --provider  CIRROCAST_PROVIDER   --days    CIRROCAST_DAYS     --timeout CIRROCAST_TIMEOUT
   --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
-  --lang      CIRROCAST_LANG
+  --lang      CIRROCAST_LANG       --tz      CIRROCAST_TZ
   env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
               CIRROCAST_GEO_SEARCH  CIRROCAST_GEO_REVERSE  CIRROCAST_GEONAMES_USER
               CIRROCAST_NORMALS_PERIOD  CIRROCAST_NORMALS_MAX_DISTANCE_KM
@@ -421,6 +432,12 @@ fn parse_history(value: &str) -> Result<u16, Error> {
 /// message.
 fn parse_aqi_index(value: &str) -> Result<AqiIndex, Error> {
     value.parse()
+}
+
+/// `--tz`: an IANA zone name, parsed by the geo module so the flag, `CIRROCAST_TZ` and
+/// `[location] tz` share one message.
+fn parse_zone_flag(value: &str) -> Result<chrono_tz::Tz, Error> {
+    crate::geo::parse_zone(value)
 }
 
 /// `--lat`: degrees in `-90..=90`, the same range and wording the `@lat,lon` argument uses.
@@ -2934,7 +2951,7 @@ fn search_target(requested: Option<&str>, ip: bool, config: &Config) -> Result<L
 /// fall back to the network geocoder only when it has no hit; `--offline=geo|all` removes the
 /// fallback entirely (step 18).
 fn resolve_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Result<Resolved> {
-    match spec {
+    let mut resolved = match spec {
         LocationSpec::Default => {
             let chain = IpLocatorChain::new(
                 geo.http,
@@ -2980,7 +2997,35 @@ fn resolve_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Res
         spec @ LocationSpec::Alias(_) => Err(Error::Config(format!(
             "location alias {spec} was not expanded before resolution"
         ))),
+    }?;
+    apply_run_zone(&mut resolved.location, geo.config, cli)?;
+    Ok(resolved)
+}
+
+/// Applies the run's zone to a resolved location: `--tz`/`CIRROCAST_TZ` first, then `[location] tz`.
+///
+/// clap has already folded the environment into the flag, so the two tiers are one value here. The
+/// zone replaces whatever the location resolved — the user asked for *these* times in *that* zone —
+/// and a `-v` run says when it replaced something different (step 32).
+fn apply_run_zone(location: &mut Location, config: &Config, cli: &Cli) -> Result<()> {
+    let (zone, source) = if let Some(zone) = cli.tz {
+        // clap resolves `--tz` and `CIRROCAST_TZ` into one value, so the note names both tiers.
+        (zone, "--tz/CIRROCAST_TZ")
+    } else {
+        let configured = config.location.tz.trim();
+        if configured.is_empty() {
+            return Ok(());
+        }
+        (crate::geo::parse_zone(configured)?, "[location] tz")
+    };
+    if location.tz == zone {
+        return Ok(());
     }
+    if cli.verbose > 0 {
+        eprintln!("location: zone {zone} from {source} (was {})", location.tz);
+    }
+    location.tz = zone;
+    Ok(())
 }
 
 /// A name query through the bundled table and/or the network geocoder.
@@ -3132,11 +3177,8 @@ fn name_coordinate(
     } else {
         candidates[0].clone()
     };
-    let distance = named
-        .nearby
-        .iter()
-        .find(|near| near.location == chosen)
-        .map(|near| near.distance_km);
+    let chosen_near = named.nearby.iter().find(|near| near.location == chosen);
+    let distance = chosen_near.map(|near| near.distance_km);
     let mut named_location = location;
     named_location.name = chosen.name;
     named_location.admin1 = chosen.admin1.or(named_location.admin1);
@@ -3152,6 +3194,22 @@ fn name_coordinate(
             naming_source(chosen.source),
             place(&named_location)
         );
+    }
+    // A zone is a fact about the point, not a label: a close bundled city knows it, so a coordinate
+    // still on the UTC placeholder adopts that city's zone (step 32). A zone the location already
+    // has — an IP answer's, a `~` result's — is never overwritten, and the note comes after the
+    // naming line so it reads as a consequence of it.
+    if named_location.tz == chrono_tz::Tz::UTC
+        && let Some(zone) = chosen_near.and_then(crate::geo::reverse::adoptable_zone)
+    {
+        named_location.tz = zone;
+        if cli.verbose > 0 {
+            let km = chosen_near.map_or(0.0, |near| near.distance_km);
+            eprintln!(
+                "location: zone {zone} adopted from {} ({km:.1} km away)",
+                named_location.name
+            );
+        }
     }
     Ok((named_location, candidates))
 }

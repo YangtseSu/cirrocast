@@ -1103,6 +1103,17 @@ spoke — `/weatheralert/v7/alert/now?location=<lon>,<lat>` — is retired: it a
 "separate subscription" reading was built on. The v1 payload spells CAP's severity, urgency and
 certainty value sets verbatim and carries `messageType.code` (`alert`/`update`/`cancel`).
 
+**The v1 payload carries no time zone.** The `current` block has no timestamp and the hourly series
+carries UTC instants, so a location whose zone is still unknown is refused with a usage error (the
+daily boundaries would reveal the offset, but an offset is not a zone). Two things resolve it, and
+only the second is left to the user: a coordinate within 10 km of a bundled city adopts that city's
+zone (step 32, `docs/location.md`), and `--tz`/`[location] tz` states one outright. The API's own
+`localTime` parameter is **not** the answer and is recorded here so it is not re-proposed: probed
+2026-10-07 against the account, Berlin in DST, `hours=3` answered `2026-10-07T14:00Z` by default and
+`2026-10-07T16:00+02:00` with `localTime=true` — per-instant offsets, still no zone name, and the
+rest of the report (the JSON `location.timezone`, the moon and sun local times, `%Z`, the
+`Today`/`今天` labels) needs a name.
+
 **Implemented 2026-10-01** (`src/provider/qweather.rs`, `max_days: 10`). Two calls per fetch
 (current + hourly), each cached under `weather/qweather-{current,hourly}-…`; every measure's unit is
 checked against the canonical one (`°C`, `m/s`, `mm`, `hPa`, `m`) and a mismatch is an upstream error

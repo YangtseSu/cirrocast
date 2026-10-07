@@ -53,8 +53,9 @@ fn help_exits_successfully() {
 
 #[test]
 fn help_stays_inside_the_line_budget() {
-    // Step 21's budget is "`--help` under 225 lines" (200 until step 23 added the three archive
-    // and marine flags). The count depends on how clap wraps the
+    // Step 21's budget is "`--help` under 230 lines" (200 until step 23 added the three archive
+    // and marine flags, 225 until step 26 added `--normals`, 230 since step 32 added `--tz`). The
+    // count depends on how clap wraps the
     // epilogue, and clap reads `COLUMNS` even when stdout is a pipe, so the width is pinned here
     // rather than inherited from whoever runs the tests.
     let sandbox = common::Sandbox::new();
@@ -67,8 +68,8 @@ fn help_stays_inside_the_line_budget() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
     let lines = stdout.lines().count();
     assert!(
-        lines < 225,
-        "--help is {lines} lines (the budget is under 225)"
+        lines < 230,
+        "--help is {lines} lines (the budget is under 230)"
     );
 }
 
@@ -231,19 +232,106 @@ fn config_edit_rejects_an_unknown_key_like_config_validate_does() {
 #[test]
 fn location_search_resolves_coordinates_without_touching_the_network() {
     let sandbox = common::Sandbox::new();
-    // The coordinate is named from the bundled tables (step 25) — the sandbox forbids the network,
-    // so the run can only succeed by reading them — and the name's credit is the only stderr line.
+    // The coordinate is named *and* zoned from the bundled tables (steps 25 and 32) — the sandbox
+    // forbids the network, so the run can only succeed by reading them — and the name's credit is
+    // the only stderr line.
     sandbox
         .cirrocast()
         .args(["location", "search", "@39.9042,116.4074"])
         .assert()
         .success()
         .stdout(predicate::eq(
-            "Beijing, China (39.90, 116.41) <timezone resolved at fetch time>\n",
+            "Beijing, China (39.90, 116.41) Asia/Shanghai\n",
         ))
         .stderr(predicate::eq(
             "Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/\n",
         ));
+}
+
+#[test]
+fn a_named_coordinate_adopts_the_citys_zone_only_when_it_is_close() {
+    let sandbox = common::Sandbox::new();
+    // 9 km from Xinxiang: named and zoned from the same bundled hit, and `-v` says where the zone
+    // came from (step 32).
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "@35.2,113.9", "-v"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Xinxiang, China (35.20, 113.90) Asia/Shanghai",
+        ))
+        .stderr(predicate::str::contains(
+            "location: zone Asia/Shanghai adopted from Xinxiang (9.0 km away)",
+        ));
+
+    // 18 km out: still named, but the zone stays the placeholder — a zone border can run between a
+    // point and a city that far away, and only `--tz` may then say otherwise.
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "@35.2,113.6"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "<timezone resolved at fetch time>",
+        ));
+}
+
+#[test]
+fn the_zone_flag_environment_and_configuration_agree_on_the_zone() {
+    let sandbox = common::Sandbox::new();
+    // The flag.
+    sandbox
+        .cirrocast()
+        .args([
+            "location",
+            "search",
+            "@35.2,113.9",
+            "--tz",
+            "Asia/Tokyo",
+            "-v",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Xinxiang, China (35.20, 113.90) Asia/Tokyo",
+        ))
+        .stderr(predicate::str::contains(
+            "zone Asia/Tokyo from --tz/CIRROCAST_TZ",
+        ));
+
+    // The environment tier, through clap's own binding.
+    sandbox
+        .cirrocast()
+        .env("CIRROCAST_TZ", "Asia/Tokyo")
+        .args(["location", "search", "@35.2,113.9"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Asia/Tokyo"));
+
+    // The configuration tier.
+    sandbox.write_config("[location]\ntz = \"Asia/Tokyo\"\n");
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "@35.2,113.9"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Asia/Tokyo"));
+
+    // An unknown zone anywhere in the chain is a usage error before anything is resolved.
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "@35.2,113.9", "--tz", "Mars/Olympus"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("unknown time zone `Mars/Olympus`"));
+    sandbox.write_config("[location]\ntz = \"Mars/Olympus\"\n");
+    sandbox
+        .cirrocast()
+        .args(["location", "search", "@35.2,113.9"])
+        .assert()
+        .code(4)
+        .stderr(predicate::str::contains("location.tz"));
 }
 
 #[test]

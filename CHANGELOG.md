@@ -25,6 +25,13 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ## [Unreleased]
 
+### Added
+
+* **`--tz <ZONE>` (`CIRROCAST_TZ`, `[location] tz`) states the IANA zone a run's times are expressed
+  in** — mostly for `@lat,lon`, whose zone the bundled tables may not know. The flag outranks the
+  environment variable and the file, an unknown name is a usage error before anything is resolved,
+  and `-v` says when it replaced a zone the location had resolved.
+
 ### Changed
 
 * The README is user-facing again: its versioning, packaging, publishing and CI sections moved to
@@ -39,6 +46,13 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Fixed
 
+* **A coordinate near a bundled city now borrows that city's zone**, so `cirrocast -p qweather
+  @35.2,113.9` fetches instead of failing with *"needs the location's time zone"*: a bundled-table
+  hit within 10 km (`reverse::ZONE_RADIUS_KM`) lends its IANA zone to a location still on the UTC
+  placeholder, a `-v` line names the city, the distance and the zone, and a point no table can zone
+  keeps the documented refusal — whose message now names `--tz` as the way out. QWeather,
+  OpenWeatherMap, SMHI and World Weather Online all benefit. The APIs' own local-time parameters are
+  not used: they return per-instant offsets, not a zone (recorded in `docs/providers.md`).
 * **QWeather alerts work again: the source now speaks the alert v1 endpoint.** `src/alerts/qweather.rs`
   called `/weatheralert/v7/alert/now`, which the account host answers with `404` and an empty body —
   so a run over a Chinese location printed a missing-subscription note instead of warnings. The

@@ -196,6 +196,9 @@ pub struct LocationDefaults {
     /// `auto` (ask on a terminal when a name resolves to several candidates) or `never` (always
     /// take the ranked winner).
     pub pick: String,
+    /// The IANA zone the run's times are expressed in (`Asia/Shanghai`, `UTC`); empty = the zone
+    /// the location resolves. Mostly for `@lat,lon`, whose zone the bundled tables may not know.
+    pub tz: String,
 }
 
 impl Default for LocationDefaults {
@@ -203,6 +206,7 @@ impl Default for LocationDefaults {
         Self {
             default: String::new(),
             pick: "auto".to_owned(),
+            tz: String::new(),
         }
     }
 }
@@ -784,7 +788,21 @@ impl Config {
     /// of the two policies.
     fn validate_location(&self) -> Result<()> {
         check_enum("location.pick", &self.location.pick, PICK_POLICIES)?;
+        self.validate_location_tz()?;
         self.validate_location_default()
+    }
+
+    /// `location.tz` must be an IANA zone name the resolver would accept, or empty.
+    ///
+    /// The parser is the one `--tz` and `CIRROCAST_TZ` go through, so the three tiers cannot
+    /// disagree about what a zone is called.
+    fn validate_location_tz(&self) -> Result<()> {
+        let text = self.location.tz.trim();
+        if text.is_empty() {
+            return Ok(());
+        }
+        crate::geo::parse_zone(text).map_err(|error| contextual("location.tz", error))?;
+        Ok(())
     }
 
     /// `location.default` alone, for [`Config::set_key`]: the parser the command line uses, so a
@@ -1258,7 +1276,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "templates",
         ],
         "defaults" => &["provider", "format", "units", "days", "language", "normals"],
-        "location" => &["default", "pick"],
+        "location" => &["default", "pick", "tz"],
         "geo" => &[
             "strategy",
             "search",
@@ -1503,6 +1521,8 @@ normals = false          # fetch the climate-normals comparison on every run (--
 default = ""             # "Beijing", ":Beijing", "@39.9,116.4", "~Tsinghua", or "@home" for an
                          # alias below; empty = ask for the IP location
 pick = "auto"            # auto (ask on a terminal when a name has several candidates) | never
+tz = ""                  # IANA zone the report's times are expressed in (e.g. "Asia/Shanghai");
+                         # empty = the zone the location resolves; --tz overrides this
 
 [locations]
 # @NAME aliases for the location argument. Values are any location argument, including another
@@ -1693,6 +1713,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         kind: KeyKind::Enum(PICK_POLICIES),
         doc: "ask which candidate to use: auto or never",
         env: Some("CIRROCAST_LOCATION_PICK"),
+    },
+    KeySpec {
+        name: "location.tz",
+        kind: KeyKind::Str,
+        doc: "IANA zone the report's times are expressed in; empty = the zone the location resolves",
+        env: Some("CIRROCAST_TZ"),
     },
     KeySpec {
         name: "geo.strategy",
@@ -1941,6 +1967,7 @@ impl Config {
             "defaults.normals" => self.defaults.normals.to_string(),
             "location.default" => self.location.default.clone(),
             "location.pick" => self.location.pick.clone(),
+            "location.tz" => self.location.tz.clone(),
             "geo.strategy" => self.geo.strategy.clone(),
             "geo.search" => self.geo.search.clone(),
             "geo.reverse" => self.geo.reverse.clone(),
@@ -2012,6 +2039,12 @@ impl Config {
             "location.pick" => {
                 check_enum(spec.name, &value, PICK_POLICIES)?;
                 self.location.pick = value;
+            }
+            "location.tz" => {
+                if !value.trim().is_empty() {
+                    crate::geo::parse_zone(&value).map_err(|error| contextual(spec.name, error))?;
+                }
+                self.location.tz = value;
             }
             "geo.strategy" => {
                 check_enum(spec.name, &value, GEO_STRATEGIES)?;
@@ -2117,6 +2150,7 @@ impl Config {
             "defaults.language" => check_language(key, &self.defaults.language),
             "location.default" => self.validate_location_default(),
             "location.pick" => check_enum(key, &self.location.pick, PICK_POLICIES),
+            "location.tz" => self.validate_location_tz(),
             "geo.strategy" => check_enum(key, &self.geo.strategy, GEO_STRATEGIES),
             "geo.search" => check_enum(key, &self.geo.search, GEO_SEARCHES),
             "geo.reverse" => check_enum(key, &self.geo.reverse, GEO_REVERSES),

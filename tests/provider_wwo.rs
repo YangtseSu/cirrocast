@@ -153,7 +153,9 @@ fn a_provisional_zone_is_refused_before_any_request() {
         .fetch_with(&WorldWeatherOnline, &from_coordinates(39.9042, 116.4074), 3)
         .expect_err("raw coordinates carry no zone");
     assert_eq!(error.exit_code(), 2);
-    assert!(error.to_string().contains("pass a place name"), "{error}");
+    let text = error.to_string();
+    assert!(text.contains("pass a place name"), "{text}");
+    assert!(text.contains("--tz Asia/Shanghai"), "{text}");
     assert_eq!(
         run.calls(),
         Vec::<cirrocast::http::HttpRequest>::new(),

@@ -86,14 +86,15 @@ under `tests/fixtures/geo/` through `network.nominatim_url` — the same respons
 
 ```console
 $ cirrocast location search @39.9042,116.4074
-Beijing, China (39.90, 116.41) <timezone resolved at fetch time>
+Beijing, China (39.90, 116.41) Asia/Shanghai
 Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/
 ```
 
 The coordinates are the request key and are never sent to a geocoder. The point is *named* for
-display only (see below): here the bundled table named it `Beijing, China` 0.9 km away. The
-parenthesised coordinates are omitted when the name *is* the pair (a bare `@lat,lon` that nothing
-could name), so a coordinate location prints its name only once.
+display only (see below) — here the bundled table named it `Beijing, China` 0.9 km away — and a
+close bundled city also lends its IANA zone, which is why the line shows `Asia/Shanghai` rather than
+the placeholder. The parenthesised coordinates are omitted when the name *is* the pair (a bare
+`@lat,lon` that nothing could name), so a coordinate location prints its name only once.
 
 ### Alias `@home`
 
@@ -335,9 +336,10 @@ Beijing: *o* Clear sky +20°C (+16°C), , 11km/h SW, 30%, 0.0mm, 1021hPa, 18km
 ## Naming a coordinate or an IP answer
 
 `@39.9042,116.4074` is a request key, not a name, so the point is named for display only. A name is
-a display attribute: the location keeps its own coordinates, its `Coordinates` (or `Ip`) provenance
-and its provisional zone; only `name`/`admin1`/`country`/`country_code` and the `named_by`
-provenance are filled in. `[geo] reverse` (`CIRROCAST_GEO_REVERSE`) picks the policy:
+a display attribute: the location keeps its own coordinates and its `Coordinates` (or `Ip`)
+provenance, and only `name`/`admin1`/`country`/`country_code` and the `named_by` provenance are
+filled in — the zone is the one exception, borrowed under the rule below. `[geo] reverse`
+(`CIRROCAST_GEO_REVERSE`) picks the policy:
 
 * `auto` (default) — the bundled city index is scanned for places within **25 km**
   (`reverse::RADIUS_KM`), nearest first, and the country layer supplies the country *name* the city
@@ -348,22 +350,42 @@ provenance are filled in. `[geo] reverse` (`CIRROCAST_GEO_REVERSE`) picks the po
 
 Naming never fails the query: a network or upstream failure of the online half becomes "no name"
 plus a note a `-v` run prints. The credit follows `named_by`, so a coordinate named by the bundled
-tables or Nominatim carries that source's credit and a bare one carries none. `-v` reports the
-source and the distance:
+tables or Nominatim carries that source's credit and a bare one carries none.
+
+### The zone a coordinate borrows
+
+A coordinate has no zone of its own, and the backends whose responses carry no zone — QWeather,
+OpenWeatherMap, SMHI, World Weather Online — refuse such a location rather than aggregate a day in
+UTC. So a coordinate whose zone is still the placeholder adopts the zone of a bundled city when the
+point is close enough to it:
+
+* the hit must come from the **bundled table** (whose rows carry `GeoNames`' per-city IANA zone; a
+  Nominatim object's zone tag describes the object, not the point) and be within **10 km**
+  (`reverse::ZONE_RADIUS_KM`, half the naming radius — a zone border can run between a point and a
+  city 25 km away);
+* a zone the location already has is never overwritten, and `-v` says where a borrowed one came
+  from;
+* when nothing is close enough, `--tz <ZONE>` (or `CIRROCAST_TZ`, or `[location] tz`) states the zone
+  outright: one IANA name for the run, applied to every location of it, with `-v` noting when it
+  replaced a resolved zone.
+
+`-v` reports the source, the distance and the zone:
 
 ```console
 $ cirrocast -v location search @39.9042,116.4074
 location: named by the bundled tables, 0.9 km away: Beijing, China
-Beijing, China (39.90, 116.41) <timezone resolved at fetch time>
+location: zone Asia/Shanghai adopted from Beijing (0.9 km away)
+Beijing, China (39.90, 116.41) Asia/Shanghai
 Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/
 location: candidate 1/3: Beijing, China (39.91, 116.40) Asia/Shanghai (population 18960744)
 location: candidate 2/3: Daxing, China (39.74, 116.33) Asia/Shanghai (population 104904)
 location: candidate 3/3: Tongzhou, China (39.90, 116.66) Asia/Shanghai (population 163326)
 ```
 
-An IP answer whose service reported no city is named the same way. The provisional zone
-`<timezone resolved at fetch time>` is replaced by the provider's real zone when the weather is
-fetched.
+An IP answer whose service reported no city is named the same way, and borrows a zone the same way.
+A zone nothing could supply stays `<timezone resolved at fetch time>` until a provider's own response
+reports one (Open-Meteo and MET Norway do); the four zone-less backends refuse the run instead, and
+`--tz` is the way out.
 
 ### `--all` and the candidate list shape
 

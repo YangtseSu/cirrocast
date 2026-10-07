@@ -30,6 +30,12 @@ Options:
   -q, --quiet
           Suppress non-essential output
 
+      --tz <ZONE>
+          Express the report's times in this IANA zone (e.g. `Asia/Shanghai`) instead of the zone
+          the location resolves; overrides `[location] tz`
+          
+          [env: CIRROCAST_TZ=]
+
   -p, --provider <LIST>
           Provider chain, comma separated; `auto` ranks the keyless backends by coverage for the
           resolved place (plus `metar` with `--station`)
@@ -179,7 +185,7 @@ CONFIG PRECEDENCE (highest first)
   command line flag > CIRROCAST_* environment variable > config.toml > built-in default
   --provider  CIRROCAST_PROVIDER   --days    CIRROCAST_DAYS     --timeout CIRROCAST_TIMEOUT
   --format    CIRROCAST_FORMAT     --units   CIRROCAST_UNITS    LOCATION  CIRROCAST_LOCATION
-  --lang      CIRROCAST_LANG
+  --lang      CIRROCAST_LANG       --tz      CIRROCAST_TZ
   env only    CIRROCAST_LOCATION_PICK  CIRROCAST_NOMINATIM_URL  CIRROCAST_IP_SERVICE
               CIRROCAST_GEO_SEARCH  CIRROCAST_GEO_REVERSE  CIRROCAST_GEONAMES_USER
               CIRROCAST_NORMALS_PERIOD  CIRROCAST_NORMALS_MAX_DISTANCE_KM

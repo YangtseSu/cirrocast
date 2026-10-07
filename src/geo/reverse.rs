@@ -75,6 +75,27 @@ impl Policy {
     }
 }
 
+/// How close a bundled city must be for its IANA zone to be adopted for a coordinate.
+///
+/// Deliberately half the naming radius: a *name* is a label, and the nearest city 25 km away is a
+/// better label than none, but a *zone* is a fact about the point — a zone border can run between a
+/// point and a city that far away (Arizona/California, Spain/Portugal), so only a hit this close may
+/// lend its zone. `--tz` covers everything the radius refuses.
+pub const ZONE_RADIUS_KM: f64 = 10.0;
+
+/// The zone a naming hit may lend a coordinate, when it may.
+///
+/// Only a bundled-table hit qualifies: its row carries `GeoNames`' per-city IANA zone, while a
+/// Nominatim object's zone tag (when it has one) describes the object, not the point. The caller
+/// applies the result only to a location whose zone is still the UTC placeholder — a zone the
+/// location already has is never overwritten.
+#[must_use]
+pub fn adoptable_zone(near: &Nearby) -> Option<chrono_tz::Tz> {
+    (near.location.source == crate::model::LocationSource::Offline
+        && near.distance_km <= ZONE_RADIUS_KM)
+        .then_some(near.location.tz)
+}
+
 /// One candidate name: the place and how far it is from the coordinate.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Nearby {
@@ -370,5 +391,31 @@ mod tests {
         let nearby = from_table(&OfflineTable::bundled(), 0.0, -140.0, 5)
             .expect("the committed table decodes");
         assert!(nearby.is_empty(), "{nearby:?}");
+    }
+
+    /// Only a close bundled hit lends its zone; the radius and the source both decide.
+    #[cfg(feature = "offline-geo")]
+    #[test]
+    fn only_a_close_bundled_hit_lends_its_zone() {
+        use super::{ZONE_RADIUS_KM, adoptable_zone};
+
+        const {
+            assert!(ZONE_RADIUS_KM < RADIUS_KM, "adoption is the tighter rule");
+        }
+        let mut nearby = from_table(&OfflineTable::bundled(), 39.9042, 116.4074, 1)
+            .expect("the committed table decodes");
+        let mut hit = nearby.remove(0);
+        assert_eq!(hit.location.tz, chrono_tz::Tz::Asia__Shanghai);
+        assert!(hit.distance_km <= ZONE_RADIUS_KM, "{hit:?}");
+        assert_eq!(adoptable_zone(&hit), Some(chrono_tz::Tz::Asia__Shanghai));
+
+        // The same hit beyond the zone radius is still a name, but lends nothing.
+        hit.distance_km = ZONE_RADIUS_KM + 0.1;
+        assert_eq!(adoptable_zone(&hit), None);
+
+        // A Nominatim hit never lends its zone, however close it is.
+        hit.distance_km = 0.5;
+        hit.location.source = LocationSource::Osm;
+        assert_eq!(adoptable_zone(&hit), None);
     }
 }

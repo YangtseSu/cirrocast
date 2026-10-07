@@ -95,6 +95,7 @@ cirrocast [OPTIONS] [LOCATION]...
                             | normals, a one-line preset, or a [templates] key
   -d, --days <N>            0..=14, clamped to what the provider serves
   -u, --units <SYSTEM>      metric | us | uk        --lang <TAG>   BCP-47, or auto
+      --tz <ZONE>           IANA zone for the report's times (e.g. Asia/Shanghai)
       --lat/--lon <DEG>     coordinates instead of a location argument
       --ip                  locate from the public IP (opt-in; see Privacy below)
       --station <ICAO>      METAR station; `metar` heads the provider chain

@@ -254,6 +254,7 @@ fn a_provisional_zone_inside_the_coverage_is_a_usage_error() {
     assert_eq!(error.exit_code(), 2);
     let text = error.to_string();
     assert!(text.contains("pass a place name"), "{text}");
+    assert!(text.contains("--tz Asia/Shanghai"), "{text}");
     assert!(text.contains("Stockholm"), "{text}");
 }
 

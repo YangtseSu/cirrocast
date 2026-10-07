@@ -613,6 +613,17 @@ pub fn provisional_zone(location: &Location) -> bool {
     ) && location.tz == Tz::UTC
 }
 
+/// Parses an IANA time zone name (`Asia/Shanghai`, `UTC`) — the one spelling `--tz`,
+/// `CIRROCAST_TZ` and `[location] tz` share, so the flag, the environment and the file cannot
+/// disagree about what a zone is called.
+pub fn parse_zone(value: &str) -> Result<Tz> {
+    value.trim().parse::<Tz>().map_err(|_| {
+        Error::Usage(format!(
+            "unknown time zone `{value}`; use an IANA name like `Asia/Shanghai`"
+        ))
+    })
+}
+
 /// Recognises the text after `@` as a coordinate pair, when it is one.
 ///
 /// The recogniser is deliberately narrow: exactly one comma, both sides parse as finite `f64`,

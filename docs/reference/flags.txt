@@ -43,6 +43,7 @@
 --template
 --template-file
 --timeout
+--tz
 --units
 --verbose
 --version

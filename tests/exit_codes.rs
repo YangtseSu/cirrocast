@@ -172,6 +172,32 @@ fn six_is_a_missing_key_and_names_both_ways_to_store_one() {
 }
 
 #[test]
+fn two_is_a_coordinate_no_zone_can_be_found_for() {
+    let sandbox = Sandbox::new();
+    // A credential and the account host, so the chain reaches the provider instead of stopping at
+    // the missing key: the mid-Atlantic has no bundled city within the zone radius, and a backend
+    // whose response carries no zone must refuse rather than aggregate the day in UTC — with the
+    // message naming `--tz` as the way out (step 32).
+    sandbox
+        .cirrocast()
+        .args(["key", "set", "qweather"])
+        .write_stdin("test-key-qweather\n")
+        .assert()
+        .success();
+    sandbox.write_config("[providers.qweather]\nhost = \"https://example.re.qweatherapi.com\"\n");
+    sandbox
+        .cirrocast()
+        .args(["-p", "qweather", "@0,0"])
+        .env("CIRROCAST_FORBID_NETWORK", "1")
+        .assert()
+        .code(2)
+        .stderr(
+            predicate::str::contains("needs the location's time zone")
+                .and(predicate::str::contains("--tz Asia/Shanghai")),
+        );
+}
+
+#[test]
 fn three_is_a_blocked_fetch_or_a_failing_upstream() {
     // Network: `--refresh` skips the cache, so the run must fetch; the guard turns the attempt into
     // the documented network failure before a socket exists.
