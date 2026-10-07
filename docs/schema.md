@@ -22,6 +22,23 @@ The crate version, the JSON schema version and the config schema version move **
 release that adds a backend is not a schema change, and a schema change is not a crate release. A
 `schema_version` bump is named in `CHANGELOG.md` and in the release notes.
 
+## Versioning
+
+Four version numbers exist; only the first three are visible to a consumer, and none of them is
+derived from another. The crate version is the release's own — the release-by-release history is
+[`CHANGELOG.md`](../CHANGELOG.md).
+
+| Number | Where it appears | Current | Moves when |
+|---|---|---|---|
+| crate version | `Cargo.toml`, `cirrocast --version`, the release tag | the latest release | any release, following SemVer |
+| JSON schema version | `"schema_version"` in every `-f json` document | `2` | a change the compatibility rule above calls breaking |
+| config schema version | `schema_version` in `config.toml` | `2` | an existing key's meaning, type or validity changes; a new key with a built-in default is additive and does not bump it |
+| cache envelope version | `cache_schema_version` in cache files | `1` | internal only: a mismatch is a cache miss, never an error (see the end of this file) |
+
+The values a consumer meets in the wild are these: `cirrocast --version` names the crate release,
+`-f json` carries `schema_version`, `config init` writes the config document's version, and every
+cache file carries its own envelope stamp.
+
 ## JSON output schema (v2)
 
 Written by `--format json` (`src/render/json.rs`, `SCHEMA_VERSION = 2`). The same contract as a

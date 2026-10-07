@@ -24,7 +24,8 @@ and the licence; and documented install paths for source, `cargo install` and AU
 
 ## Deliverables
 
-- ✅ Versioning policy in `README.md#versioning`: `Cargo.toml` stays `0.x` while phases A–C land, `1.0.0` is
+- ✅ Versioning policy in `docs/schema.md#versioning` (moved there from the README on 2026-10-07; see the
+  progress log): `Cargo.toml` stays `0.x` while phases A–C land, `1.0.0` is
   cut in step 14, phase D releases are `1.1.0`–`1.2.0` (steps 15–20) and phases E–G landed together as
   `1.3.0` (steps 21–28) — no tag was cut at the phase E boundary, so the planned `1.4.0` was folded into
   that release — with the backlog (B01–B02) unscheduled, matching
@@ -67,7 +68,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `exclude = ["docs/", ".github/"]` with an explicit `include` list (`src/**`, `locales/**`, `LICENSE`,
   `README.md`, `CHANGELOG.md`, `Cargo.toml`, `Cargo.lock`) so `docs/`, `.github/`, `tests/`, `examples/` and
   `packaging/` stay out of the crate; `Cargo.lock` must be committed because every release path uses `--locked`.
-- ✅ crates.io checklist executed and recorded in `README.md#publishing`: name `cirrocast` still free,
+- ✅ crates.io checklist executed and recorded in `CONTRIBUTING.md#publishing`: name `cirrocast` still free,
   `cargo package --list` shows no `docs/`, no `tests/`, no `examples/` and no `.github/`, and does show
   `LICENSE`/`README.md`/`CHANGELOG.md`, `cargo publish --dry-run --locked` passes,
   `cargo doc --no-deps --all-features` builds (the library target is the documented half, so its module doc
@@ -94,7 +95,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   unique-name form (`cirrocast-$pkgver.tar.gz::https://…`) that namcap asks for. Result: `updpkgsums` filled
   `sha256sums=('05cde6d4…c5a')` from the `v0.1.0` tarball (fetched twice independently, same bytes), and
   `makepkg --printsrcinfo` is byte-identical to the committed `.SRCINFO`.
-- ✅ AUR verification recorded in `README.md#packaging` and the progress log: `namcap PKGBUILD` (exit 0),
+- ✅ AUR verification recorded in `CONTRIBUTING.md#packaging-and-release` and the progress log: `namcap PKGBUILD` (exit 0),
   `makepkg --printsrcinfo | diff - .SRCINFO` (empty), `makepkg -f` (built `cirrocast-0.1.0-1-x86_64.pkg.tar.zst`,
   5.1 MB, `check()` running the crate's release tests), `namcap` on the package (its two warnings are the
   canonical `libgcc`/`gcc-libs` pair for a Rust binary; no errors), then the package extracted and run from a
@@ -109,7 +110,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
   `cargo install --locked --path .` from a checkout), plus the two commands that install what the packages
   place for you — `cirrocast completion <bash|zsh|fish> > <completion path>` and `cirrocast man > <man path>` —
   with the exact target paths per shell.
-- ✅ `README.md#packaging` documents all three install paths (source build / `cargo install`, the AUR
+- ✅ `CONTRIBUTING.md#packaging-and-release` documents all three install paths (source build / `cargo install`, the AUR
   package, the release archive), the files each one installs, the release checklist (bump `Cargo.toml`, bump the
   AUR package with `updpkgsums`, regenerate `.SRCINFO`, update `CHANGELOG.md`, push a signed `vX.Y.Z` tag,
   confirm the workflow's archives and the crates.io publish) and how to verify a downloaded archive
@@ -152,7 +153,7 @@ and the licence; and documented install paths for source, `cargo install` and AU
 * The PKGBUILD does not vendor crates: `cargo build --locked` fetches from crates.io inside `build()`, which is
   the AUR-accepted practice; vendoring would add a second checksum surface for no benefit at this size.
 * The Linux release archives are built on the `ubuntu-26.04` image, the same image CI tests on, so an archive
-  needs that image's glibc or newer; `README.md#packaging` says so and points older distributions at the AUR
+  needs that image's glibc or newer; `CONTRIBUTING.md#packaging-and-release` says so and points older distributions at the AUR
   package, which builds against their own glibc.
 
 ## Out of scope
@@ -195,7 +196,8 @@ sha256sum -c cirrocast-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
   (locally on rust 1.98.1 and in CI run 36881479150, which is the commit the tag points at).
 - ✅ `cargo package --list` shows the intended file set (46 files: `src/**`, `locales/**`, `Cargo.toml`,
   `Cargo.lock`, `LICENSE`, `README.md`, `CHANGELOG.md`) and `cargo publish --dry-run --locked` succeeds;
-  `docs/schema.md`, `CHANGELOG.md` and `README.md#versioning` agree with each other and with `Cargo.toml`
+  `docs/schema.md` (its versioning table), `CHANGELOG.md` and the crate's own version agree with each
+  other and with `Cargo.toml`
   (the config example in the schema is byte-identical to `cirrocast config init`'s output).
 - ✅ The AUR repository holds `PKGBUILD`, `.SRCINFO` and the packaging licence; `namcap` reports no errors on
   the PKGBUILD and none on the built package (only its canonical `libgcc`/`gcc-libs` warning pair),
@@ -248,7 +250,7 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   `check()` version assertion catches a forgotten bump, and the checklist names the step.
 * The AUR package is the only copy of the packaging files, so an edit made there is not reviewed in this tree:
   accepted 2026-10-01 (the files change at most once per release and the verification commands live in
-  `README.md#packaging`); step B02 may add an automated AUR bump if the manual one becomes a nuisance.
+  `CONTRIBUTING.md#packaging-and-release`); step B02 may add an automated AUR bump if the manual one becomes a nuisance.
 
 ## Progress log
 
@@ -350,3 +352,15 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   `cargo audit`, the render-import script, the `LICENSE` copy check and `man --warn`; `man/cirrocast.1`
   and the version strings in the README, `CONTRIBUTING.md`, `docs/getting-started.md`,
   `docs/troubleshooting.md` and the issue form moved to `1.3.0`.
+- 2026-10-07 — the four documentation sections this step delivered into the README moved out of it,
+  because the README is the user-facing page: the versioning policy (table and minor/major rule) is
+  now `docs/schema.md#versioning`, where the change rule already lived, and the packaging, release,
+  publishing and CI material — with the release checklist, which is now the one authoritative copy —
+  is in [`CONTRIBUTING.md`](../../CONTRIBUTING.md#packaging-and-release), the contributor guide
+  `AGENTS.md` already names as the development/release home. `AGENTS.md`'s own Releasing section is
+  reduced to the two invariants (verify the bundled data locally before the tag, never tag a stale
+  snapshot) and points here; the deliverable and exit-criterion references above were remapped, and
+  the log entries keep the wording of their date. The versioning table's nullable rule was stale: it
+  claimed a value turning nullable bumps `schema_version`, while the compatibility rule two lines
+  above it says the opposite (and the review-04 widening relied on that); the moved copy follows the
+  compatibility rule.

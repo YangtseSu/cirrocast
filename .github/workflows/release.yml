@@ -14,7 +14,7 @@
 # * publishing uses crates.io *trusted publishing* (OIDC), not a stored token: the `publish` job
 #   asks `rust-lang/crates-io-auth-action` for a temporary token inside the `crates-io`
 #   environment, which is the identity the crate's trusted-publisher record names
-#   (README.md#publishing); a `workflow_dispatch` run executes only the `verify` job, which proves
+#   (CONTRIBUTING.md#publishing); a `workflow_dispatch` run executes only the `verify` job, which proves
 #   that exchange without cutting a release.
 #
 # `gh release create` is used for the release itself, so no third-party release action is needed.

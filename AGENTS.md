@@ -65,8 +65,9 @@ No GUI/TUI, no daemon or server mode, no telemetry or analytics, no account syst
    no-op fallbacks or "will be wired later" code. A feature is committed when it works end to end.
    Scaffolding for a *later* step is declared in `docs/plans/`, not in `src/`.
 5. **One conversion point.** All data is stored metric/SI (`temp_c`, `wind_kmh`, `precip_mm`,
-   `pressure_hpa`, `visibility_km`); only `src/render/` converts for display. Providers must ask
-   upstream APIs for metric.
+   `pressure_hpa`, `visibility_km`); only the render surface converts for display — `src/render/`
+   and the shared `%`-template engine `src/template.rs`, which every one-line-style output expands
+   through. Providers must ask upstream APIs for metric.
 6. **Canonical conditions.** Everything is a WMO 4677 code (`model::Condition`). Each provider owns
    the mapping from its native codes; renderers and translations never branch on provider codes.
 7. **Synchronous HTTP only** (`ureq` + rustls) through `src/http.rs`. No direct socket/file access
@@ -115,8 +116,9 @@ on purpose: the project tracks stable and supports no floor below it (`rust-vers
 stable it builds with and is bumped with the toolchain), and macOS is covered where it ships —
 `release.yml` runs the same suite with `--release` on `macos-26` before it packs an archive. The
 test job also runs the reduced build (`cargo test --workspace --no-default-features --locked`); the
-`gates` job runs `scripts/check-render-imports.py` (the render-layer rule: `src/render` and
-`src/model` may not name `http`, `provider` or `cache`) and checks that
+`gates` job runs `scripts/check-render-imports.py` (the render-layer rule: `src/render`, `src/model`
+and the shared template engine `src/template.rs` may not name `http`, `provider` or `cache`) and
+checks that
 `LICENSES/GPL-3.0-or-later.txt` is byte-identical to `LICENSE`; and the `docs` job runs the three
 generated-artifact tests (`help_snapshot`, `docs_flags`, `json_schema`), `man --warn` over
 `man/cirrocast.1` and lychee over every Markdown file (`lychee.toml` holds the cache age and the
@@ -128,37 +130,16 @@ source, and no advisory ignore without a reason and an expiry date.
 
 ### Releasing
 
-The bundled city table is refreshed and verified **locally, before the tag**: the release workflow
-stays off the network for it, and a tag must never be cut against a stale snapshot. The check
-downloads the official dump, so run it where the network is reachable — and not under
-`CIRROCAST_FORBID_NETWORK=1`:
+The release flow — the bundled-data freshness check, the signed tag, the archives, the crates.io
+publish and the AUR bump — is the
+[release checklist in `CONTRIBUTING.md`](CONTRIBUTING.md#release-checklist); it is the one
+authoritative copy, and the reasoning behind it is in
+[`docs/plans/13-packaging-and-release.md`](docs/plans/13-packaging-and-release.md).
 
-```bash
-cargo run -p geo-table -- https://download.geonames.org/export/dump/cities15000.zip --check
-```
-
-`unchanged` for all three files → tag. `CHANGED` → refresh, test, re-record, commit, then tag:
-
-```bash
-cargo run -p geo-table -- https://download.geonames.org/export/dump/cities15000.zip   # writes src/geo/data
-cargo test --workspace          # the suite pins rows of the committed snapshot
-# re-record the blob sizes and timings in docs/plans/21-perf-and-resource-budget.md
-git add src/geo/data docs/plans/21-perf-and-resource-budget.md && git commit
-```
-
-The README's release checklist mirrors this. The country layer (`src/geo/data/countries.bin.gz` +
-`COUNTRIES`) is refreshed the same way against the tagged Natural Earth release its record names:
-
-```bash
-cargo run -p geo-table -- --countries https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson --check
-```
-
-`unchanged` for both files → the layer is current. `CHANGED` → rebuild without `--check`, run
-`cargo test --workspace` (the layer's canary pins coordinates and the 1 MiB size budget), and commit
-`src/geo/data` before tagging.
-
-The full development/release guide is step 28's `CONTRIBUTING.md`; this rule moves there once that
-file exists.
+Two invariants stay here. The bundled city table and country layer are refreshed and verified
+**locally, before the tag**, with the network reachable and never under `CIRROCAST_FORBID_NETWORK=1`
+(the checks download the official dumps, which is also why the tag workflow stays off the network
+for them). And **a tag must never be cut against a stale snapshot**.
 
 ## Plan-driven workflow
 

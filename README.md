@@ -46,19 +46,17 @@ stderr, so stdout stays pipeable — `:Beijing` demands an exact match and `--pi
 
 ## Status
 
-Every scheduled step of the build plan is implemented: `v1.0.0` (2026-10-02) froze the v1 surface;
-`v1.1.0` and `v1.2.0` completed phase D (alerts, air quality and moon/astro, then the offline city
-database, multi-location output and the picker); `v1.3.0` (2026-10-06) landed phases E–G together —
-the enforced performance budget and the `status` probe, the additional and keyless national
-backends, the second-generation location sources, climate normals, QWeather's Ed25519 JWT and this
-documentation set. The build record is [`docs/plans/`](docs/plans/README.md), the
-release-by-release history is [`CHANGELOG.md`](CHANGELOG.md), and what is left unscheduled is the
-backlog there (B01/B02).
+Every scheduled feature is implemented and released: the v1 surface (2026-10-02), severe-weather
+alerts, air quality and moon/astro, the offline city database with user-installed table updates,
+multi-location output with the interactive picker, the `status` probe, the additional and keyless
+national backends, climate normals, and QWeather's Ed25519 JWT. The current release and its history
+are in [`CHANGELOG.md`](CHANGELOG.md); what remains unscheduled — the wttr-compatible local service
+and the wider packaging matrix — is marked as backlog in [`docs/plans/`](docs/plans/README.md).
 
 ## Install
 
 ```bash
-cargo install --locked cirrocast            # from crates.io (1.3.0 is published; see Publishing)
+cargo install --locked cirrocast            # from crates.io (1.3.0 is published)
 cargo install --locked --path .             # from this checkout
 
 paru -S cirrocast                           # Arch: the AUR package (yay, or a manual git clone +
@@ -82,10 +80,10 @@ cirrocast completion zsh  > ~/.local/share/zsh/site-functions/_cirrocast        
 cirrocast completion fish > ~/.config/fish/completions/cirrocast.fish
 ```
 
-[Packaging and release](#packaging-and-release) has the full picture: what each path installs, how
-the archives are built and verified, and the checklist a release follows. Further package formats
-are deliberately unscheduled (backlog **B02** in [`docs/plans/`](docs/plans/README.md)), and the
-first-run walkthrough is [`docs/getting-started.md`](docs/getting-started.md).
+[Packaging and release](CONTRIBUTING.md#packaging-and-release) has the full picture: what each path
+installs, how the archives are built and verified, and the checklist a release follows. Further
+package formats are deliberately unscheduled (backlog **B02** in [`docs/plans/`](docs/plans/README.md)),
+and the first-run walkthrough is [`docs/getting-started.md`](docs/getting-started.md).
 
 ## Usage
 
@@ -294,182 +292,22 @@ The generated reference (`help-long.txt`, `flags.txt`) and the JSON Schemas live
 features were delivered under is [`docs/plans/`](docs/plans/README.md), and
 [`CHANGELOG.md`](CHANGELOG.md) records each release.
 
+## Development
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor guide — prerequisites, the build and test
+commands, the test policy, the plan-driven workflow, the recipes, and the packaging, publishing and
+release checklists.
+
+What shipped when is in [`CHANGELOG.md`](CHANGELOG.md); the version numbers a consumer of the `json`
+document or the configuration file cares about, and the rules that move them, are in
+[`docs/schema.md`](docs/schema.md#versioning); the build plan and its architecture contract are in
+[`docs/plans/`](docs/plans/README.md).
+
 ## Licence
 
 GPL-3.0-or-later — see [`LICENSE`](LICENSE). The repository is
 [REUSE](https://reuse.software/)-compliant; per-file copyright and licence information lives in
 SPDX headers and in [`REUSE.toml`](REUSE.toml).
-
-## Versioning
-
-Four version numbers move independently; only the first three are visible to a consumer, and
-[`docs/schema.md`](docs/schema.md) is where their change rules and their fields live.
-
-| Number | Where it appears | Now | Changes when |
-|---|---|---|---|
-| crate version | `Cargo.toml`, `--version`, release tags | `1.3.0` | any release, following SemVer |
-| JSON schema version | `"schema_version"` in every `-f json` document | `2` | a key is removed, renamed, retyped, changes unit, or changes between always-present and nullable |
-| config schema version | `schema_version` in `config.toml` | `2` | an existing key's meaning, type or validity changes (a new key with a default is additive and does not) |
-| cache envelope version | `cache_schema_version` in cache files | `1` | internal only: a mismatch is a cache miss, never an error |
-
-The release schedule, matching [`docs/plans/README.md`](docs/plans/README.md):
-
-* **`0.x`** while phases A–C landed — `0.1.0` (2026-10-01) was the first release;
-* **`1.0.0`** (2026-10-02) freezes the CLI, the configuration schema and the JSON schema for the v1
-  scope (phases A–C, steps 01–14);
-* **`1.1.0`** (2026-10-04) starts phase D — severe-weather alerts, air quality and moon/astro
-  (steps 15–17), with the JSON document at `schema_version` 2;
-* **`1.2.0`** (2026-10-05) completes phase D — the offline city database and user-installed table
-  updates (steps 18/18b), multi-location output with the shared template engine (19) and the
-  interactive location picker (20), with the configuration document at `schema_version` 2;
-* **`1.3.0`** (2026-10-06) lands phases E–G together — performance and resource budgets with the
-  `status` probe and the ecosystem recipes (steps 21–22), additional backends with coverage-aware
-  `auto`, second-generation location sources, climate normals and QWeather JWT (23–27), and the
-  documentation set with the frozen JSON schemas (28). The release was cut after step 28 instead of
-  at the phase E boundary, so the planned `1.4.0` is folded into it. The backlog (B01–B02: the
-  wttr-compatible local service, the multi-platform packaging matrix) is not scheduled.
-
-Within a major version, adding a key to the JSON document or adding a config key with a built-in
-default is a **minor** change: a consumer keeps working if it ignores what it does not know.
-Removing, renaming, retyping or re-meaning anything is a **major** change, bumps `schema_version`
-and is named in [`CHANGELOG.md`](CHANGELOG.md).
-
-## Packaging and release
-
-| Install path | What lands on the system | Built from |
-|---|---|---|
-| `cargo install --locked cirrocast` (or `--path .`) | the binary in `$CARGO_HOME/bin`; the man page and completions are generated by it on demand | crates.io, or this checkout |
-| AUR [`cirrocast`](https://aur.archlinux.org/packages/cirrocast) | `/usr/bin/cirrocast`, `cirrocast.1`, the bash/zsh/fish completions, and `LICENSE` under `/usr/share/licenses/cirrocast/` | the `vX.Y.Z` tag tarball from GitHub |
-| Release archive `cirrocast-vX.Y.Z-<target>.tar.gz` | `cirrocast-vX.Y.Z-<target>/` containing the binary, `README.md`, `LICENSE`, `CHANGELOG.md`, `cirrocast.1` and `completions/` — nothing is installed for you | the release workflow (`.github/workflows/release.yml`) |
-
-Archives are built natively on `ubuntu-26.04` (x86_64), `ubuntu-26.04-arm` (aarch64) and `macos-26`
-(Apple silicon), one job per target, with no cross-compilation; a Linux archive therefore needs that
-image's glibc or newer. On an older distribution the AUR package is the better fit — it builds from
-the tag tarball against the system's own glibc. Windows is not packaged in v1: `cargo install`
-covers it, and further ecosystem packages are deferred to the backlog (B02). Every archive ships
-next to the `.sha256` the workflow computed:
-
-```bash
-sha256sum -c cirrocast-v1.3.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c
-```
-
-`cargo package --list --locked` and `cargo publish --dry-run --locked` run on every pull request
-(the CI `package` job below), so the file set a release uploads is reviewed before any tag exists.
-
-### Release checklist
-
-1. The four gates plus `cargo deny check` are green on the commit to be tagged, and CI is green on it.
-2. The bundled city data is current: `cargo run -p geo-table -- <path-or-url> --check` reports every
-   file `unchanged` against the official dump. If it reports `CHANGED`, refresh the snapshot
-   (`cargo run -p geo-table -- <path-or-url>`), run `cargo test --workspace` (the suite pins rows of
-   the committed data), re-record the size/timing numbers in
-   [`docs/plans/21-perf-and-resource-budget.md`](docs/plans/21-perf-and-resource-budget.md), and
-   commit all of it before tagging.
-3. The bundled country layer is current too: `cargo run -p geo-table -- --countries
-   https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson
-   --check` reports both files `unchanged`. `CHANGED` → rebuild without `--check`, run
-   `cargo test --workspace` (the layer's canary pins coordinates and the size budget), and commit
-   `src/geo/data`.
-4. `version` bumped in `Cargo.toml`; `CHANGELOG.md` gets its dated section and compare link; both
-   committed.
-5. `cargo package --list --locked` reviewed (`src/`, `locales/`, `Cargo.toml`, `Cargo.lock`,
-   `LICENSE`, `README.md`, `CHANGELOG.md` — and nothing else).
-6. A signed tag is pushed: `git tag -s vX.Y.Z -m "cirrocast vX.Y.Z" && git push origin vX.Y.Z`. The
-   workflow refuses a tag that does not match `Cargo.toml`'s version.
-7. The run is watched: three archives, three `.sha256` files, and a GitHub release with generated
-   notes. One archive is inspected (`tar tzf`) and verified (`sha256sum -c`).
-8. The `publish` job is approved in the `crates-io` environment — `cargo publish` cannot be undone.
-9. The AUR package is bumped, which is only possible once the tag exists because the checksums come
-   from the tag tarball:
-
-```bash
-git clone ssh://aur@aur.archlinux.org/cirrocast.git   # the packaging files live only there
-cd cirrocast                                          # edit pkgver= in PKGBUILD, then:
-updpkgsums                                            # recompute sha256sums from the tag tarball
-makepkg --printsrcinfo > .SRCINFO                     # AUR metadata, regenerated in the same commit
-makepkg --printsrcinfo | diff - .SRCINFO              # must print nothing
-namcap PKGBUILD
-makepkg -f && namcap cirrocast-*.pkg.tar.zst
-git commit -am "upgpkg: cirrocast X.Y.Z-1" && git push
-```
-
-```bash
-# what a bump is verified with, on a clean machine or in a chroot
-pkgctl build                         # devtools clean chroot; makechrootpkg -c does the same
-sudo pacman -U cirrocast-1.3.0-1-x86_64.pkg.tar.zst
-cirrocast --version && man -w cirrocast
-pacman -Ql cirrocast | grep -E 'completions/cirrocast$|site-functions/_cirrocast$|vendor_completions\.d/cirrocast\.fish$' | wc -l   # 3
-```
-
-(A plain `pacman -Ql cirrocast | grep -c completions` prints 4: the two completion *directories* match
-as well, which is why the three file paths are matched explicitly.)
-
-The AUR repository is the only home of the packaging files — this tree keeps no copy, which is why
-the checklist edits them there (the reasoning is in
-[`docs/plans/13-packaging-and-release.md`](docs/plans/13-packaging-and-release.md)). `check()` in the
-PKGBUILD compares `cargo metadata`'s version with `$pkgver`, so a stale PKGBUILD fails the build
-instead of shipping a mislabelled package.
-
-## Publishing
-
-The crate is prepared for crates.io, but publishing is a deliberate act rather than a side effect of
-tagging: it runs in the release workflow's `publish` job, behind the protected `crates-io`
-environment, and `cargo publish` cannot be undone.
-
-```bash
-cargo package --list --locked        # the exact file set that would be uploaded
-cargo publish --dry-run --locked     # builds the packaged crate; uploads nothing
-cargo doc --no-deps --all-features   # what docs.rs renders
-```
-
-Checklist, executed 2026-10-01 before the first release:
-
-* `cirrocast` is free on crates.io (checked against the registry API);
-* `cargo package --list --locked` shows 46 files — `src/**`, `locales/**`, `Cargo.toml` (plus
-  cargo's own `Cargo.toml.orig`), `Cargo.lock`, `LICENSE`, `README.md`, `CHANGELOG.md` — and no
-  `docs/`, `tests/`, `examples/` or `.github/`;
-* `cargo publish --dry-run --locked` succeeds, building the crate from the packaged file set;
-* `cargo doc --no-deps --all-features` builds the library target without warnings, and
-  `[package.metadata.docs.rs] all-features = true` is set;
-* `license = "GPL-3.0-or-later"` with no `license-file` (cargo forbids both);
-* `Cargo.lock` is committed, because every release path builds with `--locked`.
-
-`cirrocast 1.0.0` was published on 2026-10-02 with `cargo publish --locked` from the tagged tree
-(the `v1.0.0` release workflow's `publish` job had skipped with its notice, because that was before
-the crate moved to trusted publishing). The crate's crates.io settings now enable **"Require trusted
-publishing for all new versions"**, so token-based publishing is refused from here on.
-
-Since 2026-10-02 the release workflow publishes with **crates.io trusted publishing** (OIDC): no
-token is stored in GitHub. The `publish` job runs inside the `crates-io` environment with
-`id-token: write` and exchanges the workflow's OIDC identity for a short-lived crates.io token via
-[`rust-lang/crates-io-auth-action`](https://github.com/rust-lang/crates-io-auth-action), pinned by
-commit SHA in `.github/workflows/release.yml`. The crate's trusted-publisher record names three
-things — the repository (`YangtseSu/cirrocast`), the workflow file (`release.yml`) and the
-environment (`crates-io`) — and the exchange fails if any of them changes. `gh workflow run
-release.yml` executes only the `verify` job, which proves that record matches without cutting a
-release; a version that is already on crates.io is skipped by the publish job's own check.
-
-## Development and CI
-
-[`CONTRIBUTING.md`](CONTRIBUTING.md) is the guide: prerequisites, the plan-driven workflow, the
-add-a-provider and add-a-language recipes, the test policy and the release pointer. In short:
-
-| Job | Command |
-|---|---|
-| `fmt` | `cargo fmt --check` |
-| `clippy` | `cargo clippy --workspace --all-targets --locked -- -D warnings` |
-| `test` | `cargo test --workspace --locked`, then the reduced build with `--no-default-features` |
-| `docs` | the generated-artifact tests, `man --warn`, lychee over every Markdown file |
-| `package` | `cargo package --list --locked`, `cargo publish --dry-run --locked` |
-| `gates` | `scripts/check-render-imports.py` and the `LICENSE` copy check |
-| `reuse` / `deny` / `audit` | `reuse lint`, `cargo deny check`, `cargo audit` |
-
-The toolchain is the stable named by `rust-version` (1.99 at `v1.3.x`); the project tracks stable
-and holds no floor below it. No test may open a network connection: `CIRROCAST_FORBID_NETWORK=1`
-makes the HTTP layer refuse a non-loopback request before DNS, and CI exports it for the whole
-suite; the live smoke tests are `#[ignore]`d. The performance budget lives in the dispatch-only
-`.github/workflows/perf.yml`. Dependency policy — the audited licence allow list, the ban on
-duplicates and wildcards — is in [`deny.toml`](deny.toml).
 
 ## Acknowledgements
 

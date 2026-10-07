@@ -432,5 +432,5 @@ beats no line.
 * [troubleshooting.md](troubleshooting.md) — network, keys, cache corruption and bug reports.
 * [architecture.md](architecture.md) — the module map and the request data flow.
 * [i18n.md](i18n.md) — adding a language.
-* [README.md](../README.md) — the release checklist and the packaging detail behind the install
-  paths above.
+* [CONTRIBUTING.md](../CONTRIBUTING.md) — the release checklist and the packaging detail behind the
+  install paths above.
