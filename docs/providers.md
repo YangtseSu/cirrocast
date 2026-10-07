@@ -551,9 +551,13 @@ traps the decoder handles:
   `{unitCode, value}` with a nullable `value`; a `null` stays absent, never `0`.
 * **The icon URL is consulted before the text.** The `land`/`marine` and `day`/`night` path segments
   are stripped, the most severe of the icon's condition codes wins, and `shortForecast` is the
-  fallback. The icon table has 30 codes and the text table 26 substrings, matched longest-first
-  (`"rain and snow"` before `"rain"`, `"snow showers"` before `"snow"`) so composition wins; an
-  unknown pair becomes WMO 3 (overcast) plus one `-v` line.
+  fallback. The icon table carries every code of the vendor's published list (35 entries — the 34 of
+  `/icons` plus the docs' `freezing_rain` alias for `fzra`) and the text table 28 substrings, matched
+  longest-first (`"rain and snow"` before `"rain"`, `"snow showers"` before `"snow"`, `"blowing
+  dust"` before `"dust"`) so composition wins; an unknown pair becomes WMO 3 (overcast) plus one
+  `-v` line. The obscurations keep the model's own codes (`haze`→5, `smoke`→4, `dust`→6,
+  `blowing dust`→7) rather than collapsing into `fog`; the list's one combined icon, `fog`
+  (`Fog/mist`), takes the more significant of the two.
 * **The daily high/low is anchored on the period's `endTime`**, not its start: NWS's `Tonight` period
   runs into the next day, and the canonical day's `Night` part is those small hours, so the low
   belongs to the date the period ends on. A date the daily block does not reach falls back to the
@@ -828,12 +832,14 @@ in the terms (<https://www.weatherapi.com/terms.aspx>).
 (our Fluent catalogs own the wording); `tz_id` repairs a provisional zone, so coordinates work where
 `openweathermap` refuses them; the daily extremes and sun times come from the response's own `day`
 and `astro` blocks (the 12-hour clock strings are joined to the day's local date); `uv` fills the
-model's UV field; and the full 53-code table is unit-tested. Credit line:
+model's UV field; and the full 60-code table is unit-tested, obscurations included (`haze`→5,
+`smoke`→4, `dust`→6, `mist`→10; only the storm forms and smog take the nearest described family).
+Credit line:
 `WeatherAPI.com (free-tier attribution) — https://www.weatherapi.com/`. The free tier's 3-day
 horizon is the registry's `max_days`; a `403` keeps the `Upstream` taxonomy (exit 3) because it
 carries quota and plan refusals, while a `401` becomes exit 6.
 
-**Client notes.** Condition codes are **53 codes over 1000–1282** (not 1000–1087); the canonical list is
+**Client notes.** Condition codes are **60 codes over 1000–1282** (not 1000–1087); the canonical list is
 <https://www.weatherapi.com/docs/weather_conditions.json>, which the vendor explicitly blesses for
 vendoring ("Please download the list and use it offline"). Day/night variants differ only in the icon
 text/assets; store `is_day` next to `condition.code`. Astro times are 12-hour strings (`"04:31 PM"`,
@@ -910,8 +916,10 @@ a provisional (UTC) location is refused before any request like OpenWeatherMap's
 **Client notes.** `format=json` is mandatory — the documented default is `xml`; every scalar is a JSON
 **string** (`"temp_C": "18"`); single-element arrays wrap descriptions and areas
 (`weatherDesc[0].value`); astronomy is nested under `weather[].astronomy`; `weatherCode` is a closed
-49-code set with separate day/night icons
-(<https://www.worldweatheronline.com/feed/wwoConditionCodes.txt>). Error mapping observed live: 400
+60-code set with separate day/night icons
+(<https://www.worldweatheronline.com/feed/wwoConditionCodes.txt>), each obscuration mapping onto the
+model's own code (125/128/131/134/137/140→5/6/7/7/7/7, 143→10, 146→4, 149/152/155→5, 158/161→6).
+Error mapping observed live: 400
 missing parameter, 401 bad key on `premium/v1`, 403 wrong/deprecated path tier, 404 unknown path. The
 classic `data.error[].msg` envelope is not documented on any current page.
 
