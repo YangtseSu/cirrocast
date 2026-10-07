@@ -50,7 +50,8 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | E — Quality and integration | 21–22 | performance and resource budgets; the `status` probe, ecosystem recipes and frozen output contracts |
 | F — Sources and auth | 23–27 | extra backends, keyless national providers with coverage-aware `auto`, second-generation location sources, climate normals, QWeather JWT |
 | G — Documentation | 28 | the documentation set, the generated reference and the frozen JSON schemas |
-| Backlog | B01–B02 | deferred, unscheduled: the wttr-compatible local service and the multi-platform packaging matrix |
+| H — Source depth | 29–30 | the QWeather air-quality source (the national AQI) and the QWeather GeoAPI location source, both from the 2026-10-07 free-tier audit of the account's plan |
+| Backlog | B01–B04 | deferred, unscheduled: the wttr-compatible local service, the multi-platform packaging matrix, the minutely precipitation nowcast and the weather (life) indices panel |
 
 **Reorganized 2026-10-04.** The pending steps were renumbered so the number is the execution order,
 and two items left the schedule for the backlog: the wttr-compatible service (old step 20) became
@@ -93,8 +94,12 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 26 | F | [climate-normals](26-climate-normals.md) | ✅ done | 03, 06, 08 |
 | 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ✅ done | 02, 10, 15 |
 | 28 | G | [docs-and-guides](28-docs-and-guides.md) | ✅ done | 14, 19, and the surface of 18–27 |
+| 29 | H | [qweather-air-quality](29-qweather-air-quality.md) | ⬜ not-started | 16, 27 |
+| 30 | H | [qweather-geoapi](30-qweather-geoapi.md) | ⬜ not-started | 04, 05, 18, 20, 25, 27 |
 | B01 | Backlog | [wttr-compat-service](B01-wttr-compat-service.md) | ⏸ backlog | 08, 10, 14, 19 |
 | B02 | Backlog | [packaging-matrix](B02-packaging-matrix.md) | ⏸ backlog | 13, 21, 22 |
+| B03 | Backlog | [minutely-nowcast](B03-minutely-nowcast.md) | ⏸ backlog | 03, 06, 10, 24 |
+| B04 | Backlog | [weather-indices](B04-weather-indices.md) | ⏸ backlog | 03, 16, 17, 27 |
 
 **v1.0.0 = "basically formed"** (steps 01–14) means, end to end and demonstrated in step 14: eight
 backends selectable (three keyless), BYOK keys never touching `config.toml`, city-name, coordinate
@@ -111,7 +116,7 @@ the backlog is *planned work with a step file*, not a roadmap wish and not a stu
 | 2. Multiple backends, keyless first | 06 (open-meteo), 10 (owm, weatherapi, wwo, pirateweather, qweather, smhi), 11 (metar), 23 (met.no, visualcrossing, open-meteo archive/marine), 24 (nws, brightsky) |
 | 3. BYOK for key-requiring backends | 02 (key store + `key` subcommands), 10 (consumption, `MissingKey`), 12 (secret-handling audit), 27 (JWT credentials) |
 | 4. All wttr.in outputs | 07 (`art-table`, `dumb`), 08 (`one-line` templates, `plain`, `json`, completions, man), 17 (astro/moon tokens), B01 (`serve`, the wttr.in-compatible service incl. the `?` option table, backlog), 19 (multi-location output) |
-| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation), 18b (user-installed table updates), 25 (GeoNames search, multi-source merge) |
+| 5. City name → coordinates | 04 (Open-Meteo geocoding + Nominatim), 18 (offline bundled city database, crate evaluation), 18b (user-installed table updates), 25 (GeoNames search, multi-source merge), 30 (QWeather GeoAPI, explicit selection) |
 | 6. IP → city | 05 (ipwho.is + ipapi.co, opt-in, cached, privacy documented), 25 (IP.SB, coordinate naming, coverage) |
 | 7. Own CLI design, no wego copying | 01 + `AGENTS.md` (no-copy rule), 08 (documented flag matrix and precedence) |
 | 8. Selectable units and output language | 03 (unit system + formatting), 09 (Fluent i18n, en-US + zh-CN) |
