@@ -37,8 +37,11 @@ tmp=$(mktemp -d) || {
 # Remove the throwaway tree on exit, including on interrupt.
 trap 'rm -rf "$tmp"' 0 1 2 15
 
-# Throwaway XDG tree with a default coordinate location and a cache entry named
-# for today's UTC date, which is what the coordinate location spec keys on.
+# Throwaway XDG tree with a default coordinate location and a cache entry for
+# the date the binary keys on: the *location-local* date of the coordinate spec
+# (Beijing is +08:00), not the runner's UTC date. Seeding only the UTC date
+# missed the entry whenever the two differ — every day from 16:00 UTC on, which
+# is when CI runs.
 HOME="$tmp/home"
 XDG_CONFIG_HOME="$tmp/config"
 XDG_CACHE_HOME="$tmp/cache"
@@ -56,7 +59,12 @@ printf '[location]\ndefault = "@39.9,116.4"\n' >"$XDG_CONFIG_HOME/cirrocast/conf
 fixture=tests/fixtures/cache/weather/open-meteo-39.90-116.40-3-2026-10-05.json
 cache_dir="$XDG_CACHE_HOME/cirrocast/weather"
 mkdir -p "$cache_dir"
-cp "$fixture" "$cache_dir/open-meteo-39.90-116.40-3-$(TZ=UTC date +%F).json"
+# Both spellings of "today" are seeded: the location's zone is the one the
+# binary computes, and the UTC date costs nothing while covering a run that
+# crosses the local midnight between this seed and the probe.
+for zone in Asia/Shanghai UTC; do
+    cp "$fixture" "$cache_dir/open-meteo-39.90-116.40-3-$(TZ=$zone date +%F).json"
+done
 
 files="waybar.jsonc polybar.ini i3blocks.conf tmux.conf starship.toml bash-prompt.sh zsh-prompt.zsh"
 
