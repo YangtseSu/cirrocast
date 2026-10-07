@@ -90,6 +90,10 @@ one config key, except the last two, which have no config key:
 | `CIRROCAST_IP_SERVICE` | **no config key** — selects the public-IP location service chain: `auto` (default), `ipwhois`, `ipapi`, `ipsb` |
 | `CIRROCAST_GEONAMES_USER` | **no config key** — the GeoNames account *name*, resolved through the key store as a named credential |
 
+`CIRROCAST_LOCATION` names **one** location — the environment tier supplies a single spec, so a
+comma inside the value is part of that spec (a coordinate pair, or a `City, Region` name), never a
+separator. A multi-location run lists its locations as separate arguments on the command line.
+
 An empty environment variable counts as unset.
 
 ### Credentials are resolved separately

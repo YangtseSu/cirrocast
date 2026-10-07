@@ -186,7 +186,8 @@ MULTI\-LOCATION RUNS
   Several LOCATION arguments are fetched at most four at a time and printed in argument order.
   A failed location keeps its slot on stdout (`error: <query>: <message>`) and the run exits with
   the largest mapped code among the failures; `json` becomes an array, and `art\-table` draws a
-  combined summary for up to four locations.
+  combined summary for up to four locations. CIRROCAST_LOCATION names one location — the environment
+  tier has no second argument — so a multi\-location run passes its locations on the command line.
 .SH "EXIT STATUS"
 .TP
 \fB0\fR

@@ -469,7 +469,9 @@ schema_version = 2
   — and `config get` prints the environment value when set. (`CIRROCAST_IP_SERVICE` has no config
   key: it selects the IP services directly. `CIRROCAST_GEONAMES_USER` is the GeoNames account name
   — a *named credential* in `keys.toml`, stored by `cirrocast key set geonames`, not a config key,
-  step 25.)
+  step 25.) `CIRROCAST_LOCATION` names **one** location: the environment tier supplies a single
+  spec, so a multi-location run lists its locations on the command line (the `--help` block and
+  `docs/configuration.md` say so).
 * API keys are **never** written to `config.toml`. Precedence (first hit wins):
   `CIRROCAST_<PROVIDER>_KEY` env var → `keys.toml` in the config dir with mode `0600`
   (`cirrocast key set/rm/list`). There is no third tier: OS keyring storage is explicitly out of

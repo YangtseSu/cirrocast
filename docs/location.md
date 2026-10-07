@@ -13,7 +13,9 @@ echoed by the run, so a script never has to guess which "Springfield" it got.
 
 The argument is the same on the command line and everywhere else it may come from —
 `CIRROCAST_LOCATION`, `[location] default`, `status --location` — so a spec configured once behaves
-exactly as it does when typed.
+exactly as it does when typed. One difference: the environment variable and the configuration key
+each name **one** location, so a multi-location run (several `LOCATION` arguments) exists only on
+the command line.
 
 > The console blocks below were captured in the English locale (`--lang en-US`). Names,
 coordinates and zones are locale-independent; the surrounding notes, credits and weather labels are
