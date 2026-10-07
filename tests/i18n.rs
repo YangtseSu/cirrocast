@@ -18,11 +18,8 @@
 mod common;
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
-use std::time::Duration;
 
 use assert_cmd::Command;
-use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
 use cirrocast::i18n::{
     CATALOGS, I18n, LanguageRequest, MessageKey, Note, RENDERER_KEYS, condition_key, keys,
 };
@@ -43,16 +40,18 @@ fn seeded() -> Sandbox {
         "open_meteo/forecast_beijing_2026-07-15.json",
     ))
     .expect("the fixture is readable");
-    let key = CacheKey::weather("open-meteo", LAT, LON, 3, chrono::Utc::now().date_naive());
-    let cache = Cache::with_root(
-        sandbox.cache_dir(),
-        CacheMode::Normal,
-        Arc::new(SystemClock),
-        0,
+    // The key carries the *location-local* date the child will compute, so the shared helper seeds
+    // yesterday, today and tomorrow in the location's zone: a UTC date would miss the entry between
+    // local midnight and the UTC rollover (the zone here is +08:00).
+    common::seed_weather(
+        &sandbox,
+        "open-meteo",
+        LAT,
+        LON,
+        3,
+        chrono_tz::Tz::Asia__Shanghai,
+        &body,
     );
-    cache
-        .write(&key, 200, &body, Duration::from_secs(600))
-        .expect("the cache entry is written");
     sandbox
 }
 

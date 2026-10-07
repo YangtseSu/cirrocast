@@ -384,33 +384,25 @@ fn the_cli_refuses_the_unknown_token_and_accepts_configured_presets() {
 }
 
 /// A sandbox whose cache holds the recorded forecast for `@39.9042,116.4074`.
+///
+/// The key carries the location-local date the child computes; the shared helper seeds the days
+/// around it in the location's own zone, because a UTC date would miss the entry between local
+/// midnight and the UTC rollover (Beijing is +08:00).
 fn seeded() -> common::Sandbox {
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
-
     let sandbox = common::Sandbox::new();
     let body = std::fs::read_to_string(common::fixture_path(
         "open_meteo/forecast_beijing_2026-07-15.json",
     ))
     .expect("the fixture is readable");
-    let key = CacheKey::weather(
+    common::seed_weather(
+        &sandbox,
         "open-meteo",
         39.9042,
         116.4074,
         3,
-        chrono::Utc::now().date_naive(),
+        chrono_tz::Tz::Asia__Shanghai,
+        &body,
     );
-    let cache = Cache::with_root(
-        sandbox.cache_dir(),
-        CacheMode::Normal,
-        Arc::new(SystemClock),
-        0,
-    );
-    cache
-        .write(&key, 200, &body, Duration::from_secs(600))
-        .expect("the cache entry is written");
     sandbox
 }
 

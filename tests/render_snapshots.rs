@@ -12,16 +12,11 @@
 
 mod common;
 
-use std::sync::Arc;
-use std::time::Duration;
-
-use cirrocast::cache::{Cache, CacheKey, CacheMode, SystemClock};
 use cirrocast::config::UnitOverrides;
 use cirrocast::i18n::{I18n, LanguageRequest};
 use cirrocast::model::Report;
 use cirrocast::model::condition::Condition;
 use cirrocast::model::units::UnitSystem;
-use cirrocast::paths::Paths;
 use cirrocast::render::art::{art, night_variant, one_line_art};
 use cirrocast::render::{ColorMode, Format, RenderContext, TermCaps, renderer_for};
 use unicode_width::UnicodeWidthChar as _;
@@ -510,23 +505,21 @@ fn cli_output(sandbox: &common::Sandbox, env: &[(&str, &str)]) -> String {
 
 /// Writes the recorded Open-Meteo response under the key the provider computes for the sandbox
 /// coordinate, so `--offline` never has to reach the network.
+///
+/// The key carries the location-local date the child computes, and the shared helper seeds the days
+/// around it in the location's own zone — a UTC date would miss the entry between local midnight and
+/// the UTC rollover (Beijing is +08:00).
 fn seed_weather_cache(sandbox: &common::Sandbox) {
-    let paths = Paths {
-        config_dir: sandbox.config_dir(),
-        config_file: sandbox.config_file(),
-        keys_file: sandbox.keys_file(),
-        cache_dir: sandbox.cache_dir(),
-        data_dir: sandbox.home().join("data"),
-    };
-    let cache = Cache::with_root(paths.cache_dir, CacheMode::Normal, Arc::new(SystemClock), 0);
     let body = common::fixture("open_meteo/forecast_beijing_2026-07-15.json");
-    let today = chrono::Utc::now().date_naive();
-    for date in [today, today - chrono::Duration::days(1)] {
-        let key = CacheKey::weather("open-meteo", 39.9042, 116.4074, 1, date);
-        cache
-            .write(&key, 200, &body, Duration::from_secs(600))
-            .expect("the recorded response is written to the sandbox cache");
-    }
+    common::seed_weather(
+        sandbox,
+        "open-meteo",
+        39.9042,
+        116.4074,
+        1,
+        chrono_tz::Tz::Asia__Shanghai,
+        &body,
+    );
 }
 
 /// Every file in `tests/fixtures/report/` loads as a [`Report`].
