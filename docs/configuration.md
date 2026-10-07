@@ -184,7 +184,8 @@ ok: /tmp/tmp.waRpzhKOdZ/config/cirrocast/config.toml
 | Key | Type | Default | Example | Effect |
 |---|---|---|---|---|
 | `cache.enabled` | boolean | `true` | `false` | Whether the on-disk cache is used at all. |
-| `cache.weather_ttl_secs` | integer | `600` | `1200` | Weather response TTL in seconds; must be `> 0`. |
+| `cache.weather_ttl_secs` | integer | `600` | `1200` | TTL of a "now" answer (current conditions, an alert set) in seconds; must be `> 0`. |
+| `cache.forecast_ttl_secs` | integer | `1800` | `3600` | TTL of a forecast series that has its own cache entry (the hourly or daily part of a fetch answered by more than one request) in seconds; must be `> 0`. Longer than the "now" TTL on purpose: a series changes no faster than the provider publishes it (QWeather recommends 10–30 minutes for real-time data against 30–60 for its hourly series), so a repeated run reuses it instead of paying for it again. |
 | `cache.ip_ttl_secs` | integer | `86400` | `43200` | Public-IP lookup TTL in seconds; must be `> 0`, and larger values are capped at 24 h by the service's terms. |
 | `cache.geocode_ttl_secs` | integer | `2592000` | `86400` | Geocoding result TTL in seconds; must be `> 0` (default 30 days). |
 

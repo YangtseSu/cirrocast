@@ -1094,6 +1094,22 @@ a bad key is `401` (`#unauthorized`), a bad parameter or location `400`
 header is ignored, so a client must decode gzip or misread every body (a stale cache hides it until
 the entry expires). `src/http.rs` decodes after its capped read, under the same size ceiling.
 
+**Best practices, audited 2026-10-07** against `https://dev.qweather.com/docs/best-practices/`.
+**Gzip** is decoded by `src/http.rs` under a size cap; **retries** follow the "optimize requests"
+guidance — `408`, `429`, `5xx` and transport failures retry on an exponential schedule
+(`0.5 s · 2ⁿ`, at most three attempts) with a `Retry-After` on `429`/`503` replacing the wait
+(clamped to a minute), while `400`/`401`/`403`/`404` are never retried (repeating a bad request is
+what the page calls out as account-freezing behaviour); **URL encoding** leaves only the RFC 3986
+unreserved set, so spaces become `%20` (never `+`), and non-ASCII and commas are percent-encoded;
+**caching** is one entry per part per location-local day, with two TTLs: `cache.weather_ttl_secs`
+(10 min default) for the "now" answers and `cache.forecast_ttl_secs` (30 min) for a series that has
+its own entry — both inside the page's recommendations (real-time 10–30 min, hourly 30–60 min) — and
+`cirrocast cache clean` is the immediate-clear path the page asks for. **GeoAPI storage is forbidden in any form**, which is why step 30's source writes no
+cache entry at all. Two items are not applicable to a single-user CLI and are recorded as such: the
+backoff jitter (anti-collision advice for fleets of devices) and the console-side application
+restrictions (IP/URL/iOS/Android allow lists, which belong to the credential's owner, not the
+client).
+
 **The alert API is v1, and it is not a separate subscription.** `GET
 /weatheralert/v1/current/{lat}/{lon}` answers `200` on the account host used 2026-10-07 (JWT
 authentication), with the same `metadata` envelope the forecast endpoints use and an `alerts` array

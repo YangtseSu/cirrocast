@@ -156,6 +156,35 @@ fn a_second_fetch_is_served_from_the_cache() {
 }
 
 #[test]
+fn a_repeated_run_reuses_the_forecast_series_but_not_the_current_block() {
+    // The current block carries `cache.weather_ttl_secs` (600 s) and the forecast series
+    // `cache.forecast_ttl_secs` (1800 s): twenty minutes later only the current block is stale, so
+    // the second fetch costs one request instead of two (step 33).
+    let run = ProviderRun::new(
+        vec![
+            fixture_reply("owm", "current.json"),
+            fixture_reply("owm", "forecast.json"),
+            fixture_reply("owm", "current.json"),
+        ],
+        provider_clock(2026, 10, 1),
+        CacheMode::Normal,
+    );
+    run.with_key("openweathermap", KEY);
+    run.fetch_with(&OpenWeatherMap, &fixture_location("beijing"), 3)
+        .expect("the fixtures parse");
+    assert_eq!(run.calls().len(), 2, "current + forecast");
+
+    run.clock().advance(std::time::Duration::from_mins(20));
+    run.fetch_with(&OpenWeatherMap, &fixture_location("beijing"), 3)
+        .expect("the second fetch answers");
+    assert_eq!(
+        run.calls().len(),
+        3,
+        "only the current block was stale; the series came from the cache"
+    );
+}
+
+#[test]
 fn a_missing_key_names_the_environment_variable() {
     let run = ProviderRun::new(
         vec![fixture_reply("owm", "current.json")],

@@ -288,6 +288,9 @@ pub struct CacheConfig {
     pub enabled: bool,
     /// TTL of weather responses, in seconds.
     pub weather_ttl_secs: u32,
+    /// TTL of a forecast-series entry, in seconds — the hourly or daily part of a fetch that
+    /// answers from more than one request.
+    pub forecast_ttl_secs: u32,
     /// TTL of public-IP lookups, in seconds.
     pub ip_ttl_secs: u32,
     /// TTL of geocoding results, in seconds.
@@ -459,6 +462,7 @@ impl Default for CacheConfig {
         Self {
             enabled: true,
             weather_ttl_secs: 600,
+            forecast_ttl_secs: 1_800,
             ip_ttl_secs: 86_400,
             geocode_ttl_secs: 2_592_000,
         }
@@ -909,6 +913,7 @@ impl Config {
 
     fn validate_cache(&self) -> Result<()> {
         check_positive("cache.weather_ttl_secs", self.cache.weather_ttl_secs)?;
+        check_positive("cache.forecast_ttl_secs", self.cache.forecast_ttl_secs)?;
         check_positive("cache.ip_ttl_secs", self.cache.ip_ttl_secs)?;
         check_positive("cache.geocode_ttl_secs", self.cache.geocode_ttl_secs)?;
         Ok(())
@@ -1297,6 +1302,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
         "cache" => &[
             "enabled",
             "weather_ttl_secs",
+            "forecast_ttl_secs",
             "ip_ttl_secs",
             "geocode_ttl_secs",
         ],
@@ -1562,7 +1568,8 @@ offline = "off"          # off | weather (cache-only forecast) | geo (bundled na
 
 [cache]
 enabled = true
-weather_ttl_secs = 600       # 10 minutes
+weather_ttl_secs = 600       # 10 minutes; the "now" answers (current conditions, alerts)
+forecast_ttl_secs = 1800     # 30 minutes; a series with its own entry (the hourly/daily part)
 ip_ttl_secs = 86400          # 24 hours; a larger value is capped there (ipapi.co's terms)
 geocode_ttl_secs = 2592000   # 30 days
 
@@ -1835,6 +1842,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "cache.forecast_ttl_secs",
+        kind: KeyKind::U32,
+        doc: "forecast-series cache TTL in seconds (the hourly/daily part of a split fetch)",
+        env: None,
+    },
+    KeySpec {
         name: "cache.ip_ttl_secs",
         kind: KeyKind::U32,
         doc: "IP location cache TTL in seconds (capped at 24 h)",
@@ -1987,6 +2000,7 @@ impl Config {
             "network.offline" => self.network.offline.clone(),
             "cache.enabled" => self.cache.enabled.to_string(),
             "cache.weather_ttl_secs" => self.cache.weather_ttl_secs.to_string(),
+            "cache.forecast_ttl_secs" => self.cache.forecast_ttl_secs.to_string(),
             "cache.ip_ttl_secs" => self.cache.ip_ttl_secs.to_string(),
             "cache.geocode_ttl_secs" => self.cache.geocode_ttl_secs.to_string(),
             "render.color" => self.render.color.clone(),
@@ -2091,6 +2105,9 @@ impl Config {
             "cache.weather_ttl_secs" => {
                 self.cache.weather_ttl_secs = u32_value(spec.name, &value)?;
             }
+            "cache.forecast_ttl_secs" => {
+                self.cache.forecast_ttl_secs = u32_value(spec.name, &value)?;
+            }
             "cache.ip_ttl_secs" => self.cache.ip_ttl_secs = u32_value(spec.name, &value)?,
             "cache.geocode_ttl_secs" => {
                 self.cache.geocode_ttl_secs = u32_value(spec.name, &value)?;
@@ -2175,6 +2192,7 @@ impl Config {
             "network.nominatim_url" => self.validate_nominatim_url(),
             "network.offline" => check_enum(key, &self.network.offline, &OFFLINE_MODES),
             "cache.weather_ttl_secs" => check_positive(key, self.cache.weather_ttl_secs),
+            "cache.forecast_ttl_secs" => check_positive(key, self.cache.forecast_ttl_secs),
             "cache.ip_ttl_secs" => check_positive(key, self.cache.ip_ttl_secs),
             "cache.geocode_ttl_secs" => check_positive(key, self.cache.geocode_ttl_secs),
             "render.color" => check_enum(key, &self.render.color, COLOR_MODES),

@@ -40,6 +40,7 @@ offline = "off"
 [cache]
 enabled = true
 weather_ttl_secs = 600
+forecast_ttl_secs = 1800
 ip_ttl_secs = 86400
 geocode_ttl_secs = 2592000
 

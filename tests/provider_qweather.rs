@@ -238,6 +238,33 @@ fn a_second_fetch_is_served_from_the_cache() {
 }
 
 #[test]
+fn a_repeated_run_reuses_the_hourly_series_but_not_the_current_block() {
+    // `cache.weather_ttl_secs` (600 s) covers the current block, `cache.forecast_ttl_secs` (1800 s)
+    // the series: twenty minutes later the current block is stale and the series is not, so the
+    // second fetch costs one request instead of two (step 33).
+    let run = run(
+        vec![
+            fixture_reply("qweather", "current.json"),
+            fixture_reply("qweather", "hourly.json"),
+            fixture_reply("qweather", "current.json"),
+        ],
+        CacheMode::Normal,
+    );
+    run.fetch_with(&QWeather, &fixture_location("beijing"), 3)
+        .expect("the fixtures parse");
+    assert_eq!(run.calls().len(), 2, "current + hourly");
+
+    run.clock().advance(std::time::Duration::from_mins(20));
+    run.fetch_with(&QWeather, &fixture_location("beijing"), 3)
+        .expect("the second fetch answers");
+    assert_eq!(
+        run.calls().len(),
+        3,
+        "only the current block was stale; the series came from the cache"
+    );
+}
+
+#[test]
 fn a_rejected_key_is_an_invalid_key_error() {
     let run = run(
         vec![StubReply::status(

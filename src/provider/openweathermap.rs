@@ -28,8 +28,6 @@
 //! by `OpenWeather`, a link to <https://openweathermap.org/> and the logo); the registry row carries
 //! the line the renderers print.
 
-use std::time::Duration;
-
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use serde::Deserialize;
@@ -92,7 +90,10 @@ impl Provider for OpenWeatherMap {
             env: secret,
         })?;
 
-        let ttl = Duration::from_secs(u64::from(env.config.cache.weather_ttl_secs));
+        // The current block is a "now" answer; the forecast series is a forecast and may sit in the
+        // cache longer (step 33).
+        let ttl = super::weather_ttl(env);
+        let series_ttl = super::forecast_ttl(env);
         let today = local_today(env, loc.tz);
 
         let current_request = request(CURRENT_URL, loc, &key);
@@ -122,7 +123,7 @@ impl Provider for OpenWeatherMap {
                     key: CacheKey::weather_part(
                         PROVIDER, "forecast", loc.lat, loc.lon, days, today,
                     ),
-                    ttl,
+                    ttl: series_ttl,
                     what: "forecast",
                 },
             )?;

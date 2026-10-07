@@ -1118,6 +1118,26 @@ pub(crate) fn local_today(env: &Env<'_>, tz: Tz) -> NaiveDate {
     now.with_timezone(&tz).date_naive()
 }
 
+/// The cache TTL of an observation-shaped answer: `cache.weather_ttl_secs`.
+///
+/// The current block, an alert set and every answer that describes "now" share it — a shorter TTL
+/// than a series, because "now" is what a reader re-runs the program to see.
+#[must_use]
+pub fn weather_ttl(env: &Env<'_>) -> Duration {
+    Duration::from_secs(u64::from(env.config.cache.weather_ttl_secs))
+}
+
+/// The cache TTL of a forecast series that has its own cache entry: `cache.forecast_ttl_secs`.
+///
+/// The hourly or daily part of a fetch that answers from more than one request uses it. It is
+/// longer than [`weather_ttl`] on purpose, matching the provider's own update cadence guidance
+/// (`QWeather`: 10–30 minutes for real-time data against 30–60 for the hourly series), so a repeated
+/// run reuses the series instead of paying for it again.
+#[must_use]
+pub fn forecast_ttl(env: &Env<'_>) -> Duration {
+    Duration::from_secs(u64::from(env.config.cache.forecast_ttl_secs))
+}
+
 /// One weather backend.
 ///
 /// Implementations are synchronous and stateless (`&self`, no interior mutability), so a provider

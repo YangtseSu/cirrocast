@@ -37,8 +37,6 @@
 //! <https://www.qweather.com> wherever data is shown; the registry row carries the line the
 //! renderers print. `GeoAPI` data must not be bulk-cached — this backend does not call `GeoAPI`.
 
-use std::time::Duration;
-
 use chrono::{DateTime, TimeZone as _, Timelike as _, Utc};
 use chrono_tz::Tz;
 use serde::Deserialize;
@@ -105,7 +103,10 @@ impl Provider for QWeather {
         // One token per fetch, reused for both requests; nothing is cached between fetches.
         let auth = QWeatherAuth::resolve(&credential, env.cache.clock().now())?;
 
-        let ttl = Duration::from_secs(u64::from(env.config.cache.weather_ttl_secs));
+        // The current block is a "now" answer; the hourly series is a forecast and may sit in the
+        // cache longer (step 33).
+        let ttl = super::weather_ttl(env);
+        let series_ttl = super::forecast_ttl(env);
         let today = local_today(env, loc.tz);
 
         let current_request = request(&host, "current", loc, &auth);
@@ -136,7 +137,7 @@ impl Provider for QWeather {
                     provider: ProviderId::QWeather,
                     request: hourly_request.clone(),
                     key: CacheKey::weather_part(PROVIDER, "hourly", loc.lat, loc.lon, days, today),
-                    ttl,
+                    ttl: series_ttl,
                     what: "hourly",
                 },
             )?;

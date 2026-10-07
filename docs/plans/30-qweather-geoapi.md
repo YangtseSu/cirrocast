@@ -34,8 +34,9 @@ of the crate expects.
       what `number` returns for a `新乡`-style query (district rows? duplicated names?), and how the
       service spells a Latin query's names (`lang=en` vs `lang=zh`). Correct this file where the
       service differs from its docs.
-- ⬜ `src/geo/qweather.rs`: a `Geocoder` over the shared `HttpClient`/`Cache` (the same
-      `cache.geocode_ttl_secs` TTL the other sources use), the credential and host resolved exactly
+- ⬜ `src/geo/qweather.rs`: a `Geocoder` over the shared `HttpClient` **without a cache entry** (the
+      storage rule below forbids keeping GeoAPI rows on disk; `-v` says the request is uncached), the
+      credential and host resolved exactly
       as `src/alerts/qweather.rs` resolves them (API key or JWT through `QWeatherAuth`, a missing
       host is the documented configuration error naming the console, a missing credential under an
       explicit selection is `Error::MissingKey` naming `cirrocast key set qweather` and
@@ -60,9 +61,12 @@ of the crate expects.
       `https://www.qweather.com`, the provider registry's licence line reused), plus `named_by` so
       a named coordinate keeps the credit. The new `location.source` value extends the list in
       `docs/schema.md` and `docs/schema/json-v2.json` — additive, so `schema_version` stays.
-- ⬜ The terms rule, honoured in code and documented: **GeoAPI data must not be bulk-cached or
-      indexed.** The source caches one response per query (the ordinary geocode TTL) and builds no
-      index, table or cross-query store; the module docs and `docs/providers.md` say so.
+- ⬜ The storage rule, honoured in code and documented: **GeoAPI data must not be cached, extracted
+      or bulk-stored in any form.** The terms are explicit that most of the underlying providers
+      permit real-time use and forbid *any* storage, so this source writes **no cache entry at all**
+      (not even a short-lived one), builds no index, table or cross-query store, and says so in its
+      module docs, in `docs/providers.md` and in the `-v` narration. The shared cache is bypassed for
+      this source alone; a repeat query asks again.
 - ⬜ Tests: decode tests over recorded payloads (a multi-row answer, a row with an unknown `tz`, a
       row with an out-of-range coordinate, an empty `location[]`), a chain test (explicit selection
       answers through the stub transport, `auto` never selects it, a missing credential errors with
@@ -92,7 +96,8 @@ of the crate expects.
   the merged list; with `population: None` a GeoAPI row sorts by name against Open-Meteo's
   population-bearing rows. Recorded so the behaviour is a decision rather than a surprise.
 * **Cost and quota.** One request per name query on the same free tier as the forecast (first
-  50 000 requests/month at ¥0), cached for `cache.geocode_ttl_secs` like every other geocode.
+  50 000 requests/month at ¥0) and **no cache entry**: the storage rule below makes every query a
+  fresh request, which is the price of using this source at all.
 * **No new dependency.** `chrono-tz` already parses the zone names; the request goes through the
   shared client; `deny.toml` is untouched.
 
@@ -132,18 +137,21 @@ reuse lint
       and pasted into the progress log.
 - ⬜ `auto` performs no GeoAPI request under any configuration, proven by a chain test and by a
       `--verbose` run that shows the three keyless sources only.
-- ⬜ A GeoAPI-resolved location renders, caches and re-runs offline like any other; its `source`
-      field and credit line name QWeather, and no bulk store of GeoAPI rows exists anywhere on disk
-      (the cache holds one file per query, keyed like the other geocodes).
+- ⬜ A GeoAPI-resolved location renders like any other and its `source` field and credit line name
+      QWeather, while **no GeoAPI row is ever written to disk**: the run's cache directory gains no
+      entry for the query, proven by a test that inspects the cache after a stubbed GeoAPI answer.
 - ⬜ `docs/providers.md`, `docs/location.md`, `docs/configuration.md`, the README and the CHANGELOG
       describe the source, its explicit-only rule and its terms; `reuse lint` is clean.
 
 ## Risks
 
-* **Terms.** "GeoAPI data must not be bulk-cached or indexed" is the one clause that could bite: the
-  design is one cached response per query and no index, and the module docs plus `docs/providers.md`
-  must say so, so a later "let us pre-seed the offline table from GeoAPI" idea is visibly out of
-  bounds.
+* **Terms.** The cache page of the best-practices set
+  (`https://dev.qweather.com/docs/best-practices/cache/`) is blunt: *"你不能缓存、提取、批量存储 GeoAPI
+  中提供的所有数据 … 大多数服务商（几乎是所有）许可你实时的使用，但禁止你将这些数据进行任何形式的存储"* —
+  most of the underlying providers forbid storing the data **in any form**, not merely bulk-caching
+  it. Hence the no-entry rule above; the module docs plus `docs/providers.md` state it, so a later
+  "let us cache the lookup for a day" or "let us pre-seed the offline table from GeoAPI" idea is
+  visibly out of bounds.
 * **Duplicate-looking candidates.** If `lang` is chosen badly, a GeoAPI row ("北京") will not fold
   against a keyless row ("Beijing") and the picker shows the same city twice. The script rule above
   is the mitigation; the merge test pins it.
@@ -157,3 +165,9 @@ reuse lint
   half of the 50 000-request plan). Endpoint, parameters, row fields and the missing ISO country
   code read from the published docs (2026-10-07); the live probe is the first deliverable so the
   mapping decisions are made against the account, not the documentation.
+- 2026-10-07 — the plan was corrected after reading QWeather's best-practices set: its cache page
+  forbids storing GeoAPI data **in any form** for most of the underlying providers, which is
+  stronger than the "no bulk caching or indexing" wording this file carried. The source therefore
+  writes no cache entry at all (the deliverable, the design note, the exit criterion and the risk
+  bullet above all changed), and every query costs one request — recorded so the design is not
+  softened again later for convenience.

@@ -31,6 +31,12 @@ consumer can see exactly what moved. It lands under the version it applies to, a
   in** — mostly for `@lat,lon`, whose zone the bundled tables may not know. The flag outranks the
   environment variable and the file, an unknown name is a usage error before anything is resolved,
   and `-v` says when it replaced a zone the location had resolved.
+* **`[cache] forecast_ttl_secs` (default 30 minutes) caches a forecast series longer than a "now"
+  answer.** A backend whose fetch answers from more than one request (QWeather, OpenWeatherMap) now
+  writes its hourly/daily part with this TTL while the current block keeps
+  `cache.weather_ttl_secs`, so a run after 10 minutes but inside 30 reuses the series and costs one
+  request instead of two. The values follow the provider's published cadence (QWeather recommends
+  10–30 minutes for real-time data, 30–60 for the hourly series).
 
 ### Changed
 
