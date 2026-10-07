@@ -99,7 +99,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 28 | G | [docs-and-guides](28-docs-and-guides.md) | ✅ done | 14, 19, and the surface of 18–27 |
 | 29 | H | [qweather-air-quality](29-qweather-air-quality.md) | ⬜ not-started | 16, 27 |
 | 30 | H | [qweather-geoapi](30-qweather-geoapi.md) | ⬜ not-started | 04, 05, 18, 20, 25, 27 |
-| 31 | I | [icon-sets](31-icon-sets.md) | ⬜ not-started | 07, 08, 17, 19 |
+| 31 | I | [icon-sets](31-icon-sets.md) | ✅ done | 07, 08, 17, 19 |
 | 32 | J | [coordinate-timezones](32-coordinate-timezones.md) | ✅ done | 04, 05, 18, 25 |
 | 33 | K | [cache-ttls](33-cache-ttls.md) | ✅ done | 05, 10, 23 |
 | B01 | Backlog | [wttr-compat-service](B01-wttr-compat-service.md) | ⏸ backlog | 08, 10, 14, 19 |

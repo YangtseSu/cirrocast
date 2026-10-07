@@ -195,6 +195,16 @@ ok: /tmp/tmp.waRpzhKOdZ/config/cirrocast/config.toml
 |---|---|---|---|---|
 | `render.color` | string | `"auto"` | `"never"` | Colour mode: `auto`, `always` or `never`. |
 | `render.width` | integer | `0` | `100` | `0` detects the terminal width, otherwise `1..=500` columns. |
+| `render.icons` | string | `"blocks"` | `"nerd,emoji"` | Glyph set chain for the condition and moon art: `blocks` (hand-drawn, no font needed), `emoji`, `nerd` (Weather Icons inside a Nerd Font), or an ordered comma-separated chain. The first set with a glyph for a key wins and `blocks` always ends the chain. |
+
+`--icons <SETS>` and `CIRROCAST_ICONS` take the same values; the flag wins over the environment,
+which wins over the file. A chain is validated by the same parser in all three tiers, so
+`render.icons = "wat"` fails `config validate` (exit 4) with the three known names. A terminal that
+cannot draw UTF-8 (`TERM=dumb`, a non-UTF-8 locale, `--format dumb`) always renders `blocks`,
+whatever the chain says, and `-v` reports that. `cirrocast status` has no `--icons` of its own and
+follows the file value, like its other render settings. Nerd Fonts: install a patched font from
+[`ryanoasis/nerd-fonts`](https://github.com/ryanoasis/nerd-fonts); the default needs no font. The
+formats and their art are described in [`docs/formats.md`](formats.md#icon-sets).
 
 ### `[alerts]`
 

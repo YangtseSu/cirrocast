@@ -104,7 +104,7 @@ cirrocast [OPTIONS] [LOCATION]...
       --date <YYYY-MM-DD>, --history <Nd>          the archive instead of a forecast
       --template <TPL>, --template-file <PATH>     one-line templates
       --offline[=weather|geo|all], --no-cache, --refresh, --timeout <SECS>
-      --pick/--yes, --color <WHEN>, --width <COLS>, -q/--quiet, -v/--verbose
+      --pick/--yes, --color <WHEN>, --width <COLS>, --icons <SETS>, -q/--quiet, -v/--verbose
 ```
 
 The full flag matrix is `cirrocast --help`; a byte-for-byte copy of that page is
@@ -144,6 +144,28 @@ One captured output per format is in [`docs/screenshots/`](docs/screenshots/) �
 and the unknown-token policy are in [`docs/formats.md`](docs/formats.md); the `json` document's
 contract and key index are in [`docs/schema.md`](docs/schema.md); the `status` probe — one line,
 never non-zero because of the network — is in [`docs/ecosystem.md`](docs/ecosystem.md).
+
+### Icon sets
+
+The hand-drawn blocks are the default because they need no font beyond a Latin monospace.
+`--icons emoji` draws one Unicode emoji per condition, and `--icons nerd` one Weather Icons glyph
+(U+E300–U+E3E3) from a Nerd Font; both are opt-in:
+
+```bash
+cirrocast --icons emoji Beijing            # ☀️ ⛅ 🌧️ in the table, borders unchanged
+cirrocast --icons nerd Beijing             # needs a patched font; codepoints only otherwise
+cirrocast --icons nerd,emoji Beijing       # the chain: Nerd Font first, emoji where it lacks
+cirrocast --icons emoji -f one-line --template '%l %c %t'   # `%c` follows the set
+```
+
+The value is an ordered chain and `blocks` always ends it, so a key an icon set lacks falls back to
+the hand-drawn art instead of printing tofu. `%x` keeps printing the 7-bit symbol whatever
+`--icons` says, and `plain`/`json` carry no art at all. A terminal that cannot draw UTF-8 gets the
+blocks. Nerd Fonts: install a patched font from
+[`ryanoasis/nerd-fonts`](https://github.com/ryanoasis/nerd-fonts); the default needs no font. The
+key `[render] icons` and the precedence are in
+[`docs/configuration.md`](docs/configuration.md#render); the corpus rules are in
+[`docs/formats.md`](docs/formats.md#icon-sets).
 
 ## Location
 

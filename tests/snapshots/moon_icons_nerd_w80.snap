@@ -1,0 +1,15 @@
+---
+source: tests/render_snapshots.rs
+expression: "render(icons(Case\n{\n    format: Format::Moon, ..case(\"beijing-astro.json\", UnitSystem::Metric, 80)\n}, \"nerd\"))"
+---
+Beijing, Beijing, China (39.90, 116.41) Asia/Shanghai
+computed locally (no network) at 2026-09-30T20:30:00+08:00
+        Moon: Waning Crescent
+       23% illuminated (geocentric) · age 26.5 d
+        Moonrise 07:12 · Moonset 21:34
+        Sunrise 06:05 · Sunset 18:55 · daylight 12h 00m
+Next phases:
+  Full Moon Tue 06 Oct 22:09
+  Last Quarter Wed 14 Oct 12:44
+  New Moon Thu 22 Oct 03:18
+  First Quarter Fri 30 Oct 06:21

@@ -18,7 +18,7 @@ use cirrocast::model::Report;
 use cirrocast::model::condition::Condition;
 use cirrocast::model::units::UnitSystem;
 use cirrocast::render::art::{art, night_variant, one_line_art};
-use cirrocast::render::{ColorMode, Format, RenderContext, TermCaps, renderer_for};
+use cirrocast::render::{ColorMode, Format, IconChain, RenderContext, TermCaps, renderer_for};
 use unicode_width::UnicodeWidthChar as _;
 
 /// The English catalog, loaded the way the CLI loads an unconfigured run.
@@ -40,6 +40,7 @@ struct Case {
     format: Format,
     color: ColorMode,
     lang: &'static str,
+    icons: IconChain,
 }
 
 /// The `art-table` case of a fixture: metric or us, one width, no colour, English.
@@ -51,6 +52,15 @@ const fn case(file: &'static str, units: UnitSystem, width: usize) -> Case {
         format: Format::ArtTable,
         color: ColorMode::Never,
         lang: "en-US",
+        icons: IconChain::blocks(),
+    }
+}
+
+/// The same case drawn from an icon set.
+fn icons(case: Case, chain: &str) -> Case {
+    Case {
+        icons: IconChain::parse(chain).expect("the test chain parses"),
+        ..case
     }
 }
 
@@ -68,6 +78,7 @@ const fn plain(file: &'static str, units: UnitSystem, width: usize) -> Case {
         format: Format::Plain,
         color: ColorMode::Never,
         lang: "en-US",
+        icons: IconChain::blocks(),
     }
 }
 
@@ -90,7 +101,8 @@ fn render(case: Case) -> String {
         "en-US" => english(),
         tag => catalog(tag),
     };
-    let caps = capable_terminal();
+    let mut caps = capable_terminal();
+    caps.icons = case.icons;
     let ctx = RenderContext {
         units: case
             .units
@@ -264,6 +276,89 @@ fn the_dumb_format_is_ascii_without_colour() {
             format: Format::Dumb,
             ..case("beijing-3d-day.json", UnitSystem::Metric, 80)
         }
+    );
+}
+
+/// Each icon set replaces the blocks per glyph, in every format that draws art: the table (at 80
+/// and 120 columns), the one-line `%c` (whose line ignores `--width`, so one width is enough) and
+/// the moon view (where the emoji or Nerd Font glyph takes the disc's place).
+#[test]
+fn the_icon_sets_draw_the_same_layout_from_glyphs() {
+    snapshot!(
+        "art_table_icons_emoji_d1_w80",
+        icons(case("beijing-1d.json", UnitSystem::Metric, 80), "emoji")
+    );
+    snapshot!(
+        "art_table_icons_emoji_d1_w120",
+        icons(case("beijing-1d.json", UnitSystem::Metric, 120), "emoji")
+    );
+    snapshot!(
+        "art_table_icons_nerd_d1_w80",
+        icons(case("beijing-1d.json", UnitSystem::Metric, 80), "nerd")
+    );
+    snapshot!(
+        "art_table_icons_nerd_d1_w120",
+        icons(case("beijing-1d.json", UnitSystem::Metric, 120), "nerd")
+    );
+    snapshot!(
+        "one_line_icons_emoji",
+        icons(
+            Case {
+                format: Format::OneLine,
+                ..case("beijing-1d.json", UnitSystem::Metric, 80)
+            },
+            "emoji"
+        )
+    );
+    snapshot!(
+        "one_line_icons_nerd",
+        icons(
+            Case {
+                format: Format::OneLine,
+                ..case("beijing-1d.json", UnitSystem::Metric, 80)
+            },
+            "nerd"
+        )
+    );
+    snapshot!(
+        "moon_icons_emoji_w80",
+        icons(
+            Case {
+                format: Format::Moon,
+                ..case("beijing-astro.json", UnitSystem::Metric, 80)
+            },
+            "emoji"
+        )
+    );
+    snapshot!(
+        "moon_icons_emoji_w120",
+        icons(
+            Case {
+                format: Format::Moon,
+                ..case("beijing-astro.json", UnitSystem::Metric, 120)
+            },
+            "emoji"
+        )
+    );
+    snapshot!(
+        "moon_icons_nerd_w80",
+        icons(
+            Case {
+                format: Format::Moon,
+                ..case("beijing-astro.json", UnitSystem::Metric, 80)
+            },
+            "nerd"
+        )
+    );
+    snapshot!(
+        "moon_icons_nerd_w120",
+        icons(
+            Case {
+                format: Format::Moon,
+                ..case("beijing-astro.json", UnitSystem::Metric, 120)
+            },
+            "nerd"
+        )
     );
 }
 

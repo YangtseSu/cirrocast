@@ -18,6 +18,10 @@
 //!   [`effective_depth`] decides which palette may be emitted.
 //! * **Charset** — [`Charset`] is what splits `art-table` from `dumb`: the same renderer, drawn
 //!   with box-drawing characters or with ASCII.
+//! * **Icons** — [`IconChain`] is the user's ordered list of glyph sets (`emoji`, `nerd`, the
+//!   hand-drawn `blocks`); [`art::draw`](art::draw) resolves each key through it, and an ASCII run
+//!   is forced back to the blocks. It lives in [`TermCaps`] beside the charset because a terminal
+//!   cannot be asked whether its font carries a glyph — only the user knows.
 //!
 //! Reading the environment happens exactly once, in [`TermCaps::detect`], and the rules behind it
 //! are pure functions of the values it read ([`TermCaps::read`], [`resolve_color`]) — edition 2024
@@ -103,6 +107,159 @@ pub enum Charset {
     Ascii,
 }
 
+/// One glyph set the condition and moon art can be drawn from.
+///
+/// The names are the `--icons`/`[render] icons` vocabulary; `blocks` is the default because it is
+/// the only set that needs no font beyond a Latin monospace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum IconSet {
+    /// The hand-drawn four-line blocks ([`art`](crate::render::art)).
+    #[default]
+    Blocks,
+    /// One Unicode emoji per art key.
+    Emoji,
+    /// The Weather Icons family inside a Nerd Font, one private-use glyph per key.
+    Nerd,
+}
+
+impl IconSet {
+    /// Every set, in `--help` and error-message order: the default first.
+    pub const ALL: [Self; 3] = [Self::Blocks, Self::Emoji, Self::Nerd];
+
+    /// The set's spelling on the command line and in the configuration.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Blocks => "blocks",
+            Self::Emoji => "emoji",
+            Self::Nerd => "nerd",
+        }
+    }
+
+    /// Parses one set name, trimmed and case-insensitively.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Usage`] naming the value and the three sets.
+    pub fn from_name(name: &str) -> Result<Self> {
+        let name = name.trim().to_ascii_lowercase();
+        Self::ALL
+            .into_iter()
+            .find(|set| set.as_str() == name)
+            .ok_or_else(|| {
+                Error::Usage(format!(
+                    "`{name}` is not an icon set; known sets: {}",
+                    Self::names()
+                ))
+            })
+    }
+
+    /// The three set names, for an error message or a `--help` line.
+    #[must_use]
+    pub fn names() -> String {
+        Self::ALL.map(Self::as_str).join(", ")
+    }
+}
+
+/// The resolved icon chain: the glyph sets a key may be drawn from, in order.
+///
+/// The value is a *chain*, not a single choice, because a terminal cannot be asked whether its font
+/// carries a glyph — the escape sequences that exist report a font name, not coverage. So "mixed"
+/// means "try in order": the first set that carries a glyph for a key wins, and `blocks` is always
+/// appended last, so a key no icon set has degrades to the hand-drawn art instead of printing tofu.
+/// Duplicates collapse and `blocks` keeps its place at the end, so `nerd,nerd,emoji` and
+/// `blocks,emoji` are the same chain as `nerd,emoji` and `emoji`.
+///
+/// The chain is at most three entries long (`blocks`, `emoji`, `nerd`), so it is stored inline and
+/// stays [`Copy`] — the whole thing travels in [`TermCaps`] like [`Charset`] does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IconChain {
+    /// The sets in resolution order, `blocks` last; only `..len` is meaningful.
+    sets: [IconSet; IconSet::ALL.len()],
+    /// How many entries of `sets` are in use; never zero.
+    len: usize,
+}
+
+impl Default for IconChain {
+    fn default() -> Self {
+        Self::blocks()
+    }
+}
+
+impl IconChain {
+    /// The chain that draws the hand-drawn blocks only.
+    #[must_use]
+    pub const fn blocks() -> Self {
+        Self {
+            sets: [IconSet::Blocks; IconSet::ALL.len()],
+            len: 1,
+        }
+    }
+
+    /// Parses a comma-separated chain of set names, e.g. `nerd,emoji`.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Usage`] when an element is empty, or names none of the three sets.
+    pub fn parse(value: &str) -> Result<Self> {
+        let mut chain = Self::blocks();
+        chain.len = 0;
+        for element in value.split(',') {
+            let name = element.trim();
+            if name.is_empty() {
+                return Err(Error::Usage(format!(
+                    "`{value}` has an empty icon set name; known sets: {}",
+                    IconSet::names()
+                )));
+            }
+            // An explicit `blocks` is accepted anywhere and lands last: it is the drawing
+            // underneath, not a place in the chain a user can pick.
+            let set = IconSet::from_name(name)?;
+            if set != IconSet::Blocks && !chain.sets[..chain.len].contains(&set) {
+                chain.sets[chain.len] = set;
+                chain.len += 1;
+            }
+        }
+        chain.sets[chain.len] = IconSet::Blocks;
+        chain.len += 1;
+        Ok(chain)
+    }
+
+    /// The sets in resolution order; the last one is always [`IconSet::Blocks`].
+    pub fn iter(&self) -> impl Iterator<Item = IconSet> + '_ {
+        self.sets[..self.len].iter().copied()
+    }
+
+    /// Whether the chain draws only the hand-drawn blocks.
+    #[must_use]
+    pub fn is_blocks(self) -> bool {
+        self.len == 1
+    }
+
+    /// The chain a `charset` can draw: an icon set is UTF-8 art, so an ASCII run gets the blocks
+    /// whatever the user asked for.
+    #[must_use]
+    pub fn for_charset(self, charset: Charset) -> Self {
+        if charset == Charset::Ascii {
+            Self::blocks()
+        } else {
+            self
+        }
+    }
+}
+
+impl std::fmt::Display for IconChain {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (index, set) in self.iter().enumerate() {
+            if index > 0 {
+                formatter.write_str(",")?;
+            }
+            formatter.write_str(set.as_str())?;
+        }
+        Ok(())
+    }
+}
+
 /// What the environment said about colour, read once per run.
 ///
 /// The two variables interact rather than coexist: `CLICOLOR_FORCE` set to anything but `0` is a
@@ -124,7 +281,10 @@ pub enum ColorPreference {
 ///
 /// `is_tty` is about *this* stdout, the rest about the terminal behind it. [`ColorPreference`]
 /// lives here because it is read from the same environment at the same moment and is only ever
-/// consumed together with the capabilities, by [`resolve_color`].
+/// consumed together with the capabilities, by [`resolve_color`]. `icons` is the one field the
+/// environment cannot fill: the chain has a configuration tier too, so the caller resolves it
+/// (`--icons`, `CIRROCAST_ICONS`, `[render] icons`) and assigns it after [`TermCaps::detect`] —
+/// it describes the *font* behind the terminal, which only the user can report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TermCaps {
     /// Whether stdout is a terminal.
@@ -137,6 +297,8 @@ pub struct TermCaps {
     pub depth: ColorDepth,
     /// What `NO_COLOR` and `CLICOLOR_FORCE` said.
     pub color_pref: ColorPreference,
+    /// The glyph sets the condition and moon art may be drawn from, in order.
+    pub icons: IconChain,
 }
 
 impl Default for TermCaps {
@@ -208,6 +370,8 @@ impl TermCaps {
             utf8,
             depth,
             color_pref,
+            // The caller replaces this with the resolved chain; the default is the blocks.
+            icons: IconChain::blocks(),
         }
     }
 
@@ -699,6 +863,55 @@ mod tests {
             },
             true,
         )
+    }
+
+    #[test]
+    fn the_icon_chain_parses_normalises_and_always_ends_in_blocks() {
+        let cases = [
+            ("blocks", "blocks"),
+            ("emoji", "emoji,blocks"),
+            ("nerd", "nerd,blocks"),
+            ("nerd,emoji", "nerd,emoji,blocks"),
+            ("emoji,nerd", "emoji,nerd,blocks"),
+            ("nerd,nerd,emoji", "nerd,emoji,blocks"),
+            (" Nerd , Emoji ", "nerd,emoji,blocks"),
+            ("blocks,emoji", "emoji,blocks"),
+            ("emoji,blocks,nerd", "emoji,nerd,blocks"),
+        ];
+        for (value, expected) in cases {
+            let chain = super::IconChain::parse(value).expect("the chain parses");
+            assert_eq!(chain.to_string(), expected, "{value}");
+            assert_eq!(
+                chain.iter().last(),
+                Some(super::IconSet::Blocks),
+                "{value} must end in blocks"
+            );
+        }
+        assert!(super::IconChain::default().is_blocks());
+        assert!(
+            super::IconChain::parse("blocks")
+                .expect("the blocks")
+                .is_blocks()
+        );
+        assert!(!super::IconChain::parse("emoji").expect("emoji").is_blocks());
+
+        for bad in ["", " ", ",", "emoji,", ",emoji", "nerd,,emoji"] {
+            let error = super::IconChain::parse(bad).expect_err("never a chain");
+            assert_eq!(error.exit_code(), 2, "{bad}");
+            assert!(error.to_string().contains("empty icon set name"), "{bad}");
+        }
+        let unknown = super::IconChain::parse("wat").expect_err("never a set");
+        assert_eq!(unknown.exit_code(), 2);
+        let message = unknown.to_string();
+        assert!(message.contains("`wat` is not an icon set"), "{message}");
+        assert!(message.contains("blocks, emoji, nerd"), "{message}");
+    }
+
+    #[test]
+    fn an_ascii_terminal_gets_the_blocks_whatever_the_chain_says() {
+        let chain = super::IconChain::parse("nerd,emoji").expect("the chain parses");
+        assert_eq!(chain.for_charset(super::Charset::Unicode), chain);
+        assert!(chain.for_charset(super::Charset::Ascii).is_blocks());
     }
 
     #[test]

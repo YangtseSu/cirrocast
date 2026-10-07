@@ -12,15 +12,27 @@
 //! second `art_key`. The tests below make that a build-time fact in both directions: every code
 //! `0..=99` must find a block, and every block must belong to a key the vocabulary can produce.
 //!
+//! Beside the blocks, two **icon sets** draw the same keys as one glyph each: [`EMOJI`] (Unicode
+//! emoji) and [`NERD`] (the Weather Icons family inside a Nerd Font). [`draw`] resolves them
+//! through an [`IconChain`] — the first set that carries a glyph for the key wins, the blocks
+//! corpus is always last — and a [`Charset::Ascii`] run is always drawn with the blocks, because
+//! an icon set cannot be spelled in 7-bit. Both sets carry every key and every moon phase (the
+//! tests below assert it in both directions), so a glyph is never missing in a tested build; the
+//! fall-through stays because a hand-built report or a new condition may ask for a key no set has.
+//!
 //! Geometry: [`ART_W`] display columns by [`ART_LINES`] lines. Lines are stored right-trimmed — the
 //! renderer pads them — and a line never carries more than [`ART_W`] columns, so a cell that shows
-//! them keeps its borders aligned even when the block is mostly empty.
+//! them keeps its borders aligned even when the block is mostly empty. A glyph arrives as a single
+//! sequence instead of four lines: [`Art::line`] centres it in the same cell, padded by its
+//! *measured* width — never by an assumption about how wide a terminal draws it.
 //!
 //! [`Condition::art_key`]: crate::model::condition::Condition::art_key
 
+use std::borrow::Cow;
+
 use unicode_width::UnicodeWidthStr as _;
 
-use super::Charset;
+use super::{Charset, IconChain};
 use crate::model::astro::MoonPhase;
 use crate::model::units::compass_16;
 
@@ -539,13 +551,383 @@ pub fn moon_lines(phase: MoonPhase, charset: Charset) -> [&'static str; ART_LINE
     }
 }
 
-/// The one-column glyph of a phase in `charset`, for the `%m` token.
+/// The one-column glyph of a phase's block in `charset`, for the `%m` token.
 #[must_use]
-pub fn moon_glyph(phase: MoonPhase, charset: Charset) -> &'static str {
+fn moon_block_glyph(phase: MoonPhase, charset: Charset) -> &'static str {
     let block = moon(phase);
     match charset {
         Charset::Unicode => block.glyph,
         Charset::Ascii => block.ascii_glyph,
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Icon sets
+// ---------------------------------------------------------------------------------------------
+
+/// One glyph of an icon set: the sequence to print and the display columns it measures.
+///
+/// The width is *recorded* beside the sequence rather than measured on every draw so the corpus
+/// reads as data; the test below re-measures every row with `unicode-width`, so the record cannot
+/// drift from what the layout pads for. Emoji presentation is spelled out — a sequence Unicode did
+/// not default to emoji presentation carries U+FE0F — because a terminal is free to draw the bare
+/// codepoint as a one-column text glyph.
+#[derive(Debug, Clone, Copy)]
+pub struct Glyph {
+    /// The sequence, ready to print.
+    pub text: &'static str,
+    /// The display columns it measures in `unicode-width`.
+    pub width: usize,
+}
+
+/// One corpus row: the sequence and its measured width.
+const fn icon(text: &'static str, width: usize) -> Glyph {
+    Glyph { text, width }
+}
+
+/// The emoji corpus: one glyph per art key, sorted by key like [`ART`].
+///
+/// Two rules shape it. **An emoji that draws the sun is only used for a key that has a `-night`
+/// sibling** — rain, snow, fog and wind look the same around the clock in the blocks corpus, and a
+/// glyph with a sun on it would lie in the night column. And **a key family shares one glyph where
+/// Unicode has no second one**: there is no drizzle-versus-rain, no snow-grain and no moon-behind-
+/// cloud emoji, so the rain family draws `🌧️`, the freezing family `🧊`, the snow family `🌨️`;
+/// the condition's own text and the blocks corpus carry the nuance. Emoji presentation is
+/// explicit: `☀️`, `☁️`, `⛈️`, `🌤️`, `🌫️`, `🌬️`, `🌧️`, `🌨️`, `🌩️`, `🏜️` and `❄️` carry
+/// U+FE0F, the rest are single codepoints that Unicode already defaults to emoji presentation.
+const EMOJI: &[(&str, Glyph)] = &[
+    ("clear", icon("☀️", 2)),
+    ("clear-night", icon("🌙", 2)),
+    ("drizzle", icon("💧", 2)),
+    ("drizzle-dense", icon("🌧️", 2)),
+    ("drizzle-light", icon("💧", 2)),
+    ("dust", icon("🌬️", 2)),
+    ("fog", icon("🌫️", 2)),
+    ("freezing-drizzle-dense", icon("🧊", 2)),
+    ("freezing-drizzle-light", icon("🧊", 2)),
+    ("freezing-rain-heavy", icon("🧊", 2)),
+    ("freezing-rain-light", icon("🧊", 2)),
+    ("haze", icon("🌫️", 2)),
+    ("ice-pellets", icon("🧊", 2)),
+    ("mainly-clear", icon("🌤️", 2)),
+    ("mainly-clear-night", icon("🌙", 2)),
+    ("mist", icon("🌫️", 2)),
+    ("overcast", icon("☁️", 2)),
+    ("partly-cloudy", icon("⛅", 2)),
+    ("partly-cloudy-night", icon("☁️", 2)),
+    ("rain", icon("🌧️", 2)),
+    ("rain-heavy", icon("🌧️", 2)),
+    ("rain-light", icon("🌧️", 2)),
+    ("rime-fog", icon("❄️", 2)),
+    ("sand", icon("🏜️", 2)),
+    ("showers-rain", icon("🌧️", 2)),
+    ("showers-rain-light", icon("🌧️", 2)),
+    ("showers-rain-violent", icon("⛈️", 2)),
+    ("showers-snow-heavy", icon("🌨️", 2)),
+    ("showers-snow-light", icon("🌨️", 2)),
+    ("sleet-heavy", icon("🌨️", 2)),
+    ("sleet-light", icon("🌨️", 2)),
+    ("smoke", icon("💨", 2)),
+    ("snow", icon("🌨️", 2)),
+    ("snow-grains", icon("❄️", 2)),
+    ("snow-heavy", icon("🌨️", 2)),
+    ("snow-light", icon("❄️", 2)),
+    ("thunderstorm", icon("⛈️", 2)),
+    ("thunderstorm-hail-heavy", icon("🌩️", 2)),
+    ("thunderstorm-hail-light", icon("🌩️", 2)),
+    ("thunderstorm-heavy", icon("⛈️", 2)),
+    ("unknown", icon("❓", 2)),
+];
+
+/// The Nerd Font corpus: the Weather Icons family (U+E300–U+E3E3) inside a patched font, sorted by
+/// art key like [`ART`].
+///
+/// Every row names the `glyphnames.json` glyph it is, so the escape can be checked against the
+/// upstream table; the test below pins the codepoints by name and proves none leaves the block.
+/// The same two rules as the emoji set apply: a glyph that draws the sun is only used where the key
+/// has a `-night` sibling (`weather-day_*` for those three, `weather-night_*` for their siblings),
+/// and everything else draws a neutral glyph. Where Weather Icons has no gradation the family
+/// shares one (`weather-rain` for both light and moderate rain, `weather-sleet` for the freezing
+/// family) rather than inventing a glyph.
+const NERD: &[(&str, Glyph)] = &[
+    // weather-day_sunny
+    ("clear", icon("\u{e30d}", 1)),
+    // weather-night_clear
+    ("clear-night", icon("\u{e32b}", 1)),
+    // weather-raindrop
+    ("drizzle", icon("\u{e371}", 1)),
+    // weather-raindrops
+    ("drizzle-dense", icon("\u{e34a}", 1)),
+    // weather-sprinkle
+    ("drizzle-light", icon("\u{e31b}", 1)),
+    // weather-dust
+    ("dust", icon("\u{e35d}", 1)),
+    // weather-fog
+    ("fog", icon("\u{e313}", 1)),
+    // weather-rain_mix
+    ("freezing-drizzle-dense", icon("\u{e316}", 1)),
+    // weather-rain_mix
+    ("freezing-drizzle-light", icon("\u{e316}", 1)),
+    // weather-sleet
+    ("freezing-rain-heavy", icon("\u{e3ad}", 1)),
+    // weather-sleet
+    ("freezing-rain-light", icon("\u{e3ad}", 1)),
+    // weather-smog
+    ("haze", icon("\u{e36d}", 1)),
+    // weather-hail
+    ("ice-pellets", icon("\u{e314}", 1)),
+    // weather-day_sunny_overcast
+    ("mainly-clear", icon("\u{e30c}", 1)),
+    // weather-night_alt_partly_cloudy
+    ("mainly-clear-night", icon("\u{e379}", 1)),
+    // weather-fog
+    ("mist", icon("\u{e313}", 1)),
+    // weather-cloudy
+    ("overcast", icon("\u{e312}", 1)),
+    // weather-day_cloudy
+    ("partly-cloudy", icon("\u{e302}", 1)),
+    // weather-night_alt_cloudy
+    ("partly-cloudy-night", icon("\u{e37e}", 1)),
+    // weather-rain
+    ("rain", icon("\u{e318}", 1)),
+    // weather-rain_wind
+    ("rain-heavy", icon("\u{e317}", 1)),
+    // weather-rain
+    ("rain-light", icon("\u{e318}", 1)),
+    // weather-snowflake_cold
+    ("rime-fog", icon("\u{e36f}", 1)),
+    // weather-sandstorm
+    ("sand", icon("\u{e37a}", 1)),
+    // weather-showers
+    ("showers-rain", icon("\u{e319}", 1)),
+    // weather-showers
+    ("showers-rain-light", icon("\u{e319}", 1)),
+    // weather-storm_showers
+    ("showers-rain-violent", icon("\u{e31c}", 1)),
+    // weather-snow_wind
+    ("showers-snow-heavy", icon("\u{e35e}", 1)),
+    // weather-snow
+    ("showers-snow-light", icon("\u{e31a}", 1)),
+    // weather-sleet
+    ("sleet-heavy", icon("\u{e3ad}", 1)),
+    // weather-sleet
+    ("sleet-light", icon("\u{e3ad}", 1)),
+    // weather-smoke
+    ("smoke", icon("\u{e35c}", 1)),
+    // weather-snow
+    ("snow", icon("\u{e31a}", 1)),
+    // weather-snowflake_cold
+    ("snow-grains", icon("\u{e36f}", 1)),
+    // weather-snow_wind
+    ("snow-heavy", icon("\u{e35e}", 1)),
+    // weather-snow
+    ("snow-light", icon("\u{e31a}", 1)),
+    // weather-thunderstorm
+    ("thunderstorm", icon("\u{e31d}", 1)),
+    // weather-lightning
+    ("thunderstorm-hail-heavy", icon("\u{e315}", 1)),
+    // weather-lightning
+    ("thunderstorm-hail-light", icon("\u{e315}", 1)),
+    // weather-storm_showers
+    ("thunderstorm-heavy", icon("\u{e31c}", 1)),
+    // weather-na
+    ("unknown", icon("\u{e374}", 1)),
+];
+
+/// The emoji moon glyphs, one per [`MoonPhase::ALL`] entry in its own order.
+const EMOJI_MOON: &[(&str, Glyph)] = &[
+    ("moon/first-quarter", icon("🌓", 2)),
+    ("moon/full", icon("🌕", 2)),
+    ("moon/last-quarter", icon("🌗", 2)),
+    ("moon/new", icon("🌑", 2)),
+    ("moon/waning-crescent", icon("🌘", 2)),
+    ("moon/waning-gibbous", icon("🌖", 2)),
+    ("moon/waxing-crescent", icon("🌒", 2)),
+    ("moon/waxing-gibbous", icon("🌔", 2)),
+];
+
+/// The Nerd Font moon glyphs: `weather-moon_*`, the phase steps that sit in the middle of each
+/// six-step run (`weather-moon_waxing_crescent_3` and friends) so the glyph reads as the phase it
+/// names rather than as its first or last step.
+const NERD_MOON: &[(&str, Glyph)] = &[
+    // weather-moon_first_quarter
+    ("moon/first-quarter", icon("\u{e394}", 1)),
+    // weather-moon_full
+    ("moon/full", icon("\u{e39b}", 1)),
+    // weather-moon_third_quarter
+    ("moon/last-quarter", icon("\u{e3a2}", 1)),
+    // weather-moon_new
+    ("moon/new", icon("\u{e38d}", 1)),
+    // weather-moon_waning_crescent_3
+    ("moon/waning-crescent", icon("\u{e3a5}", 1)),
+    // weather-moon_waning_gibbous_3
+    ("moon/waning-gibbous", icon("\u{e39e}", 1)),
+    // weather-moon_waxing_crescent_3
+    ("moon/waxing-crescent", icon("\u{e390}", 1)),
+    // weather-moon_waxing_gibbous_3
+    ("moon/waxing-gibbous", icon("\u{e397}", 1)),
+];
+
+/// One drawing of a key: the hand-drawn four lines, or one glyph from an icon set.
+#[derive(Debug, Clone, Copy)]
+pub enum Art {
+    /// The four lines of the blocks corpus (or of a moon block), in `charset`.
+    Lines([&'static str; ART_LINES]),
+    /// One glyph of an icon set, drawn centred in the [`ART_W`] cell.
+    Glyph(&'static Glyph),
+    /// No set carried the key — not even the blocks: the empty drawing.
+    Missing,
+}
+
+/// The line of the four-line cell an icon glyph is drawn on: the second one, so the glyph sits
+/// beside the temperature in a day cell (and beside the illumination in the moon panel) instead of
+/// over the label row.
+pub const GLYPH_LINE: usize = 1;
+
+impl Art {
+    /// The drawing's line `index`, padded to the [`ART_W`] columns of the cell: a corpus line as it
+    /// is stored (the renderer pads the rest), the glyph centred by its measured width, or `""`.
+    #[must_use]
+    pub fn line(&self, index: usize) -> Cow<'static, str> {
+        match self {
+            Self::Lines(lines) => lines
+                .get(index)
+                .map_or(Cow::Borrowed(""), |line| Cow::Borrowed(*line)),
+            Self::Glyph(glyph) if index == GLYPH_LINE => Cow::Owned(centred(glyph)),
+            Self::Glyph(_) | Self::Missing => Cow::Borrowed(""),
+        }
+    }
+}
+
+/// A glyph centred in the [`ART_W`] columns of a cell, so the table's geometry cannot move: the
+/// padding comes from the glyph's *measured* width, never from an assumption about it.
+fn centred(glyph: &Glyph) -> String {
+    let left = ART_W.saturating_sub(glyph.width) / 2;
+    let right = ART_W.saturating_sub(left + glyph.width);
+    let mut line = String::with_capacity(glyph.text.len() + left + right);
+    line.extend(std::iter::repeat_n(' ', left));
+    line.push_str(glyph.text);
+    line.extend(std::iter::repeat_n(' ', right));
+    line
+}
+
+/// The two tables of one icon set: the condition corpus and the moon corpus, both sorted by key.
+#[derive(Debug, Clone, Copy)]
+struct Corpus {
+    /// The condition table.
+    art: &'static [(&'static str, Glyph)],
+    /// The moon table, keyed by [`MoonPhase::art_key`].
+    moon: &'static [(&'static str, Glyph)],
+}
+
+/// The corpus of `set`, or `None` for [`IconSet::Blocks`], whose drawing is the [`ART`] corpus.
+///
+/// [`IconSet::Blocks`]: super::IconSet::Blocks
+const fn corpus(set: super::IconSet) -> Option<Corpus> {
+    match set {
+        super::IconSet::Blocks => None,
+        super::IconSet::Emoji => Some(Corpus {
+            art: EMOJI,
+            moon: EMOJI_MOON,
+        }),
+        super::IconSet::Nerd => Some(Corpus {
+            art: NERD,
+            moon: NERD_MOON,
+        }),
+    }
+}
+
+/// Which corpus of an icon set a lookup asks for.
+#[derive(Debug, Clone, Copy)]
+enum Family {
+    /// The condition corpus.
+    Art,
+    /// The moon corpus.
+    Moon,
+}
+
+/// The first glyph, in chain order, that any icon set carries for `key` in `family`.
+///
+/// The chain always ends with `blocks`, which has no table here — it is the drawing underneath,
+/// not a glyph source — so `None` means "the blocks corpus draws this one".
+fn first_glyph(chain: IconChain, key: &str, family: Family) -> Option<&'static Glyph> {
+    let mut tables: [&'static [(&'static str, Glyph)]; 2] = [&[], &[]];
+    let mut len = 0;
+    for set in chain.iter() {
+        if let Some(corpus) = corpus(set) {
+            tables[len] = match family {
+                Family::Art => corpus.art,
+                Family::Moon => corpus.moon,
+            };
+            len += 1;
+        }
+    }
+    first_with(&tables[..len], key)
+}
+
+/// The glyph the first table that carries `key` holds.
+///
+/// Split out from [`first_glyph`] because this is the rule the test drives with *holed* tables:
+/// the fall-through is proven by construction, not by hoping a set lacks a key.
+fn first_with(tables: &[&'static [(&'static str, Glyph)]], key: &str) -> Option<&'static Glyph> {
+    tables.iter().find_map(|table| find(table, key))
+}
+
+/// The glyph `table` carries for `key`, by binary search over the sorted keys.
+///
+/// `n/a` is a spelling of `unknown`, exactly as in [`art`].
+fn find(table: &'static [(&'static str, Glyph)], key: &str) -> Option<&'static Glyph> {
+    let key = if key == "n/a" { "unknown" } else { key };
+    table
+        .binary_search_by(|(candidate, _)| (*candidate).cmp(key))
+        .ok()
+        .and_then(|index| table.get(index))
+        .map(|(_, glyph)| glyph)
+}
+
+/// The drawing of a condition `key` in the resolved chain: the first icon set that carries a glyph
+/// wins, and the blocks corpus draws whatever is left (an unknown key included).
+///
+/// A [`Charset::Ascii`] run draws the blocks whatever the chain says: an icon set is UTF-8 art, and
+/// a terminal that cannot draw UTF-8 — or a run that asked for `--format dumb` — must not see a
+/// byte outside 7-bit.
+#[must_use]
+pub fn draw(key: &str, chain: IconChain, charset: Charset) -> Art {
+    if let Some(glyph) = first_glyph(chain.for_charset(charset), key, Family::Art) {
+        return Art::Glyph(glyph);
+    }
+    art(key).map_or(Art::Missing, |block| Art::Lines(block.lines(charset)))
+}
+
+/// The moon drawing of a phase: the set's moon glyph when the chain carries one, else the phase's
+/// four-line block in `charset`.
+#[must_use]
+pub fn moon_art(phase: MoonPhase, chain: IconChain, charset: Charset) -> Art {
+    if let Some(glyph) = first_glyph(chain.for_charset(charset), phase.art_key(), Family::Moon) {
+        return Art::Glyph(glyph);
+    }
+    Art::Lines(moon_lines(phase, charset))
+}
+
+/// The compact glyph of a condition key — the set's glyph, or the 7-bit one-line art of the blocks.
+///
+/// This is what `%c` and the stacked layout print, where a four-line block or a seven-column cell
+/// would not fit.
+#[must_use]
+pub fn glyph(key: &str, chain: IconChain, charset: Charset) -> &'static str {
+    match draw(key, chain, charset) {
+        Art::Glyph(glyph) => glyph.text,
+        Art::Lines(_) | Art::Missing => one_line_art(key),
+    }
+}
+
+/// The one-column moon glyph of a phase in the resolved chain, for the `%m` token and the `plain`
+/// record: the set's glyph, or the block's own glyph in `charset`.
+#[must_use]
+pub fn moon_glyph(phase: MoonPhase, chain: IconChain, charset: Charset) -> &'static str {
+    match moon_art(phase, chain, charset) {
+        Art::Glyph(glyph) => glyph.text,
+        Art::Lines(_) | Art::Missing => moon_block_glyph(phase, charset),
     }
 }
 
@@ -691,13 +1073,14 @@ mod tests {
     use unicode_width::UnicodeWidthStr as _;
 
     use super::{
-        ARROWS, ART, ART_LINES, ART_W, ArtStyle, MOON_ART, NO_BLOCK, art, moon, moon_glyph,
-        moon_lines, night_variant, one_line_art, wind_arrow,
+        ARROWS, ART, ART_LINES, ART_W, Art, ArtStyle, EMOJI, EMOJI_MOON, GLYPH_LINE, Glyph,
+        MOON_ART, NERD, NERD_MOON, NO_BLOCK, art, draw, find, first_with, glyph, icon, moon,
+        moon_art, moon_glyph, moon_lines, night_variant, one_line_art, wind_arrow,
     };
     use crate::model::astro::MoonPhase;
     use crate::model::condition::Condition;
     use crate::model::units::compass_16;
-    use crate::render::Charset;
+    use crate::render::{Charset, IconChain, IconSet};
 
     /// Every key the vocabulary can produce.
     fn vocabulary() -> Vec<&'static str> {
@@ -1023,11 +1406,450 @@ mod tests {
     #[test]
     fn the_moon_glyphs_are_charset_specific() {
         for phase in crate::model::astro::MoonPhase::ALL {
-            let unicode = moon_glyph(phase, Charset::Unicode);
-            let ascii = moon_glyph(phase, Charset::Ascii);
+            let unicode = moon_glyph(phase, IconChain::blocks(), Charset::Unicode);
+            let ascii = moon_glyph(phase, IconChain::blocks(), Charset::Ascii);
             assert!(ascii.is_ascii(), "{phase:?}: {ascii:?}");
             assert!(!unicode.is_ascii(), "{phase:?}: {unicode:?} is not unicode");
             assert_eq!(ascii.len(), 1);
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Icon sets
+    // -----------------------------------------------------------------------------------------
+
+    /// One icon set with its condition and moon tables.
+    type SetTables = (
+        IconSet,
+        &'static [(&'static str, Glyph)],
+        &'static [(&'static str, Glyph)],
+    );
+
+    /// The icon sets with their tables, for the tests that walk both.
+    fn sets() -> [SetTables; 2] {
+        [
+            (IconSet::Emoji, EMOJI, EMOJI_MOON),
+            (IconSet::Nerd, NERD, NERD_MOON),
+        ]
+    }
+
+    /// A chain that ends in `blocks`, spelled the way the CLI spells it.
+    fn chain(value: &str) -> IconChain {
+        IconChain::parse(value).expect("the test chain parses")
+    }
+
+    /// The keys an icon table must cover: the vocabulary plus the three night siblings, exactly the
+    /// set the blocks corpus draws.
+    fn icon_vocabulary() -> Vec<&'static str> {
+        let mut keys: Vec<&'static str> = vocabulary()
+            .into_iter()
+            .flat_map(|key| [key, night_variant(key)])
+            .collect();
+        keys.sort_unstable();
+        keys.dedup();
+        keys
+    }
+
+    /// Every key has a glyph in every set, in both directions like the blocks corpus: a new
+    /// condition without a glyph, or a table row no condition can produce, fails here.
+    #[test]
+    fn every_art_key_has_a_glyph_in_every_icon_set() {
+        let vocabulary = icon_vocabulary();
+        for (set, table, _) in sets() {
+            for key in &vocabulary {
+                assert!(
+                    find(table, key).is_some(),
+                    "`{key}` has no {} glyph",
+                    set.as_str()
+                );
+            }
+            for (key, _) in table {
+                assert!(
+                    vocabulary.contains(key),
+                    "`{key}` is not in the condition vocabulary, so the {} table carries a row \
+                     nothing can ask for",
+                    set.as_str()
+                );
+            }
+            for window in table.windows(2) {
+                let (left, right) = (window[0], window[1]);
+                assert!(
+                    left.0 < right.0,
+                    "{} keys must ascend: {left:?} {right:?}",
+                    set.as_str()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_moon_phase_has_a_glyph_in_every_icon_set() {
+        for (set, _, table) in sets() {
+            assert_eq!(table.len(), MoonPhase::ALL.len());
+            for phase in MoonPhase::ALL {
+                assert!(
+                    find(table, phase.art_key()).is_some(),
+                    "{phase:?} has no {} glyph",
+                    set.as_str()
+                );
+            }
+            for (key, _) in table {
+                assert!(
+                    MoonPhase::ALL.iter().any(|phase| phase.art_key() == *key),
+                    "`{key}` is not a moon phase"
+                );
+            }
+        }
+    }
+
+    /// The recorded width is what `unicode-width` measures, so the padding uses the measurement:
+    /// emoji-presentation sequences are two columns, Nerd Font glyphs one.
+    #[test]
+    fn the_icon_widths_are_recorded_as_measured() {
+        for (set, table, moon) in sets() {
+            for (key, glyph) in table.iter().chain(moon) {
+                let measured = glyph.text.width();
+                assert_eq!(
+                    glyph.width,
+                    measured,
+                    "{}: `{key}` records {} columns but measures {measured}",
+                    set.as_str(),
+                    glyph.width
+                );
+                let expected = match set {
+                    IconSet::Emoji => 2,
+                    IconSet::Nerd => 1,
+                    IconSet::Blocks => unreachable!("the blocks have no table"),
+                };
+                assert_eq!(
+                    measured,
+                    expected,
+                    "{}: `{key}` measures {measured} columns",
+                    set.as_str()
+                );
+            }
+        }
+    }
+
+    /// The Nerd Font corpus is the Weather Icons block and nothing else: every glyph is one
+    /// private-use codepoint in U+E300–U+E3E3, and the distinct codepoints are exactly the ones
+    /// `glyphnames.json` publishes for the names the table's comments spell. A typo in an escape
+    /// (`\u{e30e}` for `\u{e30d}`) cannot pass as "some private-use glyph".
+    #[test]
+    fn the_nerd_glyphs_are_the_weather_icons_codepoints() {
+        const USED: &[(char, &str)] = &[
+            ('\u{e302}', "weather-day_cloudy"),
+            ('\u{e30c}', "weather-day_sunny_overcast"),
+            ('\u{e30d}', "weather-day_sunny"),
+            ('\u{e312}', "weather-cloudy"),
+            ('\u{e313}', "weather-fog"),
+            ('\u{e314}', "weather-hail"),
+            ('\u{e315}', "weather-lightning"),
+            ('\u{e316}', "weather-rain_mix"),
+            ('\u{e317}', "weather-rain_wind"),
+            ('\u{e318}', "weather-rain"),
+            ('\u{e319}', "weather-showers"),
+            ('\u{e31a}', "weather-snow"),
+            ('\u{e31b}', "weather-sprinkle"),
+            ('\u{e31c}', "weather-storm_showers"),
+            ('\u{e31d}', "weather-thunderstorm"),
+            ('\u{e32b}', "weather-night_clear"),
+            ('\u{e34a}', "weather-raindrops"),
+            ('\u{e35c}', "weather-smoke"),
+            ('\u{e35d}', "weather-dust"),
+            ('\u{e35e}', "weather-snow_wind"),
+            ('\u{e36d}', "weather-smog"),
+            ('\u{e36f}', "weather-snowflake_cold"),
+            ('\u{e371}', "weather-raindrop"),
+            ('\u{e374}', "weather-na"),
+            ('\u{e379}', "weather-night_alt_partly_cloudy"),
+            ('\u{e37a}', "weather-sandstorm"),
+            ('\u{e37e}', "weather-night_alt_cloudy"),
+            ('\u{e38d}', "weather-moon_new"),
+            ('\u{e390}', "weather-moon_waxing_crescent_3"),
+            ('\u{e394}', "weather-moon_first_quarter"),
+            ('\u{e397}', "weather-moon_waxing_gibbous_3"),
+            ('\u{e39b}', "weather-moon_full"),
+            ('\u{e39e}', "weather-moon_waning_gibbous_3"),
+            ('\u{e3a2}', "weather-moon_third_quarter"),
+            ('\u{e3a5}', "weather-moon_waning_crescent_3"),
+            ('\u{e3ad}', "weather-sleet"),
+        ];
+
+        let mut used: Vec<char> = Vec::new();
+        for (key, glyph) in NERD.iter().chain(NERD_MOON) {
+            let mut characters = glyph.text.chars();
+            let character = characters.next().expect("a glyph is not empty");
+            assert!(
+                characters.next().is_none(),
+                "`{key}`: {glyph:?} is not one codepoint"
+            );
+            assert!(
+                ('\u{e300}'..='\u{e3e3}').contains(&character),
+                "`{key}`: {character:?} leaves the Weather Icons block U+E300–U+E3E3"
+            );
+            assert!(
+                USED.iter().any(|(used, _)| *used == character),
+                "`{key}`: {character:?} is not one of the documented glyphs"
+            );
+            used.push(character);
+        }
+        used.sort_unstable();
+        used.dedup();
+        let expected: Vec<char> = USED.iter().map(|(character, _)| *character).collect();
+        assert_eq!(used, expected, "the corpus uses {used:?}");
+
+        // The names are the ones the table rows comment, so a renamed row cannot leave a stale
+        // comment behind: the spot checks below name the mapping for the keys the plan lists.
+        assert_eq!(find(NERD, "clear").expect("a glyph").text, "\u{e30d}");
+        assert_eq!(find(NERD, "clear-night").expect("a glyph").text, "\u{e32b}");
+        assert_eq!(find(NERD, "overcast").expect("a glyph").text, "\u{e312}");
+        assert_eq!(find(NERD, "unknown").expect("a glyph").text, "\u{e374}");
+        assert_eq!(
+            find(NERD_MOON, MoonPhase::Full.art_key())
+                .expect("a glyph")
+                .text,
+            "\u{e39b}"
+        );
+    }
+
+    /// The emoji corpus spells emoji presentation: a sequence Unicode does not default to it
+    /// carries U+FE0F, which is also what makes the two-column measurement hold.
+    #[test]
+    fn the_emoji_corpus_spells_emoji_presentation() {
+        // The sequences that need U+FE0F, by codepoint, because a bare U+2600 and so on draw as
+        // one-column text glyphs in a terminal that has the text font first.
+        const EXPLICIT: &[(char, u32)] = &[
+            ('\u{2600}', 0xfe0f),  // ☀️
+            ('\u{2601}', 0xfe0f),  // ☁️
+            ('\u{26c8}', 0xfe0f),  // ⛈️
+            ('\u{2744}', 0xfe0f),  // ❄️
+            ('\u{1f324}', 0xfe0f), // 🌤️
+            ('\u{1f327}', 0xfe0f), // 🌧️
+            ('\u{1f328}', 0xfe0f), // 🌨️
+            ('\u{1f329}', 0xfe0f), // 🌩️
+            ('\u{1f32b}', 0xfe0f), // 🌫️
+            ('\u{1f32c}', 0xfe0f), // 🌬️
+            ('\u{1f3dc}', 0xfe0f), // 🏜️
+        ];
+        let mut explicit: Vec<(char, u32)> = Vec::new();
+        for (key, glyph) in EMOJI.iter().chain(EMOJI_MOON) {
+            let characters: Vec<char> = glyph.text.chars().collect();
+            assert!(
+                (1..=2).contains(&characters.len()),
+                "`{key}`: {glyph:?} is not one or two codepoints"
+            );
+            if let [base, variation] = characters[..] {
+                assert_eq!(variation, '\u{fe0f}', "`{key}`: {glyph:?}");
+                explicit.push((base, 0xfe0f));
+            }
+        }
+        explicit.sort_unstable_by_key(|(character, _)| *character);
+        explicit.dedup();
+        assert_eq!(
+            explicit, EXPLICIT,
+            "the corpus stopped spelling emoji presentation for {explicit:?}"
+        );
+    }
+
+    /// The rule that shapes both corpora: a glyph that draws the sun is only used where the key has
+    /// a night sibling, so a night column never shows daylight — and the three sky keys that do
+    /// change at night draw different glyphs from their day halves.
+    #[test]
+    fn a_sun_glyph_is_only_used_where_the_key_has_a_night_sibling() {
+        // The sun-bearing glyphs of each set: `☀️`, `🌤️`, `⛅` and the three `weather-day_*` glyphs.
+        let sunny: [&[&str]; 2] = [
+            &["\u{2600}\u{fe0f}", "\u{1f324}\u{fe0f}", "\u{26c5}"],
+            &["\u{e302}", "\u{e30c}", "\u{e30d}"],
+        ];
+        for (set, table, _) in sets() {
+            let sun = sunny[match set {
+                IconSet::Emoji => 0,
+                IconSet::Nerd => 1,
+                IconSet::Blocks => unreachable!("the blocks have no table"),
+            }];
+            for (key, glyph) in table {
+                if sun.contains(&glyph.text) {
+                    assert_ne!(
+                        night_variant(key),
+                        *key,
+                        "{}: `{key}` draws the sun and has no night sibling",
+                        set.as_str()
+                    );
+                }
+            }
+            for day in ["clear", "mainly-clear", "partly-cloudy"] {
+                let night = night_variant(day);
+                let day_glyph = find(table, day).expect("the day glyph");
+                let night_glyph = find(table, night).expect("the night glyph");
+                assert_ne!(
+                    day_glyph.text,
+                    night_glyph.text,
+                    "{}: `{day}` and `{night}` draw the same glyph",
+                    set.as_str()
+                );
+                assert!(
+                    !sun.contains(&night_glyph.text),
+                    "{}: `{night}` draws the sun",
+                    set.as_str()
+                );
+            }
+        }
+        assert_eq!(
+            find(EMOJI, "clear").expect("a glyph").text,
+            "\u{2600}\u{fe0f}"
+        );
+        assert_eq!(
+            find(EMOJI, "clear-night").expect("a glyph").text,
+            "\u{1f319}"
+        );
+    }
+
+    /// The chain resolves per glyph: the first set that carries the key wins, a hole falls through
+    /// to the next table, and a key no table has resolves to nothing at all — driven by test-only
+    /// tables, so the fall-through is proven rather than hoped for.
+    #[test]
+    fn the_chain_falls_through_a_table_that_lacks_the_key() {
+        const FIRST: &[(&str, Glyph)] = &[("clear", icon("A", 1)), ("rain", icon("B", 1))];
+        const SECOND: &[(&str, Glyph)] = &[("rain", icon("C", 1)), ("snow", icon("D", 1))];
+        let tables: [&'static [(&str, Glyph)]; 2] = [FIRST, SECOND];
+        assert_eq!(
+            first_with(&tables, "clear").expect("the first table").text,
+            "A"
+        );
+        assert_eq!(
+            first_with(&tables, "rain")
+                .expect("the first table that carries the key")
+                .text,
+            "B",
+            "the first table that carries the key wins"
+        );
+        assert_eq!(
+            first_with(&tables, "snow").expect("the second table").text,
+            "D"
+        );
+        assert!(
+            first_with(&tables, "fog").is_none(),
+            "a key no table carries falls through to the blocks"
+        );
+    }
+
+    #[test]
+    fn the_chain_resolves_keys_and_moon_phases_per_glyph() {
+        let emoji = chain("emoji");
+        let nerd = chain("nerd");
+        let blocks = IconChain::blocks();
+
+        let drawn = draw("clear", emoji, Charset::Unicode);
+        let Art::Glyph(emoji_glyph) = drawn else {
+            panic!("the emoji set carries `clear`");
+        };
+        assert_eq!(emoji_glyph.text, "\u{2600}\u{fe0f}");
+        assert!(matches!(
+            draw("clear", blocks, Charset::Unicode),
+            Art::Lines(_)
+        ));
+        assert_eq!(glyph("clear", emoji, Charset::Unicode), "☀️");
+        assert_eq!(glyph("clear", blocks, Charset::Unicode), "\\o/");
+        assert_eq!(glyph("n/a", blocks, Charset::Unicode), "???");
+
+        // The chain's order decides: a Nerd Font first still renders Nerd glyphs, and the emoji
+        // set answers only where the chain has it.
+        assert_eq!(
+            glyph("clear", chain("nerd,emoji"), Charset::Unicode),
+            "\u{e30d}"
+        );
+        assert_eq!(glyph("clear", chain("emoji,nerd"), Charset::Unicode), "☀️");
+
+        // A key no set has renders as nothing at all, never a panic and never tofu.
+        assert!(matches!(
+            draw("no-such-key", chain("nerd,emoji"), Charset::Unicode),
+            Art::Missing
+        ));
+        assert_eq!(
+            glyph("no-such-key", chain("nerd,emoji"), Charset::Unicode),
+            "???"
+        );
+
+        // The moon family resolves through the same chain.
+        assert_eq!(
+            moon_glyph(MoonPhase::Full, emoji, Charset::Unicode),
+            "\u{1f315}"
+        );
+        assert_eq!(
+            moon_glyph(MoonPhase::Full, nerd, Charset::Unicode),
+            "\u{e39b}"
+        );
+        assert_eq!(moon_glyph(MoonPhase::Full, blocks, Charset::Unicode), "●");
+        assert!(matches!(
+            moon_art(MoonPhase::Full, emoji, Charset::Unicode),
+            Art::Glyph(_)
+        ));
+    }
+
+    /// An ASCII run draws the blocks whatever the chain says: an icon set cannot be spelled in
+    /// 7-bit, so `--format dumb` and a non-UTF-8 terminal never see one.
+    #[test]
+    fn an_ascii_run_draws_the_blocks_whatever_the_chain_says() {
+        let chain = chain("nerd,emoji");
+        for key in icon_vocabulary() {
+            let drawing = draw(key, chain, Charset::Ascii);
+            let Art::Lines(lines) = drawing else {
+                panic!("`{key}` is not drawn with the blocks in ASCII");
+            };
+            assert!(
+                lines.iter().all(|line| line.is_ascii()),
+                "`{key}`: the ASCII block needs a unicode terminal"
+            );
+            assert!(glyph(key, chain, Charset::Ascii).is_ascii(), "`{key}`");
+        }
+        for phase in MoonPhase::ALL {
+            assert!(
+                moon_glyph(phase, chain, Charset::Ascii).is_ascii(),
+                "{phase:?}"
+            );
+            assert!(matches!(
+                moon_art(phase, chain, Charset::Ascii),
+                Art::Lines(_)
+            ));
+        }
+    }
+
+    /// A glyph is centred in the same 7×4 cell the blocks draw in, padded by its *measured* width,
+    /// so the table's borders cannot move when a set is selected.
+    #[test]
+    fn a_glyph_is_centred_in_the_cell_by_its_measured_width() {
+        let drawing = draw("clear", chain("emoji"), Charset::Unicode);
+        for index in 0..ART_LINES {
+            let line = drawing.line(index);
+            if index == GLYPH_LINE {
+                assert_eq!(line.width(), ART_W, "{line:?} is not the cell's width");
+                assert!(line.starts_with("  ") && line.ends_with("   "), "{line:?}");
+            } else {
+                assert_eq!(line, "", "the glyph sits on line {GLYPH_LINE} alone");
+            }
+        }
+        // The blocks keep their own lines, and an unknown key draws nothing at all.
+        let Art::Lines(lines) = draw("clear", IconChain::blocks(), Charset::Unicode) else {
+            panic!("the blocks draw four lines");
+        };
+        assert_eq!(
+            draw("clear", IconChain::blocks(), Charset::Unicode).line(0),
+            lines[0]
+        );
+        assert_eq!(
+            draw("no-such-key", chain("emoji"), Charset::Unicode).line(0),
+            ""
+        );
+    }
+
+    /// `n/a` is a spelling of `unknown` in every set, exactly as in the blocks corpus.
+    #[test]
+    fn the_icon_tables_answer_to_n_a() {
+        for (set, table, _) in sets() {
+            let unknown = find(table, "unknown").expect("the unknown row");
+            let n_a = find(table, "n/a").expect("n/a is the unknown row");
+            assert_eq!(n_a.text, unknown.text, "{}", set.as_str());
         }
     }
 }

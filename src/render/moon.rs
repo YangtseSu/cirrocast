@@ -123,10 +123,14 @@ fn panel_lines(astro: &Astro, ctx: &RenderContext<'_>) -> Vec<String> {
         sun_summary(&astro.sun, ctx),
     ];
     let charset = ctx.term.charset();
-    super::art::moon_lines(astro.moon.phase, charset)
+    let drawing = super::art::moon_art(astro.moon.phase, ctx.term.icons, charset);
+    metrics
         .iter()
-        .zip(metrics)
-        .map(|(art_line, metric)| format!("{art_line}{}{metric}", gap_after(art_line)))
+        .enumerate()
+        .map(|(index, metric)| {
+            let art_line = drawing.line(index);
+            format!("{art_line}{}{metric}", gap_after(&art_line))
+        })
         .collect()
 }
 

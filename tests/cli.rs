@@ -53,11 +53,11 @@ fn help_exits_successfully() {
 
 #[test]
 fn help_stays_inside_the_line_budget() {
-    // Step 21's budget is "`--help` under 230 lines" (200 until step 23 added the three archive
-    // and marine flags, 225 until step 26 added `--normals`, 230 since step 32 added `--tz`). The
-    // count depends on how clap wraps the
-    // epilogue, and clap reads `COLUMNS` even when stdout is a pipe, so the width is pinned here
-    // rather than inherited from whoever runs the tests.
+    // Step 21's budget is "`--help` under 235 lines" (200 until step 23 added the three archive
+    // and marine flags, 225 until step 26 added `--normals`, 230 until step 32 added `--tz`, 235
+    // since step 31 added `--icons`). The count depends on how clap wraps the epilogue, and clap
+    // reads `COLUMNS` even when stdout is a pipe, so the width is pinned here rather than inherited
+    // from whoever runs the tests.
     let sandbox = common::Sandbox::new();
     let assert = sandbox
         .cirrocast()
@@ -68,8 +68,8 @@ fn help_stays_inside_the_line_budget() {
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("UTF-8 output");
     let lines = stdout.lines().count();
     assert!(
-        lines < 230,
-        "--help is {lines} lines (the budget is under 230)"
+        lines < 235,
+        "--help is {lines} lines (the budget is under 235)"
     );
 }
 

@@ -178,11 +178,11 @@ pub fn validate(template: &str) -> Result<()> {
 /// One `%` token of the template language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token {
-    /// `%c` — the condition art, day/night aware, in the terminal's charset.
+    /// `%c` — the condition art, day/night aware, from the resolved icon chain.
     ConditionArt,
     /// `%C` — the condition text.
     ConditionText,
-    /// `%x` — the condition art as plain 7-bit text, whatever the terminal supports.
+    /// `%x` — the condition art as plain 7-bit text, whatever the icon chain says.
     ConditionPlain,
     /// `%t` — the temperature.
     Temp,
@@ -933,7 +933,8 @@ fn value(
 ) -> String {
     let units = ctx.units;
     match token {
-        Token::ConditionArt | Token::ConditionPlain => condition_art(snapshot, ctx),
+        Token::ConditionArt => condition_art(snapshot, ctx),
+        Token::ConditionPlain => condition_plain(snapshot, ctx),
         Token::ConditionText => snapshot.condition.map_or_else(
             || n_a(ctx),
             |condition| ctx.i18n.condition(condition).into_owned(),
@@ -998,7 +999,7 @@ fn value(
         Token::Location => report.location.name.clone(),
         Token::Moon => {
             let phase = crate::astro::phase_at(ctx.times.now);
-            art::moon_glyph(phase, ctx.term.charset()).to_owned()
+            art::moon_glyph(phase, ctx.term.icons, ctx.term.charset()).to_owned()
         }
         Token::MoonPhase => {
             let phase = crate::astro::phase_at(ctx.times.now);
@@ -1052,24 +1053,40 @@ fn uv_band_value(uv: f32, ctx: &RenderContext<'_>) -> String {
         .into_owned()
 }
 
-/// The condition art.
+/// The condition art for `%c`: the glyph of the first icon set in the chain that carries the key,
+/// or the seven-bit one-line art when the chain draws the blocks.
 ///
-/// `%c` and `%x` differ by charset contract, not by table: the one-line art is deliberately 7-bit
-/// in every charset, so `%x` (the plain-text symbol) is what `%c` prints when the terminal cannot
-/// draw more than ASCII — and the two agree today. Keeping the tokens separate means adding a
-/// Unicode condition glyph later changes only `%c`; the day/night variant is shared, because a
-/// night must not draw a daytime sun in either spelling.
+/// The day/night variant is shared with `%x` and the blocks corpus, because a night must not draw
+/// a daytime sun in any spelling.
 fn condition_art(snapshot: &Snapshot, ctx: &RenderContext<'_>) -> String {
-    let Some(condition) = snapshot.condition else {
+    let Some(key) = condition_key(snapshot) else {
         return n_a(ctx);
     };
+    art::glyph(key, ctx.term.icons, ctx.term.charset()).to_owned()
+}
+
+/// The condition art for `%x`: always the seven-bit one-line art, whatever the icon chain says.
+///
+/// `%x` is the token a script or a no-emoji terminal greps: it must stay inside `0x20..=0x7e` on
+/// every terminal, so it never follows `--icons`. Today it is what `%c` prints when the chain draws
+/// the blocks; the two are separate so that adding a glyph set changes only `%c`.
+fn condition_plain(snapshot: &Snapshot, ctx: &RenderContext<'_>) -> String {
+    let Some(key) = condition_key(snapshot) else {
+        return n_a(ctx);
+    };
+    art::one_line_art(key).to_owned()
+}
+
+/// The art key of a snapshot's condition with the day/night variant applied, or `None` without a
+/// condition.
+fn condition_key(snapshot: &Snapshot) -> Option<&'static str> {
+    let condition = snapshot.condition?;
     let key = condition.art_key();
-    let key = if snapshot.is_day {
+    Some(if snapshot.is_day {
         key
     } else {
         art::night_variant(key)
-    };
-    art::one_line_art(key).to_owned()
+    })
 }
 
 /// A temperature-family token: signed, in the resolved unit, with `precision` decimals.

@@ -32,6 +32,60 @@ is one `%`-template, so `--format` (and its synonym `--template`) takes the temp
 `--format '%c %t'` — and the format names above are not accepted there. The probe's line, colour
 and exit-code contract is in [`docs/ecosystem.md`](ecosystem.md).
 
+## Icon sets
+
+The condition and moon art has two opt-in glyph sets beside the default hand-drawn blocks:
+
+| `--icons` | What it draws | Needs |
+|---|---|---|
+| `blocks` (default) | the four-line unicode/ASCII blocks | nothing beyond a Latin monospace |
+| `emoji` | one Unicode emoji per key | a font with the emoji it covers |
+| `nerd` | one Weather Icons glyph per key (U+E300–U+E3E3) | a [Nerd Font](https://github.com/ryanoasis/nerd-fonts) |
+
+The value is an **ordered chain**: `--icons nerd,emoji` draws the Nerd Font glyph wherever the
+Weather Icons set has one and falls through to the emoji elsewhere, with `blocks` appended
+implicitly as the last resort — a terminal cannot be asked whether its font carries a glyph, so
+"mixed" can only mean "try in order". A terminal that cannot draw UTF-8 (`TERM=dumb`, a non-UTF-8
+locale, `--format dumb`) always gets the blocks, whatever the chain says. The preference is a flag,
+`CIRROCAST_ICONS`, then `[render] icons`; `-v` prints the resolved chain.
+
+```text
+$ cirrocast --icons emoji -d 1 Beijing       # the table, borders unchanged
+Weather report: Beijing, CN (39.91, 116.40)
+
+        Clear sky
+  🌙    +18°C (+18°C)
+        ↙ 1.0km/h SW
+        59% 1019hPa 15km 0.0mm
+
+┌───────────────────────┐
+│ Today, Oct 08         │
+├───────────────────────┤
+│         Morning       │
+│   ☀️    +17°C (+17°C) │
+│         ↑ 2.4km/h N   │
+│         0.0mm 0%      │
+├───────────────────────┤
+│         Night         │
+│   🌙    +17°C (+17°C) │
+│         ← 1.1km/h W   │
+│         0.0mm 0%      │
+└───────────────────────┘
+```
+
+The same cells with `--icons nerd`, quoted as their codepoints (a Nerd Font terminal draws the
+glyphs; `\ue32b` is `weather-night_clear`):
+
+```text
+$ cirrocast --icons nerd -f one-line --template '%l: %c %t'
+Beijing: \ue32b +18°C
+```
+
+`%c` follows the chain; **`%x` never does** — it is the plain 7-bit symbol whatever `--icons` says,
+so a status bar that greps a template keeps working on a terminal without the font. `plain` and
+`json` carry no art and do not change with the setting. The palette of a glyph is the colour its
+block has (`ArtStyle`), so rain stays blue in every set.
+
 ## Captured examples
 
 Every block below is a real capture from the built binary run against Beijing, stored as plain text
@@ -69,7 +123,7 @@ Data: Open-Meteo.com (CC BY 4.0) — https://open-meteo.com/
 
 ### `one-line`
 
-[`one-line.txt`](screenshots/one-line.txt), the `default` preset with `%c`'s 7-bit art:
+[`one-line.txt`](screenshots/one-line.txt), the `default` preset with `%c`'s blocks art:
 
 ```text
 Beijing: *o* Clear sky +20°C (+16°C), ↙ 11km/h SW, 29%, 0.0mm, 1021hPa, 18km
@@ -246,15 +300,15 @@ to a meaning and is enumerated by the tests and by the `--help` epilogue.
 
 | Token | Output | Token | Output |
 |---|---|---|---|
-| `%c` | condition art, day/night aware, terminal charset | `%C` | condition text |
-| `%x` | condition art in plain 7-bit text | `%l` | place name |
+| `%c` | condition art, day/night aware, from the icon chain | `%C` | condition text |
+| `%x` | condition art in plain 7-bit text, whatever `--icons` says | `%l` | place name |
 | `%t` `%f` | temperature / feels-like, signed | `%H` `%L` | today's high / low |
 | `%e` | dew point, computed from temperature and humidity | `%w` | wind `↗ 12km/h NE` |
 | `%h` | humidity `56%` | `%p` `%P` | precipitation `0.0mm` / pressure `1013hPa` |
 | `%v` | visibility `10km` | `%u` `%U` | UV `5` / `5 (moderate)` |
 | `%d` `%D` | `2026-09-30` / `Thu 01 Oct` | `%T` | local time `15:04` |
 | `%Z` `%z` | `Asia/Shanghai` / `+0800` | `%S` `%s` | sunrise / sunset `06:05` |
-| `%m` `%M` | moon glyph / phase name | `%A` | strongest alert's event, empty when none |
+| `%m` `%M` | moon glyph (chain-aware) / phase name | `%A` | strongest alert's event, empty when none |
 | `%q` | air-quality index on the selected scale | | |
 
 A value the provider does not report prints `n/a` (localised) — never an invented number. Two

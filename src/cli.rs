@@ -41,7 +41,7 @@ use crate::paths::Paths;
 use crate::provider::{Env, fetch_chain, licence_line, select, select_for};
 use crate::provider::{FetchRequest, HourlyResolution, ProviderId, ProviderMeta};
 use crate::render::{
-    Charset, ColorMode, Format, RenderContext, TermCaps, effective_depth, renderer_for,
+    Charset, ColorMode, Format, IconChain, RenderContext, TermCaps, effective_depth, renderer_for,
     resolve_color, resolve_width,
 };
 
@@ -341,6 +341,17 @@ pub struct QueryArgs {
     #[arg(long, value_name = "WHEN", value_enum)]
     pub color: Option<ColorMode>,
 
+    /// Glyph set for the condition and moon art: `blocks` (the default, needs no font), `emoji`,
+    /// `nerd` (the Weather Icons family inside a Nerd Font), or an ordered chain like `nerd,emoji`
+    /// whose first set with a glyph wins; `blocks` always ends it
+    #[arg(
+        long,
+        value_name = "SETS",
+        env = "CIRROCAST_ICONS",
+        value_parser = parse_icons
+    )]
+    pub icons: Option<IconChain>,
+
     /// Layout width in columns for the table formats (1..=500; below 20 is raised to it).
     #[arg(long, value_name = "COLS", value_parser = clap::value_parser!(u16).range(1..=500))]
     pub width: Option<u16>,
@@ -430,8 +441,14 @@ fn parse_history(value: &str) -> Result<u16, Error> {
 
 /// `--aqi-index`: one of the two AQI scales, parsed by the air module so flag and config share one
 /// message.
-fn parse_aqi_index(value: &str) -> Result<AqiIndex, Error> {
+fn parse_aqi_index(value: &str) -> Result<AqiIndex> {
     value.parse()
+}
+
+/// `--icons`: the render layer's chain parser, shared with `render.icons` so the flag and the file
+/// accept exactly the same values.
+fn parse_icons(value: &str) -> Result<IconChain> {
+    IconChain::parse(value)
 }
 
 /// `--tz`: an IANA zone name, parsed by the geo module so the flag, `CIRROCAST_TZ` and
@@ -1415,22 +1432,7 @@ const MAN_SEE_ALSO: [(&str, &str); 4] = [
 fn run_query(query: &QueryArgs, cli: &Cli, sources: Sources) -> Result<u8> {
     let paths = Paths::resolve()?;
     let config = Config::load(&paths)?;
-    let settings = Settings::resolve(
-        &config,
-        &crate::config::CliOverrides {
-            provider: query.provider.clone(),
-            format: query.format.clone(),
-            units: query.units.map(|units| units.to_string()),
-            days: query.days,
-            lang: query.lang.clone(),
-            aqi_index: query.aqi_index.map(|index| index.to_string()),
-            location: location_arg(query),
-            timeout_secs: query.timeout,
-            no_cache: query.cache.no_cache,
-            refresh: query.cache.refresh,
-            offline: query.cache.offline,
-        },
-    )?;
+    let settings = query_settings(query, &config)?;
     validate_query(query, sources, &settings)?;
     let offline = offline_policy(query.cache, &config)?;
 
@@ -1855,6 +1857,31 @@ fn output_slots(
         report_missing_keys(setup);
     }
     Ok(crate::worst_exit_code(results))
+}
+
+/// The effective settings of a query run: every `--flag` (whose clap `env` attribute already
+/// resolved flag-over-environment) on top of the configuration file.
+///
+/// Split out of [`run_query`] so the flag-to-key mapping stays one readable block; the caller
+/// keeps the resolved [`Settings`] for the whole run.
+fn query_settings(query: &QueryArgs, config: &Config) -> Result<Settings> {
+    Settings::resolve(
+        config,
+        &crate::config::CliOverrides {
+            provider: query.provider.clone(),
+            format: query.format.clone(),
+            units: query.units.map(|units| units.to_string()),
+            days: query.days,
+            lang: query.lang.clone(),
+            aqi_index: query.aqi_index.map(|index| index.to_string()),
+            icons: query.icons.map(|icons| icons.to_string()),
+            location: location_arg(query),
+            timeout_secs: query.timeout,
+            no_cache: query.cache.no_cache,
+            refresh: query.cache.refresh,
+            offline: query.cache.offline,
+        },
+    )
 }
 
 /// The flags whose effect depends on the format, checked before any traffic.
@@ -2498,6 +2525,8 @@ struct RenderSetup {
     color: ColorMode,
     /// The AQI scale that drives the air panel's colour and `%q`.
     aqi_index: AqiIndex,
+    /// The resolved icon chain (its terminal copy travels in [`RenderSetup::term`]).
+    icons: IconChain,
     /// What the terminal supports.
     term: TermCaps,
 }
@@ -2519,7 +2548,12 @@ impl RenderSetup {
     ) -> Result<Self> {
         let choice = crate::render::resolve_format(&settings.format, &config.templates)?;
         let format = choice.format;
-        let term = TermCaps::detect();
+        let mut term = TermCaps::detect();
+        // `--icons`/`CIRROCAST_ICONS` won over the file in `Settings`; a value that does not parse
+        // here means a hand-built document (the file is validated on load, the flag by clap).
+        let icons = IconChain::parse(&settings.icons)
+            .map_err(|error| Error::Config(format!("render.icons: {error}")))?;
+        term.icons = icons;
 
         // At most one source names a template: the format name itself (`full`, `minimal`, a
         // `[templates]` key) or the two flags. Two sources is a usage error rather than a silent
@@ -2606,6 +2640,7 @@ impl RenderSetup {
             width,
             color,
             aqi_index,
+            icons,
             term,
         })
     }
@@ -2718,6 +2753,12 @@ fn render_notes(setup: &RenderSetup) {
         eprintln!("note: `--format dumb` draws the ASCII table without colour");
     } else if caps.charset() == Charset::Ascii {
         eprintln!("note: drawing the ASCII table (dumb TERM or a non-UTF-8 locale)");
+    }
+    if !setup.icons.is_blocks() {
+        eprintln!("icons: {} (first set with a glyph wins)", setup.icons);
+        if format == Format::Dumb || caps.charset() == Charset::Ascii {
+            eprintln!("note: the icon sets need a UTF-8 terminal; drawing the blocks");
+        }
     }
 }
 

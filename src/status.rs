@@ -54,7 +54,7 @@ use crate::model::units::{ResolvedUnits, UnitSystem};
 use crate::model::{Location, Report};
 use crate::paths::Paths;
 use crate::provider::{Env, FetchRequest, HourlyResolution, fetch_chain, licence_line, select};
-use crate::render::{ColorMode, RenderContext, TermCaps, resolve_color, resolve_width};
+use crate::render::{ColorMode, IconChain, RenderContext, TermCaps, resolve_color, resolve_width};
 use crate::template;
 
 /// The line the probe prints when `--format`/`--template` names none.
@@ -163,7 +163,12 @@ impl Line {
             .aqi_index
             .parse::<AqiIndex>()
             .map_err(|error| Error::Config(format!("air.index: {error}")))?;
-        let term = TermCaps::detect();
+        let mut term = TermCaps::detect();
+        // The probe has no `--icons` of its own — its flag surface is the template and the colour —
+        // but a configured or exported chain shapes `%c`/`%m` here exactly as it does in a query.
+        // A value that does not parse is a hand-built document: the file is validated on load.
+        term.icons = IconChain::parse(&settings.icons)
+            .map_err(|error| Error::Config(format!("render.icons: {error}")))?;
         let color = resolve_color(probe_color(args.color), &term);
         Ok(Self {
             template,

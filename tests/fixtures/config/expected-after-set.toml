@@ -47,6 +47,7 @@ geocode_ttl_secs = 2592000
 [render]
 color = "auto"
 width = 0
+icons = "blocks"
 
 [alerts]
 enabled = true

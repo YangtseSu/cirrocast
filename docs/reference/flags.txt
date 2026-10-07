@@ -16,6 +16,7 @@
 --from
 --help
 --history
+--icons
 --ip
 --jwt
 --key-file

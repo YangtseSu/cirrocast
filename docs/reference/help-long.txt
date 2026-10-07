@@ -147,6 +147,13 @@ Options:
           - always: Colour even when piping
           - never:  Never colour
 
+      --icons <SETS>
+          Glyph set for the condition and moon art: `blocks` (the default, needs no font), `emoji`,
+          `nerd` (the Weather Icons family inside a Nerd Font), or an ordered chain like
+          `nerd,emoji` whose first set with a glyph wins; `blocks` always ends it
+          
+          [env: CIRROCAST_ICONS=]
+
       --width <COLS>
           Layout width in columns for the table formats (1..=500; below 20 is raised to it)
 

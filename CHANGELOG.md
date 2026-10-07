@@ -25,7 +25,19 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **`--icons <SETS>` (`CIRROCAST_ICONS`, `[render] icons`) draws the condition and moon art from an
+  emoji or Nerd Font glyph set** — `blocks` (the default, hand drawn, no font needed), `emoji`,
+  `nerd` (the Weather Icons family inside a Nerd Font), or an ordered chain like `nerd,emoji`. The
+  first set that carries a glyph for a key wins and `blocks` always ends the chain, so a key an
+  icon set lacks degrades to the hand-drawn art instead of printing tofu; a terminal that cannot
+  draw UTF-8 (`TERM=dumb`, a non-UTF-8 locale, `--format dumb`) always renders the blocks, and `-v`
+  says so. `%c` and `%m` follow the chain, `%x` keeps printing the plain 7-bit symbol, and
+  `plain`/`json` carry no art at all. Nerd Fonts: install a patched font from
+  <https://github.com/ryanoasis/nerd-fonts>; the default needs no font. The sets, the chain rules
+  and a capture per set are in [`docs/formats.md`](docs/formats.md#icon-sets), the key in
+  [`docs/configuration.md`](docs/configuration.md#render).
 
 ## [1.4.0] - 2026-10-08
 

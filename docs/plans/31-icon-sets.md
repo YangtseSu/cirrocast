@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 31 — icon sets (emoji and Nerd Font)
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: `07-art-table-renderer.md` (the art corpus, `ART_W`/`ART_LINES`, the charset split), `08-cli-surface-and-formats.md` (the format and flag surface, the config keys), `17-moon-phase-and-astro.md` (the moon blocks and `%m`), `19-multi-location-and-templates.md` (`%c` and the template engine), `09-localization.md` (the `one-line` presets)
 Touches: `src/render/{mod,art,art_table,one_line,moon,plain}.rs`, `src/model/condition.rs` (only if a key gains an icon variant), `src/config/mod.rs`, `src/cli.rs`, `src/template.rs`, `tests/{render_icons,render_art_table,render_one_line,cli}.rs`, `tests/snapshots/`, `docs/configuration.md`, `README.md`, `docs/plans/README.md`, `CHANGELOG.md`
 
@@ -31,29 +31,29 @@ an emoji, ours is a 7-bit three-character glyph.
 
 ## Deliverables
 
-- ⬜ The icon chain in the render layer (`src/render/mod.rs`), resolved once per run beside
+- ✅ The icon chain in the render layer (`src/render/mod.rs`), resolved once per run beside
       `Charset`: an ordered list of sets — `blocks` (default) | `emoji` | `nerd` — spelled as a
       comma-separated `--icons` value, with `blocks` appended implicitly as the last resort.
       Precedence is the usual `--icons` → `CIRROCAST_ICONS` → `[render] icons` → the built-in
       default. It travels in `RenderContext`/`TermCaps` exactly like `Charset` does, so renderers
       stay pure functions of the context and snapshots stay deterministic.
-- ⬜ Per-glyph resolution, pinned by tests: the first set in the chain that carries a glyph for the
+- ✅ Per-glyph resolution, pinned by tests: the first set in the chain that carries a glyph for the
       key wins, `blocks` ends every chain (so a key no set covers renders as art and prints one `-v`
       note, never tofu and never a panic). An empty list, an empty element or an unknown name is a
       usage error listing the three names; the chain is normalised (duplicates dropped, order kept)
       so `nerd,nerd,emoji` and `nerd,emoji` behave identically. No alias is defined for any order:
       the comma syntax is the mechanism, and a name like `auto` would promise a detection the client
       cannot perform.
-- ⬜ The forced-fallback rule, pinned by tests: a `Charset::Ascii` run (`--format dumb`, `TERM=dumb`,
+- ✅ The forced-fallback rule, pinned by tests: a `Charset::Ascii` run (`--format dumb`, `TERM=dumb`,
       a non-UTF-8 locale) renders `blocks` in its ASCII form whatever `--icons` says — an icon set
       cannot be drawn in 7-bit — and `-v` says so once, like the existing charset note.
-- ⬜ The emoji corpus: one glyph per art key (41 keys) and per moon phase (8), the sequences pinned
+- ✅ The emoji corpus: one glyph per art key (41 keys) and per moon phase (8), the sequences pinned
       in the table — emoji presentation spelled explicitly (`☀️` is U+2600 U+FE0F, `☁️` U+2601
       U+FE0F, `⛈️` U+26C8 U+FE0F; `🌧️`, `🌨️`, `🌫️`, `🌪️`, `🌡️` are single codepoints), the moon
       `🌑🌒🌓🌔🌕🌖🌗🌘` (U+1F311–U+1F318) — with each sequence's `unicode-width` measurement
       recorded next to it (2 columns for the emoji-presentation sequences, which is what the layout
       pads for).
-- ⬜ The Nerd Font corpus: one glyph per art key and per moon phase from the **Weather Icons** set
+- ✅ The Nerd Font corpus: one glyph per art key and per moon phase from the **Weather Icons** set
       inside Nerd Fonts, range **U+E300–U+E3E3** (228 glyphs; `weather-*` names in the project's
       `glyphnames.json`): `weather-day_sunny` U+E30D, `weather-night_clear` U+E32B,
       `weather-cloudy` U+E312, `weather-fog` U+E313, `weather-rain` U+E318, `weather-showers`
@@ -63,7 +63,7 @@ an emoji, ours is a 7-bit three-character glyph.
       `weather-smoke` U+E35C, the `weather-moon_*` phases U+E38D–U+E3A8, and the day/night siblings
       (`weather-day_*` / `weather-night_alt_*`) for the keys that carry a `-night` suffix. Every key
       maps; the coverage test below is what keeps that true when a condition is added.
-- ⬜ Renderer integration, all through the resolved chain:
+- ✅ Renderer integration, all through the resolved chain:
       * `art_table` — the glyph centred in the block's 7×[`ART_LINES`] cell, padded by its measured
         width, so the table geometry (`ART_W`, `GAP`, `METRICS_W`, the borders) does not move;
       * the stacked narrow layout — the glyph in the `GLYPH_W` column;
@@ -72,13 +72,13 @@ an emoji, ours is a 7-bit three-character glyph.
         deliberately 7-bit; this makes `%x` what its own doc already claims);
       * the `moon` format and `%m` — the set's moon glyph;
       * `plain` and `json` — untouched: they carry no art.
-- ⬜ Config and CLI surface: `[render] icons` in `RenderConfig` with validation through the same
+- ✅ Config and CLI surface: `[render] icons` in `RenderConfig` with validation through the same
       parser as the flag, `--icons <SETS>` in `--help` (the three names, the comma syntax, the Nerd
       Font prerequisite), `config get/set render.icons`, the environment override,
       `docs/configuration.md` and the README (a short example block per set, the `nerd,emoji` chain
       as the recommended Nerd Font setup, and the line "Nerd Fonts: install a patched font from
       ryanoasis/nerd-fonts; the default needs no font").
-- ⬜ Tests: per-set coverage (every `Condition::art_key` and every `MoonPhase` has a glyph in every
+- ✅ Tests: per-set coverage (every `Condition::art_key` and every `MoonPhase` has a glyph in every
       set, in both directions like the existing art test), the chain's resolution (first set with the
       glyph wins, `blocks` is appended and wins when nothing else has it, duplicates collapse, an
       unknown name is a usage error), width invariants (no rendered line wider
@@ -87,7 +87,7 @@ an emoji, ours is a 7-bit three-character glyph.
       `art-table`, `one-line` and `moon` at 80 and 120 columns, and a `--icons nerd` snapshot whose
       bytes are asserted to be exactly the expected codepoints (so a wrong codepoint cannot pass as
       "some PUA glyph").
-- ⬜ Docs: README (the flag, the two sets, the font prerequisite, what stays default), the CHANGELOG
+- ✅ Docs: README (the flag, the two sets, the font prerequisite, what stays default), the CHANGELOG
       entry, and `docs/plans/README.md` marking this step. `docs/schema.md` and the JSON document do
       not change: no data, only drawing.
 
@@ -157,16 +157,16 @@ reuse lint
 
 ## Exit criteria
 
-- ⬜ `--icons emoji` and `--icons nerd` render the table, the stacked layout, `%c`, the `moon` format
+- ✅ `--icons emoji` and `--icons nerd` render the table, the stacked layout, `%c`, the `moon` format
       and `%m` from their set, verified by running the binary and pasting the output into the log —
       with the borders aligned in a Nerd Font terminal and in an emoji-capable one.
-- ⬜ The default output (no flag, no config, `TERM=dumb`, `--format dumb`, non-UTF-8 locale) is
+- ✅ The default output (no flag, no config, `TERM=dumb`, `--format dumb`, non-UTF-8 locale) is
       byte-identical to the current build, proven by the existing snapshots passing unchanged.
-- ⬜ Every art key and every moon phase has a glyph in both sets, asserted in both directions by a
+- ✅ Every art key and every moon phase has a glyph in both sets, asserted in both directions by a
       test that fails when a condition or a set entry is added without its counterpart, and the chain
       resolves per glyph (a set that lacks one falls through, `blocks` last) — proven by a test that
       removes a glyph from a test-only table rather than by hoping.
-- ⬜ `docs/configuration.md`, the README and `--help` name the sets, the precedence and the Nerd Font
+- ✅ `docs/configuration.md`, the README and `--help` name the sets, the precedence and the Nerd Font
       prerequisite; `reuse lint` is clean (no new third-party file enters the repository).
 
 ## Risks
@@ -197,3 +197,80 @@ reuse lint
   coverage), so no `auto`-style value exists; the placeholder alias `mixed` was dropped in favour of
   the one syntax that generalises, and the deliverable list, the design notes, the verification block
   and the exit criteria were updated in place.
+- 2026-10-08 — **step executed ahead of its number**: steps 29–30 are still open, but every entry of
+  this step's `Depends on` line (07, 08, 17, 19) is done, so the deviation is recorded here as the
+  workflow requires. The chain, the two corpora and the renderer integration landed together:
+  `IconSet`/`IconChain` in `src/render/mod.rs` (a fixed three-entry array, `Copy`, `blocks`
+  appended and always last, duplicates collapsed); the emoji and Weather Icons tables plus
+  `art::draw`, `art::glyph`, `art::moon_art` and `art::moon_glyph` in `src/render/art.rs`; and
+  `TermCaps.icons`, so the chain travels beside `Charset` exactly as the plan asked without
+  touching the twenty `RenderContext` literals.
+- 2026-10-08 — the corpora are pinned against upstream data, not guessed: the Weather Icons
+  codepoints come from Nerd Fonts' `glyphnames.json` (`weather-*`, checked the same day; the
+  `night_alt_*` and `day_*` variants exist only as those families name them), and every emoji
+  sequence spells emoji presentation with U+FE0F where Unicode does not default to it. Both sets
+  are total over the art vocabulary in both directions, each sequence's `unicode-width`
+  measurement is recorded in the table and re-measured by test (2 columns for the emoji, 1 for the
+  Nerd Font glyphs).
+- 2026-10-08 — two deviations, recorded rather than silent. (1) The release-build fallback for a
+  key *no* set carries — `blocks` included — renders the empty drawing and is reported by the
+  chain note (`icons: nerd,emoji,blocks`) under `-v`, not by a per-key collector: a collector needs
+  interior mutability in a render layer this plan itself requires to stay pure, and the case is
+  unreachable while the coverage tests pass. (2) The layout's `display_width` was a per-character
+  sum, which measures `☀️` as one column where `unicode-width`'s string rule — and a terminal —
+  says two; it now measures each run between escapes with the string rule, and `fit` re-measures
+  after a variation selector. Without this the emoji table was three columns wide in its glyph rows
+  and the borders drifted.
+- 2026-10-08 — the emoji corpus reuses a glyph where Unicode has no second one (the rain family
+  draws `🌧️`, the freezing family `🧊`, the snow family `🌨️`, and `partly-cloudy-night` shares
+  `☁️` with `overcast`), and a glyph that draws the sun is only used where the key has a `-night`
+  sibling. Both rules are tests, so a later corpus edit cannot quietly put a sun in the night
+  column. The `--help` line budget moved from 230 to 235 lines in the same change, which its own
+  budget test records; `--help`, `help-long.txt` and `man/cirrocast.1` were regenerated.
+- 2026-10-08 — verified by running the binary (fixed instant not involved): `--icons emoji`,
+  `--icons nerd`, `--icons nerd,emoji`, `--format dumb --icons emoji`, `TERM=dumb --icons emoji -v`,
+  `-f one-line --template '%c'` versus `'%x'`, `-f moon`, `-f json` with and without `--icons`
+  (byte-identical), `--icons wat` (exit 2), `config set render.icons wat` (exit 4). A width check
+  over every rendered line (unicode-width, no escapes) shows the box rows of `--icons emoji` and
+  `--icons nerd,emoji` at exactly 73 columns, the same as the nerd and blocks runs; the emoji
+  capture of the one-day table:
+
+  ```text
+  Weather report: Beijing, CN (39.91, 116.40)
+
+          Clear sky
+    🌙    +18°C (+18°C)
+          ↙ 1.0km/h SW
+          59% 1019hPa 15km 0.0mm
+
+  ┌───────────────────────┐
+  │ Today, Oct 08         │
+  ├───────────────────────┤
+  │         Morning       │
+  │   ☀️    +17°C (+17°C) │
+  │         ↑ 2.4km/h N   │
+  │         0.0mm 0%      │
+  ├───────────────────────┤
+  │         Night         │
+  │   🌙    +17°C (+17°C) │
+  │         ← 1.1km/h W   │
+  │         0.0mm 0%      │
+  └───────────────────────┘
+  ```
+
+  The existing snapshots (blocks, dumb, colour, locale, normals) passed unchanged, which is the
+  byte-identical-default exit criterion; `reuse lint` is clean and no third-party file entered the
+  repository (the corpora are our own tables of upstream codepoints).
+- 2026-10-08 — two notes on where the work landed versus this file's `Touches` line. The tests live
+  in a new `tests/render_icons.rs` (the flag/environment/file tiers, the ASCII forcing, `%c` versus
+  `%x`, the Nerd codepoints, border alignment per set, the moon surfaces, `plain`/`json` invariance
+  and the config round trip), in the unit modules themselves (corpora, widths, chain resolution,
+  the holed-table fall-through) and in `tests/render_snapshots.rs` (the ten per-set snapshots:
+  `art-table` and `moon` at 80 and 120 columns, `one-line` once per set because that format ignores
+  `--width`); `tests/render_art_table.rs` and `tests/render_one_line.rs` do not exist in this tree.
+- 2026-10-08 — `cirrocast status` follows the resolved chain too (its `settings` already carry it),
+  tested with the file tier: the probe has no `--icons` flag of its own, and its other render
+  settings come from the file as well, so `[render] icons = "emoji"` makes `status -f '%c'` print
+  the emoji instead of the blocks. The `for_charset` collapse is the one place the ASCII rule
+  lives, so every caller — the table, the stacked layout, `%c`, `%m`, the moon view — gets it from
+  the same function.

@@ -305,6 +305,8 @@ pub struct RenderConfig {
     pub color: String,
     /// Line width: `0` = detect, otherwise the column count to lay out for.
     pub width: usize,
+    /// Icon set chain: `blocks` (the default), `emoji`, `nerd`, or a comma-separated chain.
+    pub icons: String,
 }
 
 /// `[alerts]` — the severe-weather warning sources.
@@ -474,6 +476,7 @@ impl Default for RenderConfig {
         Self {
             color: "auto".to_owned(),
             width: 0,
+            icons: "blocks".to_owned(),
         }
     }
 }
@@ -928,7 +931,15 @@ impl Config {
                 WIDTH_RANGE.0, WIDTH_RANGE.1
             )));
         }
-        Ok(())
+        self.validate_icons()
+    }
+
+    /// `render.icons` is the same chain `--icons` takes, parsed by the same function, so the flag
+    /// and the file can never disagree about what a chain is.
+    fn validate_icons(&self) -> Result<()> {
+        crate::render::IconChain::parse(&self.render.icons)
+            .map(|_| ())
+            .map_err(|error| Error::Config(format!("render.icons: {error}")))
     }
 
     fn validate_providers(&self) -> Result<()> {
@@ -1306,7 +1317,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "ip_ttl_secs",
             "geocode_ttl_secs",
         ],
-        "render" => &["color", "width"],
+        "render" => &["color", "width", "icons"],
         "alerts" => &[
             "enabled",
             "severity_threshold",
@@ -1576,6 +1587,8 @@ geocode_ttl_secs = 2592000   # 30 days
 [render]
 color = "auto"           # auto | always | never
 width = 0                # 0 = detect from the terminal, or 1..=500 columns
+icons = "blocks"         # blocks (no font needed) | emoji | nerd (a Nerd Font), or a chain
+                         # like "nerd,emoji": the first set with a glyph for a key wins
 
 [alerts]
 enabled = true                # fetch warnings automatically when a source covers the location
@@ -1872,6 +1885,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "render.icons",
+        kind: KeyKind::Str,
+        doc: "icon chain: blocks, emoji, nerd",
+        env: Some("CIRROCAST_ICONS"),
+    },
+    KeySpec {
         name: "alerts.enabled",
         kind: KeyKind::Bool,
         doc: "fetch alerts automatically",
@@ -2005,6 +2024,7 @@ impl Config {
             "cache.geocode_ttl_secs" => self.cache.geocode_ttl_secs.to_string(),
             "render.color" => self.render.color.clone(),
             "render.width" => self.render.width.to_string(),
+            "render.icons" => self.render.icons.clone(),
             "alerts.enabled" => self.alerts.enabled.to_string(),
             "alerts.severity_threshold" => self.alerts.severity_threshold.clone(),
             "alerts.sources" => self.alerts.sources.join(","),
@@ -2117,6 +2137,11 @@ impl Config {
                 self.render.color = value;
             }
             "render.width" => self.render.width = width_value(spec.name, &value)?,
+            "render.icons" => {
+                crate::render::IconChain::parse(&value)
+                    .map_err(|error| Error::Config(format!("render.icons: {error}")))?;
+                self.render.icons = value;
+            }
             "alerts.enabled" => self.alerts.enabled = bool_value(spec.name, &value)?,
             "alerts.severity_threshold" => {
                 check_enum(spec.name, &value, SEVERITY_LEVELS)?;
@@ -2197,6 +2222,7 @@ impl Config {
             "cache.geocode_ttl_secs" => check_positive(key, self.cache.geocode_ttl_secs),
             "render.color" => check_enum(key, &self.render.color, COLOR_MODES),
             "render.width" => self.validate_render(),
+            "render.icons" => self.validate_icons(),
             "alerts.severity_threshold" => {
                 check_enum(key, &self.alerts.severity_threshold, SEVERITY_LEVELS)
             }
@@ -2329,6 +2355,8 @@ pub struct Settings {
     pub lang: String,
     /// AQI scale for the air panel (`us` or `european`).
     pub aqi_index: String,
+    /// Icon set chain for the condition and moon art (`blocks`, `emoji`, `nerd`, or a chain).
+    pub icons: String,
     /// Location argument (`location.default`), when one is configured.
     pub location: Option<String>,
     /// Per-request timeout in seconds.
@@ -2362,6 +2390,8 @@ pub struct CliOverrides {
     pub lang: Option<String>,
     /// `--aqi-index`.
     pub aqi_index: Option<String>,
+    /// `--icons`.
+    pub icons: Option<String>,
     /// The positional location argument.
     pub location: Option<String>,
     /// `--timeout`.
@@ -2403,6 +2433,10 @@ impl Settings {
                 .aqi_index
                 .clone()
                 .unwrap_or_else(|| config.air.index.clone()),
+            icons: cli
+                .icons
+                .clone()
+                .unwrap_or_else(|| config.render.icons.clone()),
             location: cli
                 .location
                 .clone()

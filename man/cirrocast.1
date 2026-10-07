@@ -4,7 +4,7 @@
 .SH NAME
 cirrocast \- Terminal weather client with pluggable backends and wttr.in\-style output
 .SH SYNOPSIS
-\fBcirrocast\fR [\fB\-v\fR|\fB\-\-verbose\fR]... [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-tz\fR] [\fB\-p\fR|\fB\-\-provider\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-d\fR|\fB\-\-days\fR] [\fB\-u\fR|\fB\-\-units\fR] [\fB\-\-lang\fR] [\fB\-\-lat\fR] [\fB\-\-lon\fR] [\fB\-\-ip\fR] [\fB\-\-station\fR] [\fB\-\-alerts\fR] [\fB\-\-no\-alerts\fR] [\fB\-\-alerts\-from\fR] [\fB\-\-severity\fR] [\fB\-\-aqi\fR] [\fB\-\-aqi\-index\fR] [\fB\-\-moon\fR] [\fB\-\-date\fR] [\fB\-\-history\fR] [\fB\-\-marine\fR] [\fB\-\-normals\fR] [\fB\-\-template\fR] [\fB\-\-template\-file\fR] [\fB\-\-color\fR] [\fB\-\-width\fR] [\fB\-\-timeout\fR] [\fB\-\-no\-cache\fR] [\fB\-\-refresh\fR] [\fB\-\-offline\fR] [\fB\-\-pick\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fILOCATION\fR] [\fIsubcommands\fR]
+\fBcirrocast\fR [\fB\-v\fR|\fB\-\-verbose\fR]... [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-tz\fR] [\fB\-p\fR|\fB\-\-provider\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-d\fR|\fB\-\-days\fR] [\fB\-u\fR|\fB\-\-units\fR] [\fB\-\-lang\fR] [\fB\-\-lat\fR] [\fB\-\-lon\fR] [\fB\-\-ip\fR] [\fB\-\-station\fR] [\fB\-\-alerts\fR] [\fB\-\-no\-alerts\fR] [\fB\-\-alerts\-from\fR] [\fB\-\-severity\fR] [\fB\-\-aqi\fR] [\fB\-\-aqi\-index\fR] [\fB\-\-moon\fR] [\fB\-\-date\fR] [\fB\-\-history\fR] [\fB\-\-marine\fR] [\fB\-\-normals\fR] [\fB\-\-template\fR] [\fB\-\-template\-file\fR] [\fB\-\-color\fR] [\fB\-\-icons\fR] [\fB\-\-width\fR] [\fB\-\-timeout\fR] [\fB\-\-no\-cache\fR] [\fB\-\-refresh\fR] [\fB\-\-offline\fR] [\fB\-\-pick\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fILOCATION\fR] [\fIsubcommands\fR]
 .SH DESCRIPTION
 Terminal weather client with pluggable backends and wttr.in\-style output
 .SH OPTIONS
@@ -98,6 +98,9 @@ always: Colour even when piping
 .IP \(bu 2
 never: Never colour
 .RE
+.TP
+\fB\-\-icons\fR \fI<SETS>\fR
+Glyph set for the condition and moon art: `blocks` (the default, needs no font), `emoji`, `nerd` (the Weather Icons family inside a Nerd Font), or an ordered chain like `nerd,emoji` whose first set with a glyph wins; `blocks` always ends it
 .TP
 \fB\-\-width\fR \fI<COLS>\fR
 Layout width in columns for the table formats (1..=500; below 20 is raised to it)

@@ -1,0 +1,5 @@
+---
+source: tests/render_snapshots.rs
+expression: "render(icons(Case\n{\n    format: Format::OneLine, ..case(\"beijing-1d.json\", UnitSystem::Metric, 80)\n}, \"nerd\"))"
+---
+Beijing:  Mainly clear +22°C (+22°C), ↗ 10km/h NNE, 52%, 0.0mm, 1015hPa, 14km

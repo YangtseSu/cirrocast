@@ -54,7 +54,7 @@
 use std::borrow::Cow;
 use std::fmt::Write as _;
 
-use unicode_width::UnicodeWidthChar as _;
+use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 use super::art::{self, ART_LINES, ART_W};
 use super::color::{self, FG_DEFAULT, paint};
@@ -468,7 +468,7 @@ fn summary_cells(
         None => (ctx.i18n.text(&keys::NA).into_owned(), FG_DEFAULT),
     };
     Some(SummaryCells {
-        art: folded(art::one_line_art(key), charset),
+        art: folded(art::glyph(key, ctx.term.icons, charset), charset),
         art_fg,
         condition: folded(&ctx.i18n.condition(condition), charset),
         temp: folded(&format_temp_signed(temp_c, temp_unit), charset),
@@ -594,18 +594,17 @@ fn current_block(
     depth: ColorDepth,
 ) {
     let key = weather_key(current.weather.art_key(), current.is_day);
-    let block = art::art(key);
-    let [art0, art1, art2, art3] = block.map_or(art::NO_BLOCK, |block| block.lines(charset));
-    let fg = block.map_or(FG_DEFAULT, |block| color::art_fg(block.style));
+    let drawing = art::draw(key, ctx.term.icons, charset);
+    let fg = art::art(key).map_or(FG_DEFAULT, |block| color::art_fg(block.style));
 
     let condition = ctx.i18n.condition(current.weather);
     let mut metric = String::with_capacity(48);
 
-    start_art_line(table, art0, fg, depth);
+    start_art_line(table, &drawing.line(0), fg, depth);
     color::write_paint(&mut table.line, &condition, fg, depth);
     table.flush();
 
-    start_art_line(table, art1, fg, depth);
+    start_art_line(table, &drawing.line(1), fg, depth);
     write_temp_metric(
         &mut metric,
         current.temp_c,
@@ -622,7 +621,7 @@ fn current_block(
     );
     table.flush();
 
-    start_art_line(table, art2, fg, depth);
+    start_art_line(table, &drawing.line(2), fg, depth);
     metric.clear();
     write_wind_metric(
         &mut metric,
@@ -640,7 +639,7 @@ fn current_block(
     );
     table.flush();
 
-    start_art_line(table, art3, fg, depth);
+    start_art_line(table, &drawing.line(3), fg, depth);
     write_measurements(&mut table.line, current, ctx, depth);
     table.flush();
 }
@@ -792,14 +791,20 @@ fn write_part(
 ) {
     let daytime = part.kind != DayPartKind::Night;
     let key = weather_key(part.weather.art_key(), daytime);
-    let block = art::art(key);
-    let [art0, art1, art2, art3] = block.map_or(art::NO_BLOCK, |block| block.lines(charset));
-    let fg = block.map_or(FG_DEFAULT, |block| color::art_fg(block.style));
+    let drawing = art::draw(key, ctx.term.icons, charset);
+    let fg = art::art(key).map_or(FG_DEFAULT, |block| color::art_fg(block.style));
 
     let label = ctx.i18n.day_part(part.kind);
     text.push('\n');
     write_cell(
-        text, art0, &label, FG_DEFAULT, fg, metrics_w, charset, depth,
+        text,
+        &drawing.line(0),
+        &label,
+        FG_DEFAULT,
+        fg,
+        metrics_w,
+        charset,
+        depth,
     );
 
     metric.clear();
@@ -814,7 +819,7 @@ fn write_part(
     text.push('\n');
     write_cell(
         text,
-        art1,
+        &drawing.line(1),
         metric,
         color::temp_fg(part.temp_c),
         fg,
@@ -835,7 +840,7 @@ fn write_part(
     text.push('\n');
     write_cell(
         text,
-        art2,
+        &drawing.line(2),
         metric,
         color::wind_fg(part.wind_kmh),
         fg,
@@ -849,7 +854,7 @@ fn write_part(
     text.push('\n');
     write_cell(
         text,
-        art3,
+        &drawing.line(3),
         metric,
         color::precip_fg(part.precip_mm),
         fg,
@@ -939,7 +944,7 @@ fn write_stacked_part(
     let daytime = part.kind != DayPartKind::Night;
     let key = weather_key(part.weather.art_key(), daytime);
     let fg = art::art(key).map_or(FG_DEFAULT, |block| color::art_fg(block.style));
-    let glyph = art::one_line_art(key);
+    let glyph = art::glyph(key, ctx.term.icons, charset);
     let label = ctx.i18n.day_part(part.kind);
     let separator = vertical(charset);
 
@@ -1179,22 +1184,27 @@ pub(crate) fn write_fold_ascii(out: &mut String, text: &str) {
     }
 }
 
-/// The display width of a line: escape sequences take no columns.
+/// The display columns of a line, with escape sequences taking none.
+///
+/// Measured with [`UnicodeWidthStr::width`] over each run between escapes, not as a per-character
+/// sum: the two disagree exactly on the sequences an icon set prints. `unicode-width` gives an
+/// emoji-presentation pair two columns (`☀️` is U+2600 U+FE0F) while its per-character API reports
+/// one column for the base and none for the selector, so a glyph centred by the former and padded
+/// by the latter would drift the table's borders by a column. Runs cannot split a pair: an escape
+/// is ASCII and never sits inside one.
 pub(crate) fn display_width(line: &str) -> usize {
     let mut width = 0;
-    let mut chars = line.chars();
-    while let Some(character) = chars.next() {
-        if character == '\u{1b}' {
-            for escape in chars.by_ref() {
-                if escape == 'm' {
-                    break;
-                }
-            }
-            continue;
+    let mut rest = line;
+    while let Some(start) = rest.find('\u{1b}') {
+        width += rest[..start].width();
+        let escape = &rest[start..];
+        match escape.find('m') {
+            Some(end) => rest = &escape[end + 1..],
+            // An unterminated escape sequence: nothing after it is printable.
+            None => return width,
         }
-        width += character.width().unwrap_or(0);
     }
-    width
+    width + rest.width()
 }
 
 /// The ellipsis a character set uses for a truncated line.
@@ -1244,6 +1254,16 @@ pub(crate) fn fit(line: &str, width: usize, charset: Charset) -> Cow<'_, str> {
         }
         clipped.push(character);
         used += cell;
+        // A variation selector upgrades the character before it, which the per-character sum above
+        // cannot see: re-measure the prefix with the string rule and drop the selector again when
+        // the pair no longer fits.
+        if character == '\u{fe0f}' {
+            used = display_width(&clipped);
+            if used > budget {
+                clipped.pop();
+                break;
+            }
+        }
     }
     if escapes % 2 == 1 {
         clipped.push_str("\u{1b}[0m");

@@ -101,7 +101,7 @@ src/
     mod.rs           climate-normals facade (best-effort comparison)
     ncei.rs          NOAA NCEI Global Summary of the Month source
   render/
-    mod.rs           Renderer trait, Slot/render_slots, RenderContext, TermCaps, width/colour
+    mod.rs           Renderer trait, Slot/render_slots, RenderContext, TermCaps, width/colour/icons
     art_table.rs     wttr.in-style day-part column table, 2-4 location summary layout
     one_line.rs      template output (`%c`, `%t`, ... wttr.in-compatible tokens)
     plain.rs         box-free, pipe friendly records
@@ -111,7 +111,7 @@ src/
     moon.rs          the moon/sun panel, records and standalone view
     marine.rs        the marine panel
     normals.rs       the climate-normal comparison block
-    art.rs           canonical condition -> unicode art blocks (day/night)
+    art.rs           canonical condition -> unicode art blocks (day/night), the emoji/Nerd corpora
     color.rs         256-colour palette, NO_COLOR / CLICOLOR_FORCE handling
 locales/             en-US/main.ftl, zh-CN/main.ftl, ...
 tests/               integration tests (CLI level), fixtures/ = recorded API responses
