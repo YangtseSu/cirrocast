@@ -265,6 +265,7 @@ mod tests {
             description: Some("A confirmed tornado.".to_owned()),
             instruction: Some("Take shelter now.".to_owned()),
             sender: Some("NWS Norman OK".to_owned()),
+            credit: Vec::new(),
         }
     }
 

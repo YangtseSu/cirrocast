@@ -589,6 +589,7 @@ pub fn alerts_from_cap(
         description: info.description.clone(),
         instruction: info.instruction.clone(),
         sender: info.sender_name.clone().or_else(|| document.sender.clone()),
+        credit: Vec::new(),
     }])
 }
 

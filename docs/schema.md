@@ -271,7 +271,8 @@ is an object with an `error` key rather than a report).
 | `alerts[].description` | string | — | yes | full description |
 | `alerts[].instruction` | string | — | yes | what the reader is told to do |
 | `alerts[].sender` | string | — | yes | issuing agency |
-| `alert_credits` | array | — | no | the alert sources' required credit lines; empty when none apply |
+| `alerts[].credit` | array | — | no | the attribution lines the source's terms require displayed with its data, verbatim (`qweather`'s `metadata.attributions`); empty when the source asks for none |
+| `alert_credits` | array | — | no | the alert sources' required credit lines, including the response-level attribution lines a source's terms demand (`qweather`'s `metadata.attributions`); empty when none apply |
 <!-- schema-key-index:end -->
 
 ### Worked example

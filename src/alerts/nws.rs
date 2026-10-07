@@ -142,6 +142,7 @@ impl Props {
             description: non_empty(self.description),
             instruction: non_empty(self.instruction),
             sender: non_empty(self.sender_name),
+            credit: Vec::new(),
         })
     }
 }

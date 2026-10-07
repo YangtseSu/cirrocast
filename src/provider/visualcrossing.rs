@@ -683,6 +683,7 @@ fn alert_of(raw: &AlertBlock, tz: Tz) -> std::result::Result<Alert, String> {
         description: raw.description.clone(),
         instruction: None,
         sender: None,
+        credit: Vec::new(),
     })
 }
 

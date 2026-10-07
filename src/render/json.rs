@@ -849,6 +849,9 @@ struct AlertJson<'a> {
     instruction: Option<&'a str>,
     /// The issuing agency; `null` when unreported.
     sender: Option<&'a str>,
+    /// The attribution lines the source's terms require displayed with its data, verbatim
+    /// (`QWeather`'s `metadata.attributions`); empty when the source asks for none.
+    credit: &'a [String],
 }
 
 impl<'a> AlertJson<'a> {
@@ -868,6 +871,7 @@ impl<'a> AlertJson<'a> {
             description: alert.description.as_deref(),
             instruction: alert.instruction.as_deref(),
             sender: alert.sender.as_deref(),
+            credit: &alert.credit,
         }
     }
 }

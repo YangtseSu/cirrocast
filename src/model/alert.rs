@@ -392,6 +392,14 @@ pub struct Alert {
     pub instruction: Option<String>,
     /// The issuing agency, when reported.
     pub sender: Option<String>,
+    /// The attribution lines the source's terms require displayed with its data, verbatim.
+    ///
+    /// `QWeather` publishes them as `metadata.attributions` (the v7 spelling was `refer.sources`)
+    /// and its attribution terms demand they be shown in full, unmodified, wherever its warning or
+    /// air-quality data is shown; [`crate::alerts::credits`] prints them beside the registry's own
+    /// credit line. Empty for sources whose terms ask for nothing beyond that line.
+    #[serde(default)]
+    pub credit: Vec<String>,
 }
 
 impl Alert {

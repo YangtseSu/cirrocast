@@ -97,7 +97,7 @@ prepends `metar`, so the configured fallbacks still apply. `tests/provider_auto.
 | `weatherapi` | proprietary (Zoomash Ltd) | free keys: credit WeatherAPI.com by name or logo; the docs suggest `Powered by <a href="https://www.weatherapi.com/">WeatherAPI.com</a>` | current 60 min, forecast 24 h | mandatory end-user disclaimer; no resale; one key per app |
 | `worldweatheronline` | proprietary (Zoomash Ltd) | free keys: "Weather Data by WorldWeatherOnline.com" | current 60 min, forecast 24 h | mandatory end-user disclaimer; no resale |
 | `pirateweather` | proprietary (PirateWeatherAPI) | none documented | `Cache-Control: max-age=900` is sent | no multi-account quota circumvention; warranty disclaimer |
-| `qweather` | proprietary (QWeather Developers License) | name QWeather + https://www.qweather.com; recommended "Weather service by QWeather" | real-time 10–30 min, hourly 30–60 min, daily 1–6 h (guidance) | GeoAPI data must not be bulk-cached or indexed; weather warnings must reproduce `refer.sources` |
+| `qweather` | proprietary (QWeather Developers License) | name QWeather + https://www.qweather.com; recommended "Weather service by QWeather" | real-time 10–30 min, hourly 30–60 min, daily 1–6 h (guidance) | GeoAPI data must not be bulk-cached or indexed; weather warnings and air quality must reproduce the response's `metadata.attributions` in full (rendered — see `### qweather`) |
 
 Where a credit lands is part of the output contract, not a detail of each renderer: `plain` and
 `json` carry it in the document, `art-table` in a footer, and both `one-line` and the `status` probe
@@ -1075,10 +1075,15 @@ invalid traffic can suspend the account. Recommended cache ages: real-time 10–
 to 240 hours and daily up to 10 days on v1 (both probed). The v1 endpoints are metric-only: `unit=i`
 is ignored (probed).
 
-**Attribution and licence.** Required regardless of plan: name "QWeather" plus the URL
-`https://www.qweather.com`; no logo is required by the docs (the EULA text itself was 403-blocked, so
-that reading is docs-only). Weather-warning data must reproduce `refer.sources` verbatim, and GeoAPI
-data must not be bulk-cached or indexed — this backend does not call GeoAPI.
+**Attribution and licence.** The terms page (`https://dev.qweather.com/docs/terms/attribution/`) is
+explicit: name "QWeather" plus a link to `https://www.qweather.com` for any use of the service, and
+**for weather warnings and for air quality you must display all of the response's attribution lines
+in full and unmodified** (the v7 wording was `refer.sources`; v1 spells it `metadata.attributions`).
+The alert source carries those lines on every decoded alert (`Alert::credit`) and
+`alerts::credits` prints them after the registry's own line, so the issuing agency and the standing
+disclaimer reach every renderer — the footer, `plain`, the alert listing, and `-f json` as
+`alerts[].credit`. GeoAPI data must not be bulk-cached or indexed — this backend does not call
+GeoAPI.
 
 **Errors.** RFC 7807 `application/problem+json` with `error.status/type/title/detail/invalidParams`;
 a bad key is `401` (`#unauthorized`), a bad parameter or location `400`
@@ -1089,11 +1094,14 @@ a bad key is `401` (`#unauthorized`), a bad parameter or location `400`
 header is ignored, so a client must decode gzip or misread every body (a stale cache hides it until
 the entry expires). `src/http.rs` decodes after its capped read, under the same size ceiling.
 
-**The Weather Alert service is a separate subscription.** On the account host used 2026-10-06,
-`/weatheralert/v7/alert/now` answers `404` with an **empty** body (no RFC 7807 envelope) while the
-forecast endpoints work, and the retired `/v7/warning/now` answers `403 Deprecated` with the
-documented envelope. The alert source reports that 404 as a missing-subscription note naming
-`[alerts] sources` rather than as a bare status; the forecast is unaffected.
+**The alert API is v1, and it is not a separate subscription.** `GET
+/weatheralert/v1/current/{lat}/{lon}` answers `200` on the account host used 2026-10-07 (JWT
+authentication), with the same `metadata` envelope the forecast endpoints use and an `alerts` array
+that is empty when nothing is in force (`metadata.zeroResult`). The v7 spelling this source first
+spoke — `/weatheralert/v7/alert/now?location=<lon>,<lat>` — is retired: it answers `404` with an
+**empty** body (no RFC 7807 envelope) while the v1 path works, which is what the earlier
+"separate subscription" reading was built on. The v1 payload spells CAP's severity, urgency and
+certainty value sets verbatim and carries `messageType.code` (`alert`/`update`/`cancel`).
 
 **Implemented 2026-10-01** (`src/provider/qweather.rs`, `max_days: 10`). Two calls per fetch
 (current + hourly), each cached under `weather/qweather-{current,hourly}-…`; every measure's unit is
@@ -1303,6 +1311,22 @@ the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
 
 ## Re-verification log
 
+* **2026-10-07** — the QWeather **alert** endpoint re-probed with the account's JWT credential,
+  after a Chinese run's `404` note was traced to the path rather than to a subscription. `GET
+  {host}/weatheralert/v1/current/<lat>/<lon>` answers `200`, gzip-encoded, with
+  `{"metadata":{"tag":…,"zeroResult":true},"alerts":[]}` for a quiet point; the v7 spelling
+  (`/weatheralert/v7/alert/now?location=…`) answers `404` with an empty body — exactly what the
+  2026-10-06 entry below recorded, and the reason its "separate subscription" reading is corrected
+  here. A scan of forty points (thirty-five mainland cities plus Hong Kong, Taipei, Tokyo, Manila
+  and New Orleans) found live alerts at Shenzhen (森林火险, `moderate`, `urgency: null`) and Hong Kong
+  (火災危險, `severe`, `senderName` 香港天文台, with `metadata.attributions` naming the issuing agency
+  and a standing disclaimer). The payload spells CAP's severity/urgency/certainty value sets
+  verbatim and carries `messageType.code` (`alert`/`update`/`cancel`); `src/alerts/qweather.rs` now
+  speaks the v1 endpoint, with `qweather-v1` as its cache-key discriminator. The attribution terms
+  page (`dev.qweather.com/docs/terms/attribution/`) was read the same day: it requires the
+  response's attribution lines shown **in full and unmodified** for weather warnings *and* air
+  quality, so `Alert::credit` now carries `metadata.attributions` into `alerts::credits` and
+  `alerts[].credit`.
 * **2026-10-06** — the whole document re-checked against the shipped binary (step 28), no upstream
   fetch needed. **Registry**: `provider list` and `provider info <id>` for all fourteen ids agree
   with the at-a-glance table and the sections — the six `CIRROCAST_*_KEY` names, the `NET` classes,

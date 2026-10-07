@@ -144,6 +144,7 @@ impl Summary {
             description,
             instruction: None,
             sender: Some("Hong Kong Observatory".to_owned()),
+            credit: Vec::new(),
         })
     }
 }

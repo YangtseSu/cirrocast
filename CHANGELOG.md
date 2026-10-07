@@ -39,6 +39,20 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ### Fixed
 
+* **QWeather alerts work again: the source now speaks the alert v1 endpoint.** `src/alerts/qweather.rs`
+  called `/weatheralert/v7/alert/now`, which the account host answers with `404` and an empty body —
+  so a run over a Chinese location printed a missing-subscription note instead of warnings. The
+  source now calls `GET /weatheralert/v1/current/{lat}/{lon}` (verified live, JWT authentication) and
+  decodes the v1 envelope: CAP's `severity`/`urgency`/`certainty` verbatim, `eventType.name` as the
+  event, `instruction` carried through for the first time, `messageType.code` `cancel` entries
+  dropped. The cache key is versioned (`qweather-v1`), so a body the retired path cached within the
+  same hour can never be decoded by the new reader, and the fixture was re-authored to the v1 schema.
+* **QWeather's attribution lines are displayed with its data.** The provider's attribution terms
+  require the response's `metadata.attributions` shown in full and unmodified wherever its warning
+  (and air-quality) data appears. Every decoded alert now carries them (`Alert::credit`), the alert
+  credits print them verbatim after the registry's own line, and `-f json` exposes them as
+  `alerts[].credit` — so the issuing agency and the standing data-delay disclaimer reach the footer,
+  `plain`, the alert listing and the JSON document.
 * **Obscuration conditions no longer collapse into fog (WeatherAPI, QWeather, World Weather Online,
   NWS).** These backends mapped haze, dust, sand, smoke and mist to WMO 45 (`Fog`), although the
   canonical model describes each phenomenon (WMO 4/5/6/7/10) and the METAR/OpenWeatherMap mappings

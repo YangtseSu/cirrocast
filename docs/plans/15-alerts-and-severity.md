@@ -59,14 +59,19 @@ location no source covers is reported as such instead of being silently asked.
       `--verbose` note, never an error). Country = ISO 3166-1 alpha-2 from the resolved location
       (Open-Meteo geocoding `country_code`); features are bbox-only, so the point is tested against
       the feature polygon (`properties.alertId`, `countryCode`, `hubLink` → CAP XML/JSON payload).
-- ✅ `src/alerts/qweather.rs`: `https://devapi.qweather.com/weatheralert/v7/alert/now?
-      location=<lon>,<lat>&key=<KEY>` on the configured `[providers.qweather] host`, reusing the
-      existing `CIRROCAST_QWEATHER_KEY`; maps `warning[].{id,sender,pubTime,title,startTime,endTime,
-      status,severity,urgency,certainty,typeName,text,related,color}` (`color.code` → severity when
-      `severity` is absent, `typeName` → `event`). Auth follows step 27: the alert adapter resolves
+- ✅ `src/alerts/qweather.rs`: `GET {host}/weatheralert/v1/current/{lat}/{lon}` on the configured
+      `[providers.qweather] host`, reusing the account credential the key store resolves; maps
+      `alerts[].{id,senderName,issuedTime,messageType.code,eventType.name,urgency,severity,certainty,
+      effectiveTime,onsetTime,expireTime,headline,description,instruction,color.code}` (`severity`
+      and `urgency`/`certainty` are CAP's own spellings; `color.code` supplies the severity when the
+      field is absent, `eventType.name` else the headline is `event`, and `messageType.code ==
+      "cancel"` entries are dropped). Auth follows step 27: the alert adapter resolves
       the credential through the same `Credential` resolver and header helper as the forecast
-      provider, so a JWT-configured account works for both. If step 27 has not landed, the adapter
-      uses the existing `X-QW-Api-Key` path and step 27 switches it in its own commit.
+      provider, so a JWT-configured account works for both. **Amended 2026-10-07**: the endpoint was
+      `https://devapi.qweather.com/weatheralert/v7/alert/now?location=<lon>,<lat>&key=<KEY>` until
+      the v7 alert path was retired (it answers `404` on the account host while v1 answers `200`),
+      and the cache-key discriminator is `qweather-v1` so a body the v7 spelling left in the same
+      hour can never reach the v1 decoder.
 - ✅ `src/alerts/wmoswic.rs`: the WMO Severe Weather Information Centre aggregator (keyless,
       worldwide, 130+ issuing agencies; operated by HKO). Two steps: `GET
       https://severeweather.wmo.int/f/wfs?request=GetFeature&version=1.1.0&outputFormat=json&
@@ -359,3 +364,25 @@ CIRROCAST_METEOALARM_KEY=bad cargo run -q -- --alerts Vienna -v; echo $?
   copy of the fixture whose `sent`/`onset`/`expires` are relative to the run (`live_gale_fixture`);
   the adapter tests keep the raw fixture because they inject their own clock.
 - 2026-10-04 — step references in the entries above were remapped by the plan reorganization (see `docs/plans/README.md`); no deliverable or outcome in this step changed.
+- 2026-10-07 — the QWeather source was migrated to the alert v1 endpoint
+  (`/weatheralert/v1/current/{lat}/{lon}`): the v7 path this step was built against is retired — the
+  account host answers `/weatheralert/v7/alert/now?location=…` with `404` and an empty body
+  (re-verified with the configured JWT credential) while v1 answers `200` with
+  `{"metadata":{…},"alerts":[]}`. The 2026-10-06 "separate subscription" reading was therefore a
+  stale path, not a missing product, and the note that explained the 404 is gone. The decoder reads
+  the v1 envelope (`severity`/`urgency`/`certainty` are CAP's own spellings, `messageType.code`
+  `alert`/`update`/`cancel`, `eventType.name` else the headline is `event`, `instruction` carried
+  through for the first time), the cache-key discriminator is `qweather-v1` so a same-hour v7 body
+  cannot reach the v1 reader, and the fixture was re-authored to the v1 schema (still first-party,
+  per `tests/fixtures/alerts/README.md`). Coverage is unchanged: the source stays the China one
+  (`country_code == CN` or the mainland boxes), although the v1 API documents worldwide coverage.
+  Known gap, recorded rather than closed: the v1 `metadata.attributions` (issuing agency plus a
+  standing disclaimer) are not rendered — the alert pipeline credits sources, not responses.
+- 2026-10-07 — that gap is closed in the same change: the provider's attribution terms page
+  (`https://dev.qweather.com/docs/terms/attribution/`) makes the full, unmodified display of the
+  response's attribution lines a **requirement** for weather warnings and air quality, so `Alert`
+  gained `credit: Vec<String>` (the response's lines, carried on every alert it decodes),
+  `alerts::credits` prints them verbatim after the registry's own line (an identical line once, a
+  blank one never), and the JSON alert object exposes them as `credit` — `docs/schema.md` and
+  `docs/schema/json-v2.json` updated, additive, `schema_version` stays 2. `docs/providers.md` and
+  the CHANGELOG carry the same correction.

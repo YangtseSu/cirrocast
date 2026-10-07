@@ -179,7 +179,8 @@
         "headline",
         "description",
         "instruction",
-        "sender"
+        "sender",
+        "credit"
       ],
       "properties": {
         "id": {
@@ -267,6 +268,12 @@
             "string",
             "null"
           ]
+        },
+        "credit": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

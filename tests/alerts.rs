@@ -314,10 +314,15 @@ fn qweather_reuses_the_provider_host_and_credential() {
             true,
             Severity::Unknown,
         )
-        .expect("the warning list decodes");
-    assert_eq!(alerts.len(), 1, "the Cancel record is dropped");
+        .expect("the alert list decodes");
+    assert_eq!(alerts.len(), 2, "the Cancel record is dropped");
     assert_eq!(alerts[0].event, "暴雨");
     assert_eq!(alerts[0].severity, Severity::Severe);
+    assert_eq!(
+        alerts[1].severity,
+        Severity::Minor,
+        "a null severity falls back to the colour"
+    );
     assert!(
         !alerts[0]
             .description
@@ -326,19 +331,21 @@ fn qweather_reuses_the_provider_host_and_credential() {
             .contains('<'),
         "markup is stripped"
     );
+    assert_eq!(
+        alerts[0].credit,
+        ["北京市气象台"],
+        "the response's `metadata.attributions` travel with the alerts"
+    );
 
     let calls = harness.calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0].url(),
-        "https://abc123.re.qweatherapi.com/weatheralert/v7/alert/now"
+        "https://abc123.re.qweatherapi.com/weatheralert/v1/current/39.9075/116.3972"
     );
     assert!(
-        calls[0]
-            .query_pairs()
-            .iter()
-            .any(|(key, value)| key == "location" && value == "116.3972,39.9075"),
-        "{:?}",
+        calls[0].query_pairs().is_empty(),
+        "the v1 endpoint takes the point in the path: {:?}",
         calls[0].query_pairs()
     );
     assert!(
@@ -389,8 +396,8 @@ fn qweather_alerts_follow_the_jwt_mode_too() {
             true,
             Severity::Unknown,
         )
-        .expect("the warning list decodes");
-    assert_eq!(alerts.len(), 1);
+        .expect("the alert list decodes");
+    assert_eq!(alerts.len(), 2);
 
     let calls = harness.calls();
     assert_eq!(calls.len(), 1);

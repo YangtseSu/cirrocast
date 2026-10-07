@@ -446,6 +446,16 @@ pub fn credits(alerts: &[Alert], config: &AlertsConfig, i18n: &crate::i18n::I18n
             }
             _ => {}
         }
+        // The response's own attribution lines follow: `QWeather`'s terms require its
+        // `metadata.attributions` shown in full and unmodified wherever its warning data is shown,
+        // and an identical line from a second alert (or a second source) is printed once.
+        for alert in alerts.iter().filter(|alert| alert.source == source) {
+            for line in &alert.credit {
+                if !line.trim().is_empty() && !lines.iter().any(|seen| seen == line) {
+                    lines.push(line.clone());
+                }
+            }
+        }
     }
     lines
 }
@@ -491,7 +501,7 @@ mod tests {
     use chrono::{DateTime, FixedOffset};
     use chrono_tz::Tz;
 
-    use super::{auto_sources, covered_sources, explicit_sources, prepare};
+    use super::{auto_sources, covered_sources, credits, explicit_sources, prepare};
     use crate::model::{
         Alert, AlertSource, Certainty, Location, LocationSource, Severity, Urgency,
     };
@@ -534,6 +544,7 @@ mod tests {
             description: None,
             instruction: None,
             sender: None,
+            credit: Vec::new(),
         }
     }
 
@@ -731,6 +742,50 @@ mod tests {
         assert_eq!(
             chinese,
             super::language_key(&env, "hko-warnsum", &loc, "tc")
+        );
+    }
+
+    #[test]
+    fn response_attributions_follow_the_registry_line_and_print_once() {
+        use crate::config::AlertsConfig;
+        use crate::i18n::{I18n, LanguageRequest};
+
+        let i18n = I18n::load(&LanguageRequest::Tag("en-US".to_owned()), |_| None);
+        let mut qweather = alert("q1", AlertSource::QWeather, Severity::Moderate, "森林火险");
+        qweather.credit = vec![
+            "深圳市气象台".to_owned(),
+            "当前预警数据可能存在延迟或信息过时，以官方数据发布为准。".to_owned(),
+        ];
+        // A second alert from the same response repeats the lines; a blank one adds nothing.
+        let mut repeated = alert("q2", AlertSource::QWeather, Severity::Minor, "大风");
+        repeated.credit = qweather.credit.clone();
+        let mut blank = alert("q3", AlertSource::QWeather, Severity::Minor, "高温");
+        blank.credit = vec!["   ".to_owned()];
+
+        assert_eq!(
+            credits(
+                &[qweather, repeated, blank],
+                &AlertsConfig::default(),
+                &i18n
+            ),
+            [
+                "深圳市气象台",
+                "当前预警数据可能存在延迟或信息过时，以官方数据发布为准。"
+            ],
+            "the terms require them verbatim, and once"
+        );
+
+        // The aggregators' catalog line and the response's own lines both appear; the registry
+        // order (not the requirement) decides which comes first.
+        let wmo = alert("w1", AlertSource::WmoSwic, Severity::Severe, "Gale");
+        let mut qweather = alert("q4", AlertSource::QWeather, Severity::Minor, "暴雨");
+        qweather.credit = vec!["国家预警信息发布中心".to_owned()];
+        let lines = credits(&[wmo, qweather], &AlertsConfig::default(), &i18n);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines.iter().any(|line| line.contains("WMO")), "{lines:?}");
+        assert!(
+            lines.iter().any(|line| line == "国家预警信息发布中心"),
+            "{lines:?}"
         );
     }
 
