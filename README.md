@@ -56,14 +56,14 @@ and the wider packaging matrix — is marked as backlog in [`docs/plans/`](docs/
 ## Install
 
 ```bash
-cargo install --locked cirrocast            # from crates.io (1.3.0 is published)
+cargo install --locked cirrocast            # from crates.io (1.4.0 is published)
 cargo install --locked --path .             # from this checkout
 
 paru -S cirrocast                           # Arch: the AUR package (yay, or a manual git clone +
                                             # makepkg); https://aur.archlinux.org/packages/cirrocast
 
 # Prebuilt archives for Linux (x86_64, aarch64) and macOS (Apple silicon), one per release:
-version=v1.3.0 target=x86_64-unknown-linux-gnu
+version=v1.4.0 target=x86_64-unknown-linux-gnu
 curl -LO "https://github.com/YangtseSu/cirrocast/releases/download/$version/cirrocast-$version-$target.tar.gz"
 sha256sum -c "cirrocast-$version-$target.tar.gz.sha256"
 tar xzf "cirrocast-$version-$target.tar.gz"

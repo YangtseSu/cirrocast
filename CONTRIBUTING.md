@@ -234,7 +234,7 @@ covers it, and further ecosystem packages are deferred to the backlog (B02). Eve
 next to the `.sha256` the workflow computed:
 
 ```bash
-sha256sum -c cirrocast-v1.3.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c
+sha256sum -c cirrocast-v1.4.0-x86_64-unknown-linux-gnu.tar.gz.sha256   # macOS: shasum -a 256 -c
 ```
 
 `cargo package --list --locked` and `cargo publish --dry-run --locked` run on every pull request
@@ -285,7 +285,7 @@ git commit -am "upgpkg: cirrocast X.Y.Z-1" && git push
 ```bash
 # what a bump is verified with, on a clean machine or in a chroot
 pkgctl build                         # devtools clean chroot; makechrootpkg -c does the same
-sudo pacman -U cirrocast-1.3.0-1-x86_64.pkg.tar.zst
+sudo pacman -U cirrocast-1.4.0-1-x86_64.pkg.tar.zst
 cirrocast --version && man -w cirrocast
 pacman -Ql cirrocast | grep -E 'completions/cirrocast$|site-functions/_cirrocast$|vendor_completions\.d/cirrocast\.fish$' | wc -l   # 3
 ```

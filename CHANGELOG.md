@@ -25,6 +25,10 @@ consumer can see exactly what moved. It lands under the version it applies to, a
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.4.0] - 2026-10-08
+
 ### Added
 
 * **`--tz <ZONE>` (`CIRROCAST_TZ`, `[location] tz`) states the IANA zone a run's times are expressed
@@ -618,7 +622,8 @@ landed. `1.0.0` freezes it.
 * Exit codes `0`–`6` documented in `--help` and the README, with `error: …` on stderr and the
   cause chain under `-v`.
 
-[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/YangtseSu/cirrocast/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.4.0
 [1.3.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.3.0
 [1.2.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.2.0
 [1.1.0]: https://github.com/YangtseSu/cirrocast/releases/tag/v1.1.0
