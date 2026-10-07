@@ -51,6 +51,7 @@ Related: [`/AGENTS.md`](../../AGENTS.md) — operating rules for agents and huma
 | F — Sources and auth | 23–27 | extra backends, keyless national providers with coverage-aware `auto`, second-generation location sources, climate normals, QWeather JWT |
 | G — Documentation | 28 | the documentation set, the generated reference and the frozen JSON schemas |
 | H — Source depth | 29–30 | the QWeather air-quality source (the national AQI) and the QWeather GeoAPI location source, both from the 2026-10-07 free-tier audit of the account's plan |
+| I — Terminal icons | 31 | opt-in emoji and Nerd Font glyph sets over the hand-drawn art, as a per-glyph fallback chain |
 | Backlog | B01–B04 | deferred, unscheduled: the wttr-compatible local service, the multi-platform packaging matrix, the minutely precipitation nowcast and the weather (life) indices panel |
 
 **Reorganized 2026-10-04.** The pending steps were renumbered so the number is the execution order,
@@ -96,6 +97,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 28 | G | [docs-and-guides](28-docs-and-guides.md) | ✅ done | 14, 19, and the surface of 18–27 |
 | 29 | H | [qweather-air-quality](29-qweather-air-quality.md) | ⬜ not-started | 16, 27 |
 | 30 | H | [qweather-geoapi](30-qweather-geoapi.md) | ⬜ not-started | 04, 05, 18, 20, 25, 27 |
+| 31 | I | [icon-sets](31-icon-sets.md) | ⬜ not-started | 07, 08, 17, 19 |
 | B01 | Backlog | [wttr-compat-service](B01-wttr-compat-service.md) | ⏸ backlog | 08, 10, 14, 19 |
 | B02 | Backlog | [packaging-matrix](B02-packaging-matrix.md) | ⏸ backlog | 13, 21, 22 |
 | B03 | Backlog | [minutely-nowcast](B03-minutely-nowcast.md) | ⏸ backlog | 03, 06, 10, 24 |
