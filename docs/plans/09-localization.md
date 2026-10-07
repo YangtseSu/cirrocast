@@ -39,9 +39,9 @@ completeness test that makes an untranslated condition or label a build failure.
 - ✅ Lookup API: `fn text(&self, key: &str, args: &[(&str, FluentValue)]) -> Cow<'_, str>`,
       `fn condition(&self, c: Condition) -> Cow<'_, str>` (`cond-<code>`), `fn day_part(&self, p: DayPart)`,
       `fn weekday(&self, w: Weekday)`, `fn month(&self, m: Month)`, `fn uv_band(&self, uv: f32) -> Cow<'_, str>`,
-      `fn format_temp(&self, temp_c: f32, units: UnitSystem) -> String`,
       `fn format_date(&self, d: NaiveDate, style: DateStyle) -> String` (`DateStyle::{Iso, Short, Today}`),
-      `fn notes(&self) -> &[Note]`.
+      `fn notes(&self) -> &[Note]`. (The `format_temp` member of this list was deleted on 2026-10-07 —
+      no renderer called it; see the progress log.)
 - ✅ Failure behaviour: a missing message returns the key itself, records `Note::MissingKey` once and is
       printed under `-v`; `bundle.set_use_isolating(false)` so no U+2068/U+2069 bidi marks leak into terminal
       output; formatting never panics on a bad pattern (pattern errors are collected and reported, not unwrapped).
@@ -218,3 +218,7 @@ cargo test --test i18n                                            # completeness
 - 2026-10-04 — historical note, appended by step 17: the `moon-na` catalog key named above was
   removed when `%m`/`%M` became real tokens (the phase is always computable, so there is no
   `n/a` for it); the step-17 keys replace it in both catalogs.
+- 2026-10-07 — `I18n::format_temp` deleted (review 05 §4.2), by the same rule as design note 2
+  above: it had no caller — every renderer formats temperatures through `model::units`, and the
+  `format-temp-c`/`format-temp-f` catalog messages remain as reserved keys in `RENDERER_KEYS`, the
+  way the wind, pressure, distance and precipitation spellings already are.

@@ -1102,37 +1102,6 @@ impl I18n {
         self.text(&alert_source_key(source))
     }
 
-    /// A temperature in the resolved unit, e.g. `+22°C` or `73°F`.
-    ///
-    /// `signed` is what the art table wants (`+22°C`); the prose-like formats leave it off. The
-    /// number is formatted by [`crate::model::units`], whose formatters own the conversion and the
-    /// rounding, and only the spelling of the unit comes from the catalog.
-    #[must_use]
-    pub fn format_temp(
-        &self,
-        celsius: f32,
-        unit: crate::model::units::TempUnit,
-        signed: bool,
-    ) -> String {
-        let value = if signed {
-            crate::model::units::format_temp_signed(celsius, unit)
-        } else {
-            crate::model::units::format_temp(celsius, unit)
-        };
-        // The unit is already part of the formatter's output; the catalog message exists so a
-        // translation could change the spacing or the symbol (`22 ℃`).
-        let number = value
-            .strip_suffix(unit.symbol())
-            .unwrap_or(&value)
-            .to_owned();
-        let key = match unit {
-            crate::model::units::TempUnit::Celsius => keys::FORMAT_TEMP_C,
-            crate::model::units::TempUnit::Fahrenheit => keys::FORMAT_TEMP_F,
-        };
-        self.format(&key, &[("value", FluentValue::from(number))])
-            .into_owned()
-    }
-
     /// A date in the requested style.
     ///
     /// Every style is a Fluent message assembled from the catalog's own weekday and month names, so
@@ -1481,7 +1450,6 @@ mod tests {
     };
     use crate::model::DayPartKind;
     use crate::model::condition::Condition;
-    use crate::model::units::TempUnit;
 
     /// An environment lookup over a fixed map — the seam [`I18n::load`] takes.
     fn environment(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
@@ -1765,13 +1733,8 @@ mod tests {
     }
 
     #[test]
-    fn temperatures_and_dates_are_assembled_from_the_catalog() {
+    fn dates_are_assembled_from_the_catalog() {
         let i18n = english();
-        assert_eq!(i18n.format_temp(22.0, TempUnit::Celsius, true), "+22°C");
-        assert_eq!(i18n.format_temp(22.0, TempUnit::Celsius, false), "22°C");
-        assert_eq!(i18n.format_temp(22.0, TempUnit::Fahrenheit, false), "72°F");
-        assert_eq!(i18n.format_temp(-5.2, TempUnit::Celsius, true), "-5°C");
-
         let date = chrono::NaiveDate::from_ymd_opt(2026, 9, 30).expect("a valid date");
         assert_eq!(i18n.format_date(date, DateStyle::Short), "Wed 30 Sep");
         assert_eq!(i18n.format_date(date, DateStyle::Iso), "2026-09-30");
@@ -1801,7 +1764,6 @@ mod tests {
         for key in RENDERER_KEYS {
             rendered.push_str(&i18n.text(key));
         }
-        rendered.push_str(&i18n.format_temp(22.0, TempUnit::Celsius, true));
         rendered.push_str(&i18n.condition(Condition::from_u8(45)));
         assert!(!rendered.contains('\u{2068}'), "no FSI in {rendered}");
         assert!(!rendered.contains('\u{2069}'), "no PDI in {rendered}");
