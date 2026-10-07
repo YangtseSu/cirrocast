@@ -236,6 +236,24 @@ fn fpas_applies_the_category_msgtype_and_geometry_filters() {
 }
 
 #[test]
+fn the_severity_threshold_keeps_the_alerts_at_or_above_it() {
+    // `--severity` / `[alerts] severity_threshold` travels into the fetch, and a Minor alert must
+    // not survive a Severe threshold — the flag is not a no-op (review 05 §4.6 read it as one from
+    // two runs in which no qualifying alert was in force at all).
+    let replies = || vec![fixture("fpas-area.json"), fixture("fpas-gale.xml")];
+    let kept = Harness::new(replies(), CacheMode::Normal)
+        .fetch(&beijing(), &[AlertSource::Fpas], true, Severity::Minor)
+        .expect("the area list decodes");
+    assert_eq!(kept.len(), 1, "a Minor alert is at the Minor threshold");
+    assert_eq!(kept[0].severity, Severity::Minor);
+
+    let dropped = Harness::new(replies(), CacheMode::Normal)
+        .fetch(&beijing(), &[AlertSource::Fpas], true, Severity::Severe)
+        .expect("the list still decodes; the alert is simply below the threshold");
+    assert_eq!(dropped.len(), 0, "a Minor alert must not survive Severe");
+}
+
+#[test]
 fn hko_maps_the_warning_summary_and_reads_the_statement_text() {
     let harness = Harness::new(
         vec![fixture("hko-warnsum.json"), fixture("hko-warninginfo.json")],
