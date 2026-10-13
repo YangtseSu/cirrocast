@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Air quality end to end: both adapters (the keyless Open-Meteo and, since step 29, the
-//! provider-bound QWeather) over scripted transports, the three category scales at their
+//! provider-bound `QWeather`) over scripted transports, the three category scales at their
 //! documented breakpoints, the panel's width invariant and the CLI formats over a seeded air
 //! cache.
 //!
