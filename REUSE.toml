@@ -15,6 +15,21 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# The Fluent catalogs. `locales/*/main.ftl` does carry its own `#` header, but reuse only reads the
+# first 2048 bytes of a file to detect its encoding, and the zh-CN catalog's CJK text straddles that
+# boundary mid-character: charset_normalizer then reports no encoding, reuse skips the file as
+# binary and never sees the header. The verdict depended on the detection module that happened to be
+# installed (CI's container guesses UTF-8 and passes, Arch's charset_normalizer does not), so the
+# same files were declared compliant and non-compliant for the same bytes. Stating the licence here
+# makes the verdict reproducible; the header stays as documentation for readers of the catalogs.
+# The values are the header's own, so nothing is relicensed — the annotation is an override whose
+# only effect is that the tags are read from a file reuse always parses.
+[[annotations]]
+path = "locales/*/main.ftl"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # First-party fixtures: JSON and CSV cannot carry a comment header, but the content is ours
 # (hand-written cases, minimised envelopes, responses reduced to the fields the code reads).
 #
