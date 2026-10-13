@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The name-search chain: which geocoding sources a plain name query asks, and in what order
-//! (step 25).
+//! (steps 25 and 30).
 //!
 //! `[geo] search` (or `CIRROCAST_GEO_SEARCH`) selects them exactly as `--provider` selects
 //! forecast backends: `auto` — the default — is Open-Meteo first, then `GeoNames` when an account
-//! name is configured, then Nominatim `/search` as the last resort; the three single-source
-//! spellings exist so a user can pin one. Only the failures a later source can plausibly answer
+//! name is configured, then Nominatim `/search` as the last resort; the single-source spellings
+//! exist so a user can pin one. Only the failures a later source can plausibly answer
 //! differently move the chain on ([`Error::Network`] and [`Error::Upstream`], which includes the
-//! service's own refusals); anything else — a missing `GeoNames` account under an explicit
-//! selection, a usage mistake — stops the run.
+//! service's own refusals); anything else — a missing credential under an explicit selection, a
+//! usage mistake — stops the run.
 //!
-//! Three rules are worth restating because they are easy to undo by accident:
+//! Four rules are worth restating because they are easy to undo by accident:
 //!
 //! * **Nominatim is the last resort.** It is a donated service with a one-request-per-second
 //!   policy, so it is asked only when nothing before it found a candidate. Under an explicit
@@ -22,6 +22,13 @@
 //!   and the note names the two commands that would add it. An explicitly selected `geonames`
 //!   without an account is [`Error::MissingKey`] (exit 6), because the user asked for exactly that
 //!   source;
+//! * **`qweather` is never part of `auto`** (step 30). It is credential-bound — and an explicit
+//!   selection without one is the exit-6 credential error, never a silent skip — and its rows carry
+//!   no ISO country code, so a default path that used it would degrade `auto` provider selection
+//!   and alert coverage to bounding boxes. Selecting it explicitly costs one request per query and
+//!   stores nothing: the source keeps no cache entry at all
+//!   ([`crate::geo::qweather`]'s storage rule), and a silenced geo scope therefore refuses it
+//!   rather than letting it open a socket;
 //! * **offline is a miss, not a failure.** With the geo scope silenced the cache never writes, so
 //!   a [`Error::Network`] from a source means "no cached answer" — a legitimate no-hit that lets
 //!   the caller report `(no offline match)` instead of a network error.
@@ -33,17 +40,19 @@
 use std::time::Duration;
 
 use crate::cache::Cache;
+use crate::config::keys::Credential;
 use crate::error::{Error, Result};
 use crate::geo::Geocoder;
 use crate::geo::geonames::{self, GeoNamesGeocoder};
 use crate::geo::nominatim::Nominatim;
 use crate::geo::open_meteo::OpenMeteoGeocoder;
+use crate::geo::qweather::{CREDENTIAL, ENV_VAR, QWeatherGeocoder};
 use crate::http::HttpClient;
 use crate::model::Location;
 
 /// The values `[geo] search` accepts, in one place so the configuration, the CLI help and the
 /// chain cannot disagree.
-pub const SEARCH_SETTINGS: &[&str] = &["auto", "open-meteo", "geonames", "nominatim"];
+pub const SEARCH_SETTINGS: &[&str] = &["auto", "open-meteo", "geonames", "nominatim", "qweather"];
 
 /// A geocoding source behind a plain name query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +63,8 @@ pub enum GeoSource {
     GeoNames,
     /// OpenStreetMap Nominatim `/search`: donated, throttled, the last resort.
     Nominatim,
+    /// `QWeather`'s `GeoAPI` `city/lookup`: BYOK, explicit-selection only, never cached (step 30).
+    QWeather,
 }
 
 impl GeoSource {
@@ -64,6 +75,7 @@ impl GeoSource {
             Self::OpenMeteo => "open-meteo",
             Self::GeoNames => "geonames",
             Self::Nominatim => "nominatim",
+            Self::QWeather => CREDENTIAL,
         }
     }
 
@@ -78,6 +90,7 @@ impl GeoSource {
             "open-meteo" => Ok(vec![Self::OpenMeteo]),
             "geonames" => Ok(vec![Self::GeoNames]),
             "nominatim" => Ok(vec![Self::Nominatim]),
+            "qweather" => Ok(vec![Self::QWeather]),
             other => Err(Error::Config(format!(
                 "geo.search: `{other}` is not one of {}",
                 SEARCH_SETTINGS.join(", ")
@@ -104,10 +117,25 @@ pub struct SearchInputs<'a> {
     /// The `GeoNames` account name, when one is configured (`CIRROCAST_GEONAMES_USER` or
     /// `keys.toml`).
     pub geonames_user: Option<String>,
+    /// The `QWeather` account host and credential, when the key store resolved one (step 30).
+    pub qweather: Option<QWeatherInputs>,
     /// The Nominatim base URL (`network.nominatim_url`, empty = the public service).
     pub nominatim_url: String,
     /// Whether the geo scope is silenced, which turns a network failure into a cache miss.
     pub offline: bool,
+}
+
+/// What the `qweather` geo source needs beyond the query: an account host and a credential.
+///
+/// Both come from the `qweather` provider's own configuration — `providers.qweather.host`, and
+/// whichever of the API key / JWT the key store resolves (step 27) — exactly as the forecast, alert
+/// and air sources read them. Deliberately neither `Debug` nor `Clone`: the credential it holds must
+/// not be formatted into a log line or an error, and nothing here needs a second copy.
+pub struct QWeatherInputs {
+    /// The account host, trimmed (`https://<account-id>.re.qweatherapi.com`).
+    pub host: String,
+    /// The API key or JWT credential the key store resolved.
+    pub credential: Credential,
 }
 
 /// What a chain run found.
@@ -181,9 +209,16 @@ impl<'a> SearchChain<'a> {
             }
             match self.ask(source, query) {
                 Ok(Answer::Hits(hits)) => {
-                    report
-                        .notes
-                        .push(format!("{}: {} candidates", source.slug(), hits.len()));
+                    report.notes.push(match source {
+                        // The storage rule is visible in the narration: a reader asking why the
+                        // query went out again sees that this source keeps nothing.
+                        GeoSource::QWeather => format!(
+                            "{}: {} candidates (not cached: GeoAPI data may not be stored)",
+                            source.slug(),
+                            hits.len()
+                        ),
+                        _ => format!("{}: {} candidates", source.slug(), hits.len()),
+                    });
                     report.answered.push((source, hits));
                 }
                 Ok(Answer::NoCredential) => {
@@ -197,9 +232,14 @@ impl<'a> SearchChain<'a> {
                 // never reached, so "nothing on disk" is a legitimate no-hit, exactly as it is for
                 // a single-source run.
                 Err(error) if self.inputs.offline && matches!(error, Error::Network(_)) => {
-                    report
-                        .notes
-                        .push(format!("{}: offline, no cached answer", source.slug()));
+                    report.notes.push(match source {
+                        // Not "no cached answer": this source never stores one.
+                        GeoSource::QWeather => format!(
+                            "{}: offline, not asked (a GeoAPI answer is never stored)",
+                            source.slug()
+                        ),
+                        _ => format!("{}: offline, no cached answer", source.slug()),
+                    });
                     report.answered.push((source, Vec::new()));
                 }
                 Err(error) if is_skippable(&error) => {
@@ -243,6 +283,25 @@ impl<'a> SearchChain<'a> {
                 Nominatim::new(inputs.http, inputs.cache, inputs.nominatim_url.clone())
                     .search(query, inputs.limit)?
             }
+            GeoSource::QWeather => {
+                // Never part of `auto`, so a credential that is not there is the user's mistake
+                // rather than a reason to skip: the shared exit-6 credential error names both
+                // `key set` forms and the environment variable that would supply one.
+                let Some(qweather) = inputs.qweather.as_ref() else {
+                    return Err(Error::MissingCredential {
+                        provider: CREDENTIAL.to_owned(),
+                        env: ENV_VAR.to_owned(),
+                    });
+                };
+                QWeatherGeocoder::new(
+                    inputs.http,
+                    inputs.cache.clock(),
+                    &qweather.host,
+                    &qweather.credential,
+                    inputs.offline,
+                )
+                .search(query, inputs.limit)?
+            }
         };
         Ok(Answer::Hits(hits))
     }
@@ -281,6 +340,10 @@ mod tests {
             vec![GeoSource::Nominatim]
         );
         assert_eq!(
+            GeoSource::chain("qweather").expect("a known setting"),
+            vec![GeoSource::QWeather]
+        );
+        assert_eq!(
             GeoSource::chain(" open-meteo ").expect("blanks are trimmed"),
             vec![GeoSource::OpenMeteo]
         );
@@ -293,7 +356,7 @@ mod tests {
                 "`{junk}`: {error}"
             );
         }
-        assert_eq!(SEARCH_SETTINGS.len(), 4);
+        assert_eq!(SEARCH_SETTINGS.len(), 5);
     }
 
     /// The last-resort rule is about the request, not about the selection.
@@ -302,6 +365,7 @@ mod tests {
         assert!(GeoSource::Nominatim.last_resort());
         assert!(!GeoSource::OpenMeteo.last_resort());
         assert!(!GeoSource::GeoNames.last_resort());
+        assert!(!GeoSource::QWeather.last_resort());
     }
 
     #[test]
@@ -309,5 +373,6 @@ mod tests {
         assert_eq!(GeoSource::OpenMeteo.slug(), "open-meteo");
         assert_eq!(GeoSource::GeoNames.slug(), "geonames");
         assert_eq!(GeoSource::Nominatim.slug(), "nominatim");
+        assert_eq!(GeoSource::QWeather.slug(), "qweather");
     }
 }

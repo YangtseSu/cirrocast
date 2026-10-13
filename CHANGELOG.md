@@ -57,6 +57,22 @@ consumer can see exactly what moved. It lands under the version it applies to, a
   index codes and the unit table are in
   [`docs/providers.md`](docs/providers.md#qweather-air-quality); the two keys in
   [`docs/configuration.md`](docs/configuration.md#air).
+* **`[geo] search = "qweather"` (`CIRROCAST_GEO_SEARCH=qweather`) resolves a name through
+  QWeather's GeoAPI, the fourth name source.** It answers with QWeather's own city identity — the
+  point its forecast endpoints serve, the administrative chain (`adm1`), and a 1:1 IANA zone — which
+  is the only way to resolve a Chinese district or township the bundled `cities15000` table does not
+  carry: `新乡县` answers with the district instead of its parent city. It uses the same credential
+  and `providers.qweather.host` the `qweather` backend does (API key or JWT), and is
+  **explicit-selection only** — never part of `auto`, because its rows carry a localized country
+  name and no ISO code, which `auto` provider selection and alert coverage read. Its terms forbid
+  storing its data in any form, so it writes **no cache entry at all** (a repeat query is a fresh
+  request, `-v` says so, and `--offline=geo` refuses it), and selecting it without a credential is
+  the exit-6 credential error. A query matching nothing answers `400 #no-such-location`, which is
+  reported as "no location found", not an upstream failure. `location.source` gains the value
+  `qweather` — a non-breaking addition, so `schema_version` stays `2`. Endpoint, measured envelope
+  and the storage rule are in [`docs/providers.md`](docs/providers.md#qweather-geoapi-citylookup-byok-explicit-selection-only-step-30);
+  the source's rules in [`docs/location.md`](docs/location.md) and the key in
+  [`docs/configuration.md`](docs/configuration.md#geo).
 
 ## [1.4.0] - 2026-10-08
 

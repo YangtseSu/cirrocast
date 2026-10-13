@@ -164,7 +164,8 @@ A **plain name** is resolved by `geo::name_location` in this order:
    present, else the embedded snapshot) and no socket is opened.
 2. **The network geocoder chain**, when `[geo] strategy` is not `bundled` and the bundled table had
    no hit. `[geo] search` selects it: `auto` — the default — is `open-meteo`, then `geonames` when
-   an account name is configured, then `nominatim` as the last resort. The per-source hits are
+   an account name is configured, then `nominatim` as the last resort; the single-source spellings
+   `open-meteo`, `geonames`, `nominatim` and `qweather` pin one source. The per-source hits are
    merged and de-duplicated, then ranked.
 
 `[geo] strategy` (`CIRROCAST_...` does not exist for this key; set it in `config.toml`) picks
@@ -211,9 +212,21 @@ per-source lists are collapsed (`src/geo/merge.rs`, step 25) by these rules:
 
 `geonames` is **BYOK**: it is skipped under `auto` when no account name is set (the `-v` line names
 the two commands that add one), and an explicitly selected `search = "geonames"` without an account
-name is a missing-key error (exit 6). The endpoints, auth, quotas and licences of every geocoding
-source are in [providers.md](providers.md#location-and-ip-services); this document does not repeat
-them.
+name is a missing-key error (exit 6).
+
+`qweather` (step 30) is **explicit-selection only** — `search = "qweather"` or
+`CIRROCAST_GEO_SEARCH=qweather`, never part of `auto` — and it needs the `qweather` credential and
+host (`providers.qweather.host`), which is the same pair the forecast backend uses. It is the only
+source that resolves a Chinese district or township to the point QWeather itself serves weather for
+(`新乡县` → the district, with 河南省 and `Asia/Shanghai`), and the only one whose rows carry **no ISO
+country code**: `auto` provider selection and alert coverage therefore fall back to bounding boxes,
+which is why the default chain never uses it. Its terms forbid storing its data **in any form**, so
+it keeps **no cache entry at all** — a repeat query asks again — and `--offline=geo` refuses it
+rather than opening a socket. Selecting it explicitly without a credential is the exit-6 credential
+error, never a silent skip.
+
+The endpoints, auth, quotas, licences and the storage rule of every geocoding source are in
+[providers.md](providers.md#location-and-ip-services); this document does not repeat them.
 
 ### The IP services
 

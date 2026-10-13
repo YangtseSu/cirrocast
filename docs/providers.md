@@ -1287,6 +1287,7 @@ variables are in [`docs/configuration.md`](configuration.md).
 |---|---|---|---|---|---|---|
 | Open-Meteo geocoding | `GET geocoding-api.open-meteo.com/v1/search` | none | GeoNames data, CC BY 4.0, via Open-Meteo | free tier shared with the forecast API: non-commercial, 10 000/day, 5 000/hour, 600/minute | 30 days (`cache.geocode_ttl_secs`) | 2026-10-06 |
 | GeoNames search | `GET secure.geonames.org/searchJSON` | **BYOK**: `CIRROCAST_GEONAMES_USER`, else `keys.toml [keys] geonames` (`key set geonames`) | GeoNames CC BY 4.0: `Location data by GeoNames (CC BY 4.0) — https://www.geonames.org/` | free registration, no card; per-account daily credit quota | 30 days (`cache.geocode_ttl_secs`) | 2026-10-06 |
+| QWeather GeoAPI city lookup | `GET {host}/geo/v2/city/lookup` | **BYOK**: `CIRROCAST_QWEATHER_KEY`, else `keys.toml [keys] qweather` (`key set qweather`), or the JWT quartet (step 27) | proprietary (QWeather Developers License): `Location data by QWeather — https://www.qweather.com/` | free tier, same plan as the forecast; **one request per name query** | **none — its terms forbid storing the data in any form** | 2026-10-13 |
 | Nominatim `/search` | `GET <base>/search` | none; a descriptive `User-Agent` is mandatory | ODbL: `Location data © OpenStreetMap contributors (ODbL)` | "absolute maximum of 1 request per second", results must be cached, no autocomplete, no bulk geocoding | 30 days (`nominatim::TTL`), shared throttle state | 2026-10-06 |
 | Nominatim `/reverse` | `GET <base>/reverse` | none; the same `User-Agent` | ODbL, the same credit | the same one-request-per-second rule and caching duty | 30 days, same namespace and throttle | 2026-10-06 |
 | ipwho.is | `GET ipwho.is/` | none | none required | 1 000 requests/day per client IP; `429` + `Retry-After` beyond it | ≤ 24 h (`cache.ip_ttl_secs`) | 2026-10-06 |
@@ -1364,6 +1365,54 @@ query, because this source is one of several a name query merges. Credit: `Locat
 GeoNames (CC BY 4.0) — https://www.geonames.org/`
 (<https://www.geonames.org/export/web-services.html>, <https://www.geonames.org/about.html>).
 
+### QWeather GeoAPI `city/lookup` (BYOK, explicit selection only, step 30)
+
+`GET {host}/geo/v2/city/lookup` with `location` (required), `number` (1..=20, default 10) and `lang`,
+authenticated with the `qweather` credential and host (`providers.qweather.host`, plus whichever of
+the API key / JWT the key store resolves — the same pair the forecast, alert and air sources use).
+The vendor documents this endpoint as the way to obtain the **LocationID** its forecast APIs are
+built around; this client uses the point instead, because a forecast here is requested by
+coordinates. What it buys over the three keyless sources is a Chinese district or township the
+bundled `cities15000` table does not carry: `新乡县` answers with the district (`101180313`,
+35.19084, 113.80521, 河南省) rather than with its parent city. Measured 2026-10-13 on the account
+host:
+
+* the envelope is `{"code":"200","location":[…],"refer":{"sources":["QWeather"],"license":[…]}}`; a
+  row is `{name, id, lat, lon, adm2, adm1, country, tz, utcOffset, isDst, type, rank, fxLink}` with
+  **`lat`/`lon`/`rank` as strings**;
+* **`country` is a localized name and no ISO 3166-1 code appears anywhere in the payload** (`refer`
+  names the vendor, `fxLink` only repeats the LocationID). `Location.country_code` therefore stays
+  `None` for a row from this source, which is exactly why the source is never part of `auto`: that
+  field drives coverage-aware provider selection (step 24) and the alert registry's coverage rule,
+  and both would fall back to bounding boxes without it;
+* `rank` is the vendor's importance ordering (a capital is 10, a town 33+), *not* a population. The
+  client does not decode it: the rows already arrive in the service's relevance order, the shared
+  ranking orders the merged candidates for the query afterwards, and a source that answered with a
+  fake population would mislead that ranking;
+* a query that matches nothing is **not** a `200` with an empty `location[]`: the service answers
+  **HTTP 400** with `{"error":{"status":400,"type":"…#no-such-location","title":"No Such
+  Location",…}}`, which the client turns into an empty hit list. An invalid or missing parameter is
+  the same status with a different `type` and *is* an upstream failure; a refused credential is
+  `401` with `…#unauthorized` and becomes the shared invalid-credential error (exit 6) naming both
+  `key set` forms;
+* `rank`-style ordering aside, the request carries `lang=zh` for a CJK query and `lang=en` otherwise:
+  the service *matches* either spelling under either setting but *spells* its answer in the requested
+  language (`新乡县` → `Xinxiang County` under `lang=en`), so asking for the query's own script keeps
+  a row foldable against what the keyless sources return for the same place.
+
+**The caching ban.** The vendor's cache page
+(<https://dev.qweather.com/docs/best-practices/cache/>) is blunt: *你不能缓存、提取、批量存储 GeoAPI 中提供的所有数据
+… 大多数服务商（几乎是所有）许可你实时的使用，但禁止你将这些数据进行任何形式的存储* — most of the underlying
+providers permit real-time use and forbid storing the data **in any form**, which is stronger than
+the "no bulk caching or indexing" wording the other sources carry. This client therefore keeps
+**no cache entry for this source at all** — not even a short-lived one — and builds no index or
+cross-query store from it; `geo::qweather` holds no cache handle at all, a repeat query is a fresh
+request, `-v` says so (`qweather: N candidates (not cached: GeoAPI data may not be stored)`), and a
+silenced geo scope (`--offline=geo`) refuses the source rather than opening a socket. One request per
+name query, on the same free tier as the forecast, is the cost of selecting it. Credit: `Location
+data by QWeather — https://www.qweather.com/` (<https://dev.qweather.com/docs/api/geoapi/city-lookup>,
+<https://dev.qweather.com/docs/terms/attribution/>).
+
 ### IP.SB (keyless, last-resort IP locator)
 
 `GET https://api.ip.sb/geoip` — the caller's own address, no key, worldwide. Measured 2026-10-06:
@@ -1402,6 +1451,16 @@ the upstream DB-IP/IP2Location attribution belongs to ipapi.co's own footer
 
 ## Re-verification log
 
+* **2026-10-13** — the QWeather **GeoAPI** (`/geo/v2/city/lookup`) probed live against the account
+  host with the `X-QW-Api-Key` header, before any code was written (step 30). The documented shape
+  held (`code` + `location[]` + `refer`; `lat`/`lon` as strings) and three things the published docs
+  do not say were found: **`rank` is a string too**, **`country` is a localized name with no ISO code
+  anywhere in the payload**, and a query matching nothing is **HTTP 400 with
+  `…#no-such-location`**, not a `200` with an empty array. `新乡县` answered with the district
+  (`101180313`, 35.19084, 113.80521) and `新乡` with 新乡县 second — which also showed that the
+  response order is relevance rather than `rank`. The 401 spelling (`…#unauthorized`, API key absent
+  or wrong) matches the one the other QWeather endpoints send. The vendor's cache page was read the
+  same day and is what the no-entry rule above rests on.
 * **2026-10-07** — the QWeather **alert** endpoint re-probed with the account's JWT credential,
   after a Chinese run's `404` note was traced to the path rather than to a subscription. `GET
   {host}/weatheralert/v1/current/<lat>/<lon>` answers `200`, gzip-encoded, with

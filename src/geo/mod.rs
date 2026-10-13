@@ -26,6 +26,7 @@ pub mod nominatim;
 pub mod offline;
 pub mod open_meteo;
 pub mod pick;
+pub mod qweather;
 pub mod rank;
 pub mod reverse;
 pub mod table;
@@ -474,6 +475,14 @@ const GEONAMES_CREDIT: &str = "Location data by GeoNames (CC BY 4.0) — https:/
 /// The credit OpenStreetMap's `ODbL` asks for.
 const OSM_CREDIT: &str = "Location data © OpenStreetMap contributors (ODbL)";
 
+/// The credit `QWeather` requires next to its data.
+///
+/// `QWeather`'s attribution terms ask for the name plus a link wherever its data is shown
+/// (<https://dev.qweather.com/docs/terms/attribution/>), which is the `QWeather —
+/// https://www.qweather.com/` line the provider registry carries; the location wording is
+/// [`GEONAMES_CREDIT`]'s, so a place and its weather credit the vendor in the same spelling.
+const QWEATHER_CREDIT: &str = "Location data by QWeather — https://www.qweather.com/";
+
 /// The attribution a location's data source requires, or `None` when the source asks for none.
 ///
 /// Displaying a place is displaying someone's data: `GeoNames` publishes the geocoding data that
@@ -493,6 +502,7 @@ pub fn attribution_line(location: &Location) -> Option<&'static str> {
             "Location data based on GeoNames (CC-BY-4.0) via Open-Meteo — https://open-meteo.com/",
         ),
         LocationSource::Offline | LocationSource::Geonames => Some(GEONAMES_CREDIT),
+        LocationSource::QWeather => Some(QWEATHER_CREDIT),
         LocationSource::Osm => Some(OSM_CREDIT),
         // A station's coordinates are US-government public-domain metadata, which asks for no
         // credit line; the *weather* credit (`aviationweather.gov`) travels in the report's
@@ -834,6 +844,11 @@ mod tests {
         assert_eq!(
             super::attribution_line(&location),
             Some("Location data © OpenStreetMap contributors (ODbL)")
+        );
+        location.source = LocationSource::QWeather;
+        assert_eq!(
+            super::attribution_line(&location),
+            Some("Location data by QWeather — https://www.qweather.com/")
         );
         for source in [LocationSource::Coordinates, LocationSource::Ip] {
             location.source = source;

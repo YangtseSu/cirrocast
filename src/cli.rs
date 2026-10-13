@@ -24,7 +24,7 @@ use crate::cache::{Cache, CacheMode, CacheStat, Clock, OfflineMode, Scope, Syste
 use crate::config::keys::{JwtCredential, KeyForm, KeySource, KeyStore, KeySummary};
 use crate::config::{Config, Settings};
 use crate::error::{Error, Result};
-use crate::geo::chain::{SearchChain, SearchInputs};
+use crate::geo::chain::{QWeatherInputs, SearchChain, SearchInputs};
 use crate::geo::ip::{IpLocatorChain, IpService};
 use crate::geo::nominatim::{DEFAULT_URL, Nominatim};
 use crate::geo::{
@@ -3171,6 +3171,7 @@ fn name_location(spec: &LocationSpec, geo: &GeoRequest<'_>, cli: &Cli) -> Result
             ttl: Duration::from_secs(u64::from(geo.config.cache.geocode_ttl_secs)),
             limit: geo.limit,
             geonames_user: geonames_user(geo)?,
+            qweather: qweather_inputs(geo)?,
             nominatim_url: nominatim_url(geo.config),
             offline: geo.offline.silences(Scope::Geo),
         };
@@ -3345,6 +3346,32 @@ fn naming_source(source: crate::model::LocationSource) -> &'static str {
 fn geonames_user(geo: &GeoRequest<'_>) -> Result<Option<String>> {
     let store = crate::config::keys::KeyStore::new(geo.paths);
     store.get(crate::geo::geonames::CREDENTIAL)
+}
+
+/// The `QWeather` `GeoAPI` inputs for this run: the account host plus whichever credential the key
+/// store resolves — the API key or the JWT (step 30, via step 27's resolver).
+///
+/// `None` when the store has no `qweather` credential at all; the chain then reports the shared
+/// exit-6 credential error *only* if `[geo] search` actually selects the source, so a run that does
+/// not use `GeoAPI` is unaffected. Reading the store can fail on its own terms — a group-readable
+/// `keys.toml` is refused, not silently skipped — and that failure stops the run, exactly as it
+/// does for the `GeoNames` account name.
+fn qweather_inputs(geo: &GeoRequest<'_>) -> Result<Option<QWeatherInputs>> {
+    let store = crate::config::keys::KeyStore::new(geo.paths);
+    let Some(credential) = store.credential(ProviderId::QWeather)? else {
+        return Ok(None);
+    };
+    Ok(Some(QWeatherInputs {
+        host: geo
+            .config
+            .providers
+            .qweather
+            .host
+            .trim()
+            .trim_end_matches('/')
+            .to_owned(),
+        credential,
+    }))
 }
 
 /// What the local city table answered, when it did.

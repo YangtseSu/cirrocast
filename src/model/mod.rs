@@ -60,6 +60,10 @@ pub enum LocationSource {
     /// Resolved through the `GeoNames` `searchJSON` endpoint under the user's own account
     /// (step 25). Its credit is `GeoNames`' own, not Open-Meteo's redistribution of the data.
     Geonames,
+    /// Resolved through `QWeather`'s `GeoAPI` `city/lookup` under the user's own credential
+    /// (step 30). The only source whose answer aligns with a forecast backend's own city identity;
+    /// its rows carry no ISO country code, which is why it is never part of `auto`.
+    QWeather,
     /// Given by the user as `@lat,lon`.
     Coordinates,
     /// Derived from the public IP address.

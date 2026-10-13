@@ -177,6 +177,13 @@ bundled city table first (about 3.3 MiB compressed, no network) and only falls b
 geocoder on a miss; `location search` prints the winner and `--all` the ranked candidates, and
 `location update-data` installs a newer table per user.
 
+The network geocoder is Open-Meteo by default, with the `GeoNames` fuzzy index (BYOK) and Nominatim
+behind it; `[geo] search = "qweather"` pins QWeather's own **GeoAPI** instead, which resolves a
+Chinese district or township to the point QWeather serves weather for (`新乡县`, not its parent city)
+under the same credential and host the `qweather` backend uses. It is explicit-only — never part of
+`auto`, because its rows carry no ISO country code — and, per QWeather's terms, keeps no cache entry
+at all: every query is a fresh request.
+
 **Privacy:** the public-IP lookup is the only request that reveals anything about *you* rather than
 about a place you asked for, and it never happens implicitly — it runs only with `--ip` or when no
 location is configured anywhere. It sends the public IP to `ipwho.is` (falling back to `ipapi.co`

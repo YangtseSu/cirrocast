@@ -22,7 +22,7 @@ use cirrocast::error::Error;
 use cirrocast::geo::chain::{GeoSource, SearchChain, SearchInputs};
 use cirrocast::geo::merge::merge;
 use cirrocast::http::{HttpClient, StubReply, StubTransport};
-use cirrocast::model::LocationSource;
+use cirrocast::model::{Location, LocationSource};
 
 /// The cache lifetime the tests use; the exact value only matters to the cache.
 const TTL: Duration = Duration::from_hours(720);
@@ -61,6 +61,7 @@ fn inputs<'a>(
         ttl: TTL,
         limit: 10,
         geonames_user: geonames_user.map(str::to_owned),
+        qweather: None,
         nominatim_url: "https://nominatim.openstreetmap.org".to_owned(),
         offline: false,
     }
@@ -94,7 +95,7 @@ fn auto_merges_open_meteo_and_geonames_and_spares_nominatim() {
     assert!(!report.is_empty());
 
     let merged = merge(&report.answered);
-    // Open-Meteo's three Beijings, plus GeoNames' Beixiang; the two rows both sources carry for
+    // Open-Meteo's three Beijings, plus `GeoNames`' Beixiang; the two rows both sources carry for
     // the capital and for the Shanxi village collapse into the earlier (Open-Meteo) records.
     assert_eq!(merged.len(), 4, "{merged:?}");
     let names: Vec<(&str, Option<&str>)> = merged
@@ -193,6 +194,73 @@ fn an_explicit_geonames_selection_without_an_account_is_a_missing_key() {
     assert!(text.contains("cirrocast key set geonames"), "{text}");
     assert!(text.contains("CIRROCAST_GEONAMES_USER"), "{text}");
     assert_eq!(transport.calls().len(), 0);
+}
+
+/// A candidate without a country code — which is every `GeoAPI` row — survives the merge, and it
+/// never collapses with a keyless source's row for the same place (step 30).
+///
+/// This is the documented consequence of the two rules in [`merge`]:
+/// [`crate::geo::merge`]'s "a missing code is not an invalid one" (the row is kept, unlike the `-99`
+/// spelling `GeoNames` sends) and its "a missing code on either side never matches" (without a country
+/// there is nothing that says the two rows are the same one). It cannot make the picker show a
+/// place twice in practice: `[geo] search` selects one source, so a `GeoAPI` row is the only row of
+/// its query.
+#[test]
+fn a_country_code_less_candidate_is_kept_and_never_merges() {
+    let qweather = candidate(
+        "Beijing",
+        39.904_99,
+        116.405_29,
+        None,
+        None,
+        LocationSource::QWeather,
+    );
+    let open_meteo = candidate(
+        "Beijing",
+        39.9075,
+        116.39723,
+        Some("CN"),
+        Some(18_960_744),
+        LocationSource::Geocoder,
+    );
+    let merged = merge(&[
+        (GeoSource::QWeather, vec![qweather.clone()]),
+        (GeoSource::OpenMeteo, vec![open_meteo]),
+    ]);
+    assert_eq!(merged.len(), 2, "the code-less row is kept: {merged:?}");
+    assert!(
+        merged.contains(&qweather),
+        "the `GeoAPI` row survives whole: {merged:?}"
+    );
+    // The shared population order puts the keyless row first.
+    assert_eq!(merged[0].country_code.as_deref(), Some("CN"));
+    assert_eq!(merged[1].source, LocationSource::QWeather);
+    assert_eq!(merged[1].country_code, None);
+}
+
+/// A candidate with the fields the merge reads.
+fn candidate(
+    name: &str,
+    lat: f64,
+    lon: f64,
+    country_code: Option<&str>,
+    population: Option<u64>,
+    source: LocationSource,
+) -> Location {
+    Location {
+        name: name.to_owned(),
+        admin1: None,
+        country: "China".to_owned(),
+        country_code: country_code.map(str::to_owned),
+        lat,
+        lon,
+        tz: chrono_tz::Tz::Asia__Shanghai,
+        elevation_m: None,
+        population,
+        source,
+        station: None,
+        named_by: None,
+    }
 }
 
 /// Every source failing is one chain error naming all three attempts.

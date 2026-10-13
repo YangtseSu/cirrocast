@@ -274,6 +274,7 @@ const fn source_name(source: crate::model::LocationSource) -> &'static str {
         LocationSource::Offline => "offline",
         LocationSource::Osm => "osm",
         LocationSource::Geonames => "geonames",
+        LocationSource::QWeather => "qweather",
         LocationSource::Coordinates => "coordinates",
         LocationSource::Ip => "ip",
         LocationSource::Station => "station",

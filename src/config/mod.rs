@@ -268,7 +268,7 @@ pub struct GeoConfig {
     pub strategy: String,
     /// Which geocoding sources a plain name query asks, and in what order: `auto` (Open-Meteo,
     /// then `GeoNames` when an account name is configured, then Nominatim as the last resort) or one
-    /// of the three ids (step 25).
+    /// of the four ids (steps 25 and 30). `qweather` is explicit-only and never expands `auto`.
     pub search: String,
     /// How a coordinate is named: `auto` (the bundled tables, then Nominatim `/reverse`), `offline`
     /// (the bundled tables only) or `off` (never) — step 25.
@@ -1762,7 +1762,7 @@ pub const KEY_TABLE: &[KeySpec] = &[
     KeySpec {
         name: "geo.search",
         kind: KeyKind::Enum(GEO_SEARCHES),
-        doc: "name-search sources: auto, open-meteo, geonames or nominatim",
+        doc: "name-search sources: auto, open-meteo, geonames, nominatim or qweather",
         env: Some("CIRROCAST_GEO_SEARCH"),
     },
     KeySpec {

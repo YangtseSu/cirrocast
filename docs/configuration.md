@@ -140,7 +140,7 @@ section.
 | Key | Type | Default | Example | Effect |
 |---|---|---|---|---|
 | `geo.strategy` | string | `"auto"` | `"bundled"` | `auto` (bundled table first, network on a miss), `bundled` (table only) or `network` (geocoder only). |
-| `geo.search` | string | `"auto"` | `"geonames"` | Name-search sources: `auto` (open-meteo, then geonames when an account name is set, then nominatim), or one of `open-meteo`, `geonames`, `nominatim`. |
+| `geo.search` | string | `"auto"` | `"geonames"` | Name-search sources: `auto` (open-meteo, then geonames when an account name is set, then nominatim), or one of `open-meteo`, `geonames`, `nominatim`, `qweather`. `qweather` is explicit only (never part of `auto`): it needs the `qweather` credential and `providers.qweather.host`, answers with QWeather's own city identity — including Chinese districts the bundled table does not carry — and keeps **no cache entry**, per its terms. |
 | `geo.reverse` | string | `"auto"` | `"offline"` | Naming a coordinate: `auto` (bundled tables, then Nominatim), `offline` (no socket) or `off` (never). |
 | `geo.data` | string | `"auto"` | `"user"` | Which city table answers: `auto` (the user table when present), `bundled` or `user`. |
 | `geo.update` | string | `"off"` | `"check"` | `off`, or `check` for the once-a-day note when the table is older than `update_interval_days`; the tool never fetches by itself. |

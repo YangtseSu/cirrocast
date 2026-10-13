@@ -678,6 +678,7 @@
             "offline",
             "osm",
             "geonames",
+            "qweather",
             "coordinates",
             "ip",
             "station"

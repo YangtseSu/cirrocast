@@ -98,7 +98,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ✅ done | 02, 10, 15 |
 | 28 | G | [docs-and-guides](28-docs-and-guides.md) | ✅ done | 14, 19, and the surface of 18–27 |
 | 29 | H | [qweather-air-quality](29-qweather-air-quality.md) | ✅ done | 16, 27 |
-| 30 | H | [qweather-geoapi](30-qweather-geoapi.md) | ⬜ not-started | 04, 05, 18, 20, 25, 27 |
+| 30 | H | [qweather-geoapi](30-qweather-geoapi.md) | ✅ done | 04, 05, 18, 20, 25, 27 |
 | 31 | I | [icon-sets](31-icon-sets.md) | ✅ done | 07, 08, 17, 19 |
 | 32 | J | [coordinate-timezones](32-coordinate-timezones.md) | ✅ done | 04, 05, 18, 25 |
 | 33 | K | [cache-ttls](33-cache-ttls.md) | ✅ done | 05, 10, 23 |
@@ -178,6 +178,7 @@ src/
     mod.rs           Geocoder trait, IpLocator trait, LocationSpec
     open_meteo.rs    Open-Meteo geocoding (no key)
     nominatim.rs     OSM Nominatim fallback (`~query`), 1 req/s + mandatory cache
+    qweather.rs      QWeather GeoAPI city lookup: explicit-only, credential-bound, never cached (step 30)
     ip.rs            ipwho.is primary, ipapi.co fallback
     offline.rs       bundled GeoNames city table: folded-key search, no network (step 18)
     rank.rs          the one candidate ordering every source feeds
@@ -450,7 +451,7 @@ schema_version = 2
 [locations] home = "@39.9042,116.4074"   # @NAME aliases; values are location arguments, chains allowed (step 19)
 [templates] compact = "%c%t"             # named one-line templates for --format/--template @name (step 19)
 [geo]       strategy = "auto"       # bundled table first, network fallback (step 18)
-            search = "auto"         # name-search sources: auto (open-meteo, geonames when an account name is set, then nominatim) | open-meteo | geonames | nominatim (step 25)
+            search = "auto"         # name-search sources: auto (open-meteo, geonames when an account name is set, then nominatim) | open-meteo | geonames | nominatim | qweather (steps 25, 30)
             reverse = "auto"        # naming a coordinate: auto (bundled tables, then nominatim) | offline (no socket) | off (step 25)
             data = "auto"           # auto | bundled | user — which city table answers (step 18b)
             update = "off"          # off | check — a freshness note only, never a fetch (step 18b)

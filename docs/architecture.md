@@ -48,10 +48,11 @@ src/
     normals.rs       Normals: one climate comparison
   geo/
     mod.rs           Geocoder trait, IpLocator trait, LocationSpec, Resolved/Resolution
-    chain.rs         the `[geo] search` chain: Open-Meteo -> GeoNames -> Nominatim
+    chain.rs         the `[geo] search` chain: Open-Meteo -> GeoNames -> Nominatim (and qweather alone)
     open_meteo.rs    Open-Meteo geocoding (keyless)
     nominatim.rs     OSM Nominatim fallback (`~query`), 1 req/s + mandatory cache
     geonames.rs      GeoNames searchJSON (BYOK named credential)
+    qweather.rs      QWeather GeoAPI city lookup (BYOK, explicit only, never cached: step 30)
     ip.rs            ipwho.is -> ipapi.co -> IP.SB fallback chain
     offline.rs       bundled/user city table: folded-key search, no network
     country.rs       the offline country layer (Natural Earth admin-0, CC0)

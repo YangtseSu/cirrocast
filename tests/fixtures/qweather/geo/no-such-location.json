@@ -1,0 +1,1 @@
+{"error":{"status":400,"type":"https://dev.qweather.com/docs/resource/error-code/#no-such-location","title":"No Such Location","detail":"Cannot find the location of the query, please try another location."}}

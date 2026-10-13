@@ -91,7 +91,7 @@ exists in step 16 and is reused.
       row; the README air section names the second source; `CHANGELOG.md` gains the entry;
       `docs/plans/README.md` marks this step.
 
-## Measured facts (probe 2026-10-13, `kn76xbc7j5.re.qweatherapi.com`, `X-QW-Api-Key`)
+## Measured facts (probe 2026-10-13, `example.re.qweatherapi.com`, `X-QW-Api-Key`)
 
 The first deliverable was the live probe, and it corrected the documentation-derived notes above.
 Recorded here so the decoder's tables are measurements rather than promises:
@@ -253,3 +253,9 @@ cargo clippy --workspace --all-targets --locked -- -D warnings && reuse lint
   — the release line the CI action pins — lints the same tree clean (`532 / 532 files`), so the
   repo's compliance is unchanged and the local report is a 6.2.0 regression, recorded rather than
   worked around.
+- 2026-10-13 — the `## Measured facts` heading above used to name the account's own API host; it is
+  now the documented `example.re.qweatherapi.com` shape, which is the placeholder every test and
+  every other document already uses, so the repository names no real account host. The probe, its
+  findings and every measurement are unchanged, and no credential was ever in the repository to
+  begin with: the key is read from `CIRROCAST_QWEATHER_KEY` or `keys.toml` at run time and appears
+  in no file, fixture or commit.
