@@ -364,3 +364,27 @@ In order, on the commit that will carry the tag. Items 6–8 can only be checked
   claimed a value turning nullable bumps `schema_version`, while the compatibility rule two lines
   above it says the opposite (and the review-04 widening relied on that); the moved copy follows the
   compatibility rule.
+- 2026-10-13 — `1.5.0` cut at the branch head, carrying the three features steps 29–31 landed (the
+  QWeather air-quality source with the GB 3095-2012 CN AQI scale, the QWeather GeoAPI name source,
+  and the icon-set chain over the hand-drawn art). The bundled `GeoNames` snapshot was refreshed to
+  the official 2026-10-12 dump first: 34 162 rows / 310 607 keys, `cities.bin.gz` 878 286 B,
+  `keys.bin.gz` 2 559 058 B, checked with the network reachable; the Natural Earth country layer was
+  re-checked unchanged against its tagged release, and step 21's measured inputs were re-recorded,
+  including a `v1.5.0` binary row (16 306 400 B) and the timing/RSS rows. The commit to be tagged was
+  gated with `cargo fmt --check`, clippy (`--workspace --all-targets -D warnings`), the full and the
+  reduced-build test suites under `CIRROCAST_FORBID_NETWORK=1`, `reuse lint`, `cargo package --list`
+  (103 files: `src/**`, `locales/**`, the manifest, the lockfile, `LICENSE`, `README.md`,
+  `CHANGELOG.md` and nothing else), `cargo publish --dry-run` and `man --warn`; the workflow's own
+  gates (`cargo deny check`, `cargo audit`, the render-import script, the `LICENSE` copy check) were
+  green on the same commit. `man/cirrocast.1` and the version strings in the README, `CONTRIBUTING.md`,
+  `docs/getting-started.md`, `docs/troubleshooting.md` and the issue form moved to `1.5.0`; the
+  release workflow published three archives, the GitHub release and the crates.io version
+  (`cargo publish` via trusted publishing, 2026-10-13T09:07:40Z), and the AUR package was bumped in
+  its own repository (`updpkgsums` from the tag tarball, `makepkg --printsrcinfo`, `namcap` clean on
+  the PKGBUILD and the package, `makepkg -f` green including `check()`, and the unpacked payload
+  checked for `cirrocast 1.5.0`, `man -w cirrocast` and the three completion files). Checklist step 1
+  gained a caveat in the same change: the new version's `CHANGELOG.md` compare link and release page
+  404 until the tag is pushed and the release is published, so the `docs` job is red on the release
+  commit itself — re-running it afterwards (`gh run rerun <run-id> --failed`) is what makes the tagged
+  commit green. The `1.4.0` cut shipped with that job red and left it that way; this cut re-ran the
+  run green (run 38371288422, attempt 2).

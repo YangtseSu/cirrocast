@@ -246,6 +246,10 @@ A tag is never cut against a stale snapshot: steps 2 and 3 download the official
 where the network is reachable — never under `CIRROCAST_FORBID_NETWORK=1`.
 
 1. The four gates plus `cargo deny check` are green on the commit to be tagged, and CI is green on it.
+   The one job that cannot pass before the tag exists is `docs`: its link check reads the new
+   version's `CHANGELOG.md` compare link and release page, and both 404 until the tag is pushed and
+   the release is published. Re-run it once they exist — `gh run rerun <run-id> --failed` — so the
+   tagged commit ends green instead of carrying a red job nobody will look at again.
 2. The bundled city data is current:
    `cargo run -p geo-table -- https://download.geonames.org/export/dump/cities15000.zip --check`
    reports every file `unchanged` against the official dump. If it reports `CHANGED`, refresh the
