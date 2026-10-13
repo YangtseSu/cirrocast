@@ -527,7 +527,7 @@ with the build and platform:
 
 ```console
 $ cirrocast --version
-cirrocast 1.4.0
+cirrocast 1.5.0
 $ uname -srm
 Linux 7.2.9-1-cachyos x86_64
 ```

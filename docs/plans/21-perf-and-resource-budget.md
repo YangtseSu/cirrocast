@@ -116,26 +116,28 @@ evidence — keeping the decision, recording why.
 The offline city database is the largest single asset the binary carries, so its numbers are recorded
 here as the budget's input rather than discovered later. Machine: the maintainer's CachyOS box,
 `x86_64`, release profile as shipped in `Cargo.toml` (`lto = "thin"`, `strip = true`), rustc stable.
-Re-recorded on 2026-10-06 after the snapshot was refreshed to the official 2026-10-05 dump for the
-`1.3.0` release (see step 13's progress log); the `1.4.0` release refreshed it again, to the
-2026-10-06 dump, and the member sizes and the binary row below moved with it. Rows that name a step
-keep that step's measurement.
+Re-recorded on 2026-10-13, when the `1.5.0` release refreshed the snapshot to the official
+2026-10-12 dump; the `1.3.0` release had re-recorded it on 2026-10-06 against the 2026-10-05 dump
+(see step 13's progress log), and the `1.4.0` release moved the members and the binary row again, to
+the 2026-10-06 dump. The timing and RSS rows were re-measured in the same 2026-10-13 pass. Rows that
+name a step keep that step's measurement.
 
 | Measurement | Value |
 |---|---|
-| `src/geo/data/cities.bin.gz` | 878 073 B |
-| `src/geo/data/keys.bin.gz` | 2 558 595 B |
-| embedded total | 3 436 668 B ≈ **3.28 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-10-06 dump: 34 154 rows, 310 545 keys — refreshed for the `1.4.0` release) |
+| `src/geo/data/cities.bin.gz` | 878 286 B |
+| `src/geo/data/keys.bin.gz` | 2 559 058 B |
+| embedded total | 3 437 344 B ≈ **3.28 MiB** (the plan projected 2.55 MiB; the rows carry display *and* ascii name plus the geonameid, and the snapshot is the 2026-10-12 dump: 34 162 rows, 310 607 keys — refreshed for the `1.5.0` release) |
 | release binary before step 18 | 12 270 752 B |
 | release binary after step 18 | 15 928 616 B (+3 657 864 B ≈ +3.49 MiB: the data plus ≈220 KB of decoder/`unicode-normalization` code) |
 | release binary after step 18b | 16 047 296 B (+118 KB over step 18 for the shared table codec, the update command and its ZIP reader; the members are embedded once — a `const` holding `include_bytes!` was duplicated across codegen units and cost 3.4 MB until it became a `static`) |
 | release binary at `v1.3.0` | 16 191 744 B (the 2026-10-05 refresh plus steps 19–28: the template engine, the extra backends, alerts, normals and the panel renderers on top of the 18b build) |
 | release binary at `v1.4.0` | 16 209 256 B (measured 2026-10-08: the alert v1 migration and its attribution lines, the coordinate-zone work with `--tz`, and the second cache TTL on top of the `v1.3.0` build; the 2026-10-06 data refresh moved the members by 164 B) |
-| `--version`, median of 5 | **1.5 ms** (budget: 20 ms) |
-| `--help`, median of 3 | 1.8 ms |
-| `location search --offline Beijing`, median of 5 | **52 ms** (index + row decode, ranking; the step-18 contract is "well under a second") |
-| `location search --offline --all Springfield`, median of 5 | 60 ms |
-| RSS, `--version` / an offline search | ≈12 MB / ≈25 MB (`ru_maxrss` of the child, coarse; the step-18 decode holds the decompressed members transiently) |
+| release binary at `v1.5.0` | 16 306 400 B (measured 2026-10-13: the QWeather air-quality source with its CN AQI scale, the QWeather GeoAPI location source, and the icon-set chain on top of the `v1.4.0` build; the 2026-10-12 data refresh moved the members by 676 B) |
+| `--version`, median of 5 | **1.7 ms** (budget: 20 ms) |
+| `--help`, median of 3 | 1.6 ms |
+| `location search --offline Beijing`, median of 5 | **49 ms** (index + row decode, ranking; the step-18 contract is "well under a second") |
+| `location search --offline --all Springfield`, median of 5 | 45 ms |
+| RSS, `--version` / an offline search | ≈12 MB / ≈25 MB (12 236 KB / 25 376 KB, `ru_maxrss` of the child, coarse; the step-18 decode holds the decompressed members transiently) |
 
 Two consequences for this step: the 5 MB default-binary budget is already exceeded by the pre-step-18
 build (12.3 MB) and is not reachable by turning the table off (that saves 3.6 MB of 15.9 MB), so the

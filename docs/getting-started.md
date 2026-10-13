@@ -42,15 +42,15 @@ Every release publishes one archive per target:
 | `aarch64-apple-darwin` | macOS, Apple silicon |
 
 ```console
-$ version=v1.4.0 target=x86_64-unknown-linux-gnu
+$ version=v1.5.0 target=x86_64-unknown-linux-gnu
 $ curl -LO "https://github.com/YangtseSu/cirrocast/releases/download/$version/cirrocast-$version-$target.tar.gz"
 $ curl -LO "https://github.com/YangtseSu/cirrocast/releases/download/$version/cirrocast-$version-$target.tar.gz.sha256"
 $ sha256sum -c "cirrocast-$version-$target.tar.gz.sha256"
-cirrocast-v1.4.0-x86_64-unknown-linux-gnu.tar.gz: OK
+cirrocast-v1.5.0-x86_64-unknown-linux-gnu.tar.gz: OK
 $ tar xzf "cirrocast-$version-$target.tar.gz"
 $ install -Dm755 "cirrocast-$version-$target/cirrocast" ~/.local/bin/cirrocast
 $ cirrocast --version
-cirrocast 1.4.0
+cirrocast 1.5.0
 ```
 
 Each archive contains the `cirrocast` binary plus `README.md`, `LICENSE`, `CHANGELOG.md`, the
@@ -60,7 +60,7 @@ verify the checksum with `shasum -a 256 -c`.
 ### From crates.io or the checkout
 
 ```console
-$ cargo install --locked cirrocast             # 1.4.0 is on crates.io
+$ cargo install --locked cirrocast             # 1.5.0 is on crates.io
 $ cargo install --locked --path .              # from this checkout
 ```
 
