@@ -313,6 +313,8 @@ pub mod keys {
     pub const AQI_US_LABEL: MessageKey = MessageKey::new("aqi-us-label");
     /// The European AQI scale's name.
     pub const AQI_EUROPEAN_LABEL: MessageKey = MessageKey::new("aqi-european-label");
+    /// The Chinese national AQI scale's name.
+    pub const AQI_CN_LABEL: MessageKey = MessageKey::new("aqi-cn-label");
     /// The pollen block's title.
     pub const AQI_POLLEN_TITLE: MessageKey = MessageKey::new("aqi-pollen-title");
     /// `not covered at this location`: the source has no pollen forecast here.
@@ -325,8 +327,13 @@ pub mod keys {
     pub const AQI_UV_SOURCE: MessageKey = MessageKey::new("aqi-uv-source");
     /// The credit line Open-Meteo's terms require beside its air data.
     pub const AIR_CREDIT_OPEN_METEO: MessageKey = MessageKey::new("air-credit-open-meteo");
-    /// The ten category names, indexed by `AqiCategory::index`.
-    pub const AQI_CATEGORIES: [MessageKey; 10] = [
+    /// The credit line `QWeather`'s attribution terms require beside its air data.
+    pub const AIR_CREDIT_QWEATHER: MessageKey = MessageKey::new("air-credit-qweather");
+    /// The sixteen category names, indexed by `AqiCategory::index`.
+    ///
+    /// The first ten are the US and European words, the last six the Chinese scale's (GB
+    /// 3095-2012), whose `良` and the US `Good` are two different words in both catalogs.
+    pub const AQI_CATEGORIES: [MessageKey; 16] = [
         MessageKey::new("aqi-category-good"),
         MessageKey::new("aqi-category-moderate"),
         MessageKey::new("aqi-category-unhealthy-sensitive"),
@@ -337,6 +344,12 @@ pub mod keys {
         MessageKey::new("aqi-category-poor"),
         MessageKey::new("aqi-category-very-poor"),
         MessageKey::new("aqi-category-extremely-poor"),
+        MessageKey::new("aqi-category-cn-excellent"),
+        MessageKey::new("aqi-category-cn-good"),
+        MessageKey::new("aqi-category-cn-light"),
+        MessageKey::new("aqi-category-cn-moderate"),
+        MessageKey::new("aqi-category-cn-heavy"),
+        MessageKey::new("aqi-category-cn-severe"),
     ];
     /// The six regulated pollutants, in the order the panel prints them.
     pub const POLLUTANTS: [MessageKey; 6] = [
@@ -511,12 +524,14 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::AQI_PANEL_TITLE,
     keys::AQI_US_LABEL,
     keys::AQI_EUROPEAN_LABEL,
+    keys::AQI_CN_LABEL,
     keys::AQI_POLLEN_TITLE,
     keys::AQI_NO_COVERAGE,
     keys::AQI_UNAVAILABLE,
     keys::AQI_UV_LABEL,
     keys::AQI_UV_SOURCE,
     keys::AIR_CREDIT_OPEN_METEO,
+    keys::AIR_CREDIT_QWEATHER,
     keys::AQI_CATEGORIES[0],
     keys::AQI_CATEGORIES[1],
     keys::AQI_CATEGORIES[2],
@@ -527,6 +542,12 @@ pub const RENDERER_KEYS: &[MessageKey] = &[
     keys::AQI_CATEGORIES[7],
     keys::AQI_CATEGORIES[8],
     keys::AQI_CATEGORIES[9],
+    keys::AQI_CATEGORIES[10],
+    keys::AQI_CATEGORIES[11],
+    keys::AQI_CATEGORIES[12],
+    keys::AQI_CATEGORIES[13],
+    keys::AQI_CATEGORIES[14],
+    keys::AQI_CATEGORIES[15],
     keys::POLLUTANTS[0],
     keys::POLLUTANTS[1],
     keys::POLLUTANTS[2],

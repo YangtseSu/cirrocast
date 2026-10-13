@@ -1103,8 +1103,8 @@ fn temp_value(celsius: Option<f32>, precision: Option<usize>, ctx: &RenderContex
 /// `US AQI 43 (Good)`: the index and category of the scale [`RenderContext::aqi_index`] selects.
 ///
 /// The category word is localised like every other label; an air reading whose selected index is
-/// absent (a source that reports only one of the two scales) prints `n/a` rather than the other
-/// scale's number under the selected scale's name.
+/// absent (a source that reports another scale, or none this client maps) prints `n/a` rather than
+/// another scale's number under the selected scale's name.
 fn quality_summary(air: &crate::model::AirQuality, ctx: &RenderContext<'_>) -> String {
     let (value, category) = match ctx.aqi_index {
         AqiIndex::Us => (air.aqi_us, air.aqi_us.map(AqiCategory::from_us)),
@@ -1112,6 +1112,7 @@ fn quality_summary(air: &crate::model::AirQuality, ctx: &RenderContext<'_>) -> S
             air.aqi_european,
             air.aqi_european.map(AqiCategory::from_european),
         ),
+        AqiIndex::Cn => (air.aqi_cn, air.aqi_cn.map(AqiCategory::from_cn)),
     };
     let Some(value) = value else {
         return n_a(ctx);

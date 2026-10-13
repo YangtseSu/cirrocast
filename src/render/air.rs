@@ -23,9 +23,13 @@
 //!   line instead of wrapping a dense one.
 //! * `--format dumb`/ASCII terminals get the same panel through [`super::art_table::fold_ascii`]:
 //!   the middle dot becomes `.` and `μg/m³` reads `ug/m3`.
-//! * The credits travel with the data: the Open-Meteo line sits in the panel (and therefore in
-//!   `art-table`'s footer area and in the standalone view), and `plain` keeps it as a document
-//!   line like the other licences.
+//! * The credits travel with the data: the source's credit line sits in the panel (and therefore
+//!   in `art-table`'s footer area and in the standalone view), the attribution lines the response
+//!   itself carried follow it verbatim (`QWeather`'s terms require exactly that), and `plain` keeps
+//!   them as document lines like the other licences.
+//! * With `QWeather` as the source the index line carries the scales that response had: a
+//!   mainland-China reading prints `CN AQI 20 (Excellent)` alone, a point whose local standard is
+//!   not one this client maps prints no index line at all (the pollutants still speak).
 
 use std::borrow::Cow;
 
@@ -136,7 +140,7 @@ pub fn records(report: &Report, ctx: &RenderContext<'_>) -> Vec<String> {
             super::plain::record_key(&ctx.i18n.text(&keys::AQI_UV_LABEL))
         ));
     }
-    lines.push(ctx.i18n.text(&credit_key(air.source)).into_owned());
+    lines.extend(credit_lines(air, ctx));
     lines
 }
 
@@ -151,7 +155,10 @@ fn compact(
     ctx: &RenderContext<'_>,
     depth: ColorDepth,
 ) -> Vec<String> {
-    let mut lines = vec![index_line(air, ctx, depth)];
+    let mut lines = Vec::new();
+    if let Some(line) = index_line(air, ctx, depth) {
+        lines.push(line);
+    }
     if let Some(line) = pollutant_line(air, ctx) {
         lines.push(line);
     }
@@ -163,7 +170,7 @@ fn compact(
     if let Some(line) = uv_line(report, ctx) {
         lines.push(line);
     }
-    lines.push(ctx.i18n.text(&credit_key(air.source)).into_owned());
+    lines.extend(credit_lines(air, ctx));
     lines
 }
 
@@ -214,7 +221,7 @@ fn stacked(
     if let Some(line) = uv_line(report, ctx) {
         lines.push(line);
     }
-    lines.push(ctx.i18n.text(&credit_key(air.source)).into_owned());
+    lines.extend(credit_lines(air, ctx));
     lines
 }
 
@@ -222,17 +229,26 @@ fn stacked(
 // Line pieces
 // ---------------------------------------------------------------------------------------------
 
-/// `Air quality: US AQI 43 (Good) · European AQI 42 (Good)`.
-fn index_line(air: &AirQuality, ctx: &RenderContext<'_>, depth: ColorDepth) -> String {
+/// `Air quality: CN AQI 20 (Excellent) · US AQI 43 (Good)`, or `None` when the reading carries no
+/// scale this client maps.
+///
+/// The empty case is real: `QWeather` publishes QAQI *and* a local standard, and a point whose local
+/// standard is one this client does not model (Japan's `jp-moe`, Singapore's `sg-nea`) leaves all
+/// three fields absent. A title with nothing after its colon would read as a broken panel, so the
+/// line is dropped and the pollutants — which those responses do carry — speak for themselves.
+fn index_line(air: &AirQuality, ctx: &RenderContext<'_>, depth: ColorDepth) -> Option<String> {
     let entries: Vec<String> = AqiIndex::ALL
         .into_iter()
         .filter_map(|index| index_entry(air, index, ctx, depth))
         .collect();
-    format!(
+    if entries.is_empty() {
+        return None;
+    }
+    Some(format!(
         "{}: {}",
         ctx.i18n.text(&keys::AQI_PANEL_TITLE),
         entries.join(" · ")
-    )
+    ))
 }
 
 /// One scale's `US AQI 43 (Good)`, painted with the category ramp when it is the selected scale.
@@ -248,6 +264,7 @@ fn index_entry(
             air.aqi_european,
             air.aqi_european.map(AqiCategory::from_european),
         ),
+        AqiIndex::Cn => (air.aqi_cn, air.aqi_cn.map(AqiCategory::from_cn)),
     };
     let value = value?;
     let label = ctx.i18n.text(&index.label_key());
@@ -385,7 +402,24 @@ pub(super) fn number(value: f64) -> String {
 fn credit_key(source: AirSource) -> MessageKey {
     match source {
         AirSource::OpenMeteo => keys::AIR_CREDIT_OPEN_METEO,
+        AirSource::QWeather => keys::AIR_CREDIT_QWEATHER,
     }
+}
+
+/// The source's credit line followed by the attribution lines the response carried, in order.
+///
+/// `QWeather`'s terms require `metadata.attributions` shown in full and unmodified wherever its
+/// air-quality data is shown, so nothing here is trimmed, reworded or dropped for looking like a
+/// duplicate of the catalog line; a line that genuinely repeats — upstream has sent the same string
+/// twice — prints once, which is the same rule [`crate::alerts::credits`] applies to its own.
+fn credit_lines(air: &AirQuality, ctx: &RenderContext<'_>) -> Vec<String> {
+    let mut lines = vec![ctx.i18n.text(&credit_key(air.source)).into_owned()];
+    for line in &air.credit {
+        if !line.trim().is_empty() && !lines.iter().any(|seen| seen == line) {
+            lines.push(line.clone());
+        }
+    }
+    lines
 }
 
 /// Wraps each line to `width` display columns at spaces, clipping a single word that cannot fit.
@@ -615,6 +649,7 @@ mod tests {
                 .expect("a valid instant"),
             aqi_us: Some(43),
             aqi_european: Some(42),
+            aqi_cn: None,
             pm2_5: None,
             pm10: None,
             o3: None,
@@ -630,6 +665,7 @@ mod tests {
                 ragweed: Some(0.0),
             }),
             source: AirSource::OpenMeteo,
+            credit: Vec::new(),
         };
         let body = pollen_body(&air, &ctx);
         assert!(body.contains("alder 1.2"), "{body}");

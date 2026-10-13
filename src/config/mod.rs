@@ -92,7 +92,11 @@ pub const SEVERITY_LEVELS: &[&str] = &["unknown", "minor", "moderate", "severe",
 
 /// Allowed values of `[air] index`; mirrors `air::aqi::AqiIndex::ALL`, and a unit test keeps the
 /// two in step.
-pub const AQI_INDEXES: &[&str] = &["us", "european"];
+pub const AQI_INDEXES: &[&str] = &["us", "european", "cn"];
+
+/// Allowed values of `[air] source`; mirrors `air::AirChoice::ALL`, and a unit test keeps the two
+/// in step.
+pub const AIR_SOURCES: &[&str] = &["auto", "open-meteo", "qweather"];
 
 /// Allowed values of `[geo] strategy` (step 18): the bundled table first with a network fallback,
 /// the bundled table only, or the network geocoder only.
@@ -329,8 +333,12 @@ pub struct AlertsConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AirConfig {
-    /// Which AQI scale drives the panel's category colour and the `%q` token: `us` or `european`.
+    /// Which AQI scale drives the panel's category colour and the `%q` token: `us`, `european` or
+    /// `cn`.
     pub index: String,
+    /// Which source answers the reading: `auto` (coverage- and credential-selected),
+    /// `open-meteo` or `qweather`.
+    pub source: String,
 }
 
 /// `[normals]` — the climate-normals comparison (`--normals`).
@@ -497,6 +505,7 @@ impl Default for AirConfig {
     fn default() -> Self {
         Self {
             index: "us".to_owned(),
+            source: "auto".to_owned(),
         }
     }
 }
@@ -961,9 +970,11 @@ impl Config {
         check_positive("alerts.cache_ttl_secs", self.alerts.cache_ttl_secs)
     }
 
-    /// `[air] index` must be one of the two documented scales.
+    /// `[air] index` must be one of the three documented scales, and `[air] source` one of the
+    /// documented selectors.
     fn validate_air(&self) -> Result<()> {
-        check_enum("air.index", &self.air.index, AQI_INDEXES)
+        check_enum("air.index", &self.air.index, AQI_INDEXES)?;
+        check_enum("air.source", &self.air.source, AIR_SOURCES)
     }
 
     /// `[normals] period` must be two four-digit years with the earlier one first, and the radius
@@ -1325,7 +1336,7 @@ fn allowed_keys(table: &str) -> Option<&'static [&'static str]> {
             "fpas_url",
             "cache_ttl_secs",
         ],
-        "air" => &["index"],
+        "air" => &["index", "source"],
         "normals" => &["period", "max_distance_km"],
         "status" => &["placeholder"],
         "providers" => &["metar", "qweather"],
@@ -1599,7 +1610,9 @@ fpas_url = ""                 # FOSS Public Alert Server base URL; empty = https
 cache_ttl_secs = 300          # 5 minutes
 
 [air]
-index = "us"             # us | european: the AQI scale that drives the panel colour and %q
+index = "us"             # us | european | cn: the AQI scale that drives the panel colour and %q
+source = "auto"          # auto | open-meteo | qweather; auto prefers qweather in mainland China
+                         # when that provider is on the --provider chain and has a credential
 
 [normals]
 period = "1991-2020"     # the reference window the normal is averaged over: two four-digit years
@@ -1927,6 +1940,12 @@ pub const KEY_TABLE: &[KeySpec] = &[
         env: None,
     },
     KeySpec {
+        name: "air.source",
+        kind: KeyKind::Enum(AIR_SOURCES),
+        doc: "air-quality source: auto, open-meteo or qweather",
+        env: None,
+    },
+    KeySpec {
         name: "normals.period",
         kind: KeyKind::Str,
         doc: "climate-normal window, two four-digit years",
@@ -2031,6 +2050,7 @@ impl Config {
             "alerts.fpas_url" => self.alerts.fpas_url.clone(),
             "alerts.cache_ttl_secs" => self.alerts.cache_ttl_secs.to_string(),
             "air.index" => self.air.index.clone(),
+            "air.source" => self.air.source.clone(),
             "normals.period" => self.normals.period.clone(),
             "normals.max_distance_km" => self.normals.max_distance_km.to_string(),
             "status.placeholder" => self.status.placeholder.clone(),
@@ -2163,6 +2183,10 @@ impl Config {
                 check_enum(spec.name, &value, AQI_INDEXES)?;
                 self.air.index = value;
             }
+            "air.source" => {
+                check_enum(spec.name, &value, AIR_SOURCES)?;
+                self.air.source = value;
+            }
             "normals.period" => {
                 check_period(spec.name, &value)?;
                 self.normals.period = value;
@@ -2230,6 +2254,7 @@ impl Config {
             "alerts.fpas_url" => self.validate_fpas_url(),
             "alerts.cache_ttl_secs" => check_positive(key, self.alerts.cache_ttl_secs),
             "air.index" => self.validate_air(),
+            "air.source" => check_enum(key, &self.air.source, AIR_SOURCES),
             "normals.period" => check_period(key, &self.normals.period),
             "normals.max_distance_km" => check_range(
                 key,
@@ -2353,8 +2378,10 @@ pub struct Settings {
     pub days: u8,
     /// Output language tag or `auto`.
     pub lang: String,
-    /// AQI scale for the air panel (`us` or `european`).
+    /// AQI scale for the air panel (`us`, `european` or `cn`).
     pub aqi_index: String,
+    /// Air-quality source selector (`auto`, `open-meteo` or `qweather`).
+    pub air_source: String,
     /// Icon set chain for the condition and moon art (`blocks`, `emoji`, `nerd`, or a chain).
     pub icons: String,
     /// Location argument (`location.default`), when one is configured.
@@ -2390,6 +2417,8 @@ pub struct CliOverrides {
     pub lang: Option<String>,
     /// `--aqi-index`.
     pub aqi_index: Option<String>,
+    /// `--air-source`.
+    pub air_source: Option<String>,
     /// `--icons`.
     pub icons: Option<String>,
     /// The positional location argument.
@@ -2433,6 +2462,10 @@ impl Settings {
                 .aqi_index
                 .clone()
                 .unwrap_or_else(|| config.air.index.clone()),
+            air_source: cli
+                .air_source
+                .clone()
+                .unwrap_or_else(|| config.air.source.clone()),
             icons: cli
                 .icons
                 .clone()

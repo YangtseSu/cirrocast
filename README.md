@@ -100,7 +100,8 @@ cirrocast [OPTIONS] [LOCATION]...
       --ip                  locate from the public IP (opt-in; see Privacy below)
       --station <ICAO>      METAR station; `metar` heads the provider chain
       --alerts/--no-alerts, --severity <LEVEL>, --alerts-from <LIST>
-      --aqi [--aqi-index us|european], --moon, --normals, --marine
+      --aqi [--aqi-index us|european|cn] [--air-source auto|open-meteo|qweather],
+      --moon, --normals, --marine
       --date <YYYY-MM-DD>, --history <Nd>          the archive instead of a forecast
       --template <TPL>, --template-file <PATH>     one-line templates
       --offline[=weather|geo|all], --no-cache, --refresh, --timeout <SECS>
@@ -223,7 +224,10 @@ above is enough. The `GeoNames` credit prints for either table.
 Nordics), then the global entries (`open-meteo`, `met-no`) — and `-v` prints the chain it chose. A
 chain falls through to the next backend only when the failure is transport-level or comes from
 upstream (a timeout, a `429`, a `5xx`); a usage, configuration, location or credential error stops
-the walk.
+the walk. The air-quality panel picks its source the same way the alert registry does: `auto`
+prefers QWeather in mainland China when that provider is on the chain and holds a credential, and
+answers from the keyless Open-Meteo everywhere else (`--air-source`, `[air] source`), so
+`--aqi-index cn` prints the Chinese national AQI wherever it exists.
 
 Keys are BYOK and never enter `config.toml` (see [API keys](#api-keys)). Every rendered report
 carries the credit its data licence asks for, and nothing is redistributed. Alerts are a separate

@@ -226,6 +226,7 @@ fn decode(response: &AirResponse, verbose: u8) -> Result<AirQuality> {
         time,
         aqi_us: block.us_aqi,
         aqi_european: block.european_aqi,
+        aqi_cn: None,
         pm2_5: block.pm2_5,
         pm10: block.pm10,
         o3: block.ozone,
@@ -234,6 +235,9 @@ fn decode(response: &AirResponse, verbose: u8) -> Result<AirQuality> {
         co: block.carbon_monoxide,
         pollen,
         source: AirSource::OpenMeteo,
+        // Open-Meteo's terms ask for the credit line the panel prints; the payload carries no
+        // attribution list of its own.
+        credit: Vec::new(),
     })
 }
 

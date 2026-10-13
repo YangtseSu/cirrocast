@@ -293,6 +293,7 @@ alert-credit-fpas = Warnings via the FOSS Public Alert Server ({ $host })
 aqi-panel-title = Air quality
 aqi-us-label = US AQI
 aqi-european-label = European AQI
+aqi-cn-label = CN AQI
 aqi-pollen-title = Pollen
 aqi-no-coverage = not covered at this location
 aqi-unavailable = air quality unavailable
@@ -309,6 +310,14 @@ aqi-category-fair = Fair
 aqi-category-poor = Poor
 aqi-category-very-poor = Very poor
 aqi-category-extremely-poor = Extremely poor
+# The Chinese national scale (GB 3095-2012), 优 → 严重污染. `Good` is the US scale's `0..=50` word
+# as well; the two live under different keys because they are different words in the catalogs.
+aqi-category-cn-excellent = Excellent
+aqi-category-cn-good = Good
+aqi-category-cn-light = Light pollution
+aqi-category-cn-moderate = Moderate pollution
+aqi-category-cn-heavy = Heavy pollution
+aqi-category-cn-severe = Severe pollution
 
 pm2-5 = PM2.5
 pm10 = PM10
@@ -327,6 +336,9 @@ pollen-ragweed = ragweed
 unit-ug-m3 = μg/m³
 unit-grains-m3 = grains/m³
 air-credit-open-meteo = Air quality data by Open-Meteo.com (CAMS ENSEMBLE)
+# QWeather's attribution terms require its name and this link wherever its air-quality data is
+# shown; the same line the forecast's licence row carries.
+air-credit-qweather = Air quality data by QWeather — https://www.qweather.com/
 
 # --- Marine (step 23) ---------------------------------------------------------------------------
 # The wave block `--marine` appends: one current sea state, the sampled sea cell when it is far

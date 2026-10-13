@@ -98,13 +98,20 @@ Options:
           overrides `[alerts] severity_threshold`
 
       --aqi
-          Append the air-quality panel (US and European AQI, the six pollutants, pollen where the
-          source covers it and the report's UV reading) to the table and plain output, and carry it
-          as a typed object in `json`. `--format aqi` prints the panel standalone
+          Append the air-quality panel (the AQI scales the source carries, the six pollutants,
+          pollen where the source covers it and the report's UV reading) to the table and plain
+          output, and carry it as a typed object in `json`. `--format aqi` prints the panel
+          standalone
 
       --aqi-index <SCALE>
-          Which AQI scale drives the panel's colour and the one-line `%q` token: `us` or `european`;
-          overrides `[air] index`. Needs `--aqi` or `--format aqi`
+          Which AQI scale drives the panel's colour and the one-line `%q` token: `us`, `european` or
+          `cn`; overrides `[air] index`. Needs `--aqi` or `--format aqi`
+
+      --air-source <SOURCE>
+          Which source answers the air-quality reading: `auto`, `open-meteo` or `qweather`;
+          overrides `[air] source`. `auto` reads from `qweather` in mainland China when that
+          provider is on the chain and a credential is configured, and from the keyless Open-Meteo
+          elsewhere
 
       --moon
           Compute the moon and sun block locally (no request) and append it to the table and `plain`

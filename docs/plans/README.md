@@ -97,7 +97,7 @@ dated documents under `docs/reviews/` keep the numbering of their date.
 | 26 | F | [climate-normals](26-climate-normals.md) | ✅ done | 03, 06, 08 |
 | 27 | F | [qweather-jwt-auth](27-qweather-jwt-auth.md) | ✅ done | 02, 10, 15 |
 | 28 | G | [docs-and-guides](28-docs-and-guides.md) | ✅ done | 14, 19, and the surface of 18–27 |
-| 29 | H | [qweather-air-quality](29-qweather-air-quality.md) | ⬜ not-started | 16, 27 |
+| 29 | H | [qweather-air-quality](29-qweather-air-quality.md) | ✅ done | 16, 27 |
 | 30 | H | [qweather-geoapi](30-qweather-geoapi.md) | ⬜ not-started | 04, 05, 18, 20, 25, 27 |
 | 31 | I | [icon-sets](31-icon-sets.md) | ✅ done | 07, 08, 17, 19 |
 | 32 | J | [coordinate-timezones](32-coordinate-timezones.md) | ✅ done | 04, 05, 18, 25 |
@@ -190,9 +190,10 @@ src/
   http.rs            shared HTTP client: timeouts, UA, retries/backoff, proxy, error taxonomy
   cache.rs           on-disk cache: keys, TTLs, atomic writes, offline mode
   air/
-    mod.rs           air-quality facade (best-effort, one panel per run)
-    aqi.rs           the US and European AQI category scales
+    mod.rs           air-quality facade (best-effort, one panel per run) + the source selector
+    aqi.rs           the US, European and Chinese AQI category scales
     open_meteo.rs    Open-Meteo Air Quality API (keyless)
+    qweather.rs      QWeather air quality: the national AQI and the local index set (step 29)
   astro/
     mod.rs           Astro::compute, GMST, the local-day window and the shared rise/set search
     julian.rs        Julian dates and the ΔT seam (Espenak–Meeus fits)

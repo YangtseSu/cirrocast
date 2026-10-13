@@ -346,12 +346,14 @@ impl<'a> CurrentJson<'a> {
 struct AirJson {
     /// Observation time, ISO 8601 with the location's offset.
     time: String,
-    /// The source id, e.g. `open-meteo`.
+    /// The source id, e.g. `open-meteo` or `qweather`.
     source: &'static str,
     /// US AQI, exactly as the source reports it.
     aqi_us: Option<u16>,
     /// European AQI, exactly as the source reports it.
     aqi_european: Option<u16>,
+    /// The Chinese national AQI (GB 3095-2012), exactly as the source reports it.
+    aqi_cn: Option<u16>,
     /// Each index's category, derived from the raw number.
     category: AirCategoryJson,
     /// Fine particulate matter.
@@ -368,6 +370,9 @@ struct AirJson {
     co: Option<f64>,
     /// Pollen forecast; `null` outside the source's pollen domain.
     pollen: Option<PollenJson>,
+    /// The attribution lines the source's terms require shown with its data, verbatim; empty for a
+    /// source whose terms ask for nothing beyond its own credit line.
+    credit: Vec<String>,
     /// The units the numbers are in.
     units: AirUnitsJson,
 }
@@ -380,11 +385,13 @@ impl AirJson {
             source: air.source.as_str(),
             aqi_us: air.aqi_us,
             aqi_european: air.aqi_european,
+            aqi_cn: air.aqi_cn,
             category: AirCategoryJson {
                 us: air.aqi_us.map(|index| AqiCategory::from_us(index).as_str()),
                 european: air
                     .aqi_european
                     .map(|index| AqiCategory::from_european(index).as_str()),
+                cn: air.aqi_cn.map(|index| AqiCategory::from_cn(index).as_str()),
             },
             pm2_5: air.pm2_5.map(normalise_zero_f64),
             pm10: air.pm10.map(normalise_zero_f64),
@@ -393,6 +400,7 @@ impl AirJson {
             so2: air.so2.map(normalise_zero_f64),
             co: air.co.map(normalise_zero_f64),
             pollen: air.pollen.as_ref().map(PollenJson::of),
+            credit: air.credit.clone(),
             units: AirUnitsJson {
                 pollutants: POLLUTANT_UNIT,
                 pollen: POLLEN_UNIT,
@@ -489,6 +497,9 @@ struct AirCategoryJson {
     us: Option<&'static str>,
     /// The European scale's category, e.g. `fair`.
     european: Option<&'static str>,
+    /// The Chinese national scale's category, e.g. `light-pollution`; `good` here is that scale's
+    /// `51..=100` word, not the US one.
+    cn: Option<&'static str>,
 }
 
 /// The pollen forecast, in grains/m³.

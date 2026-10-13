@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Yangtse Su <yangtsesu@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Air quality end to end: the Open-Meteo adapter over scripted transports, the two category
-//! scales at their documented breakpoints, the panel's width invariant and the CLI formats over a
-//! seeded air cache.
+//! Air quality end to end: both adapters (the keyless Open-Meteo and, since step 29, the
+//! provider-bound QWeather) over scripted transports, the three category scales at their
+//! documented breakpoints, the panel's width invariant and the CLI formats over a seeded air
+//! cache.
 //!
 //! Nothing here touches the network: the adapter runs over [`StubTransport`] with the recorded
 //! fixtures in `tests/fixtures/air/`, and the CLI runs use `--offline` over cache entries the test
@@ -43,6 +44,10 @@ const LAT: f64 = 39.9075;
 /// The longitude half of the pair.
 const LON: f64 = 116.39723;
 
+/// The account host a `qweather`-configured harness carries (the console's per-account hostname
+/// shape).
+const QWEATHER_HOST: &str = "https://abc123.re.qweatherapi.com";
+
 /// The instant the harness clock starts at.
 fn now() -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(NOW)
@@ -68,6 +73,11 @@ fn location(name: &str, lat: f64, lon: f64, tz: Tz) -> Location {
     }
 }
 
+/// Beijing, the point the recorded `QWeather` air response was fetched for.
+fn beijing() -> Location {
+    location("Beijing", LAT, LON, Tz::Asia__Shanghai)
+}
+
 /// Berlin, where the recorded reading carries every pollen species (as a zero count).
 fn berlin() -> Location {
     location("Berlin", 52.52, 13.405, Tz::Europe__Berlin)
@@ -86,6 +96,12 @@ fn reykjavik() -> Location {
 /// One recorded fixture as a `200` reply.
 fn fixture(name: &str) -> StubReply {
     StubReply::json_file(fixture_path(&format!("air/{name}"))).expect("the fixture is readable")
+}
+
+/// One recorded `QWeather` air response as a `200` reply.
+fn qweather_fixture(name: &str) -> StubReply {
+    StubReply::json_file(fixture_path(&format!("qweather/air/{name}")))
+        .expect("the fixture is readable")
 }
 
 /// A fetch run: scripted transport, throwaway cache, key store and a fixed clock.
@@ -128,8 +144,17 @@ impl Harness {
         }
     }
 
-    /// Fetches the air reading for `loc`.
+    /// Fetches the air reading for `loc` from the keyless source.
     fn fetch(&self, loc: &Location) -> cirrocast::error::Result<AirQuality> {
+        self.fetch_source(loc, AirSource::OpenMeteo)
+    }
+
+    /// Fetches `source`'s reading for `loc`.
+    fn fetch_source(
+        &self,
+        loc: &Location,
+        source: AirSource,
+    ) -> cirrocast::error::Result<AirQuality> {
         let env = Env {
             http: &self.http,
             cache: &self.cache,
@@ -138,12 +163,20 @@ impl Harness {
             quiet: true,
             verbose: 0,
         };
-        cirrocast::air::fetch(loc, &env)
+        cirrocast::air::fetch(loc, &env, source)
     }
 
     /// Every request the transport saw.
     fn calls(&self) -> Vec<cirrocast::http::HttpRequest> {
         self.transport.calls()
+    }
+
+    /// The account host and credential the provider-bound source borrows.
+    fn with_qweather_account(&mut self) {
+        self.config.providers.qweather.host = QWEATHER_HOST.to_string();
+        self.keys
+            .set("qweather", "test-key")
+            .expect("the API key is stored");
     }
 }
 
@@ -273,6 +306,118 @@ fn a_unit_mismatch_names_the_field_and_the_received_unit() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The QWeather source
+// ---------------------------------------------------------------------------------------------
+
+/// Whether the environment leaks a `QWeather` credential into these tests.
+///
+/// A machine that exports one cannot exercise the key-store path: the environment wins by design,
+/// and a test cannot clear it (edition 2024's `set_var` is unsafe, and the crate forbids unsafe).
+fn qweather_env_unset() -> bool {
+    [
+        "CIRROCAST_QWEATHER_KEY",
+        "CIRROCAST_QWEATHER_JWT_CREDENTIAL_ID",
+        "CIRROCAST_QWEATHER_JWT_DEVELOPER_ID",
+        "CIRROCAST_QWEATHER_JWT_PROJECT_ID",
+        "CIRROCAST_QWEATHER_JWT_PRIVATE_KEY",
+    ]
+    .iter()
+    .all(|name| std::env::var_os(name).is_none())
+}
+
+#[test]
+fn the_qweather_adapter_requests_the_documented_url_and_decodes_the_national_index() {
+    let mut harness = Harness::new(
+        vec![qweather_fixture("beijing-2026-10-13.json")],
+        CacheMode::Normal,
+    );
+    harness.with_qweather_account();
+
+    let reading = harness
+        .fetch_source(&beijing(), AirSource::QWeather)
+        .expect("the recorded reading decodes");
+    assert_eq!(reading.source, AirSource::QWeather);
+    assert_eq!(reading.aqi_cn, Some(20), "the Chinese national index");
+    assert_eq!(reading.aqi_us, None, "the point carries no US standard");
+    assert_eq!(reading.aqi_european, None);
+    assert_eq!(reading.pm2_5, Some(3.0));
+    assert_eq!(reading.co, Some(200.0), "0.2 mg/m³ in the model's μg/m³");
+    assert_eq!(reading.pollen, None, "QWeather publishes no pollen");
+    assert_eq!(
+        reading.credit,
+        ["https://developer.qweather.com/attribution.html"]
+    );
+
+    let calls = harness.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].url(),
+        format!("{QWEATHER_HOST}/airquality/v1/current/39.9075/116.3972")
+    );
+    assert_eq!(
+        calls[0].headers(),
+        [("X-QW-Api-Key".to_owned(), "test-key".to_owned())]
+    );
+
+    // The second read is served from the source's own cache entry (`weather/qweather-air-…`): the
+    // keyless source's numbers can never be served in its place.
+    assert_eq!(
+        harness
+            .fetch_source(&beijing(), AirSource::QWeather)
+            .expect("the second read is cached"),
+        reading
+    );
+    assert_eq!(harness.calls().len(), 1);
+}
+
+#[test]
+fn the_qweather_source_names_the_host_and_the_credential_it_needs() {
+    if !qweather_env_unset() {
+        return;
+    }
+
+    let harness = Harness::new(Vec::new(), CacheMode::Normal);
+    let error = harness
+        .fetch_source(&beijing(), AirSource::QWeather)
+        .expect_err("no host is configured");
+    assert_eq!(error.exit_code(), 4, "{error}");
+    assert!(
+        error.to_string().contains("providers.qweather.host"),
+        "{error}"
+    );
+
+    let mut accounted = Harness::new(Vec::new(), CacheMode::Normal);
+    accounted.config.providers.qweather.host = QWEATHER_HOST.to_owned();
+    let error = accounted
+        .fetch_source(&beijing(), AirSource::QWeather)
+        .expect_err("no credential is stored");
+    assert_eq!(error.exit_code(), 6, "{error}");
+    assert!(error.to_string().contains("key set"), "{error}");
+}
+
+#[test]
+fn a_recorded_point_without_a_mapped_index_still_reads_its_pollutants() {
+    let mut harness = Harness::new(
+        vec![qweather_fixture("tokyo-2026-10-13.json")],
+        CacheMode::Normal,
+    );
+    harness.with_qweather_account();
+
+    let reading = harness
+        .fetch_source(&beijing(), AirSource::QWeather)
+        .expect("the recorded reading decodes");
+    assert_eq!(
+        reading.aqi_cn, None,
+        "qaqi and jp-moe are not scales we carry"
+    );
+    assert_eq!(reading.aqi_us, None);
+    assert_eq!(reading.pm2_5, Some(9.0));
+    let expected = 15.2 * 46.0055 / 24.45;
+    let no2 = reading.no2.expect("ppb converts to μg/m³");
+    assert!((no2 - expected).abs() < 1e-9, "{no2} vs {expected}");
+}
+
+// ---------------------------------------------------------------------------------------------
 // The category scales
 // ---------------------------------------------------------------------------------------------
 
@@ -320,6 +465,39 @@ fn the_european_scale_breaks_at_the_documented_values() {
             expected,
             "European AQI {index}"
         );
+    }
+}
+
+#[test]
+fn the_chinese_scale_breaks_at_the_documented_values() {
+    for (index, expected) in [
+        (0, AqiCategory::CnExcellent),
+        (50, AqiCategory::CnExcellent),
+        (51, AqiCategory::CnGood),
+        (100, AqiCategory::CnGood),
+        (101, AqiCategory::CnLight),
+        (150, AqiCategory::CnLight),
+        (151, AqiCategory::CnModerate),
+        (200, AqiCategory::CnModerate),
+        (201, AqiCategory::CnHeavy),
+        (300, AqiCategory::CnHeavy),
+        (301, AqiCategory::CnSevere),
+        (500, AqiCategory::CnSevere),
+    ] {
+        assert_eq!(AqiCategory::from_cn(index), expected, "CN AQI {index}");
+    }
+    // Above the published table the reading stays in the top band rather than inventing a seventh.
+    assert_eq!(AqiCategory::from_cn(501), AqiCategory::CnSevere);
+    // The JSON spellings of the six words, in range order.
+    for (category, spelling) in AqiCategory::CN.into_iter().zip([
+        "excellent",
+        "good",
+        "light-pollution",
+        "moderate-pollution",
+        "heavy-pollution",
+        "severe-pollution",
+    ]) {
+        assert_eq!(category.as_str(), spelling, "{category:?}");
     }
 }
 
@@ -417,6 +595,88 @@ fn the_panel_renders_at_every_documented_width_within_its_width() {
             );
         }
     }
+}
+
+/// The fixture's reading as the `QWeather` source answers it: the national index, both other scales
+/// absent, and the response's own attribution line.
+fn cn_report() -> Report {
+    let mut report = air_report();
+    let air = report.air.as_mut().expect("the fixture carries a reading");
+    // A mainland-China QWeather reading carries the national index and no other scale.
+    air.aqi_cn = Some(20);
+    air.aqi_us = None;
+    air.aqi_european = None;
+    air.source = AirSource::QWeather;
+    air.credit = vec!["https://developer.qweather.com/attribution.html".to_owned()];
+    report
+}
+
+#[test]
+fn the_national_scale_renders_within_every_documented_width_and_carries_its_credits() {
+    let report = cn_report();
+    for width in [59_usize, 60, 80, 120] {
+        for format in [Format::ArtTable, Format::Aqi] {
+            let text = render(&report, width, format, AqiIndex::Cn);
+            for line in text.lines() {
+                assert!(
+                    line.width() <= width,
+                    "{} at {width}: {line:?} is {} columns",
+                    format.as_str(),
+                    line.width()
+                );
+            }
+            assert!(
+                text.contains("CN AQI 20 (Excellent)"),
+                "{} at {width}: {text}",
+                format.as_str()
+            );
+        }
+    }
+
+    // The other two scales are absent from this reading, so only the national one appears.
+    let text = render(&report, 120, Format::Aqi, AqiIndex::Cn);
+    assert!(!text.contains("US AQI"), "{text}");
+    assert!(!text.contains("European AQI"), "{text}");
+    // The source's credit line and the response's attribution line travel together: the terms
+    // require the second shown in full, unmodified, wherever the data is.
+    assert!(
+        text.contains("Air quality data by QWeather — https://www.qweather.com/"),
+        "{text}"
+    );
+    assert!(
+        text.contains("https://developer.qweather.com/attribution.html"),
+        "{text}"
+    );
+    // The Chinese scale's own colour ramp: 优 is the green rung.
+    let i18n = english();
+    let painted = renderer_for(Format::Aqi, &capable(), None)
+        .expect("the format has a renderer")
+        .render(
+            &report,
+            &context(&report, 120, ColorMode::Always, AqiIndex::Cn, &i18n),
+        )
+        .expect("the fixture renders");
+    assert!(
+        painted.contains("\u{1b}[38;5;34m20 (Excellent)\u{1b}[0m"),
+        "the national category is painted green: {painted:?}"
+    );
+}
+
+#[test]
+fn a_repeated_attribution_line_prints_once() {
+    let mut report = cn_report();
+    let air = report.air.as_mut().expect("the fixture carries a reading");
+    air.credit = vec![
+        "https://developer.qweather.com/attribution.html".to_owned(),
+        String::new(),
+        "https://developer.qweather.com/attribution.html".to_owned(),
+    ];
+    let text = render(&report, 120, Format::Aqi, AqiIndex::Cn);
+    assert_eq!(
+        text.matches("attribution.html").count(),
+        1,
+        "a duplicate line is printed once: {text}"
+    );
 }
 
 #[test]
@@ -598,6 +858,193 @@ fn offline(sandbox: &Sandbox, args: &[&str]) -> (String, String) {
         String::from_utf8(assert.get_output().stdout.clone()).expect("stdout is UTF-8"),
         String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8"),
     )
+}
+
+/// The config a QWeather-seeded CLI run carries: the selector and the account host.
+const QWEATHER_CONFIG: &str = "schema_version = 2\n\
+[air]\n\
+source = \"qweather\"\n\
+[providers.qweather]\n\
+host = \"https://abc123.re.qweatherapi.com\"\n";
+
+/// The body of one recorded `QWeather` air response.
+fn qweather_air_fixture(name: &str) -> String {
+    fs::read_to_string(fixture_path(&format!("qweather/air/{name}")))
+        .expect("the fixture is readable")
+}
+
+/// [`offline`] with a `QWeather` credential in the child's environment (the sandbox's config names
+/// the account host), for the provider-bound source.
+fn offline_qweather(sandbox: &Sandbox, args: &[&str]) -> (String, String) {
+    let assert = sandbox
+        .cirrocast()
+        .env("TERM", "xterm-256color")
+        .env("CIRROCAST_QWEATHER_KEY", "test-key")
+        .args(args)
+        .args(["--offline", "--no-alerts", "--lang", "en-US"])
+        .arg("Beijing")
+        .assert()
+        .success();
+    (
+        String::from_utf8(assert.get_output().stdout.clone()).expect("stdout is UTF-8"),
+        String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8"),
+    )
+}
+
+/// Seeds one `QWeather` air entry for Beijing beside the weather the `seed` helper writes.
+fn seed_qweather_air(sandbox: &Sandbox, body: &str) {
+    let today = Utc::now().with_timezone(&Tz::Asia__Shanghai).date_naive();
+    seed_entry(
+        sandbox,
+        &CacheKey::air("qweather", LAT, LON, today),
+        body,
+        Utc::now(),
+        600,
+    );
+}
+
+#[test]
+fn a_seeded_qweather_reading_renders_the_national_index_and_its_credits() {
+    let sandbox = Sandbox::new();
+    seed(&sandbox, None);
+    seed_qweather_air(&sandbox, &qweather_air_fixture("beijing-2026-10-13.json"));
+    sandbox.write_config(QWEATHER_CONFIG);
+
+    // `[air] source = "qweather"` selects the source; the run is offline and reads the seeded entry.
+    let (plain, _) = offline_qweather(&sandbox, &["--aqi", "-f", "plain"]);
+    for expected in [
+        "air_quality: CN AQI 20 (Excellent)",
+        "pm2.5: 3 μg/m³",
+        "co: 200 μg/m³",
+        "Air quality data by QWeather — https://www.qweather.com/",
+        "https://developer.qweather.com/attribution.html",
+    ] {
+        assert!(plain.contains(expected), "missing {expected:?}: {plain}");
+    }
+    assert!(
+        !plain.contains("Air quality data by Open-Meteo.com"),
+        "the keyless source is not consulted: {plain}"
+    );
+
+    // `--aqi-index cn` drives the one-line token and the panel colour.
+    let (line, _) = offline_qweather(
+        &sandbox,
+        &[
+            "--aqi",
+            "--aqi-index",
+            "cn",
+            "-f",
+            "one-line",
+            "--template",
+            "%q",
+        ],
+    );
+    assert_eq!(line.trim(), "CN AQI 20 (Excellent)");
+
+    // The document carries the new keys, and the source id is the new value.
+    let (json, _) = offline_qweather(&sandbox, &["--aqi", "-f", "json"]);
+    let document: serde_json::Value = serde_json::from_str(&json).expect("the document is JSON");
+    assert_eq!(document["air"]["aqi_cn"], serde_json::json!(20));
+    assert_eq!(document["air"]["aqi_us"], serde_json::Value::Null);
+    assert_eq!(document["air"]["source"], serde_json::json!("qweather"));
+    assert_eq!(
+        document["air"]["category"]["cn"],
+        serde_json::json!("excellent")
+    );
+    assert_eq!(
+        document["air"]["credit"],
+        serde_json::json!(["https://developer.qweather.com/attribution.html"])
+    );
+}
+
+#[test]
+fn the_flag_selects_the_source_over_the_configured_one() {
+    let sandbox = Sandbox::new();
+    // Both entries exist: the flag picks the keyless one even though the file says qweather.
+    seed(&sandbox, Some(&air_fixture("berlin-2026-10-03.json")));
+    seed_qweather_air(&sandbox, &qweather_air_fixture("beijing-2026-10-13.json"));
+    sandbox.write_config(QWEATHER_CONFIG);
+
+    let (plain, _) = offline(
+        &sandbox,
+        &["--aqi", "--air-source", "open-meteo", "-f", "plain"],
+    );
+    assert!(plain.contains("US AQI 43 (Good)"), "{plain}");
+    assert!(plain.contains("Open-Meteo"), "{plain}");
+}
+
+#[test]
+fn an_explicit_qweather_source_without_a_credential_warns_instead_of_falling_back() {
+    if !qweather_env_unset() {
+        return;
+    }
+
+    let sandbox = Sandbox::new();
+    // The keyless reading is in the cache, and the file names QWeather: an explicit source that
+    // cannot authenticate must say so, never quietly serve the other source's numbers.
+    seed(&sandbox, Some(&air_fixture("berlin-2026-10-03.json")));
+    sandbox.write_config(QWEATHER_CONFIG);
+
+    let (plain, stderr) = offline(
+        &sandbox,
+        &["--aqi", "--air-source", "qweather", "-f", "plain"],
+    );
+    assert!(!plain.contains("air_quality:"), "{plain}");
+    assert!(plain.contains("current:"), "the weather stays: {plain}");
+    assert!(stderr.contains("air quality unavailable"), "{stderr}");
+    assert!(stderr.contains("key set"), "{stderr}");
+}
+
+#[test]
+fn the_chinese_scale_without_a_chinese_index_reads_as_unavailable() {
+    let sandbox = Sandbox::new();
+    seed(&sandbox, Some(&air_fixture("berlin-2026-10-03.json")));
+
+    // The reading carries the US and European scales only; `cn` prints `n/a` rather than another
+    // scale's number under the national label.
+    let (line, _) = offline(
+        &sandbox,
+        &[
+            "--aqi",
+            "--aqi-index",
+            "cn",
+            "-f",
+            "one-line",
+            "--template",
+            "%q",
+        ],
+    );
+    assert_eq!(line.trim(), "n/a");
+}
+
+#[test]
+fn an_air_source_without_a_fetching_run_or_unknown_is_refused() {
+    let sandbox = Sandbox::new();
+    let assert = sandbox
+        .cirrocast()
+        .args(["--air-source", "qweather", "--offline", "Beijing"])
+        .assert()
+        .code(2);
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8");
+    assert!(
+        stderr.contains("--air-source needs --aqi or `--format aqi`"),
+        "{stderr}"
+    );
+
+    let assert = sandbox
+        .cirrocast()
+        .args(["--aqi", "--air-source", "cams", "--offline", "Beijing"])
+        .assert()
+        .code(2);
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("stderr is UTF-8");
+    assert!(
+        stderr.contains("unknown air-quality source `cams`"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("known sources: open-meteo, qweather"),
+        "{stderr}"
+    );
 }
 
 #[test]

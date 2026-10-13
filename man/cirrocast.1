@@ -4,7 +4,7 @@
 .SH NAME
 cirrocast \- Terminal weather client with pluggable backends and wttr.in\-style output
 .SH SYNOPSIS
-\fBcirrocast\fR [\fB\-v\fR|\fB\-\-verbose\fR]... [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-tz\fR] [\fB\-p\fR|\fB\-\-provider\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-d\fR|\fB\-\-days\fR] [\fB\-u\fR|\fB\-\-units\fR] [\fB\-\-lang\fR] [\fB\-\-lat\fR] [\fB\-\-lon\fR] [\fB\-\-ip\fR] [\fB\-\-station\fR] [\fB\-\-alerts\fR] [\fB\-\-no\-alerts\fR] [\fB\-\-alerts\-from\fR] [\fB\-\-severity\fR] [\fB\-\-aqi\fR] [\fB\-\-aqi\-index\fR] [\fB\-\-moon\fR] [\fB\-\-date\fR] [\fB\-\-history\fR] [\fB\-\-marine\fR] [\fB\-\-normals\fR] [\fB\-\-template\fR] [\fB\-\-template\-file\fR] [\fB\-\-color\fR] [\fB\-\-icons\fR] [\fB\-\-width\fR] [\fB\-\-timeout\fR] [\fB\-\-no\-cache\fR] [\fB\-\-refresh\fR] [\fB\-\-offline\fR] [\fB\-\-pick\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fILOCATION\fR] [\fIsubcommands\fR]
+\fBcirrocast\fR [\fB\-v\fR|\fB\-\-verbose\fR]... [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-tz\fR] [\fB\-p\fR|\fB\-\-provider\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-d\fR|\fB\-\-days\fR] [\fB\-u\fR|\fB\-\-units\fR] [\fB\-\-lang\fR] [\fB\-\-lat\fR] [\fB\-\-lon\fR] [\fB\-\-ip\fR] [\fB\-\-station\fR] [\fB\-\-alerts\fR] [\fB\-\-no\-alerts\fR] [\fB\-\-alerts\-from\fR] [\fB\-\-severity\fR] [\fB\-\-aqi\fR] [\fB\-\-aqi\-index\fR] [\fB\-\-air\-source\fR] [\fB\-\-moon\fR] [\fB\-\-date\fR] [\fB\-\-history\fR] [\fB\-\-marine\fR] [\fB\-\-normals\fR] [\fB\-\-template\fR] [\fB\-\-template\-file\fR] [\fB\-\-color\fR] [\fB\-\-icons\fR] [\fB\-\-width\fR] [\fB\-\-timeout\fR] [\fB\-\-no\-cache\fR] [\fB\-\-refresh\fR] [\fB\-\-offline\fR] [\fB\-\-pick\fR] [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fILOCATION\fR] [\fIsubcommands\fR]
 .SH DESCRIPTION
 Terminal weather client with pluggable backends and wttr.in\-style output
 .SH OPTIONS
@@ -58,10 +58,13 @@ Alert sources to query instead of the coverage\-selected set, comma separated: `
 Lowest alert severity to show (`unknown`, `minor`, `moderate`, `severe`, `extreme`); overrides `[alerts] severity_threshold`
 .TP
 \fB\-\-aqi\fR
-Append the air\-quality panel (US and European AQI, the six pollutants, pollen where the source covers it and the report\*(Aqs UV reading) to the table and plain output, and carry it as a typed object in `json`. `\-\-format aqi` prints the panel standalone
+Append the air\-quality panel (the AQI scales the source carries, the six pollutants, pollen where the source covers it and the report\*(Aqs UV reading) to the table and plain output, and carry it as a typed object in `json`. `\-\-format aqi` prints the panel standalone
 .TP
 \fB\-\-aqi\-index\fR \fI<SCALE>\fR
-Which AQI scale drives the panel\*(Aqs colour and the one\-line `%q` token: `us` or `european`; overrides `[air] index`. Needs `\-\-aqi` or `\-\-format aqi`
+Which AQI scale drives the panel\*(Aqs colour and the one\-line `%q` token: `us`, `european` or `cn`; overrides `[air] index`. Needs `\-\-aqi` or `\-\-format aqi`
+.TP
+\fB\-\-air\-source\fR \fI<SOURCE>\fR
+Which source answers the air\-quality reading: `auto`, `open\-meteo` or `qweather`; overrides `[air] source`. `auto` reads from `qweather` in mainland China when that provider is on the chain and a credential is configured, and from the keyless Open\-Meteo elsewhere
 .TP
 \fB\-\-moon\fR
 Compute the moon and sun block locally (no request) and append it to the table and `plain` output; `json` then carries it as the `astro` object. `\-\-format moon` prints the standalone view, and `one\-line` shows the moon through the `%m`/`%M` tokens

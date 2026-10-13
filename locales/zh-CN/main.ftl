@@ -280,6 +280,7 @@ alert-credit-fpas = 警报经由 FOSS 公共警报服务器（{ $host }）提供
 aqi-panel-title = 空气质量
 aqi-us-label = 美国 AQI
 aqi-european-label = 欧洲 AQI
+aqi-cn-label = 中国 AQI
 aqi-pollen-title = 花粉
 aqi-no-coverage = 该地点未覆盖
 aqi-unavailable = 空气质量数据不可用
@@ -296,6 +297,14 @@ aqi-category-fair = 尚可
 aqi-category-poor = 较差
 aqi-category-very-poor = 很差
 aqi-category-extremely-poor = 极差
+# The Chinese national scale (GB 3095-2012): 优 → 严重污染. Its 良 and the US scale's `Good` are
+# different words, so the two live under different keys.
+aqi-category-cn-excellent = 优
+aqi-category-cn-good = 良
+aqi-category-cn-light = 轻度污染
+aqi-category-cn-moderate = 中度污染
+aqi-category-cn-heavy = 重度污染
+aqi-category-cn-severe = 严重污染
 
 pm2-5 = PM2.5
 pm10 = PM10
@@ -314,6 +323,9 @@ pollen-ragweed = 豚草
 unit-ug-m3 = 微克/立方米
 unit-grains-m3 = 粒/立方米
 air-credit-open-meteo = 空气质量数据由 Open-Meteo.com 提供（CAMS ENSEMBLE）
+# QWeather's attribution terms require its name and this link wherever its air-quality data is
+# shown; the same line the forecast's licence row carries.
+air-credit-qweather = 空气质量数据由 QWeather（和风天气）提供 — https://www.qweather.com/
 
 # --- 海洋（步骤 23）-----------------------------------------------------------------------------
 # `--marine` 追加的海浪块：一条当前海况、采样海区离请求点较远时的说明，以及数据来源。

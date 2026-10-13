@@ -23,7 +23,7 @@ use std::str::FromStr;
 use crate::error::{Error, Result};
 use crate::i18n::{MessageKey, keys};
 
-/// Which of the two scales drives the panel's colour and the `%q` token.
+/// Which of the scales drives the panel's colour and the `%q` token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AqiIndex {
     /// The US EPA scale (the default).
@@ -31,11 +31,13 @@ pub enum AqiIndex {
     Us,
     /// The European Environment Agency scale.
     European,
+    /// The Chinese national scale (GB 3095-2012, `QWeather`'s `cn-mee`).
+    Cn,
 }
 
 impl AqiIndex {
-    /// Both scales, in `--help` order.
-    pub const ALL: [Self; 2] = [Self::Us, Self::European];
+    /// Every scale, in `--help` order.
+    pub const ALL: [Self; 3] = [Self::Us, Self::European, Self::Cn];
 
     /// The command line and configuration spelling.
     #[must_use]
@@ -43,6 +45,7 @@ impl AqiIndex {
         match self {
             Self::Us => "us",
             Self::European => "european",
+            Self::Cn => "cn",
         }
     }
 
@@ -52,6 +55,7 @@ impl AqiIndex {
         match self {
             Self::Us => keys::AQI_US_LABEL,
             Self::European => keys::AQI_EUROPEAN_LABEL,
+            Self::Cn => keys::AQI_CN_LABEL,
         }
     }
 
@@ -63,8 +67,9 @@ impl AqiIndex {
         match name.trim().to_ascii_lowercase().as_str() {
             "us" => Ok(Self::Us),
             "european" => Ok(Self::European),
+            "cn" => Ok(Self::Cn),
             other => Err(Error::Usage(format!(
-                "unknown air-quality index `{other}`; known indices: us, european"
+                "unknown air-quality index `{other}`; known indices: us, european, cn"
             ))),
         }
     }
@@ -107,11 +112,25 @@ pub enum AqiCategory {
     VeryPoor,
     /// Above 100 European.
     ExtremelyPoor,
+    /// `0..=50` Chinese: 优 (Excellent).
+    CnExcellent,
+    /// `51..=100` Chinese: 良 (Good).
+    CnGood,
+    /// `101..=150` Chinese: 轻度污染 (light pollution).
+    CnLight,
+    /// `151..=200` Chinese: 中度污染 (moderate pollution).
+    CnModerate,
+    /// `201..=300` Chinese: 重度污染 (heavy pollution).
+    CnHeavy,
+    /// Above 300 Chinese: 严重污染 (severe pollution).
+    CnSevere,
 }
 
 impl AqiCategory {
     /// Every category, in the index order [`Self::i18n_key`] relies on.
-    pub const ALL: [Self; 10] = [
+    ///
+    /// The first ten are the US and European words, the last six the Chinese scale's.
+    pub const ALL: [Self; 16] = [
         Self::Good,
         Self::Moderate,
         Self::UnhealthyForSensitiveGroups,
@@ -122,6 +141,22 @@ impl AqiCategory {
         Self::Poor,
         Self::VeryPoor,
         Self::ExtremelyPoor,
+        Self::CnExcellent,
+        Self::CnGood,
+        Self::CnLight,
+        Self::CnModerate,
+        Self::CnHeavy,
+        Self::CnSevere,
+    ];
+
+    /// The Chinese scale's six categories, in range order.
+    pub const CN: [Self; 6] = [
+        Self::CnExcellent,
+        Self::CnGood,
+        Self::CnLight,
+        Self::CnModerate,
+        Self::CnHeavy,
+        Self::CnSevere,
     ];
 
     /// The position in [`Self::ALL`], which is also the position in `keys::AQI_CATEGORIES`.
@@ -138,6 +173,12 @@ impl AqiCategory {
             Self::Poor => 7,
             Self::VeryPoor => 8,
             Self::ExtremelyPoor => 9,
+            Self::CnExcellent => 10,
+            Self::CnGood => 11,
+            Self::CnLight => 12,
+            Self::CnModerate => 13,
+            Self::CnHeavy => 14,
+            Self::CnSevere => 15,
         }
     }
 
@@ -167,11 +208,33 @@ impl AqiCategory {
         }
     }
 
+    /// The category of a raw Chinese national AQI (GB 3095-2012).
+    ///
+    /// The standard's six bands are 优 `0..=50`, 良 `51..=100`, 轻度污染 `101..=150`, 中度污染
+    /// `151..=200`, 重度污染 `201..=300` and 严重污染 above 300; the published table stops at an
+    /// index of 500, so anything above 300 (500 included) reads as 严重污染 rather than as a
+    /// seventh band.
+    #[must_use]
+    pub const fn from_cn(index: u16) -> Self {
+        match index {
+            0..=50 => Self::CnExcellent,
+            51..=100 => Self::CnGood,
+            101..=150 => Self::CnLight,
+            151..=200 => Self::CnModerate,
+            201..=300 => Self::CnHeavy,
+            _ => Self::CnSevere,
+        }
+    }
+
     /// The kebab-case spelling the JSON document uses.
+    ///
+    /// Spellings are unique within a scale, not across scales: `good` is the US scale's `0..=50`
+    /// word and the Chinese scale's `51..=100` word, and the document namespaces them
+    /// (`category.us` versus `category.cn`).
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Good => "good",
+            Self::Good | Self::CnGood => "good",
             Self::Moderate => "moderate",
             Self::UnhealthyForSensitiveGroups => "unhealthy-sensitive",
             Self::Unhealthy => "unhealthy",
@@ -181,6 +244,11 @@ impl AqiCategory {
             Self::Poor => "poor",
             Self::VeryPoor => "very-poor",
             Self::ExtremelyPoor => "extremely-poor",
+            Self::CnExcellent => "excellent",
+            Self::CnLight => "light-pollution",
+            Self::CnModerate => "moderate-pollution",
+            Self::CnHeavy => "heavy-pollution",
+            Self::CnSevere => "severe-pollution",
         }
     }
 
@@ -207,11 +275,21 @@ mod tests {
     #[test]
     fn every_category_has_its_own_index_key_and_spelling() {
         let mut keys = std::collections::HashSet::new();
-        let mut spellings = std::collections::HashSet::new();
         for (position, category) in AqiCategory::ALL.into_iter().enumerate() {
             assert_eq!(category.index(), position, "{category:?}");
             assert!(keys.insert(category.i18n_key().as_str().into_owned()));
-            assert!(spellings.insert(category.as_str()));
+        }
+        // Spellings are unique within a scale: the JSON document namespaces them by scale, and
+        // `good` is deliberately the US `0..=50` word *and* the Chinese `51..=100` word.
+        let mut us_european = std::collections::HashSet::new();
+        let mut chinese = std::collections::HashSet::new();
+        for category in AqiCategory::ALL {
+            let set = if AqiCategory::CN.contains(&category) {
+                &mut chinese
+            } else {
+                &mut us_european
+            };
+            assert!(set.insert(category.as_str()), "{category:?}");
         }
         assert_eq!(
             AqiCategory::from_us(0).i18n_key().as_str(),
@@ -224,6 +302,10 @@ mod tests {
         assert_eq!(
             AqiCategory::from_european(120).i18n_key().as_str(),
             "aqi-category-extremely-poor"
+        );
+        assert_eq!(
+            AqiCategory::from_cn(20).i18n_key().as_str(),
+            "aqi-category-cn-excellent"
         );
     }
 
@@ -238,10 +320,20 @@ mod tests {
             AqiIndex::from_name("European").expect("european parses"),
             AqiIndex::European
         );
+        assert_eq!(AqiIndex::from_name("CN").expect("cn parses"), AqiIndex::Cn);
         assert_eq!(AqiIndex::default(), AqiIndex::Us);
         assert_eq!(AqiIndex::Us.as_str(), "us");
         assert_eq!(AqiIndex::European.to_string(), "european");
+        assert_eq!(AqiIndex::Cn.to_string(), "cn");
+        assert_eq!(
+            AqiIndex::ALL.map(AqiIndex::as_str),
+            ["us", "european", "cn"]
+        );
         let error = AqiIndex::from_name("epa").expect_err("never a scale");
-        assert!(error.to_string().contains("known indices: us, european"));
+        assert!(
+            error
+                .to_string()
+                .contains("known indices: us, european, cn")
+        );
     }
 }

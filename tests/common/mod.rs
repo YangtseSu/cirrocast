@@ -257,6 +257,19 @@ pub fn seed_weather(
     );
 }
 
+/// Seeds `body` as one air-quality reading for `source`/`lat`/`lon`, dated in `zone`.
+///
+/// The air key is per local date like the weather key, and `zone` is the zone the binary has when
+/// it builds the key: [`Tz::UTC`] for a coordinate query.
+pub fn seed_air(sandbox: &Sandbox, source: &str, lat: f64, lon: f64, zone: Tz, body: &str) {
+    seed_weather_keys(
+        sandbox,
+        zone,
+        |date| CacheKey::air(source, lat, lon, date),
+        body,
+    );
+}
+
 /// [`seed_weather`] for a provider that splits one fetch across resource keys
 /// (`openweathermap`'s `current` and `forecast`, `qweather`'s `current` and `hourly`).
 // A seeding helper mirrors the key constructor's arguments; a builder struct would obscure it.

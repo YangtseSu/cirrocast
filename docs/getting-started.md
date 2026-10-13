@@ -222,9 +222,9 @@ The options fall into four groups, each documented in one place:
 * **Fetching and caching** — `-p/--provider`, `-d/--days`, `-u/--units`, `--timeout`,
   `--no-cache`, `--refresh`, `--offline`: [configuration.md](configuration.md) for the
   corresponding keys, [providers.md](providers.md) for the backends.
-* **Extra panels** — `--alerts`/`--no-alerts`/`--alerts-from`/`--severity`, `--aqi`/`--aqi-index`,
-  `--moon`, `--normals`, `--marine`, `--date`/`--history`: described in `--help`, with the
-  provider support in [providers.md](providers.md).
+* **Extra panels** — `--alerts`/`--no-alerts`/`--alerts-from`/`--severity`,
+  `--aqi`/`--aqi-index`/`--air-source`, `--moon`, `--normals`, `--marine`, `--date`/`--history`:
+  described in `--help`, with the provider support in [providers.md](providers.md).
 
 ## Configuration
 

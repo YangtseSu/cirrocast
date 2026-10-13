@@ -38,6 +38,25 @@ consumer can see exactly what moved. It lands under the version it applies to, a
   <https://github.com/ryanoasis/nerd-fonts>; the default needs no font. The sets, the chain rules
   and a capture per set are in [`docs/formats.md`](docs/formats.md#icon-sets), the key in
   [`docs/configuration.md`](docs/configuration.md#render).
+* **QWeather is the air-quality panel's second source, and `--aqi-index cn` prints the Chinese
+  national AQI.** `--air-source auto|open-meteo|qweather` (and `[air] source`) selects the source:
+  `auto` — the default — prefers QWeather at a mainland-China point when the `qweather` provider is
+  on the run's chain and a credential resolves, and stays on the keyless Open-Meteo everywhere else,
+  so a default install still answers `--aqi` without a key; an explicit source is never silently
+  replaced by the other one. The new scale is GB 3095-2012's six bands (优/良/轻度污染/中度污染/重度污染/严重污染
+  — `Excellent`, `Good`, `Light pollution`, `Moderate pollution`, `Heavy pollution`, `Severe
+  pollution` in the English catalog) with its own colour ramp, the panel carries a `CN AQI` row
+  beside the US and European ones, and `%q` follows `[air] index`. QWeather's per-pollutant units
+  (`mg/m³`, `ppb`, `ppm`) are converted to the model's μg/m³ with the documented factors (molar
+  volume 24.45 L/mol, the reference NO₂ 1.88 / O₃ 1.96 / SO₂ 2.62 / CO 1.15 μg/m³ per ppb are quoted
+  at); a unit outside that table fails the reading instead of guessing, and an index code this client
+  does not map is a `-v` note rather than a wrong word. The response's `metadata.attributions`, which
+  QWeather's terms require shown in full, travel on the reading and print after the credit line. The
+  JSON `air` object gains `aqi_cn`, `category.cn` and `credit`, and `air.source` gains the value
+  `qweather` — a non-breaking addition, so `schema_version` stays `2`. Endpoint, measured envelope,
+  index codes and the unit table are in
+  [`docs/providers.md`](docs/providers.md#qweather-air-quality); the two keys in
+  [`docs/configuration.md`](docs/configuration.md#air).
 
 ## [1.4.0] - 2026-10-08
 

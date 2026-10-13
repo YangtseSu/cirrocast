@@ -220,20 +220,24 @@ pub fn paint_severity(text: &str, severity: Severity, depth: ColorDepth) -> Cow<
 
 /// The AQI category ramp, authored here: green → yellow → orange → red → purple → maroon.
 ///
-/// The two scales share two words, so the mapping is per *category*, not per position on a scale:
-/// `Good` and `Fair` read green, `Moderate` yellow, the next step orange (`Unhealthy for
-/// sensitive groups` / `Poor`), then red, purple, and finally maroon for `Hazardous`. The European
-/// scale has no maroon band; its `Extremely poor` is the purple top of that scale. A category is
-/// never painted by `--units` or by which scale it came from — only by the air it describes.
+/// The scales share words, so the mapping is per *category*, not per position on a scale: `Good`
+/// and `Fair` read green, `Moderate` yellow, the next step orange (`Unhealthy for sensitive
+/// groups` / `Poor`), then red, purple, and finally maroon for `Hazardous`. The European scale has
+/// no maroon band; its `Extremely poor` is the purple top of that scale. A category is never
+/// painted by `--units` or by which scale it came from — only by the air it describes.
+///
+/// The Chinese scale carries its own six variants because its words are its own (`良` is not the
+/// US `Good`), and it walks the same ladder: 优 green, 良 yellow, 轻度污染 orange, 中度污染 red,
+/// 重度污染 purple, 严重污染 maroon.
 #[must_use]
 pub const fn aqi_fg(category: AqiCategory) -> u8 {
     match category {
-        AqiCategory::Good | AqiCategory::Fair => 34,
-        AqiCategory::Moderate => 226,
-        AqiCategory::UnhealthyForSensitiveGroups | AqiCategory::Poor => 208,
-        AqiCategory::Unhealthy | AqiCategory::VeryPoor => 160,
-        AqiCategory::VeryUnhealthy | AqiCategory::ExtremelyPoor => 93,
-        AqiCategory::Hazardous => 88,
+        AqiCategory::Good | AqiCategory::Fair | AqiCategory::CnExcellent => 34,
+        AqiCategory::Moderate | AqiCategory::CnGood => 226,
+        AqiCategory::UnhealthyForSensitiveGroups | AqiCategory::Poor | AqiCategory::CnLight => 208,
+        AqiCategory::Unhealthy | AqiCategory::VeryPoor | AqiCategory::CnModerate => 160,
+        AqiCategory::VeryUnhealthy | AqiCategory::ExtremelyPoor | AqiCategory::CnHeavy => 93,
+        AqiCategory::Hazardous | AqiCategory::CnSevere => 88,
     }
 }
 

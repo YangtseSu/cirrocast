@@ -234,10 +234,14 @@ SPDX-FileCopyrightText = "WeatherAPI.com, World Weather Online, Pirate Weather a
 SPDX-License-Identifier = "LicenseRef-Proprietary-API-Data"
 
 # The Ed25519 key step 27's JWT tests sign with: generated for the test vector, never a live
-# credential, so it is first-party rather than recorded upstream data. This annotation is later
-# than the block above, so it wins for this one file.
+# credential, so it is first-party rather than recorded upstream data, and the directory's README,
+# which is prose about the recordings. This annotation is later than the block above, so it wins for
+# these two files.
 [[annotations]]
-path = "tests/fixtures/qweather/ed25519-test-key.pem"
+path = [
+    "tests/fixtures/qweather/ed25519-test-key.pem",
+    "tests/fixtures/qweather/README.md",
+]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Yangtse Su <yangtsesu@gmail.com>"
 SPDX-License-Identifier = "GPL-3.0-or-later"

@@ -68,9 +68,10 @@ src/
     mod.rs           QWeatherAuth: the credential header a request carries (key or JWT)
     jwt.rs           Ed25519 JWT minting for QWeather (step 27)
   air/
-    mod.rs           air-quality facade (best-effort, one panel per run)
-    aqi.rs           the US and European AQI category scales
+    mod.rs           air-quality facade (best-effort, one panel per run) + the source selector
+    aqi.rs           the US, European and Chinese AQI category scales
     open_meteo.rs    Open-Meteo Air Quality API (keyless)
+    qweather.rs      QWeather air quality: the national AQI and the local index set (step 29)
   astro/
     mod.rs           Astro::compute, GMST, the local-day window and the shared rise/set search
     julian.rs        Julian dates and the ΔT seam (Espenak–Meeus fits)

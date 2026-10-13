@@ -220,7 +220,8 @@ formats and their art are described in [`docs/formats.md`](formats.md#icon-sets)
 
 | Key | Type | Default | Example | Effect |
 |---|---|---|---|---|
-| `air.index` | string | `"us"` | `"european"` | AQI scale that drives the air panel's colour and the `%q` token: `us` or `european`. |
+| `air.index` | string | `"us"` | `"european"` | AQI scale that drives the air panel's colour and the `%q` token: `us`, `european` or `cn` (the Chinese national scale, GB 3095-2012 — only a QWeather reading carries it). |
+| `air.source` | string | `"auto"` | `"qweather"` | Which source answers `--aqi`: `auto` (QWeather in mainland China when that provider is on the `--provider` chain and holds a credential, the keyless Open-Meteo otherwise), `open-meteo` or `qweather`. An explicit source is never silently replaced by the other one; its own error (a missing host or credential, exit 4 or 6) surfaces as the run's air-quality warning. |
 
 ### `[normals]`
 

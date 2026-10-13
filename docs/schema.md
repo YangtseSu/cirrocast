@@ -167,12 +167,14 @@ is an object with an `error` key rather than a report).
 | `mode` | string | — | no | `forecast` or `archive`: whether `days`/`current` are a forecast or a historical answer (`--date`, `--history`) |
 | `air` | object | — | yes | air quality; `null` when the run did not ask (`--aqi`) or the best-effort fetch degraded |
 | `air.time` | string | — | no | observation time at the location's offset |
-| `air.source` | string | — | no | the air-quality source, e.g. `open-meteo` |
+| `air.source` | string | — | no | the air-quality source, e.g. `open-meteo` or `qweather` |
 | `air.aqi_us` | integer | index | yes | US AQI, exactly as the source reports it |
 | `air.aqi_european` | integer | index | yes | European AQI, exactly as the source reports it |
+| `air.aqi_cn` | integer | index | yes | Chinese national AQI (GB 3095-2012), exactly as the source reports it; added in step 29 |
 | `air.category` | object | — | no | the category of each index, derived from the raw number |
 | `air.category.us` | string | — | yes | US category, e.g. `good`, `unhealthy-sensitive` |
 | `air.category.european` | string | — | yes | European category, e.g. `fair`, `extremely-poor` |
+| `air.category.cn` | string | — | yes | Chinese category, e.g. `excellent`, `light-pollution`; `good` here is that scale's `51..=100` word |
 | `air.pm2_5` | number | μg/m³ | yes | fine particulate matter (PM2.5) |
 | `air.pm10` | number | μg/m³ | yes | coarse particulate matter (PM10) |
 | `air.o3` | number | μg/m³ | yes | ground-level ozone |
@@ -186,6 +188,7 @@ is an object with an `error` key rather than a report).
 | `air.pollen.mugwort` | number | grains/m³ | yes | mugwort pollen; `null` when the source did not report it |
 | `air.pollen.olive` | number | grains/m³ | yes | olive pollen; `null` when the source did not report it |
 | `air.pollen.ragweed` | number | grains/m³ | yes | ragweed pollen; `null` when the source did not report it |
+| `air.credit` | array | — | no | the attribution lines the source's terms require shown with its data, verbatim (QWeather's `metadata.attributions`); `[]` for a source whose terms ask for nothing beyond its credit line |
 | `air.units` | object | — | no | the units the air numbers are in |
 | `air.units.pollutants` | string | — | no | `μg/m³` |
 | `air.units.pollen` | string | — | no | `grains/m³` |
@@ -518,7 +521,9 @@ fpas_url = ""                 # FOSS Public Alert Server base URL; empty = https
 cache_ttl_secs = 300          # 5 minutes
 
 [air]
-index = "us"             # us | european: the AQI scale that drives the panel colour and %q
+index = "us"             # us | european | cn: the AQI scale that drives the panel colour and %q
+source = "auto"          # auto | open-meteo | qweather; auto prefers qweather in mainland China
+                         # when that provider is on the --provider chain and has a credential
 
 [normals]
 period = "1991-2020"     # the reference window the normal is averaged over: two four-digit years

@@ -39,7 +39,9 @@
         "so2",
         "co",
         "pollen",
-        "units"
+        "units",
+        "aqi_cn",
+        "credit"
       ],
       "properties": {
         "time": {
@@ -48,7 +50,8 @@
         },
         "source": {
           "enum": [
-            "open-meteo"
+            "open-meteo",
+            "qweather"
           ]
         },
         "aqi_us": {
@@ -63,12 +66,19 @@
             "null"
           ]
         },
+        "aqi_cn": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "category": {
           "type": "object",
           "additionalProperties": false,
           "required": [
             "us",
-            "european"
+            "european",
+            "cn"
           ],
           "properties": {
             "us": {
@@ -90,6 +100,17 @@
                 "poor",
                 "very-poor",
                 "extremely-poor",
+                null
+              ]
+            },
+            "cn": {
+              "enum": [
+                "excellent",
+                "good",
+                "light-pollution",
+                "moderate-pollution",
+                "heavy-pollution",
+                "severe-pollution",
                 null
               ]
             }
@@ -159,6 +180,12 @@
                 "grains/m³"
               ]
             }
+          }
+        },
+        "credit": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       }

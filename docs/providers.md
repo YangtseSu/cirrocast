@@ -97,7 +97,7 @@ prepends `metar`, so the configured fallbacks still apply. `tests/provider_auto.
 | `weatherapi` | proprietary (Zoomash Ltd) | free keys: credit WeatherAPI.com by name or logo; the docs suggest `Powered by <a href="https://www.weatherapi.com/">WeatherAPI.com</a>` | current 60 min, forecast 24 h | mandatory end-user disclaimer; no resale; one key per app |
 | `worldweatheronline` | proprietary (Zoomash Ltd) | free keys: "Weather Data by WorldWeatherOnline.com" | current 60 min, forecast 24 h | mandatory end-user disclaimer; no resale |
 | `pirateweather` | proprietary (PirateWeatherAPI) | none documented | `Cache-Control: max-age=900` is sent | no multi-account quota circumvention; warranty disclaimer |
-| `qweather` | proprietary (QWeather Developers License) | name QWeather + https://www.qweather.com; recommended "Weather service by QWeather" | real-time 10–30 min, hourly 30–60 min, daily 1–6 h (guidance) | GeoAPI data must not be bulk-cached or indexed; weather warnings and air quality must reproduce the response's `metadata.attributions` in full (rendered — see `### qweather`) |
+| `qweather` | proprietary (QWeather Developers License) | name QWeather + https://www.qweather.com; recommended "Weather service by QWeather" | real-time 10–30 min, hourly 30–60 min, daily 1–6 h (guidance) | GeoAPI data must not be bulk-cached or indexed; weather warnings and air quality must reproduce the response's `metadata.attributions` in full (rendered — see `### qweather` and `### qweather air quality`) |
 
 Where a credit lands is part of the output contract, not a detail of each renderer: `plain` and
 `json` carry it in the document, `art-table` in a footer, and both `one-line` and the `status` probe
@@ -1165,6 +1165,70 @@ the v1 facts above come from live responses and the public docs repository); the
 windows (observed 07:00–19:00 local, which is not the solar day); whether the live JWT endpoint
 accepts the 15-minute lifetime and the 30 s backdating as documented (the vector is only as good as
 the documentation).
+
+### qweather air quality
+
+The air-quality panel's provider-bound source (step 29), selected by `[air] source`/`--air-source`:
+`auto` — the default — prefers it in mainland China when the `qweather` provider is on the run's
+provider chain and a credential resolves, and stays on the keyless Open-Meteo everywhere else, so a
+default install keeps answering `--aqi` without a key. One request per reading:
+
+```
+GET {host}/airquality/v1/current/{latitude}/{longitude}
+```
+
+**Measured 2026-10-13** on the account host, with the API key in the `X-QW-Api-Key` header:
+
+* The envelope is `metadata` + `indexes[]` + `pollutants[]`. There is **no observation time** in the
+  payload, so the reading's `time` is the fetch instant, stamped in the location's offset.
+* `indexes[]` carries at most two entries. A mainland-China point returned exactly one (`cn-mee`,
+  GB 3095-2012: `aqi` 20 → `Excellent`/`优`); Berlin returned `qaqi` + `eu-eea`, New York
+  `qaqi` + `us-epa`, Tokyo `qaqi` + `jp-moe`, Singapore `qaqi` + `sg-nea`. `aqi` is a whole number on
+  the national scales and fractional on QAQI, and `category` is a **localised string** (`Excellent`
+  under `lang=en`, `优` under `lang=zh`), so this client treats `code` as the stable part and derives
+  its own category word and colour from the number.
+* Mapped codes: `cn-mee` → the Chinese scale, `us-epa` → the US scale, `eu-eea` → the European one.
+  (The step's `eaqi` spelling was the vendor's older name; the live payload and the current
+  supported-AQI table say `eu-eea`.) Every other documented code — `ca-eccc`, `cn-mee-1h`, `fr-atmo`,
+  `gb-defra`, `hk-epd`, `jp-moe`, `kr-moe`, `mo-smg`, `qaqi`, `sg-nea`, `sg-nea-pm1h`, `th-pcd`,
+  `tw-me`, `tw-me-1h`, `us-epa-nc` — is ignored with a `--verbose` note rather than guessed into a
+  scale, and an index code new to this list is still only a note.
+* `pollutants[]` carries `{code,name,fullName,concentration{value,unit},subIndexes}`, and the unit
+  varies **per pollutant by design**: the vendor documents `μg/m³` for the particulates,
+  `mg/m³ | μg/m³ | ppm` for CO and `μg/m³ | ppb | ppm` for NO₂/SO₂/O₃ (plus `ppb` for nitric oxide
+  and `ppmC` for NMHC, two codes the model does not carry). Measured: Beijing and Berlin reported
+  `μg/m³` throughout with CO in `mg/m³` at Beijing; Tokyo `ppb` for NO₂; New York `ppb` for NO₂/O₃
+  and `ppm` for CO. The model stores μg/m³, so the decoder converts:
+
+| Unit | Factor to μg/m³ |
+|---|---|
+| `μg/m³` | 1 |
+| `mg/m³` | ×1000 |
+| `ppb` | × molar mass ÷ 24.45 |
+| `ppm` | ×1000 × molar mass ÷ 24.45 |
+
+  Molar volume 24.45 L/mol (25 °C, 101.325 kPa) — the reference the published per-gas factors are
+  quoted at, which this table reproduces: NO₂ 1.88, O₃ 1.96, SO₂ 2.62, CO 1.15 μg/m³ per ppb (molar
+  masses 46.0055, 48.00, 64.066, 28.010 g/mol). A unit outside the table — a gas-phase unit on a
+  particulate, or a spelling this client does not know — fails the reading (a `--aqi` warning) rather
+  than converting on a guess.
+
+**Coverage and cost.** The endpoint answers for any coordinate; only mainland China carries
+`cn-mee`, which is why `auto` limits itself to that territory — elsewhere the keyless source already
+supplies the US or European index. One request per reading, cached as
+`weather/qweather-air-<lat.2dp>-<lon.2dp>-<local date>.json` under `cache.weather_ttl_secs`, *beside*
+the Open-Meteo entry, so switching sources (or losing a credential) can never serve the other
+source's numbers.
+
+**Attribution.** The terms require the response's `metadata.attributions` displayed in full and
+unmodified wherever the air-quality data is shown. The decoder carries them on the reading, the panel
+and `plain` print them after the credit line `QWeather — https://www.qweather.com/`, and `-f json`
+exposes them as `air.credit`; a repeated line prints once and nothing is trimmed or reworded. The
+live 2026-10-13 response carried one line, `https://developer.qweather.com/attribution.html`.
+
+**Out of scope / unverified.** The hourly and daily air-quality endpoints and the `stations[]`
+block: the panel is "now" only. No request carried a `lang` parameter — only the category words are
+localised upstream and this client prints its own.
 
 ## Climate normals (NOAA NCEI)
 

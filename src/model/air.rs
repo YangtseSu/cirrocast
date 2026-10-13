@@ -83,17 +83,20 @@ impl Pollen {
 pub enum AirSource {
     /// Open-Meteo's Air Quality API (CAMS ENSEMBLE data).
     OpenMeteo,
+    /// `QWeather`'s air-quality API (step 29): the Chinese national AQI and the local index set.
+    QWeather,
 }
 
 impl AirSource {
     /// Every source, in registry order; the fetcher dispatches over this array.
-    pub const ALL: [Self; 1] = [Self::OpenMeteo];
+    pub const ALL: [Self; 2] = [Self::OpenMeteo, Self::QWeather];
 
     /// The id the JSON document and the request URLs use.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::OpenMeteo => "open-meteo",
+            Self::QWeather => "qweather",
         }
     }
 
@@ -102,6 +105,22 @@ impl AirSource {
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::OpenMeteo => "Open-Meteo",
+            Self::QWeather => "QWeather",
+        }
+    }
+
+    /// Parses a source name, case-insensitively.
+    ///
+    /// The `--air-source` flag and the `[air] source` validator go through here, so the two cannot
+    /// disagree about a spelling. `auto` is *not* a source and is parsed by
+    /// [`crate::air::AirChoice`], which owns the selection rule.
+    pub fn from_name(name: &str) -> crate::error::Result<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "open-meteo" => Ok(Self::OpenMeteo),
+            "qweather" => Ok(Self::QWeather),
+            other => Err(crate::error::Error::Usage(format!(
+                "unknown air-quality source `{other}`; known sources: open-meteo, qweather"
+            ))),
         }
     }
 }
@@ -123,25 +142,50 @@ pub struct AirQuality {
     /// Observation time, in the location's local offset.
     pub time: DateTime<FixedOffset>,
     /// US AQI, exactly as the source reports it (`0..=500`; above 500 is off the scale).
+    #[serde(default)]
     pub aqi_us: Option<u16>,
     /// European AQI, exactly as the source reports it.
+    #[serde(default)]
     pub aqi_european: Option<u16>,
+    /// The Chinese national AQI (GB 3095-2012, `cn-mee`), exactly as the source reports it.
+    ///
+    /// A field of its own rather than a second reading of [`Self::aqi_us`]: the two scales share
+    /// neither breakpoints nor words, and `QWeather` publishes the national index only for mainland
+    /// China (its own QAQI is explicitly not available there). `None` outside that territory or
+    /// when the source does not carry the index.
+    #[serde(default)]
+    pub aqi_cn: Option<u16>,
     /// Fine particulate matter (PM2.5) in μg/m³.
+    #[serde(default)]
     pub pm2_5: Option<f64>,
     /// Coarse particulate matter (PM10) in μg/m³.
+    #[serde(default)]
     pub pm10: Option<f64>,
     /// Ground-level ozone in μg/m³.
+    #[serde(default)]
     pub o3: Option<f64>,
     /// Nitrogen dioxide in μg/m³.
+    #[serde(default)]
     pub no2: Option<f64>,
     /// Sulphur dioxide in μg/m³.
+    #[serde(default)]
     pub so2: Option<f64>,
     /// Carbon monoxide in μg/m³.
+    #[serde(default)]
     pub co: Option<f64>,
     /// Pollen forecast; `None` when the source does not cover this point.
+    #[serde(default)]
     pub pollen: Option<Pollen>,
     /// Which service answered.
     pub source: AirSource,
+    /// The attribution lines the source's terms require displayed with its data, verbatim.
+    ///
+    /// `QWeather` publishes them as `metadata.attributions` and its attribution terms demand they
+    /// be shown in full, unmodified, wherever its air-quality data is shown; the air panel and
+    /// `plain` print them after the source's own credit line, and `--format json` carries them in
+    /// the `air` object. Empty for sources whose terms ask for nothing beyond that line.
+    #[serde(default)]
+    pub credit: Vec<String>,
 }
 
 #[cfg(test)]
@@ -150,13 +194,25 @@ mod tests {
 
     #[test]
     fn every_source_spells_its_own_id_and_display_name() {
+        let mut ids = std::collections::HashSet::new();
         for source in AirSource::ALL {
-            assert_eq!(source.as_str(), "open-meteo");
+            assert!(ids.insert(source.as_str()), "{source:?}");
             assert_eq!(source.to_string(), source.as_str());
             assert_ne!(source.display_name(), "");
+            assert_eq!(
+                AirSource::from_name(source.as_str()).expect("its own spelling parses"),
+                source
+            );
         }
+        assert_eq!(AirSource::QWeather.as_str(), "qweather");
         assert_eq!(POLLUTANT_UNIT, "μg/m³");
         assert_eq!(POLLEN_UNIT, "grains/m³");
+    }
+
+    #[test]
+    fn an_unknown_source_name_names_the_known_ones() {
+        let error = AirSource::from_name(" Quest ").expect_err("never a source");
+        assert!(error.to_string().contains("known sources"), "{error}");
     }
 
     #[test]
@@ -166,6 +222,7 @@ mod tests {
                 .expect("a valid instant"),
             aqi_us: Some(43),
             aqi_european: Some(42),
+            aqi_cn: Some(20),
             pm2_5: Some(8.2),
             pm10: Some(13.3),
             o3: Some(38.0),
@@ -174,10 +231,23 @@ mod tests {
             co: Some(251.0),
             pollen: None,
             source: AirSource::OpenMeteo,
+            credit: vec!["https://developer.qweather.com/attribution.html".to_owned()],
         };
         let text = serde_json::to_string(&reading).expect("the reading encodes");
         let parsed: AirQuality = serde_json::from_str(&text).expect("the reading decodes");
         assert_eq!(parsed, reading);
         assert!(text.contains("\"source\":\"open-meteo\""), "{text}");
+    }
+
+    #[test]
+    fn a_document_written_before_the_cn_reading_still_parses() {
+        // Step 29 added `aqi_cn` and `credit` to the reading; a document (or cache envelope) that
+        // predates them must decode rather than fail, with the new halves absent.
+        let text = r#"{"time":"2026-10-03T20:00:00+02:00","aqi_us":43,"aqi_european":42,
+            "pm2_5":8.2,"pm10":13.3,"o3":38.0,"no2":27.9,"so2":3.0,"co":251.0,
+            "pollen":null,"source":"open-meteo"}"#;
+        let reading: AirQuality = serde_json::from_str(text).expect("the reading decodes");
+        assert_eq!(reading.aqi_cn, None);
+        assert_eq!(reading.credit, [] as [std::string::String; 0]);
     }
 }

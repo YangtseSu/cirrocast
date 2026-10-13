@@ -58,6 +58,7 @@ cache_ttl_secs = 300
 
 [air]
 index = "us"
+source = "auto"
 
 [normals]
 period = "1991-2020"

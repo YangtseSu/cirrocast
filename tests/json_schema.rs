@@ -185,6 +185,43 @@ fn one_location_is_an_object_that_matches_the_v2_schema() {
 }
 
 #[test]
+fn an_air_reading_matches_the_v2_schema() {
+    // The `air` object is only ever populated by a run that asked for it, so the schema's air
+    // branch needs a document that carries one: the keyless source's recorded response is seeded
+    // and `--aqi` fetches it from the cache.
+    let sandbox = seeded(&[BEIJING]);
+    let body = std::fs::read_to_string(common::fixture_path("air/berlin-2026-10-03.json"))
+        .expect("the air fixture is readable");
+    common::seed_air(
+        &sandbox,
+        "open-meteo",
+        BEIJING.0,
+        BEIJING.1,
+        chrono_tz::Tz::UTC,
+        &body,
+    );
+
+    let output = sandbox
+        .cirrocast()
+        .args(["--format", "json", "--aqi", "--lang", "en-US", "--offline"])
+        .arg(coordinate(BEIJING))
+        .output()
+        .expect("the run completes");
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    let document: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|error| panic!("stdout is one JSON document: {error}\n{stdout}"));
+    assert!(
+        document["air"].is_object(),
+        "the reading is attached: {stdout}"
+    );
+    validate(
+        &json_file(V2_SCHEMA),
+        &document,
+        "a run with an air reading",
+    );
+}
+
+#[test]
 fn two_locations_are_an_array_that_matches_the_v2_schema() {
     let sandbox = seeded(&[BEIJING, SHANGHAI]);
     let (document, code) = run_json(&sandbox, &[&coordinate(BEIJING), &coordinate(SHANGHAI)]);

@@ -276,6 +276,49 @@ fn live_qweather_jwt() {
 
 #[test]
 #[ignore = "live network: set CIRROCAST_LIVE_TESTS=1 and run `cargo test --test live -- --ignored --nocapture`"]
+fn live_qweather_air_quality() {
+    if !enabled() {
+        return;
+    }
+
+    // The same two environment tiers the JWT smoke uses: the account host in its own variable (the
+    // configuration has no environment override) and the credential in `CIRROCAST_QWEATHER_KEY`,
+    // which the key store reads first.
+    let host = std::env::var("CIRROCAST_QWEATHER_HOST").unwrap_or_default();
+    if host.trim().is_empty() {
+        eprintln!(
+            "skipping: set CIRROCAST_QWEATHER_HOST and CIRROCAST_QWEATHER_KEY (or the CIRROCAST_QWEATHER_JWT_* quartet) to run this test"
+        );
+        return;
+    }
+
+    let mut live = Live::new();
+    live.config.providers.qweather.host = host.trim().to_owned();
+    let reading = cirrocast::air::fetch(
+        &beijing(),
+        &live.env(),
+        cirrocast::model::AirSource::QWeather,
+    )
+    .expect("QWeather answers an air-quality request for Beijing");
+
+    // A mainland-China point answers with the national standard, and the terms require the
+    // response's own credit lines shown with the data.
+    assert_eq!(reading.source, cirrocast::model::AirSource::QWeather);
+    let cn = reading
+        .aqi_cn
+        .expect("a mainland-China point carries the national AQI");
+    assert!(cn <= 500, "{reading:?}");
+    assert!(reading.pm2_5.is_some(), "{reading:?}");
+    assert!(
+        reading.credit.iter().any(|line| line.contains("qweather")),
+        "the response's attribution lines travel on the reading: {reading:?}"
+    );
+
+    println!("cn-mee {cn}; {reading:?}");
+}
+
+#[test]
+#[ignore = "live network: set CIRROCAST_LIVE_TESTS=1 and run `cargo test --test live -- --ignored --nocapture`"]
 fn live_climate_normals_for_beijing() {
     if !enabled() {
         return;

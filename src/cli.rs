@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
+use crate::air::AirChoice;
 use crate::air::aqi::AqiIndex;
 use crate::alerts::{self, AlertsRequest};
 use crate::cache::{Cache, CacheMode, CacheStat, Clock, OfflineMode, Scope, SystemClock};
@@ -286,16 +287,22 @@ pub struct QueryArgs {
     #[arg(long, value_name = "LEVEL", value_parser = parse_severity)]
     pub severity: Option<Severity>,
 
-    /// Append the air-quality panel (US and European AQI, the six pollutants, pollen where the
-    /// source covers it and the report's UV reading) to the table and plain output, and carry it
-    /// as a typed object in `json`. `--format aqi` prints the panel standalone.
+    /// Append the air-quality panel (the AQI scales the source carries, the six pollutants, pollen
+    /// where the source covers it and the report's UV reading) to the table and plain output, and
+    /// carry it as a typed object in `json`. `--format aqi` prints the panel standalone.
     #[arg(long)]
     pub aqi: bool,
 
-    /// Which AQI scale drives the panel's colour and the one-line `%q` token: `us` or `european`;
-    /// overrides `[air] index`. Needs `--aqi` or `--format aqi`.
+    /// Which AQI scale drives the panel's colour and the one-line `%q` token: `us`, `european` or
+    /// `cn`; overrides `[air] index`. Needs `--aqi` or `--format aqi`.
     #[arg(long, value_name = "SCALE", value_parser = parse_aqi_index)]
     pub aqi_index: Option<AqiIndex>,
+
+    /// Which source answers the air-quality reading: `auto`, `open-meteo` or `qweather`;
+    /// overrides `[air] source`. `auto` reads from `qweather` in mainland China when that provider
+    /// is on the chain and a credential is configured, and from the keyless Open-Meteo elsewhere.
+    #[arg(long, value_name = "SOURCE", value_parser = parse_air_choice)]
+    pub air_source: Option<AirChoice>,
 
     /// Compute the moon and sun block locally (no request) and append it to the table and `plain`
     /// output; `json` then carries it as the `astro` object. `--format moon` prints the standalone
@@ -439,10 +446,16 @@ fn parse_history(value: &str) -> Result<u16, Error> {
     Ok(days)
 }
 
-/// `--aqi-index`: one of the two AQI scales, parsed by the air module so flag and config share one
+/// `--aqi-index`: the selected AQI scale, parsed by the air module so flag and config share one
 /// message.
 fn parse_aqi_index(value: &str) -> Result<AqiIndex> {
     value.parse()
+}
+
+/// `--air-source`: `auto` or a source id, parsed by the air module so flag and config share one
+/// message.
+fn parse_air_choice(value: &str) -> Result<AirChoice> {
+    AirChoice::from_name(value)
 }
 
 /// `--icons`: the render layer's chain parser, shared with `render.icons` so the flag and the file
@@ -974,6 +987,8 @@ pub struct Sources {
     pub lang: Source,
     /// `--aqi-index`.
     pub aqi_index: Source,
+    /// `--air-source`.
+    pub air_source: Source,
     /// The location argument / `CIRROCAST_LOCATION`.
     pub location: Source,
     /// Whether `--lat/--lon` supplied the location. Kept apart from [`Self::location`] because the
@@ -1018,6 +1033,7 @@ impl Sources {
             units: source("units"),
             lang: source("lang"),
             aqi_index: source("aqi_index"),
+            air_source: source("air_source"),
             location,
             coordinates: given("lat") || given("lon"),
             timeout: source("timeout"),
@@ -1043,6 +1059,11 @@ impl Sources {
             "aqi index: {} (from {})",
             settings.aqi_index,
             self.aqi_index.as_str()
+        );
+        eprintln!(
+            "air source: {} (from {})",
+            settings.air_source,
+            self.air_source.as_str()
         );
         eprintln!(
             "timeout: {}s (from {})",
@@ -1752,7 +1773,8 @@ fn fetch_for_location(
     // failure is a warning — the weather output the user asked for is already in hand and the exit
     // code stays 0. The reading travels on the report, where the renderers find it.
     if context.query.aqi || context.format == Format::Aqi {
-        attach_air(&mut report, context.env, context.cli.quiet);
+        let source = air_source(context.query, context.config, location, &ids, context.env)?;
+        attach_air(&mut report, context.env, source, context.cli.quiet);
     }
 
     // The marine block is best-effort in the same way, and the flag is the only way to ask for it:
@@ -1874,6 +1896,7 @@ fn query_settings(query: &QueryArgs, config: &Config) -> Result<Settings> {
             days: query.days,
             lang: query.lang.clone(),
             aqi_index: query.aqi_index.map(|index| index.to_string()),
+            air_source: query.air_source.map(|choice| choice.to_string()),
             icons: query.icons.map(|icons| icons.to_string()),
             location: location_arg(query),
             timeout_secs: query.timeout,
@@ -1894,6 +1917,12 @@ fn validate_surfaces(query: &QueryArgs, format: Format) -> Result<()> {
     if query.aqi_index.is_some() && !query.aqi && format != Format::Aqi {
         return Err(Error::Usage(
             "--aqi-index needs --aqi or `--format aqi`; it shapes the air-quality panel".to_owned(),
+        ));
+    }
+    if query.air_source.is_some() && !query.aqi && format != Format::Aqi {
+        return Err(Error::Usage(
+            "--air-source needs --aqi or `--format aqi`; it selects the air-quality source"
+                .to_owned(),
         ));
     }
     if query.moon && matches!(format, Format::OneLine | Format::Alerts | Format::Aqi) {
@@ -1985,13 +2014,37 @@ fn credit_to_stderr(setup: &RenderSetup, report: &crate::model::Report, alert_cr
     }
 }
 
+/// The air-quality source a run reads from: `--air-source` when given, else `[air] source`
+/// (validated at startup, so only a hand-built config can fail here).
+fn air_source(
+    query: &QueryArgs,
+    config: &Config,
+    location: &Location,
+    ids: &[ProviderId],
+    env: &Env<'_>,
+) -> Result<crate::model::AirSource> {
+    let choice = match query.air_source {
+        Some(choice) => choice,
+        None => AirChoice::from_name(&config.air.source)
+            .map_err(|error| Error::Config(format!("air.source: {error}")))?,
+    };
+    Ok(crate::air::source_for(location, ids, env, choice))
+}
+
 /// Fetches the air-quality reading and attaches it to the report; a failure is a warning.
 ///
 /// Split out of [`run_query`] so the failure policy reads as one sentence: `--aqi` promises a
 /// panel, not a successful second API call, and a broken air source must never change the exit
-/// code of a weather run that already succeeded.
-fn attach_air(report: &mut crate::model::Report, env: &Env<'_>, quiet: bool) {
-    match crate::air::fetch(&report.location, env) {
+/// code of a weather run that already succeeded. An explicit `--air-source` propagates its
+/// source's own errors here — a warning naming the missing host or credential — rather than
+/// falling back to the other source.
+fn attach_air(
+    report: &mut crate::model::Report,
+    env: &Env<'_>,
+    source: crate::model::AirSource,
+    quiet: bool,
+) {
+    match crate::air::fetch(&report.location, env, source) {
         Ok(air) => report.air = Some(air),
         Err(error) => {
             if !quiet {

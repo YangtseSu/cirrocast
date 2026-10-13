@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Step 29 — QWeather air quality as a second air source
 
-Status: ⬜ not-started
+Status: ✅ done
 Depends on: `16-air-quality-and-pollen.md` (the `AirQuality` model, the `AirSource` dispatch, the panel and the `%q` token), `27-qweather-jwt-auth.md` (the qweather credential and `providers.qweather.host`), `15-alerts-and-severity.md` (the provider-bound source precedent: credential, host and error taxonomy)
 Touches: `src/air/{mod,qweather}.rs` (new file), `src/air/aqi.rs`, `src/model/air.rs`, `src/model/mod.rs`, `src/config/mod.rs`, `src/cli.rs`, `src/i18n.rs`, `locales/{en-US,zh-CN}/main.ftl`, `src/render/{air,json,one_line,plain,art_table}.rs`, `tests/air.rs`, `tests/fixtures/qweather/`, `docs/providers.md`, `docs/configuration.md`, `docs/schema.md`, `README.md`, `docs/plans/README.md`, `CHANGELOG.md`
 
@@ -24,32 +24,35 @@ exists in step 16 and is reused.
 
 ## Deliverables
 
-- ⬜ **Measured endpoint facts, recorded in the design notes below** (probe the account host live
+- ✅ **Measured endpoint facts, recorded in the design notes below** (probe the account host live
       before writing code, and correct this file if the service differs from its docs):
-      `GET {host}/airquality/v1/current/{latitude}/{longitude}` with an optional `lang`; the
-      envelope is `metadata` + `indexes[]` + `pollutants[]` + `stations[]`; `indexes[]` carries at
-      most two entries (QWeather's own QAQI plus the local standard), each
-      `{code,name,aqi,aqiDisplay,category,color,primaryPollutant,health}`; `pollutants[]` carries
-      `{code,name,fullName,concentration{value,unit},subIndexes}` with the **unit varying per
-      pollutant** (the published example: PM in `μg/m3`, NO₂ in `ppb`, CO in `ppm`). Record for
-      every pollutant the unit the account actually returns, and whether the payload carries an
-      observation time at all.
-- ⬜ `src/air/qweather.rs`: the request and the decoder, through the shared `fetch_json` path with
+      `GET {host}/airquality/v1/current/{latitude}/{longitude}`; the envelope is `metadata` +
+      `indexes[]` + `pollutants[]` (**no `stations[]` in any measured response, and no observation
+      time**); `indexes[]` carries at most two entries (QWeather's own QAQI plus the local
+      standard), each `{code,name,aqi,aqiDisplay,level,category,color,primaryPollutant,health}`;
+      `pollutants[]` carries `{code,name,fullName,concentration{value,unit},subIndexes}` with the
+      **unit varying per pollutant** (measured: `μg/m³` for the particulates and for the
+      Chinese/European gases, CO in `mg/m³` there, `ppb`/`ppm` for the North-American and Japanese
+      gases). Every measured unit, point and index code is recorded in `## Measured facts`
+      below.
+- ✅ `src/air/qweather.rs`: the request and the decoder, through the shared `fetch_json` path with
       `CacheKey::air("qweather", …)` and `cache.weather_ttl_secs` — the credential and host come
       from `providers.qweather.host` plus whichever of the API key / JWT the key store resolves
       (`QWeatherAuth`, step 27), exactly as `src/alerts/qweather.rs` borrows them; a `401` maps to
       the same `InvalidKey`/`InvalidCredential` taxonomy, a missing host is a configuration error
       naming the console, and a missing credential is the provider's `MissingCredential` error.
-- ⬜ The pollutant mapping: `pm2p5`/`pm10`/`o3`/`no2`/`so2`/`co` → the six model fields, with the
+- ✅ The pollutant mapping: `pm2p5`/`pm10`/`o3`/`no2`/`so2`/`co` → the six model fields, with the
       unit policy decided and pinned by tests — the payload's per-pollutant unit is either the
       canonical μg/m³ or a **documented conversion** (the factors and their source written down
       beside the table), never a silent rescale; a unit outside the table fails the reading the way
       `src/air/open_meteo.rs` fails a mismatched one.
-- ⬜ The index mapping: `cn-mee` → the new Chinese scale, `us-epa` → `aqi_us`, `eaqi` → the
-      European scale; every other documented code (`qaqi`, `cn-mee-1h`, `daqi`, `jp`, `mo`, `th`,
-      `tw`, `us-epa-nc`) is ignored with a `--verbose` note rather than guessed into a scale, and an
-      index the point does not carry stays `None`.
-- ⬜ **The attribution duty, which is not optional.** QWeather's terms
+- ✅ The index mapping: `cn-mee` → the new Chinese scale, `us-epa` → `aqi_us`, **`eu-eea`** → the
+      European scale (the live code; the plan's `eaqi` was the vendor's older name — see the
+      measured facts); every other documented code (`ca-eccc`, `cn-mee-1h`, `fr-atmo`, `gb-defra`,
+      `hk-epd`, `jp-moe`, `kr-moe`, `mo-smg`, `qaqi`, `sg-nea`, `sg-nea-pm1h`, `th-pcd`, `tw-me`,
+      `tw-me-1h`, `us-epa-nc`) is ignored with a `--verbose` note rather than guessed into a scale,
+      an unknown code is the same note, and an index the point does not carry stays `None`.
+- ✅ **The attribution duty, which is not optional.** QWeather's terms
       (`https://dev.qweather.com/docs/terms/attribution/`) require the response's
       `metadata.attributions` displayed **in full and unmodified** wherever air-quality data is
       shown, exactly as they do for warnings. The decoder carries the lines on the reading
@@ -57,36 +60,61 @@ exists in step 16 and is reused.
       `plain` print them after the source's credit line, and `-f json` exposes them in the `air`
       object; a blank line is dropped, a duplicate printed once, and nothing is trimmed or reworded.
       Recorded here because the air panel is the second place the clause bites.
-- ⬜ `AqiIndex::Cn` in `src/air/aqi.rs`: the GB 3095-2012 breakpoints (优 `0..=50`, 良 `51..=100`,
+- ✅ `AqiIndex::Cn` in `src/air/aqi.rs`: the GB 3095-2012 breakpoints (优 `0..=50`, 良 `51..=100`,
       轻度污染 `101..=150`, 中度污染 `151..=200`, 重度污染 `201..=300`, 严重污染 above 300), the
       category words in both catalogs, `--aqi-index cn` / `[air] index = "cn"` through the existing
       parser and validator, and the colour ramp the panel paints with. `AirQuality` gains
       `aqi_cn: Option<u16>` beside the two existing indices.
-- ⬜ Source selection: `AirSource::QWeather` plus `[air] source = auto | open-meteo | qweather`
+- ✅ Source selection: `AirSource::QWeather` plus `[air] source = auto | open-meteo | qweather`
       (config key + `--air-source` flag + `--help` epilogue + `docs/configuration.md`). `auto`
       prefers QWeather when the point is in mainland China, the qweather provider is on the run's
       chain and a credential resolves; otherwise Open-Meteo — the same "coverage selects the
       national service, the keyless one is the floor" rule the alert registry uses. An explicit
       `qweather` without host or credential is the documented error, never a silent fallback.
-- ⬜ Renderer and JSON: the source label and credit line (`licence_line("qweather")`), the CN index
+- ✅ Renderer and JSON: the source label and credit line (`licence_line("qweather")`), the CN index
       row in the compact and stacked panels, `%q` following `[air] index` (so `cn` works there
       too), the `air` JSON object gaining `aqi_cn` and the `source` value `qweather` — a
       **non-breaking** addition under `docs/schema.md`'s compatibility rule ("a new key appears →
       unchanged"), so the key index and `docs/schema/json-v2.json` are updated while
       `schema_version` stays `2` and the frozen v1 document is untouched.
-- ⬜ Tests: unit decode tests over a recorded payload (both index codes present, an absent index, a
+- ✅ Tests: unit decode tests over a recorded payload (both index codes present, an absent index, a
       pollutant with a converted unit and one with an unknown unit), the category table at every
       boundary, an integration test that renders the panel from a seeded cache entry, the width
       tests at 59/60/80/120 columns with the longer CN label, and a `#[ignore]`d live probe beside
       the existing ones.
-- ⬜ Fixtures: recorded responses under `tests/fixtures/qweather/` (already annotated as recorded
+- ✅ Fixtures: recorded responses under `tests/fixtures/qweather/` (already annotated as recorded
       QWeather API data in `REUSE.toml`) with the request URLs recorded in
       `tests/fixtures/alerts/README.md`'s sibling for the provider or in a new
       `tests/fixtures/qweather/README.md` row.
-- ⬜ Docs: `docs/providers.md` gains a `### qweather air quality` block (endpoint, index codes, the
+- ✅ Docs: `docs/providers.md` gains a `### qweather air quality` block (endpoint, index codes, the
       unit table, coverage, the credit obligation, the one-request cost) and its obligations table
       row; the README air section names the second source; `CHANGELOG.md` gains the entry;
       `docs/plans/README.md` marks this step.
+
+## Measured facts (probe 2026-10-13, `kn76xbc7j5.re.qweatherapi.com`, `X-QW-Api-Key`)
+
+The first deliverable was the live probe, and it corrected the documentation-derived notes above.
+Recorded here so the decoder's tables are measurements rather than promises:
+
+| Point | `indexes[]` | Units returned |
+|---|---|---|
+| Beijing `39.9,116.4` | `cn-mee` only (`aqi` 20, `category` `Excellent`; `lang=zh` → `优`) | `μg/m³` throughout, **CO in `mg/m³`** |
+| Berlin `52.52,13.40` | `qaqi` 0.7 + `eu-eea` 1 | `μg/m³` throughout |
+| New York `40.71,-74.01` | `qaqi` 0.3 + `us-epa` 16 | `μg/m³` (PM), **`ppb`** (NO₂, O₃), **`ppm`** (CO) |
+| Tokyo `35.68,139.69` | `qaqi` 0.8 + `jp-moe` 2 | `μg/m³` (PM), **`ppb`** (NO₂, NO), **`ppmC`** (NMHC) |
+| Singapore `1.35,103.82` | `qaqi` 6.3 + `sg-nea` 168 | `μg/m³`, CO in `mg/m³` |
+
+* **No observation time** in the payload: the reading's `time` is the fetch instant.
+* `indexes[].aqi` is fractional on QAQI and whole on the national scales; `aqiDisplay` is sometimes
+  a number and sometimes a word (`eu-eea` answered `"Good"`), and `category` is localised by `lang`,
+  so neither is a decode input — `code` is.
+* `metadata.attributions` was one line for every point:
+  `https://developer.qweather.com/attribution.html`.
+* The European code is **`eu-eea`**, not the `eaqi` an earlier reading of the docs suggested, and
+  no response carried `stations[]`.
+* Because `jp-moe`/`sg-nea`/`ca-eccc` are not mapped, a point outside China/the US/Europe answers
+  with pollutants but no index this client can name: the panel drops the index line and shows the
+  pollutants, and `-v` says so.
 
 ## Design notes
 
@@ -143,17 +171,17 @@ cargo clippy --workspace --all-targets --locked -- -D warnings && reuse lint
 
 ## Exit criteria
 
-- ⬜ `--aqi` against a Chinese point with the qweather provider on the chain prints the national
+- ✅ `--aqi` against a Chinese point with the qweather provider on the chain prints the national
       index, its category word and the six pollutants in μg/m³, verified live and pasted into the
       progress log.
-- ⬜ Every index code and pollutant unit the service can return is either mapped or explicitly
+- ✅ Every index code and pollutant unit the service can return is either mapped or explicitly
       ignored with a `-v` note — nothing is guessed into a scale, and the unit table has a test per
       row.
-- ⬜ The response's attribution lines are printed verbatim with the air data in every format that
+- ✅ The response's attribution lines are printed verbatim with the air data in every format that
       shows it (the terms' requirement), proven by a test and by a live run pasted into the log.
-- ⬜ `--aqi` without any credential still works exactly as before (Open-Meteo, keyless), proven by
+- ✅ `--aqi` without any credential still works exactly as before (Open-Meteo, keyless), proven by
       the existing air tests passing unchanged.
-- ⬜ `docs/providers.md`, `docs/configuration.md`, `docs/schema.md`, the README and the CHANGELOG
+- ✅ `docs/providers.md`, `docs/configuration.md`, `docs/schema.md`, the README and the CHANGELOG
       describe the second source, the new scale and the new key; `reuse lint` is clean.
 
 ## Risks
@@ -173,3 +201,55 @@ cargo clippy --workspace --all-targets --locked -- -D warnings && reuse lint
   services of the 50 000-request plan are actually wired up). Endpoint, envelope, index codes and
   the per-pollutant unit mix read from the published docs (2026-10-07) and recorded above as
   deliverables rather than as verified facts: the live probe is the first deliverable on purpose.
+- 2026-10-13 — step executed end to end against the account host, live, before any code was written.
+  The probe's findings are in `## Measured facts` above and corrected two plan statements: the
+  European index code is `eu-eea` (not `eaqi`) and the envelope carries neither `stations[]` nor an
+  observation time. Measured units: `μg/m³` for the particulates and for the Chinese/European
+  gases, `mg/m³` for CO there, `ppb`/`ppm` for the North-American and Japanese gases, `ppmC` for
+  NMHC (a code the model does not carry). Deviations recorded while implementing:
+  (a) all three recorded air responses (`beijing`, `berlin`, `tokyo`) live under
+  `tests/fixtures/qweather/air/` with a first-party `tests/fixtures/qweather/README.md` recording
+  the request URL per file; the hand-written edge cases (an unknown unit on a mapped pollutant, a
+  fractional index, blank attribution lines, an empty envelope) stay inline in
+  `src/air/qweather.rs`'s test module;
+  (b) `AirQuality.credit` is `#[serde(default)]`, like `aqi_cn`, so a document or envelope written
+  before this step still decodes (`a_document_written_before_the_cn_reading_still_parses`);
+  (c) the CN scale needed its own six `AqiCategory` variants and catalog keys: the zh catalog's
+  `aqi-category-good` is 良好 (the US `Good`), so the national scale's 良 is a different word rather
+  than a reuse;
+  (d) `src/render/one_line.rs` and `art_table.rs` needed no change — the `%q` token lives in
+  `src/template.rs` (part of the render surface) and the table formats embed the shared panel;
+  (e) `index_line` became `Option<String>`: QWeather answers a Japanese or Singaporean point with
+  pollutants and no index this client maps, and `Air quality: ` with nothing after the colon would
+  read as a broken panel;
+  (f) `--help` grew past its 235-line budget (241 with the new flag and the widened `--aqi`
+  description), so `tests/cli.rs`'s budget moved to 245 with the reason recorded there — the same
+  step-by-step bump the earlier flag additions recorded;
+  (g) the live smoke is `tests/live.rs::live_qweather_air_quality` (the one file allowed to open
+  sockets), gated on `CIRROCAST_LIVE_TESTS=1` plus `CIRROCAST_QWEATHER_HOST` and a credential in
+  the environment.
+- 2026-10-13 — verification, all live against the account host with `XDG_CONFIG_HOME` pointing at a
+  scratch config (host only) and `CIRROCAST_QWEATHER_KEY` in the environment:
+  `--aqi -p qweather Beijing -f json` →
+  `{"source":"qweather","aqi_cn":21,"aqi_us":null,"aqi_european":null,`
+  `"category":{"us":null,"european":null,"cn":"excellent"},"pm2_5":3.0,"pm10":6.0,"o3":65.0,`
+  `"no2":6.0,"so2":2.0,"co":200.0,"credit":["https://developer.qweather.com/attribution.html"]}`;
+  the panel (`--aqi -p qweather --aqi-index cn Beijing`) printed
+  `空气质量: 中国 AQI 21 (优)`, the six pollutants, `空气质量数据由 QWeather（和风天气）提供 —`
+  `https://www.qweather.com/` and the response's own attribution line;
+  `--aqi --air-source open-meteo Beijing -f json` and the plain keyless `--aqi Beijing -f json` both
+  answered `"source":"open-meteo"` (US AQI 180, `credit: []`), so a default install is unchanged;
+  `--aqi --air-source qweather -f plain Beijing` without a credential printed
+  `warning: air quality unavailable: missing credential for qweather: run `cirrocast key set
+  qweather` …` and exited 0 with the weather intact (no silent fallback);
+  `--aqi --air-source qweather @0,0` printed the same documented error;
+  `--aqi-index cn -f one-line --template '%q'` against the keyless reading printed `无数据` (n/a),
+  not another scale's number.
+  `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and
+  `cargo test --workspace --locked` are clean, and `docs/reference/{help-long.txt,flags.txt}` plus
+  `man/cirrocast.1` were regenerated. One environment note: the locally installed `reuse 6.2.0`
+  reports `locales/zh-CN/main.ftl` as missing licensing information **for the pristine tree at
+  `HEAD` as well** (reproduced in a clean worktree before any of this step's edits); `reuse 5.0.2`
+  — the release line the CI action pins — lints the same tree clean (`532 / 532 files`), so the
+  repo's compliance is unchanged and the local report is a 6.2.0 regression, recorded rather than
+  worked around.

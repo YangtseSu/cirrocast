@@ -242,6 +242,21 @@ UV 0 (low) · weather data
 Air quality data by Open-Meteo.com (CAMS ENSEMBLE)
 ```
 
+The same panel from QWeather (`--air-source qweather`, or `[air] source = "qweather"` with that
+provider on the chain — `auto` chooses it in mainland China): the national index and its own word,
+the pollutants in the same μg/m³ model, and the response's attribution line after the credit:
+
+```text
+Beijing, CN (39.91, 116.40) Asia/Shanghai
+updated 2026-10-13T04:00:00+08:00 · QWeather
+Air quality: CN AQI 20 (Excellent)
+PM2.5 3 · PM10 6 · O3 62 · NO2 8 · SO2 2 · CO 200 μg/m³
+Pollen: not covered at this location
+UV 0 (low) · weather data
+Air quality data by QWeather — https://www.qweather.com/
+https://developer.qweather.com/attribution.html
+```
+
 ### `moon`
 
 [`moon.txt`](screenshots/moon.txt), the standalone moon/sun view (computed locally, no request):

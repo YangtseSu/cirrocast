@@ -53,7 +53,9 @@ use crate::model::LocalTimes;
 use crate::model::units::{ResolvedUnits, UnitSystem};
 use crate::model::{Location, Report};
 use crate::paths::Paths;
-use crate::provider::{Env, FetchRequest, HourlyResolution, fetch_chain, licence_line, select};
+use crate::provider::{
+    Env, FetchRequest, HourlyResolution, ProviderId, fetch_chain, licence_line, select,
+};
 use crate::render::{ColorMode, IconChain, RenderContext, TermCaps, resolve_color, resolve_width};
 use crate::template;
 
@@ -350,10 +352,7 @@ fn probe(
         attach_alerts(&mut report, &location, &request, &env, line, cli);
     }
     if template::uses(&line.template, 'q') {
-        match crate::air::fetch(&location, &env) {
-            Ok(air) => report.air = Some(air),
-            Err(error) => panel_note("air quality", &error, cli),
-        }
+        attach_air(&mut report, &location, &ids, config, &env, cli)?;
     }
     // Astro is computed locally (no request), so it is always attached: `%m`, `%M`, `%S` and `%s`
     // then work in any template, exactly as they do in a query that passed `--moon`.
@@ -364,6 +363,29 @@ fn probe(
 
     let credits = crate::alerts::credits(&report.alerts, &config.alerts, &line.i18n);
     line.render(&report, now, &credits, cli)
+}
+
+/// Fetches the air reading for a `%q` template; a failure is a `-v` panel note, never a placeholder.
+///
+/// The probe has no `--air-source`; `[air] source` is the selector, resolved by the same
+/// coverage-and-credential rule the query path uses (validated on load, so a value that does not
+/// parse here means a hand-built document).
+fn attach_air(
+    report: &mut Report,
+    location: &Location,
+    ids: &[ProviderId],
+    config: &Config,
+    env: &Env<'_>,
+    cli: &Cli,
+) -> Result<()> {
+    let choice = crate::air::AirChoice::from_name(&config.air.source)
+        .map_err(|error| Error::Config(format!("air.source: {error}")))?;
+    let source = crate::air::source_for(location, ids, env, choice);
+    match crate::air::fetch(location, env, source) {
+        Ok(air) => report.air = Some(air),
+        Err(error) => panel_note("air quality", &error, cli),
+    }
+    Ok(())
 }
 
 /// The colour mode a probe asks for: `never` unless `--color always` was given.
