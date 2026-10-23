@@ -59,7 +59,7 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # `--workspace` covers the dev-only `build/geo-table` builder beside the crate; the root
       # manifest is a package, so a bare `cargo clippy` in the root would skip it.
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -82,7 +82,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo test --workspace --locked
       # The reduced build is a supported configuration (review §3.14 / nit 13), and its stub paths
       # (`src/cli.rs`, the `#[cfg(not(feature = "offline-geo"))]` test in `tests/cli.rs`) exist only
@@ -103,7 +103,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo build --locked
       - run: sh contrib/statusbar/verify.sh
 
@@ -115,7 +115,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # What `cargo package` would upload is the crate's public surface, so the file set is
       # reviewed on every pull request and the packaged crate is compiled from that file set.
       # Nothing is uploaded here: the real publish is the release workflow's `publish` job.
@@ -162,7 +162,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # `help_snapshot` compares the long help and the man page byte for byte, `docs_flags` the
       # flag reference (both directions), `json_schema` the committed schemas against live output.
       - name: the generated documents match the binary
