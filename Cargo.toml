@@ -93,7 +93,7 @@ insta = "1.48.0"
 # `resolve-http` out, which would pull `reqwest` → `tokio` into the build graph for a test that
 # never fetches a remote `$ref` (the schemas use only internal `$defs`). Development-only: it never
 # enters the shipped binary or the step 21 size budget.
-jsonschema = { version = "0.58", default-features = false }
+jsonschema = { version = "0.59", default-features = false }
 predicates = "3"
 serde_json = "1"
 tempfile = "3"
