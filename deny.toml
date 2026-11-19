@@ -18,9 +18,13 @@
 # longer reported upstream is harmless; an entry that is still reported must be re-reviewed.
 db-urls = ["https://github.com/rustsec/advisory-db"]
 ignore = [
-    # No ignores today: nothing in the current lockfile is flagged. When one becomes unavoidable,
-    # the form is:
-    #   { id = "RUSTSEC-0000-0000", reason = "why it does not apply here", expires = "2027-01-01" },
+    # RUSTSEC-2026-0543 / RUSTSEC-2026-0555: chrono and chrono-tz are flagged *unmaintained*
+    # (informational, not a vulnerability; `patched = []` because no version fixes anything). They
+    # are the date/time and IANA-zone engine under the whole model, so moving to jiff (or `time`)
+    # is a cross-cutting migration, not a lockfile bump. The advisory is accepted for that window
+    # only: the expiry turns the build red again if the migration has not happened.
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained, no vulnerability; newest release 0.4.45 is in the graph and the jiff migration is a separate change", expiry = "2027-05-19" },
+    { id = "RUSTSEC-2026-0555", reason = "unmaintained, no vulnerability; newest release 0.10.4 is in the graph and the jiff migration is a separate change", expiry = "2027-05-19" },
 ]
 
 [licenses]
