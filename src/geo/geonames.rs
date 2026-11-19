@@ -197,8 +197,7 @@ impl Status {
         );
         let value = self
             .value
-            .map(|value| format!(" (status {value})"))
-            .unwrap_or_default();
+            .map_or_default(|value| format!(" (status {value})"));
         Error::Upstream {
             provider: CREDENTIAL.to_owned(),
             status: Some(200),

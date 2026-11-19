@@ -2999,8 +2999,7 @@ fn candidate_line(index: usize, location: &Location) -> String {
 fn candidate_text(location: &Location) -> String {
     let population = location
         .population
-        .map(|population| format!(" (population {population})"))
-        .unwrap_or_default();
+        .map_or_default(|population| format!(" (population {population})"));
     format!("{}{population}", location_line(location))
 }
 

@@ -228,7 +228,7 @@ fn details(body: &str) -> HashMap<String, String> {
         let text = entry
             .get("contents")
             .and_then(Value::as_array)
-            .map(|lines| {
+            .map_or_default(|lines| {
                 lines
                     .iter()
                     .filter_map(Value::as_str)
@@ -236,8 +236,7 @@ fn details(body: &str) -> HashMap<String, String> {
                     .filter(|line| !line.is_empty())
                     .collect::<Vec<_>>()
                     .join("\n")
-            })
-            .unwrap_or_default();
+            });
         if !text.is_empty() {
             details.insert(code.to_owned(), text);
         }

@@ -122,7 +122,6 @@ fn accepted_input(candidates: usize) -> String {
 fn candidate_line(location: &Location) -> String {
     let population = location
         .population
-        .map(|population| format!(" (pop. {population})"))
-        .unwrap_or_default();
+        .map_or_default(|population| format!(" (pop. {population})"));
     format!("{}{population}", location_line(location))
 }

@@ -702,23 +702,19 @@ fn degrees(value: f32) -> u16 {
 
 /// The `(local time, weather code)` pairs the `-v` attribution keeps.
 pub(crate) fn raw_pairs(response: &ForecastResponse) -> String {
-    let pairs: Vec<(String, u8)> = response
-        .hourly
-        .as_ref()
-        .map(|hourly| {
-            hourly
-                .time
-                .iter()
-                .cloned()
-                .zip(
-                    hourly
-                        .weather_code
-                        .iter()
-                        .map(|code| code.map_or(255, |code| condition_of(code).code())),
-                )
-                .collect()
-        })
-        .unwrap_or_default();
+    let pairs: Vec<(String, u8)> = response.hourly.as_ref().map_or_default(|hourly| {
+        hourly
+            .time
+            .iter()
+            .cloned()
+            .zip(
+                hourly
+                    .weather_code
+                    .iter()
+                    .map(|code| code.map_or(255, |code| condition_of(code).code())),
+            )
+            .collect()
+    });
     serde_json::to_string(&pairs).unwrap_or_else(|_| "[]".to_owned())
 }
 

@@ -431,8 +431,7 @@ fn note(query: &str, chosen: &Location, resolution: Resolution, hint: bool) -> O
     }
     let population = chosen
         .population
-        .map(|population| format!(" (population {population})"))
-        .unwrap_or_default();
+        .map_or_default(|population| format!(" (population {population})"));
     let pick = "`--pick` to choose one, or `--yes` to keep the winner";
     let hint = if hint {
         format!(" — pass `:{query}` to require an exact name match, {pick}")

@@ -290,17 +290,13 @@ fn report(
 /// `days[0]` is the first location-local date whose four parts all have a sample (today whenever
 /// the hourly series covers it, the next date when it does not).
 fn days_of(response: &Forecast, tz: Tz, days: u8) -> Result<Vec<DayForecast>> {
-    let samples: Vec<HourSample> = response
-        .hourly
-        .as_ref()
-        .map(|series| {
-            series
-                .data
-                .iter()
-                .filter_map(|block| sample(block, tz))
-                .collect()
-        })
-        .unwrap_or_default();
+    let samples: Vec<HourSample> = response.hourly.as_ref().map_or_default(|series| {
+        series
+            .data
+            .iter()
+            .filter_map(|block| sample(block, tz))
+            .collect()
+    });
     if samples.is_empty() {
         return Err(Error::Upstream {
             provider: PROVIDER.to_owned(),
