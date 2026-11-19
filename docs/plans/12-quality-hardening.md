@@ -118,7 +118,8 @@ upstream JSON decoder survives truncated and hostile input with `Error::Upstream
   nothing.
 - ✅ `.github/workflows/ci.yml`: jobs `fmt`, `clippy --all-targets -- -D warnings`, `test` (matrix
   ubuntu-26.04 + macos-26 × stable + 1.98.0, `CIRROCAST_FORBID_NETWORK=1`, `--locked`), `reuse`
-  (`fsfe/reuse-action`), `deny` (`EmbarkStudios/cargo-deny-action`), `audit` (`rustsec/audit-check`), plus the
+  (`fsfe/reuse-action`), `deny` (`EmbarkStudios/cargo-deny-action`), `audit` (`cargo audit`, installed
+  from crates.io at a pinned version), plus the
   layer and `cmp` gates; every third-party action pinned to a commit SHA, `concurrency` cancelling superseded
   runs, no Windows job. README/AGENTS document the matrix, MSRV, deny policy, the no-network rule and the
   resulting CI summary. (Runner labels are explicit — `ubuntu-26.04` and `macos-26`, never `<os>-latest`: the
@@ -466,3 +467,13 @@ target/release/cirrocast cache clean && target/release/cirrocast Beijing --offli
   matrix leg and the `cargo +1.98.0` verification command are gone. Recorded here rather than
   rewritten above, per the log rule; the binding conventions live in `docs/plans/README.md` and the
   CI description in `AGENTS.md`, both updated in the same change (step 21's log has the full entry).
+- 2026-11-19 — the `audit` job no longer uses `rustsec/audit-check`: that action reports through the
+  Checks API, so the first informational advisory (RUSTSEC-2026-0543/0555, chrono and chrono-tz marked
+  unmaintained) failed the job with `Resource not accessible by integration` under the workflow's
+  `contents: read` token, and a fork or Dependabot run cannot be granted `checks: write` at all. The job
+  now installs `cargo-audit 0.23.0` from crates.io with `--locked` and runs `cargo audit`, which needs no
+  write scope: vulnerabilities fail, unmaintained warnings stay warnings and are governed by the reviewed
+  `[advisories] ignore` entries in `deny.toml`. Those two entries were added in the same change set with
+  a six-month expiry; the chrono → jiff migration is the work that removes them. The
+  `cargo-deny-action` pin moves to v2.1.2 in this change: v2.1.1 ships cargo-deny 0.20.2, which
+  rejects the `expiry` key, and v2.1.2 ships 0.21.0, which enforces it.
